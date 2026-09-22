@@ -11,9 +11,6 @@ mod boundary;
 mod invoke;
 #[cfg(feature = "nv")]
 mod nv_declare;
-// What a program may require of the selected backend, and that the requirement compiles.
-#[cfg(feature = "nv")]
-mod declarations;
 #[cfg(all(feature = "ring", not(feature = "rma-lossy")))]
 mod rma;
 // The device backend, on the host model of the warp. No MPI, no GPU: one process, `nv::peers`'s

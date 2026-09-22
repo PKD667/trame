@@ -25,10 +25,5 @@ use crate::contract::{ClockId, Reading, Span};
 /// The reading takes no participant: a clock is a property of the machine, and this one is per
 /// device power cycle, which is what the incarnation says.
 pub fn reading() -> Reading {
-    Reading {
-        clock: ClockId {
-            incarnation: incarnation(),
-        },
-        elapsed: Span::from_nanos(nanos()),
-    }
+    Reading::new(ClockId::new(incarnation()), Span::from_nanos(nanos()))
 }

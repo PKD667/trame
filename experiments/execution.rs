@@ -143,7 +143,7 @@ fn main() {
         } else {
             "release"
         },
-        trame::ID
+        trame::ID.wire_id()
     );
     let mut ratios = Vec::new();
     for round in 0..rounds {

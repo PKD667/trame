@@ -20,9 +20,9 @@
 use std::env;
 use std::ffi::c_void;
 
-use trame::nv::device;
-use trame::nv::error::{RecvError, SendError};
-use trame::nv::layout::Layout;
+use trame::rings::device;
+use trame::rings::error::{RecvError, SendError};
+use trame::rings::layout::Layout;
 use cuda_core::{CudaContext, DeviceBuffer, LaunchConfig, launch_kernel_on_stream};
 use cuda_device::{DisjointSlice, kernel, thread, warp};
 use cuda_host::{

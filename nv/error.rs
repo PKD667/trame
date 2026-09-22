@@ -18,13 +18,6 @@ pub enum LayoutError {
 pub enum SendError {
     Full,
     TooLarge,
-    /// The destination is not a worker this route has a link for.
-    ///
-    /// Its own outcome rather than a clamp or a folded `Full`, because a route has a finite table
-    /// and a frame delivered to whichever worker happens to sit at the end of it is a fault that
-    /// cannot be seen from either end — the sender is told it succeeded and the receiver has no
-    /// reason to doubt the frame. Refusing is the only answer that leaves both ends able to tell.
-    NoSuchRank,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -33,9 +33,11 @@ use mpi::point_to_point::Message;
 use mpi::raw::traits::AsRaw;
 use mpi::topology::{Color, Communicator, InterCommunicator, SimpleCommunicator};
 
-use super::context::{Context, Environment};
+use super::context::{Context, Environment, enter, refused};
 use super::p2p::{self, send_on, take};
-use crate::contract::{Deployment, Error, Failure, Frame, Rank, Tag, Wait};
+use crate::contract::{
+    BackendFault, Deployment, Error, Failure, FailureKind, Frame, FrameBytes, Invalid, Rank, Tag,
+};
 
 /// The tag that labels the bridge's creation. It names the collective that builds the
 /// inter-communicator and is consumed by MPI's context-id machinery, so it never reaches a message
@@ -71,7 +73,7 @@ pub(crate) fn bridge(
             local.as_raw(),
             0,
             world.as_raw(),
-            remote_leader as i32,
+            remote_leader.get() as i32,
             bridge_tag(index),
             &mut handle,
         )
@@ -105,16 +107,12 @@ pub struct Leader {
     mine: Box<[Rank]>,
     /// The leader group, kept alive for as long as the bridge is: dropping it would disconnect a
     /// communicator the bridge was built against.
-    group: SimpleCommunicator,
-    universe: Universe,
+    _group: SimpleCommunicator,
+    _universe: Universe,
     /// A frame that was matched and did not fit the caller's buffer, for the same reason a
     /// participant holds one: MPI has no un-probe, and a refusal must not consume the frame the
     /// caller was told to grow for.
-    held: Mutex<Option<Message>>,
-    /// The attached buffer size the entry declared, which bounds a polling send. A field rather
-    /// than a process global: it is set on this process's universe and the leader is the only
-    /// thing that reads it.
-    bsend_bytes: usize,
+    held: Mutex<Option<(Message, FrameBytes)>>,
 }
 
 impl Leader {
@@ -124,131 +122,75 @@ impl Leader {
     /// bridge to that group. Which group that is comes from the declaration alone: the same colour
     /// arithmetic the workers run, which is why the two ends cannot disagree about the pairing.
     pub fn open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure> {
-        if deployment.refuse().is_some() {
-            return Err(Failure {
-                participant: 0,
-                operation: "leader::open",
-                code: 8,
-            });
+        let (universe, job, me, _) = enter(&env, "leader::open")?;
+        let wrong = |why| refused(me, "leader::open", BackendFault::Invalid(why));
+        if deployment.leaders().is_none() {
+            return Err(wrong(Invalid::NoLeader));
         }
-        let (mut universe, threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
-            .ok_or(Failure {
-                participant: 0,
-                operation: "leader::open",
-                code: 2,
-            })?;
-        if threading != mpi::Threading::Multiple {
-            return Err(Failure {
-                participant: 0,
-                operation: "leader::open",
-                code: 3,
-            });
-        }
-        universe.set_buffer_size(env.bsend_bytes);
-        let job = universe.world();
-        super::context::return_errors(&job);
-        let me = u32::try_from(job.rank()).map_err(|_| Failure {
-            participant: 0,
-            operation: "leader::open",
-            code: 9,
-        })?;
 
-        // The odd half of the pair the workers' even colours name.
-        let index = deployment.leader_index(me).ok_or(Failure {
-            participant: me,
-            operation: "leader::open",
-            code: 1,
-        })?;
+        // The odd half of the pair the workers' even colours name. A process the deployment does
+        // not name as a leader still takes part in the split, so the ranks that are do not hang.
+        let index = deployment.leader_index(me);
+        let color = index.map_or(i32::MAX, |index| (index * 2 + 1) as i32);
         let group = job
-            .split_by_color_with_key(Color::with_value((index * 2 + 1) as i32), 0)
-            .ok_or(Failure {
-                participant: me,
-                operation: "leader::open",
-                code: 4,
-            })?;
-        if group.size() != 1 {
-            // One leader per colour, by construction: two leaders sharing a colour would be two
-            // processes claiming one worker group, which no declaration can mean.
-            return Err(Failure {
-                participant: me,
-                operation: "leader::open",
-                code: 10,
-            });
-        }
+            .split_by_color_with_key(Color::with_value(color), 0)
+            .ok_or(refused(me, "leader::open", BackendFault::Transport))?;
+        let index = index.ok_or(wrong(Invalid::WrongLeader))?;
 
         // This leader's workers, by contract rank and in the remote group's order. The workers'
         // key was their contract rank, so the bridge addresses them in ascending contract rank and
-        // this list is the map between the two.
-        let mine: Box<[Rank]> = (0..deployment.workers.len() as Rank)
+        // this list is the map between the two. Not empty: `leader_index` found `me` in the list.
+        let mine: Box<[Rank]> = (0..deployment.workers().len() as u32)
+            .map(Rank::from_index)
             .filter(|&contract| deployment.leader_of(contract) == Some(me))
             .collect();
-        let first = *mine.first().ok_or(Failure {
-            participant: me,
-            operation: "leader::open",
-            code: 6,
-        })?;
-        let remote_leader = deployment.workers[first as usize];
-        let inter = bridge(&group, &job, remote_leader, index).ok_or(Failure {
-            participant: me,
-            operation: "leader::open",
-            code: 7,
-        })?;
+        let remote_leader = deployment.workers()[mine[0].get() as usize];
+        let inter = bridge(&group, &job, remote_leader, index)
+            .ok_or(refused(me, "leader::open", BackendFault::Transport))?;
 
         Ok(Leader {
             inter,
             mine,
-            group,
-            universe,
+            _group: group,
+            _universe: universe,
             held: Mutex::new(None),
-            bsend_bytes: env.bsend_bytes,
         })
     }
 
     /// Send one frame to one worker, named by contract rank.
     ///
     /// A worker this leader does not serve is refused rather than clamped: the bridge has no rank
-    /// for it, and a frame delivered to whichever worker sits at the end of the remote group is a
-    /// fault neither end can see.
-    pub fn send(&self, to: Rank, tag: Tag, data: &[u8], wait: Wait) -> Result<(), Error> {
+    /// for it.
+    pub fn send(&self, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error> {
         let remote = self
             .mine
             .iter()
             .position(|&contract| contract == to)
-            .ok_or(Error::Invalid { code: 6 })?;
-        p2p::send_on(
-            &self.inter,
-            self.bsend_bytes,
-            remote as Rank,
-            tag,
-            data,
-            wait,
-        )
+            .ok_or(Error::Invalid(Invalid::RankOutsideJob))?;
+        p2p::send_on(&self.inter, LEADER, Rank::from_index(remote as u32), tag, data)
     }
 
     /// Take the next frame from any worker.
     ///
     /// Every frame on this route came from a worker, so there is no source to filter and none is
-    /// taken. `Frame::source` is the sending worker's contract rank, because the remote group's
-    /// ranks are the contract ranks.
-    pub fn recv(&self, out: &mut [u8], wait: Wait) -> Result<Option<Frame>, Error> {
-        let mut held = self.held.lock().map_err(|_| self.failure("leader::recv"))?;
-        let Some(mut frame) = p2p::take(&self.inter, &mut held, out, wait)? else {
+    /// taken. `Frame::source` is the sending worker's contract rank.
+    pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
+        let mut held = self.held.lock().map_err(|_| {
+            Error::Failed(Failure {
+                participant: LEADER,
+                operation: "leader::recv",
+                kind: FailureKind::Backend(BackendFault::Internal),
+            })
+        })?;
+        let Some(frame) = p2p::take(&self.inter, &mut held, out)? else {
             return Ok(None);
         };
         // The remote rank is a position in this leader's group, not a contract rank: see `mine`.
-        frame.source = *self
+        let source = *self
             .mine
-            .get(frame.source as usize)
-            .ok_or(Error::Invalid { code: 7 })?;
-        Ok(Some(frame))
-    }
-
-    fn failure(&self, operation: &'static str) -> Error {
-        Error::Failed(Failure {
-            participant: 0,
-            operation,
-            code: 0,
-        })
+            .get(frame.source().get() as usize)
+            .ok_or(Error::Invalid(Invalid::RankOutsideJob))?;
+        Ok(Some(Frame::new(source, frame.tag(), frame.len())))
     }
 }
 
@@ -258,29 +200,28 @@ impl Leader {
 /// population at each end, so the leader end is one rank and this is the one place that rank is
 /// written. §4 gives the worker end no destination, and this is what that costs at the point of
 /// use: nothing.
-pub fn send(cx: &mut Context, tag: Tag, data: &[u8], wait: Wait) -> Result<(), Error> {
-    let bytes = cx.bsend_bytes();
-    let (comm, _) = cx.leader_split().ok_or(Error::Invalid { code: 5 })?;
-    send_on(comm, bytes, LEADER, tag, data, wait)
+pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
+    let me = cx.rank();
+    let (comm, _) = cx.leader_split().ok_or(Error::Invalid(Invalid::NoLeader))?;
+    send_on(comm, me, LEADER, tag, data)
 }
 
 /// A worker's receive: the leader's next frame, as `(tag, length)`.
 ///
 /// No source, for the reason a worker's send has no destination: every frame on this route came
-/// from the leader. A waiting call returns a frame or an error and never `None` — "nothing
-/// arrived" is a poll's answer, and a bridge has no second source whose silence could have been
-/// mistaken for it.
-pub fn recv(cx: &mut Context, out: &mut [u8], wait: Wait) -> Result<Option<(Tag, u32)>, Error> {
-    let Some((comm, held)) = cx.leader_split() else {
-        return Err(Error::Invalid { code: 5 });
-    };
-    let Some(frame) = take(comm, held, out, wait)? else {
+/// from the leader.
+pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, FrameBytes)>, Error> {
+    let (comm, held) = cx
+        .leader_split()
+        .ok_or(Error::Invalid(Invalid::NoLeader))?;
+    let Some(frame) = take(comm, held, out)? else {
         return Ok(None);
     };
-    Ok(Some((frame.tag, frame.len)))
+    Ok(Some((frame.tag(), frame.len())))
 }
 
 /// The leader's rank *in the worker group's view of the bridge*: the leader end is one rank, and
 /// this is its number. Not a contract rank, and not the launch's numbering either — it is the
-/// remote rank on this communicator, which is why nothing outside this module names it.
-const LEADER: Rank = 0;
+/// remote rank on this communicator, which is why nothing outside this module names it. Also the
+/// rank a leader's own failures are reported as observed by, since a leader has no rank.
+const LEADER: Rank = Rank::from_index(0);

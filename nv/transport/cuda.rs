@@ -7,7 +7,6 @@
 //! the verified path.
 
 use super::{MAX_RANKS, Transport};
-use crate::contract::{Rank, Tag};
 use crate::nv::device::{Rx, Tx};
 use crate::nv::error::{RecvError, SendError};
 use crate::nv::layout::Layout;
@@ -15,8 +14,8 @@ use crate::nv::transport::Message;
 
 /// One rank's endpoints into a `size × size` ring arena.
 pub struct CudaTransport {
-    rank: Rank,
-    size: Rank,
+    rank: u32,
+    size: u32,
     tx: [Tx; MAX_RANKS],
     rx: [Rx; MAX_RANKS],
 }
@@ -28,7 +27,7 @@ impl CudaTransport {
     /// global memory, each ring initialized by `Layout::init`, alive for the
     /// endpoints' lifetime and not overlapping any concurrent access. Every
     /// lane of rank `rank` must call this with the same pointer and layout.
-    pub unsafe fn new(arena: *mut u32, layout: Layout, size: Rank, rank: Rank) -> Self {
+    pub unsafe fn new(arena: *mut u32, layout: Layout, size: u32, rank: u32) -> Self {
         assert!(size as usize <= MAX_RANKS);
         let tx = std::array::from_fn(|dst| unsafe {
             let ptr = arena.add((rank * size + dst as u32) as usize * layout.words());
@@ -43,19 +42,19 @@ impl CudaTransport {
 }
 
 impl Transport for CudaTransport {
-    fn rank(&self) -> Rank {
+    fn rank(&self) -> u32 {
         self.rank
     }
 
-    fn size(&self) -> Rank {
+    fn size(&self) -> u32 {
         self.size
     }
 
-    fn try_send(&mut self, dst: Rank, tag: Tag, data: &[u8]) -> Result<(), SendError> {
+    fn try_send(&mut self, dst: u32, tag: u32, data: &[u8]) -> Result<(), SendError> {
         unsafe { self.tx[dst as usize].send(tag, data.as_ptr(), data.len() as u32) }
     }
 
-    fn try_recv(&mut self, src: Rank, out: &mut [u8]) -> Result<Message, RecvError> {
+    fn try_recv(&mut self, src: u32, out: &mut [u8]) -> Result<Message, RecvError> {
         unsafe { self.rx[src as usize].recv(out.as_mut_ptr(), out.len() as u32) }
     }
 }

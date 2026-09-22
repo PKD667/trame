@@ -3,19 +3,18 @@
 use std::sync::{Arc, Mutex};
 
 use super::Transport;
-use crate::contract::{Rank, Tag};
 use crate::nv::error::{RecvError, SendError};
 use crate::nv::layout::Layout;
 use crate::nv::model::Link;
 use crate::nv::transport::Message;
 
 struct Links {
-    size: Rank,
+    size: u32,
     links: Vec<Mutex<Link>>,
 }
 
 impl Links {
-    fn link(&self, src: Rank, dst: Rank) -> &Mutex<Link> {
+    fn link(&self, src: u32, dst: u32) -> &Mutex<Link> {
         &self.links[(src * self.size + dst) as usize]
     }
 }
@@ -26,7 +25,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn new(size: Rank, layout: Layout) -> Self {
+    pub fn new(size: u32, layout: Layout) -> Self {
         let links = (0..size * size)
             .map(|_| Mutex::new(Link::new(layout)))
             .collect();
@@ -35,11 +34,11 @@ impl Mesh {
         }
     }
 
-    pub fn size(&self) -> Rank {
+    pub fn size(&self) -> u32 {
         self.inner.size
     }
 
-    pub fn transport(&self, rank: Rank) -> SimTransport {
+    pub fn transport(&self, rank: u32) -> SimTransport {
         SimTransport {
             rank,
             inner: Arc::clone(&self.inner),
@@ -67,20 +66,20 @@ impl Mesh {
 
 /// One rank's view of a `Mesh`.
 pub struct SimTransport {
-    rank: Rank,
+    rank: u32,
     inner: Arc<Links>,
 }
 
 impl Transport for SimTransport {
-    fn rank(&self) -> Rank {
+    fn rank(&self) -> u32 {
         self.rank
     }
 
-    fn size(&self) -> Rank {
+    fn size(&self) -> u32 {
         self.inner.size
     }
 
-    fn try_send(&mut self, dst: Rank, tag: Tag, data: &[u8]) -> Result<(), SendError> {
+    fn try_send(&mut self, dst: u32, tag: u32, data: &[u8]) -> Result<(), SendError> {
         self.inner
             .link(self.rank, dst)
             .lock()
@@ -88,7 +87,7 @@ impl Transport for SimTransport {
             .send(self.rank, tag, data)
     }
 
-    fn try_recv(&mut self, src: Rank, out: &mut [u8]) -> Result<Message, RecvError> {
+    fn try_recv(&mut self, src: u32, out: &mut [u8]) -> Result<Message, RecvError> {
         self.inner
             .link(src, self.rank)
             .lock()

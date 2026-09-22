@@ -1,6 +1,6 @@
 //! The host transport: every rank a thread over one mesh of modelled links.
 
-use crate::nv::error::SendError;
+use crate::nv::error::{RecvError, SendError};
 use crate::nv::layout::Layout;
 use crate::nv::transport::{Transport, sim};
 
@@ -18,8 +18,15 @@ fn pingpong_round_trips() {
         let mut tags = Vec::new();
         for i in 0..1000u32 {
             payload.fill((i % 251) as u8);
-            tr.send(other, PTAG + i, &payload).expect("blocking send");
-            let msg = tr.recv(other, &mut got).expect("blocking recv");
+            while let Err(refused) = tr.try_send(other, PTAG + i, &payload) {
+                assert_eq!(refused, SendError::Full);
+            }
+            let msg = loop {
+                match tr.try_recv(other, &mut got) {
+                    Ok(msg) => break msg,
+                    Err(refused) => assert_eq!(refused, RecvError::Empty),
+                }
+            };
             assert_eq!(msg.tag, PTAG + i);
             assert!(got.iter().all(|&b| b == (i % 251) as u8));
             tags.push(msg.tag);

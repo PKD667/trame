@@ -14,7 +14,6 @@
 //! two senders advancing one counter.
 
 use super::{Refused, refused_recv, refused_send};
-use crate::contract::{Rank, Tag};
 use crate::nv::layout::Layout;
 use crate::nv::transport::Message;
 use crate::nv::transport::Transport;
@@ -56,14 +55,14 @@ impl Fabric {
 /// One participant's endpoints. Participant-local, and the reason a launch cannot keep them in a
 /// shared slot.
 pub struct Links {
-    rank: Rank,
-    size: Rank,
+    rank: u32,
+    size: u32,
     layout: Layout,
     transport: CudaTransport,
 }
 
 impl Links {
-    pub fn open(fabric: &Fabric, rank: Rank, size: Rank) -> Result<Links, Refused> {
+    pub fn open(fabric: &Fabric, rank: u32, size: u32) -> Result<Links, Refused> {
         if rank >= size {
             return Err(Refused::NoSuchPeer);
         }
@@ -78,11 +77,11 @@ impl Links {
         })
     }
 
-    pub fn rank(&self) -> Rank {
+    pub fn rank(&self) -> u32 {
         self.rank
     }
 
-    pub fn size(&self) -> Rank {
+    pub fn size(&self) -> u32 {
         self.size
     }
 
@@ -90,7 +89,7 @@ impl Links {
         self.layout
     }
 
-    pub fn send(&mut self, dest: Rank, tag: Tag, data: &[u8]) -> Result<(), Refused> {
+    pub fn send(&mut self, dest: u32, tag: u32, data: &[u8]) -> Result<(), Refused> {
         if dest >= self.size {
             return Err(Refused::NoSuchPeer);
         }
@@ -99,7 +98,7 @@ impl Links {
             .map_err(refused_send)
     }
 
-    pub fn recv(&mut self, src: Rank, out: &mut [u8]) -> Result<Message, Refused> {
+    pub fn recv(&mut self, src: u32, out: &mut [u8]) -> Result<Message, Refused> {
         if src >= self.size {
             return Err(Refused::NoSuchPeer);
         }

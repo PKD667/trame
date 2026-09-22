@@ -7,40 +7,45 @@
 // alignment because mprotect works in pages, while a device launch has no pages and wants none,
 // and a rule that hard-coded one of them would silently penalise the other.
 
-use crate::contract::Rank;
+use crate::contract::{ByteRange, Invalid, Rank};
 
-/// `(offset, length)` for `rank` in a `total`-byte segment, on its sharing domain.
+/// `rank`'s bytes in a `total`-byte segment, on its sharing domain.
 ///
 /// This is the *published* rule, and it is the only way to obtain a domain's geometry from
-/// outside that domain. `slice` is not an alternative to it: `slice` answers for the domain the
-/// caller's context names, so a participant that is not a member of the domain it is asking about
-/// gets a well-formed answer about the wrong one, and no backend can detect that. A reader such as
-/// a sink therefore calls this with the domain stated, which is what its parameters are for.
+/// outside that domain: a reader such as a leader calls it with the domain stated, which is what
+/// its parameters are for. `hosts` maps a rank to the host it lives on and `domain` lists the
+/// members of the sharing domain being described; both are stated rather than inferred. The
+/// alignment is the selected backend's, because a host mapping works in pages and a device launch
+/// has none.
 ///
-/// `hosts` maps a rank to the host it lives on and `domain` lists the members of the sharing
-/// domain being described; both are stated rather than inferred, for the same reason. `align` is
-/// the backend's, because a host mapping works in pages and a device launch has none.
-///
-/// Ranges follow ascending cohort order, are `align`-aligned except the last, and tile
-/// `[0, total)` exactly. A rank outside the cohort, or a domain smaller than one, is a caller
-/// error: the spec makes `rank` dense in the cohort, so this cannot be reached from a correct
-/// caller and there is no meaningful range to return.
+/// Ranges follow ascending domain order, are aligned except the last, and tile `[0, total)`
+/// exactly.
 pub fn slice_of(
     hosts: &[Rank],
-    cohort: &[Rank],
+    domain: &[Rank],
     rank: Rank,
     total: usize,
-    align: usize,
-) -> (usize, usize) {
-    let leader = |r: Rank| hosts.get(r as usize).copied().unwrap_or(r);
-    let mine = leader(rank);
-    let node_rank = cohort
-        .iter()
-        .filter(|&&r| leader(r) == mine)
-        .position(|&r| r == rank)
-        .unwrap_or_else(|| panic!("rank {rank} is outside the cohort"));
-    let node_size = cohort.iter().filter(|&&r| leader(r) == mine).count();
-    partition(total, node_rank, node_size, align)
+) -> Result<ByteRange, Invalid> {
+    let host = |r: Rank| {
+        hosts
+            .get(r.get() as usize)
+            .copied()
+            .ok_or(Invalid::RankOutsideJob)
+    };
+    let mine = host(rank)?;
+    let mut node_rank = None;
+    let mut node_size = 0;
+    for &member in domain {
+        if host(member)? == mine {
+            if member == rank {
+                node_rank = Some(node_size);
+            }
+            node_size += 1;
+        }
+    }
+    let node_rank = node_rank.ok_or(Invalid::RankOutsideJob)?;
+    let (offset, length) = partition(total, node_rank, node_size, crate::selected::align());
+    Ok(ByteRange { offset, length })
 }
 
 /// Partition `[0, total)` among `node_size` members of one sharing domain by position in it.
@@ -50,7 +55,7 @@ pub fn slice_of(
 /// segment is large enough to go round. A segment too small to give every member an aligned share
 /// goes entirely to the first member: a partial page is not shareable, and splitting below the
 /// alignment would produce ranges the mapping cannot express.
-pub fn partition(total: usize, node_rank: usize, node_size: usize, align: usize) -> (usize, usize) {
+fn partition(total: usize, node_rank: usize, node_size: usize, align: usize) -> (usize, usize) {
     assert!(node_rank < node_size, "shared rank is outside its node");
     assert!(node_size > 0, "a sharing domain has at least one member");
     let align = align.max(1);
@@ -73,9 +78,9 @@ pub fn partition(total: usize, node_rank: usize, node_size: usize, align: usize)
 
 /// The alignment a host mapping needs: one page, or one byte when the host will not say.
 ///
-/// Not part of the portable surface: a device backend passes 1, because it has no pages and
-/// nothing to align for.
-pub fn host_align() -> usize {
+/// A device backend uses 1 instead, because it has no pages and nothing to align for.
+#[cfg_attr(feature = "nv", allow(dead_code))]
+pub(crate) fn host_align() -> usize {
     // SAFETY: `sysconf` with a recognised name returns a long; `_SC_PAGESIZE` is one.
     unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }.max(1)
 }

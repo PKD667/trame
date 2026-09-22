@@ -9,7 +9,6 @@
 use std::sync::Arc;
 
 use super::{Refused, refused_recv, refused_send};
-use crate::contract::{Rank, Tag};
 use crate::nv::layout::Layout;
 use crate::nv::transport::Message;
 use crate::nv::transport::Transport;
@@ -26,7 +25,7 @@ pub struct Fabric {
 }
 
 impl Fabric {
-    pub fn new(size: Rank, layout: Layout) -> Self {
+    pub fn new(size: u32, layout: Layout) -> Self {
         Fabric {
             mesh: Arc::new(Mesh::new(size, layout)),
             layout,
@@ -41,8 +40,8 @@ impl Fabric {
 /// One participant's endpoints. Participant-local: nothing here is shared with another, which is
 /// what makes it sound to hold behind a `&mut`.
 pub struct Links {
-    rank: Rank,
-    size: Rank,
+    rank: u32,
+    size: u32,
     layout: Layout,
     transport: SimTransport,
 }
@@ -52,7 +51,7 @@ impl Links {
     ///
     /// `rank >= size` is refused rather than clamped: a rank outside the launch has no row in the
     /// mesh, and a clamped rank would send to the wrong participant.
-    pub fn open(fabric: &Fabric, rank: Rank, size: Rank) -> Result<Links, Refused> {
+    pub fn open(fabric: &Fabric, rank: u32, size: u32) -> Result<Links, Refused> {
         if rank >= size {
             return Err(Refused::NoSuchPeer);
         }
@@ -64,11 +63,11 @@ impl Links {
         })
     }
 
-    pub fn rank(&self) -> Rank {
+    pub fn rank(&self) -> u32 {
         self.rank
     }
 
-    pub fn size(&self) -> Rank {
+    pub fn size(&self) -> u32 {
         self.size
     }
 
@@ -76,7 +75,7 @@ impl Links {
         self.layout
     }
 
-    pub fn send(&mut self, dest: Rank, tag: Tag, data: &[u8]) -> Result<(), Refused> {
+    pub fn send(&mut self, dest: u32, tag: u32, data: &[u8]) -> Result<(), Refused> {
         if dest >= self.size {
             return Err(Refused::NoSuchPeer);
         }
@@ -85,7 +84,7 @@ impl Links {
             .map_err(refused_send)
     }
 
-    pub fn recv(&mut self, src: Rank, out: &mut [u8]) -> Result<Message, Refused> {
+    pub fn recv(&mut self, src: u32, out: &mut [u8]) -> Result<Message, Refused> {
         if src >= self.size {
             return Err(Refused::NoSuchPeer);
         }

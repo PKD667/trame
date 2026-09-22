@@ -3,7 +3,6 @@
 use cuda_device::atomic::{AtomicOrdering, DeviceAtomicU32};
 use cuda_device::warp;
 
-use crate::contract::{Rank, Tag};
 use crate::nv::error::{RecvError, SendError};
 use crate::nv::layout::Layout;
 use crate::nv::transport::Message;

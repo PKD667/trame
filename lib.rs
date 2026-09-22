@@ -3,8 +3,8 @@
 //
 // The shape of the crate is the shape of the contract's two halves:
 //
-//   `contract.rs`  the values every backend shares — `Rank`, `Frame`, `Error`, the capabilities,
-//                  and `require!`. Nothing here chooses a backend.
+//   `contract.rs`  the values every backend shares — `Rank`, `Frame`, `Error`, `Deployment`.
+//                  Nothing here chooses a backend.
 //   `none/ mpi/ rma/ lossy/ nv/`  one module per backend, each answering the *whole* surface:
 //                  entry, identity, communication, geometry, lifetime, clocks, and the primitive
 //                  families it supports.
@@ -27,10 +27,8 @@
 
 mod contract;
 pub use contract::{
-    Channel, ClockId, Declarations, Deployment, Edge, Error, Failure, Frame, LANE_LOSSY,
-    LANE_RELIABLE, LANE_UNAVAILABLE, PUBLICATION_COLLECTIVE, PUBLICATION_PREPUBLISHED,
-    PUBLICATION_UNAVAILABLE, RELEASE_COHORT, RELEASE_LOCAL, RELEASE_UNAVAILABLE, Rank, Reading,
-    Scopes, Span, Tag, Wait,
+    Backend, BackendFault, ByteRange, Channel, ClockId, ClockMismatch, Deployment, Edge, Error,
+    Failure, FailureKind, Frame, FrameBytes, Invalid, Rank, Reading, Span, Tag,
 };
 
 // The byte-range rule every published segment is cut by, shared because the origin and every
@@ -42,7 +40,9 @@ pub mod partition;
 // crate's own tests, so this crate has to answer to its own library name too.
 extern crate self as trame;
 
-pub mod cpu;
+// The device backend answers none of it, so under `nv` it is only its own tests' subject.
+#[cfg_attr(feature = "nv", allow(dead_code, unused_imports))]
+mod cpu;
 
 // How a unit of work is run. The attributes live in `macros/`; which lowering a driver calls is the
 // same compile-time choice as the transport.
@@ -56,17 +56,28 @@ pub use trame_macros::{concurrent, ordered, parallel};
 mod shared;
 
 #[cfg(not(any(feature = "mpi", feature = "nv")))]
-pub mod none;
+mod none;
 
+// The host model and the device build each use part of this, and the device experiments reach
+// the rings through `rings`, so what one build leaves unused is not dead.
 #[cfg(feature = "nv")]
-pub mod nv;
+#[allow(dead_code, unused_imports)]
+mod nv;
+
+// The device experiments (`experiments/nv/`) measure the rings below the contract, so they name
+// the ring machinery directly. It is not a surface.
+#[cfg(feature = "nv")]
+#[doc(hidden)]
+pub mod rings {
+    pub use crate::nv::{device, error, layout};
+}
 
 #[cfg(feature = "rma-lossy")]
-pub mod lossy;
+mod lossy;
 #[cfg(all(feature = "mpi", not(feature = "ring")))]
-pub mod mpi;
+mod mpi;
 #[cfg(all(feature = "ring", not(feature = "rma-lossy")))]
-pub mod rma;
+mod rma;
 
 #[cfg(test)]
 mod tests;
@@ -87,22 +98,29 @@ use rma as selected;
 // There is no `exec` here. Starting a named body on another host thread is the host lowering's
 // own business. `sync` remains in the surface because Family A is a backend family.
 pub use selected::{
-    Context, DECLARATIONS, Environment, ID, Shared, bytes, clock, cohort, done, flush, hosts, init,
-    leader, rank, reading, recv, release, reshape, send, share, size, slice, sync, unshare,
+    Context, Environment, Shared, bytes, clock, done, flush, hosts, init, leader, rank, recv,
+    release, reshape, send, share, size, sync, unshare,
 };
 #[doc(hidden)]
 pub use selected::run;
 
-/// Whether this backend's lanes may lose a frame. The communication rules keep the `Message` route
-/// reliable regardless, so this is a statement about lanes and never about control traffic.
-pub const LOSSY: bool = DECLARATIONS.lane_reliability == LANE_LOSSY;
+/// Which backend this build selected.
+pub const ID: Backend = selected::ID;
 
-/// The largest tag the transport distinguishes, from the selected backend's declaration.
-pub const TAG_LIMIT: Tag = DECLARATIONS.tag_limit;
+/// Whether this backend's lanes may lose a frame. The `Message` route is reliable regardless, so
+/// this is a statement about lanes and never about control traffic.
+pub const LOSSY: bool = matches!(ID, Backend::RmaLossy);
+
+/// The longest frame every route of this backend carries, leader route included. The selected
+/// backend states which storage provides it and refuses a launch that does not.
+pub const MAX_FRAME: FrameBytes = selected::MAX_FRAME;
+
+// A 64 KiB log block behind an eight-byte batch header is 65_544 bytes, and every route must carry
+// one.
+const _: () = assert!(MAX_FRAME.get() >= 65_544);
 
 // Compile-time checks that the selection is coherent. The three lane transports ride one MPI
 // environment, and the device backend rides none of it, so the combinations that would ask one
 // executable to be two wires at once are refused here rather than at a link error.
 const _: () = assert!(!cfg!(feature = "nv") || !cfg!(feature = "mpi"));
 const _: () = assert!(!cfg!(feature = "ring") || cfg!(feature = "mpi"));
-const _: () = assert!(!LOSSY || cfg!(feature = "ring"));

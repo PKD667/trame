@@ -3,7 +3,7 @@ use super::*;
 pub struct Tx {
     ptr: *mut u32,
     layout: Layout,
-    src: Rank,
+    src: u32,
     seq: u32,
 }
 
@@ -22,7 +22,7 @@ impl Tx {
     /// endpoint is live. Every lane must call `try_send` in convergence with
     /// identical arguments.
     #[inline(always)]
-    pub unsafe fn new(ptr: *mut u32, layout: Layout, src: Rank) -> Self {
+    pub unsafe fn new(ptr: *mut u32, layout: Layout, src: u32) -> Self {
         Self {
             ptr,
             layout,
@@ -38,7 +38,7 @@ impl Tx {
     /// All lanes must call this in convergence with the same valid `data` and
     /// `len`. The memory may not overlap this link's arena.
     #[inline(always)]
-    pub unsafe fn send(&mut self, tag: Tag, data: *const u8, len: u32) -> Result<(), SendError> {
+    pub unsafe fn send(&mut self, tag: u32, data: *const u8, len: u32) -> Result<(), SendError> {
         if len > self.layout.capacity() {
             return Err(SendError::TooLarge);
         }
