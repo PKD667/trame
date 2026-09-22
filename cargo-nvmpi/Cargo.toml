@@ -1,0 +1,16 @@
+[package]
+name = "cargo-nvmpi"
+version = "0.1.0"
+edition = "2024"
+description = "cargo subcommand: run cargo through the cuda-oxide codegen backend"
+
+# Its own workspace: it is built on the GPU host under its own toolchain file, before the device
+# build it drives.
+[workspace]
+
+[[bin]]
+name = "cargo-nvmpi"
+path = "src/main.rs"
+
+[dependencies]
+sha2 = "0.10"

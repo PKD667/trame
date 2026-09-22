@@ -1,0 +1,164 @@
+// What an MPI experiment needs in order to drive the backend, once.
+//
+// One file included by every experiment, so each of them sees only the methods it calls and the
+// rest are dead as far as that build is concerned. That is a property of sharing the file rather
+// than of the methods being unused, which is what the allow says.
+#![allow(dead_code)]
+//
+// The contract moved three obligations to the caller: the environment is a value the caller owns
+// rather than a global, a receive writes into a buffer the caller supplies, and demultiplexing by
+// tag is the caller's job — there is no tagged receive and no backend stash. Every experiment owes
+// the same three, so they are paid once here rather than four times.
+//
+// It is deliberately small and it is *not* the old surface restored. There is no `Inflight`, no
+// `process::exit` and no global: what is here is a context, a held-frame list the caller must keep
+// because the backend no longer does, and the four calls the experiments make.
+
+use trame::{Deployment, init, rank, recv, send, size};
+
+/// The contract's value types, so an experiment names one module rather than two.
+pub use trame::{Channel, Context, Environment, Error, Frame, Rank, Tag, Wait};
+
+/// Bytes attached for buffered sends. The experiments send frames far below this; it is stated
+/// because the entry has to state it and a silent default would be a bound nobody could act on.
+const ATTACHED: usize = 128 << 20;
+
+/// One participant, and the frames it has received but not yet been asked for.
+pub struct Wire {
+    cx: Context,
+    /// Frames whose tag nobody has asked about yet. A link has no peek, so an ask about one tag
+    /// that meets a frame under another has to put it somewhere, and the contract says that
+    /// somewhere is here.
+    held: Vec<(Rank, Tag, Vec<u8>)>,
+    /// The receive buffer, grown to the largest frame seen. An experiment's traffic is its own,
+    /// so this converges on the first oversized frame rather than growing per call.
+    cap: usize,
+}
+
+impl Wire {
+    /// Enter the world: one cohort, every rank in it.
+    ///
+    /// The rule is pure and returns a colour; the same colour is one cohort. An experiment wants
+    /// every rank in one, so it answers one colour for everybody.
+    pub fn start() -> Wire {
+        Wire {
+            cx: init(
+                Environment {
+                    bsend_bytes: ATTACHED,
+                    ..Environment::default()
+                },
+                Deployment::SOLIDARY,
+                |_, _| 0,
+            )
+            .expect("this experiment needs MPI"),
+            held: Vec::new(),
+            cap: 64,
+        }
+    }
+
+    /// Enter with a stated attached-buffer size, for a probe that needs the buffer to fill.
+    pub fn attach(bsend_bytes: usize) -> Wire {
+        Wire {
+            cx: init(
+                Environment {
+                    bsend_bytes,
+                    ..Environment::default()
+                },
+                Deployment::SOLIDARY,
+                |_, _| 0,
+            )
+            .expect("this experiment needs MPI"),
+            held: Vec::new(),
+            cap: 64,
+        }
+    }
+
+    /// One buffered attempt, with the refusal returned rather than turned into a panic.
+    pub fn try_post(&mut self, dest: Rank, tag: Tag, data: &[u8]) -> Result<(), Error> {
+        send(&mut self.cx, dest, Channel::Message(tag), data, Wait::Poll)
+    }
+
+    pub fn rank(&self) -> Rank {
+        rank(&self.cx)
+    }
+
+    pub fn size(&self) -> u32 {
+        size(&self.cx)
+    }
+
+    /// Buffered: accepted once the bytes are copied, and never waiting on a busy peer.
+    pub fn post(&mut self, dest: Rank, tag: Tag, data: &[u8]) {
+        send(&mut self.cx, dest, Channel::Message(tag), data, Wait::Poll)
+            .unwrap_or_else(|e| panic!("post to {dest}: {e}"));
+    }
+
+    /// Blocking: for a frame larger than the attached buffer, and never in a symmetric exchange
+    /// where both peers send before either receives.
+    pub fn put(&mut self, dest: Rank, tag: Tag, data: &[u8]) {
+        send(&mut self.cx, dest, Channel::Message(tag), data, Wait::Wait)
+            .unwrap_or_else(|e| panic!("put to {dest}: {e}"));
+    }
+
+    /// One frame to each listed peer. A loop over `post`, because a broadcast would need every
+    /// peer to call it at the same point and these peers are in receive loops.
+    pub fn broadcast(&mut self, dests: &[Rank], tag: Tag, data: &[u8]) {
+        for &dest in dests {
+            self.post(dest, tag, data);
+        }
+    }
+
+    /// The next frame under `want`'s tag, holding whatever arrives under another.
+    ///
+    /// `Wait::Wait` because an experiment knows its own traffic and is not measuring the wait.
+    /// Nothing accepted is ever dropped: what was not asked for is kept for the ask that comes.
+    pub fn take(&mut self, want: Tag) -> (Rank, Vec<u8>) {
+        if let Some(at) = self.held.iter().position(|(_, tag, _)| *tag == want) {
+            let (from, _, data) = self.held.remove(at);
+            return (from, data);
+        }
+        loop {
+            match self.receive(Wait::Wait) {
+                Some((from, tag, data)) if tag == want => return (from, data),
+                Some(frame) => self.held.push(frame),
+                None => {}
+            }
+        }
+    }
+
+    /// Report the run's outcome and finalize. It returns rather than exiting: the entry rules make
+    /// process exit non-portable, so an experiment that is done is an experiment that returns from
+    /// `main`. Leave the run. It returns, so a caller that means to stop says so: the old `done`
+    /// exited the process, which the entry rules make non-portable, and a call that looks like a
+    /// stop but is not one is exactly the kind of promise this contract stopped making.
+    pub fn done(&mut self) {
+        trame::done(&mut self.cx, Ok(())).expect("finalize");
+    }
+
+    /// The next frame, whatever its tag, or nothing if none is waiting.
+    pub fn poll(&mut self) -> Option<(Rank, Tag, Vec<u8>)> {
+        if !self.held.is_empty() {
+            return Some(self.held.remove(0));
+        }
+        self.receive(Wait::Poll)
+    }
+
+    /// One receive into the buffer, growing it when the backend says the frame is larger.
+    fn receive(&mut self, wait: Wait) -> Option<(Rank, Tag, Vec<u8>)> {
+        loop {
+            let mut buf = vec![0u8; self.cap];
+            match recv(&mut self.cx, &mut buf, wait) {
+                Ok(Some(Frame {
+                    source, tag, len, ..
+                })) => {
+                    buf.truncate(len as usize);
+                    return Some((source, tag, buf));
+                }
+                Ok(None) => return None,
+                // The refusal consumed nothing, so asking again with a larger buffer is the whole
+                // fix and the frame is still there.
+                Err(Error::TooSmall { needed }) => self.cap = needed as usize,
+                Err(e) => panic!("recv: {e}"),
+            }
+        }
+    }
+}
