@@ -6,7 +6,9 @@
 
 use std::collections::HashMap;
 
-use crate::contract::Edge;
+use std::num::NonZeroU32;
+
+use crate::contract::{Edge, FrameBytes, Rank};
 use crate::shared::context::FACTOR;
 
 /// The declaration the tests work from: edges ordered by `(source, destination)`, workers ascending
@@ -14,18 +16,21 @@ use crate::shared::context::FACTOR;
 fn edges(pairs: &[(u32, u32)]) -> Vec<Edge> {
     pairs
         .iter()
-        .map(|&(source, destination)| Edge {
-            source,
-            destination,
-            affected: 1,
+        .map(|&(source, destination)| {
+            Edge::new(ranks(&[source])[0], ranks(&[destination])[0], NonZeroU32::MIN)
         })
         .collect()
 }
 
+fn ranks(indices: &[u32]) -> Vec<Rank> {
+    indices.iter().copied().map(Rank::from_index).collect()
+}
+
 #[test]
 fn the_window_is_indexed_by_position_in_the_worker_list() {
-    let workers = [3u32, 1, 2];
-    let got = crate::shared::context::window(&workers, &edges(&[(3, 2)]), 64).expect("a table");
+    let workers = ranks(&[3, 1, 2]);
+    let got = crate::shared::context::window(&workers, &edges(&[(3, 2)]), FrameBytes::new(64))
+        .expect("a table");
     assert_eq!(got.len(), 1);
     // Rank 3 is first in the worker list and rank 2 is last, and a window is indexed by place
     // rather than by rank, so the two are not the same number.
@@ -34,8 +39,9 @@ fn the_window_is_indexed_by_position_in_the_worker_list() {
 
 #[test]
 fn the_window_is_sorted_so_every_member_opens_the_same_one() {
-    let workers = [0u32, 1, 2];
-    let got = crate::shared::context::window(&workers, &edges(&[(2, 0), (0, 1), (1, 2)]), 8)
+    let workers = ranks(&[0, 1, 2]);
+    let table = edges(&[(2, 0), (0, 1), (1, 2)]);
+    let got = crate::shared::context::window(&workers, &table, FrameBytes::new(8))
         .expect("a table");
     let mut sorted = got.clone();
     sorted.sort_unstable();
@@ -47,7 +53,7 @@ fn the_window_is_sorted_so_every_member_opens_the_same_one() {
 
 #[test]
 fn a_table_with_nothing_on_it_is_empty() {
-    let got = crate::shared::context::window(&[0, 1], &[], 64).expect("a table");
+    let got = crate::shared::context::window(&ranks(&[0, 1]), &[], FrameBytes::new(64)).expect("a table");
     assert!(got.is_empty());
 }
 
@@ -56,5 +62,5 @@ fn an_edge_whose_endpoint_is_not_a_worker_is_refused() {
     // Not a panic and not a silent skip: the endpoint has no place in the worker list, so the
     // table cannot name it and the declaration is refused.
     let _ = HashMap::<(), ()>::new();
-    assert!(crate::shared::context::window(&[0, 1], &edges(&[(0, 9)]), 64).is_err());
+    assert!(crate::shared::context::window(&ranks(&[0, 1]), &edges(&[(0, 9)]), FrameBytes::new(64)).is_err());
 }

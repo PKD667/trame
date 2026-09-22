@@ -22,41 +22,30 @@
 //!
 //! Two things are specific to this backend and both are consequences rather than choices.
 //!
-//! A device has no way to wait on a host process. A waiting receive therefore polls a *declared*
-//! number of times and then reports `Exhausted`, and it never returns `None`: "nothing arrived" is a
-//! poll's answer, and handing it to a caller that asked to wait is the silent weakening the contract
-//! forbids. `Wait::Wait` is what this backend declared as a budget, and this is where that
-//! declaration is kept.
-//!
-//! A leader's sends can find a worker's down link full, and the leader is a host process that can
-//! simply try again later — so the leader reports `Full` rather than spinning, and the caller
-//! decides. A worker cannot: it is inside a launch, and its only way to make progress is to keep
-//! asking.
+//! Every call on either end is one attempt. A device has no way to wait on a host process, so
+//! waiting is the caller's loop and never this route's: a full link is `Full`, an empty one is
+//! `None`.
 
 use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
 use super::{Context, Environment};
-use crate::contract::{Deployment, Error, Failure, Frame, Rank, Tag, Wait};
+use crate::contract::{
+    BackendFault, Deployment, Error, Failure, FailureKind, Frame, FrameBytes, Invalid, Rank, Tag,
+};
 use crate::nv::error::{LayoutError, RecvError, SendError};
 use crate::nv::layout::Layout;
+use crate::nv::transport::Message;
 
 /// How many frames a control link holds before its producer is told `Full`.
 ///
-/// Small on purpose. This route carries management traffic — a dispatch, a shutdown, a progress
-/// note — not payload, and a deep queue would let a worker run ahead of a leader that has stopped
+/// Small on purpose: a deep queue would let a worker run ahead of a leader that has stopped
 /// listening without either end finding out.
 pub const DEPTH: u32 = 4;
 
-/// The largest frame a control slot carries.
-pub const CAPACITY: u32 = 256;
-
-/// How many attempts a waiting worker call makes before reporting exhaustion.
-///
-/// Stated rather than unbounded because a device has nothing to block on: a launch that spun
-/// forever waiting for a host process that had already exited would be a hang with no diagnosis.
-/// Large enough that a leader doing ordinary work is never falsely reported as absent.
-pub const LEADER_ATTEMPTS: u32 = 1 << 22;
+/// The largest frame a control slot carries: `MAX_FRAME`, because the contract promises it on the
+/// leader route too, and a log block is the largest thing a worker sends its leader.
+pub const CAPACITY: u32 = super::MAX_FRAME.get();
 
 /// The geometry of a leader route: how many workers, and how big their links are.
 #[derive(Clone, Copy)]
@@ -102,7 +91,7 @@ impl Route {
         }
     }
 
-    fn base(self, rank: Rank, down: bool) -> usize {
+    fn base(self, rank: u32, down: bool) -> usize {
         let link = rank as usize * 2 + usize::from(down);
         link * self.layout.words()
     }
@@ -113,7 +102,7 @@ impl Route {
     ///
     /// `ptr` must address at least `words()` words that have been through `init`, and must stay
     /// live and unaliased for as long as either end of the link is.
-    pub unsafe fn up(self, ptr: *mut u32, rank: Rank) -> *mut u32 {
+    pub unsafe fn up(self, ptr: *mut u32, rank: u32) -> *mut u32 {
         unsafe { ptr.add(self.base(rank, false)) }
     }
 
@@ -122,7 +111,7 @@ impl Route {
     /// # Safety
     ///
     /// As [`up`](Self::up).
-    pub unsafe fn down(self, ptr: *mut u32, rank: Rank) -> *mut u32 {
+    pub unsafe fn down(self, ptr: *mut u32, rank: u32) -> *mut u32 {
         unsafe { ptr.add(self.base(rank, true)) }
     }
 }
@@ -136,8 +125,8 @@ unsafe fn publish(
     link: *mut u32,
     layout: Layout,
     seq: u32,
-    src: Rank,
-    tag: Tag,
+    src: u32,
+    tag: u32,
     data: &[u8],
 ) -> Result<(), SendError> {
     if data.len() > layout.capacity() as usize {
@@ -163,7 +152,7 @@ unsafe fn publish(
     Ok(())
 }
 
-/// Take the frame published at `seq`, or answer `None` when there is none yet.
+/// Take the frame published at `seq`, or refuse with `Empty` when there is none yet.
 ///
 /// # Safety
 ///
@@ -173,10 +162,10 @@ unsafe fn consume(
     layout: Layout,
     seq: u32,
     out: &mut [u8],
-) -> Result<Option<(Rank, Tag, u32)>, RecvError> {
+) -> Result<Message, RecvError> {
     let slot = unsafe { link.add(layout.slot(seq)) };
     if unsafe { AtomicU32::from_ptr(slot) }.load(Ordering::Acquire) != seq.wrapping_add(1) {
-        return Ok(None);
+        return Err(RecvError::Empty);
     }
     let len = unsafe { slot.add(1).read() };
     let src = unsafe { slot.add(2).read() };
@@ -186,13 +175,10 @@ unsafe fn consume(
         // grow for is the frame it then gets.
         return Err(RecvError::TooSmall { needed: len });
     }
-    let words = len as usize;
-    for word in 0..words {
+    let len_bytes = len as usize;
+    for word in 0..len_bytes.div_ceil(4) {
         let bytes = unsafe { slot.add(4 + word).read() }.to_ne_bytes();
-        let take = (out.len() - word * 4).min(4);
-        if take == 0 {
-            break;
-        }
+        let take = (len_bytes - word * 4).min(4);
         out[word * 4..word * 4 + take].copy_from_slice(&bytes[..take]);
     }
     // Hand the slot back, and this is load-bearing rather than tidiness. The state word is a
@@ -207,7 +193,7 @@ unsafe fn consume(
     // producer that refilled it while the copy was still reading would deliver a frame built from
     // two.
     unsafe { AtomicU32::from_ptr(slot).store(seq.wrapping_add(layout.depth()), Ordering::Release) };
-    Ok(Some((src, tag, len)))
+    Ok(Message { src, tag, len })
 }
 
 /// The leader: the host process's end of every worker's links.
@@ -231,6 +217,32 @@ struct Cursor {
     departing: u32,
 }
 
+/// The number a leader's own failures are reported as observed by: a leader is not a participant
+/// and has no rank, and `0` is what the MPI backends report for the same reason.
+const LEADER: Rank = Rank::from_index(0);
+
+fn opening(fault: BackendFault) -> Failure {
+    Failure {
+        participant: LEADER,
+        operation: "leader::open",
+        kind: FailureKind::Backend(fault),
+    }
+}
+
+fn poisoned(operation: &'static str) -> Error {
+    Error::Failed(Failure {
+        participant: LEADER,
+        operation,
+        kind: FailureKind::Backend(BackendFault::Internal),
+    })
+}
+
+/// A slot header's words as a frame. The tag word was written from a `u16` by the only producer on
+/// the link, so narrowing it back loses nothing.
+fn frame(source: Rank, message: Message) -> Frame {
+    Frame::new(source, Tag::new(message.tag as u16), FrameBytes::new(message.len))
+}
+
 impl Leader {
     /// Open the route over the region the launch prepared.
     ///
@@ -238,42 +250,18 @@ impl Leader {
     /// declaration is the one thing they both have: the host process builds it here and every
     /// worker builds the same one from the same list.
     pub fn open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure> {
-        if deployment.refuse().is_some() {
-            return Err(Failure {
-                participant: 0,
-                operation: "leader::open",
-                code: 8,
-            });
+        if deployment.leaders().is_none() {
+            // A process that opened the route anyway is a process the launch did not ask for.
+            return Err(opening(BackendFault::Invalid(Invalid::NoLeader)));
         }
-        let ranks = u32::try_from(deployment.workers.len()).map_err(|_| Failure {
-            participant: 0,
-            operation: "leader::open",
-            code: 1,
-        })?;
-        if deployment.leaders.is_empty() && ranks == 0 {
-            // No leader in this deployment. A process that opened the route anyway is a process the
-            // launch did not ask for, and saying so is better than handing back a route that will
-            // never carry a frame.
-            return Err(Failure {
-                participant: 0,
-                operation: "leader::open",
-                code: 2,
-            });
-        }
+        let ranks = u32::try_from(deployment.workers().len())
+            .map_err(|_| opening(BackendFault::Invalid(Invalid::Unrepresentable)))?;
         if env.leader_region.is_null() {
-            // The launch prepared no region, so there is nothing to open. Refused rather than
-            // given an empty route, because an empty route is a leader that silently hears nobody.
-            return Err(Failure {
-                participant: 0,
-                operation: "leader::open",
-                code: 3,
-            });
+            // Refused rather than given an empty route, because an empty route is a leader that
+            // silently hears nobody.
+            return Err(opening(BackendFault::Storage));
         }
-        let route = Route::sized(ranks).map_err(|_| Failure {
-            participant: 0,
-            operation: "leader::open",
-            code: 4,
-        })?;
+        let route = Route::sized(ranks).map_err(|_| opening(BackendFault::Storage))?;
         let idle = Cursor {
             arriving: 0,
             departing: 0,
@@ -290,23 +278,16 @@ impl Leader {
     /// Send one frame to one worker, named by its contract rank.
     ///
     /// `Full` is this worker's down link still holding its previous frames, which is a fact about
-    /// that worker rather than about the route: another worker's link may be empty. Reported rather
-    /// than retried: the leader is host code and the caller can come back, which a worker inside a
-    /// launch cannot.
-    pub fn send(&self, to: Rank, tag: Tag, data: &[u8], _wait: Wait) -> Result<(), Error> {
-        if to >= self.route.ranks() {
-            return Err(Error::Invalid { code: 1 });
+    /// that worker rather than about the route: another worker's link may be empty.
+    pub fn send(&self, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error> {
+        if to.get() >= self.route.ranks() {
+            return Err(Error::Invalid(Invalid::RankOutsideJob));
         }
-        let mut cursors = self.cursors.lock().map_err(|_| {
-            Error::Failed(Failure {
-                participant: 0,
-                operation: "leader::send",
-                code: 5,
-            })
-        })?;
-        let cursor = &mut cursors[to as usize];
+        let mut cursors = self.cursors.lock().map_err(|_| poisoned("leader::send"))?;
+        let cursor = &mut cursors[to.get() as usize];
         // SAFETY: `open`'s region, and the lock makes this the only producer on the down links.
-        let link = unsafe { self.route.down(self.region, to) };
+        let link = unsafe { self.route.down(self.region, to.get()) };
+        let tag = u32::from(tag.get());
         match unsafe { publish(link, self.route.layout(), cursor.departing, 0, tag, data) } {
             Ok(()) => {
                 cursor.departing = cursor.departing.wrapping_add(1);
@@ -314,9 +295,8 @@ impl Leader {
             }
             Err(SendError::Full) => Err(Error::Full),
             Err(SendError::TooLarge) => Err(Error::TooLarge {
-                limit: self.route.layout().capacity(),
+                limit: FrameBytes::new(self.route.layout().capacity()),
             }),
-            Err(SendError::NoSuchRank) => Err(Error::Invalid { code: 1 }),
         }
     }
 
@@ -325,25 +305,23 @@ impl Leader {
     /// Every worker is checked, so an empty answer means all of them were empty and not merely
     /// that the one checked first was. A leader that polled only its first worker would be a
     /// leader that could not hear a job that was still running.
-    pub fn recv(&self, out: &mut [u8], _wait: Wait) -> Result<Option<Frame>, Error> {
-        let mut cursors = self.cursors.lock().map_err(|_| {
-            Error::Failed(Failure {
-                participant: 0,
-                operation: "leader::recv",
-                code: 5,
-            })
-        })?;
+    pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
+        let mut cursors = self.cursors.lock().map_err(|_| poisoned("leader::recv"))?;
         for source in 0..self.route.ranks() {
             let cursor = &mut cursors[source as usize];
             // SAFETY: as `send`, as the only consumer on the up links.
             let link = unsafe { self.route.up(self.region, source) };
             match unsafe { consume(link, self.route.layout(), cursor.arriving, out) } {
-                Ok(None) | Err(RecvError::Empty) => {}
-                Ok(Some((_, tag, len))) => {
+                Ok(message) => {
                     cursor.arriving = cursor.arriving.wrapping_add(1);
-                    return Ok(Some(Frame { source, tag, len }));
+                    return Ok(Some(frame(Rank::from_index(source), message)));
                 }
-                Err(RecvError::TooSmall { needed }) => return Err(Error::TooSmall { needed }),
+                Err(RecvError::Empty) => {}
+                Err(RecvError::TooSmall { needed }) => {
+                    return Err(Error::TooSmall {
+                        needed: FrameBytes::new(needed),
+                    });
+                }
             }
         }
         Ok(None)
@@ -369,49 +347,31 @@ pub use sim::Worker;
 /// A worker's send: one frame to this job's leader.
 ///
 /// No destination, because a worker is the producer on exactly one link and the route knows which.
-pub fn send(cx: &mut Context, tag: Tag, data: &[u8], wait: Wait) -> Result<(), Error> {
+pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
     let worker = cx.leader()?;
-    let attempts = if wait == Wait::Poll {
-        1
-    } else {
-        LEADER_ATTEMPTS
-    };
-    for _ in 0..attempts {
-        // SAFETY: the region belongs to the launch, this worker is its only producer on the up link,
-        // and `cx` gives one worker end to one caller.
-        match unsafe { worker.send(tag, data) } {
-            Ok(()) => return Ok(()),
-            Err(SendError::Full) => continue,
-            Err(SendError::NoSuchRank) => return Err(Error::Invalid { code: 2 }),
-            Err(SendError::TooLarge) => return Err(Error::TooLarge { limit: CAPACITY }),
-        }
+    // SAFETY: the region belongs to the launch, this worker is its only producer on the up link,
+    // and `cx` gives one worker end to one caller.
+    match unsafe { worker.send(u32::from(tag.get()), data) } {
+        Ok(()) => Ok(()),
+        Err(SendError::Full) => Err(Error::Full),
+        Err(SendError::TooLarge) => Err(Error::TooLarge {
+            limit: FrameBytes::new(CAPACITY),
+        }),
     }
-    Err(Error::Exhausted { attempts })
 }
 
 /// A worker's receive: the leader's next frame, as `(tag, length)`.
-///
-/// A waiting call never returns `None`. It polls `LEADER_ATTEMPTS` times and then reports
-/// exhaustion, because there is no second source whose silence could have been mistaken for an
-/// empty answer and no way to block a warp on a host process.
-pub fn recv(cx: &mut Context, out: &mut [u8], wait: Wait) -> Result<Option<(Tag, u32)>, Error> {
+pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, FrameBytes)>, Error> {
     let worker = cx.leader()?;
-    let attempts = if wait == Wait::Poll {
-        1
-    } else {
-        LEADER_ATTEMPTS
-    };
-    for _ in 0..attempts {
-        // SAFETY: as `send`, on this worker's down link.
-        match unsafe { worker.recv(out) } {
-            Ok(Some(frame)) => return Ok(Some(frame)),
-            Ok(None) => continue,
-            Err(RecvError::TooSmall { needed }) => return Err(Error::TooSmall { needed }),
-            Err(RecvError::Empty) => continue,
+    // SAFETY: as `send`, on this worker's down link.
+    match unsafe { worker.recv(out) } {
+        Ok(message) => {
+            let frame = frame(LEADER, message);
+            Ok(Some((frame.tag(), frame.len())))
         }
+        Err(RecvError::Empty) => Ok(None),
+        Err(RecvError::TooSmall { needed }) => Err(Error::TooSmall {
+            needed: FrameBytes::new(needed),
+        }),
     }
-    if wait == Wait::Poll {
-        return Ok(None);
-    }
-    Err(Error::Exhausted { attempts })
 }

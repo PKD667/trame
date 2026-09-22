@@ -13,43 +13,24 @@
 // transport, and that is what the transport backends and their launches are for.
 
 use crate::contract::{
-    Channel, Declarations, Deployment, Edge, Error, Failure, Frame, LANE_UNAVAILABLE,
-    PUBLICATION_COLLECTIVE, RELEASE_LOCAL, Rank, Reading, Scopes, Tag, Wait,
+    Backend, BackendFault, Channel, Deployment, Edge, Error, Failure, FailureKind, Frame,
+    FrameBytes, Invalid, Rank, Tag,
 };
 
 pub use crate::cpu::clock;
-pub use crate::cpu::sync;
 pub use crate::cpu::run;
+pub use crate::cpu::sync;
 
-/// Backend identifier stored in `LOAD` records.
-pub const ID: u8 = 3;
+pub const ID: Backend = Backend::None;
 
-pub const DECLARATIONS: Declarations = Declarations {
-    // One process: an atomic orders that process's threads, which is exactly the participant
-    // scope. There is no domain and no system beyond it to order.
-    atomic_scopes: Scopes {
-        participant: true,
-        domain: false,
-        system: false,
-    },
-    // Not "unreliable": absent. There is no lane route here at all, and saying so is what stops
-    // a caller reading the missing `Full` on it as room.
-    lane_reliability: LANE_UNAVAILABLE,
-    // A send never waits, because it never gets as far as needing room: it is refused outright.
-    waiting_message: 0,
-    waiting_lane: 0,
-    // Capacity cannot be observed because there is no queue to observe. A caller that depends on
-    // flow control requires `backpressure`, which this backend does not declare.
-    pressure_message: false,
-    pressure_lane: false,
-    release: RELEASE_LOCAL,
-    publication: PUBLICATION_COLLECTIVE,
-    priority: true,
-    resident: false,
-    max_frame: u32::MAX,
-    tag_limit: u32::MAX,
-    lowering: "scalar",
-};
+/// No storage holds a frame here, so no length is refused.
+pub const MAX_FRAME: FrameBytes = FrameBytes::new(u32::MAX);
+
+pub fn align() -> usize {
+    crate::partition::host_align()
+}
+
+const ME: Rank = Rank::from_index(0);
 
 /// What the entry is given. Nothing here is a transport's business, because there is no
 /// transport; the field exists so a host binding names the same entry whatever it links.
@@ -78,32 +59,25 @@ pub fn init(
     deployment: Deployment<'_>,
     cohort: fn(Rank, &[Rank]) -> u32,
 ) -> Result<Context, Failure> {
-    let refuse = |code: u32| {
+    let refuse = |why| {
         Err(Failure {
-            participant: 0,
+            participant: ME,
             operation: "init",
-            code,
+            kind: FailureKind::Backend(BackendFault::Invalid(why)),
         })
     };
-    if deployment.refuse().is_some() {
-        return refuse(1);
-    }
-    if deployment
-        .workers
-        .iter()
-        .chain(deployment.leaders)
-        .any(|&rank| rank != 0)
-    {
-        return refuse(2);
+    // A leader would be a second process, and there is none.
+    if deployment.workers() != [ME] || deployment.leaders().is_some() {
+        return refuse(Invalid::RankOutsideJob);
     }
     // The rule still runs: it is the caller's statement about sharing domains, and a rule that
     // does not name this rank's domain is wrong here for the same reason it is wrong anywhere.
-    if cohort(0, &[0]) != 0 {
-        return refuse(3);
+    if cohort(ME, &[ME]) != 0 {
+        return refuse(Invalid::RankOutsideJob);
     }
     Ok(Context {
-        rank: 0,
-        alone: [0],
+        rank: ME,
+        alone: [ME],
     })
 }
 
@@ -125,7 +99,7 @@ pub fn cohort(cx: &Context) -> &[Rank] {
 
 /// Report the outcome. There is no launch-wide record to discharge, so the outcome is the whole
 /// of it and travels back to the caller that owns the exit.
-pub fn done(_cx: &mut Context, outcome: Result<(), Failure>) -> Result<(), Failure> {
+pub fn done<A>(_cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>> {
     outcome
 }
 
@@ -139,18 +113,17 @@ pub fn send(
     _to: Rank,
     _channel: Channel,
     _data: &[u8],
-    _wait: Wait,
 ) -> Result<(), Error> {
     Ok(())
 }
 
 /// Nothing ever arrives, because nothing was ever kept.
-pub fn recv(_cx: &mut Context, _out: &mut [u8], _wait: Wait) -> Result<Option<Frame>, Error> {
+pub fn recv(_cx: &mut Context, _out: &mut [u8]) -> Result<Option<Frame>, Error> {
     Ok(None)
 }
 
 /// Every accepted send already released everything it held, which was nothing.
-pub fn flush(_cx: &mut Context, _wait: Wait) -> Result<(), Error> {
+pub fn flush(_cx: &mut Context) -> Result<(), Error> {
     Ok(())
 }
 
@@ -163,14 +136,14 @@ pub fn reshape(
     _cx: &mut Context,
     workers: &[Rank],
     edges: &[Edge],
-    _bytes: u32,
+    _bytes: FrameBytes,
     _tag: Tag,
 ) -> Result<(), Error> {
-    if workers.iter().any(|&w| w != 0) {
-        return Err(Error::Invalid { code: 1 });
+    if workers.iter().any(|&w| w != ME) {
+        return Err(Error::Invalid(Invalid::RankOutsideJob));
     }
     if !edges.is_empty() {
-        return Err(Error::Invalid { code: 2 });
+        return Err(Error::Invalid(Invalid::UnsupportedGeometry));
     }
     Ok(())
 }
@@ -180,17 +153,13 @@ pub fn release(_cx: &mut Context) -> Result<(), Error> {
     Ok(())
 }
 
-/// The participant's share of a segment, by the shared pure rule. Alone, the share is all of it.
-pub fn slice(cx: &Context, rank: Rank, total: usize) -> (usize, usize) {
-    crate::partition::slice_of(hosts(cx), cohort(cx), rank, total, 1)
-}
-
 /// Publish this participant's slice. It is the whole segment, so publication is the move itself
 /// and there is no collective to reach.
 pub fn share(cx: &mut Context, mine: &[u8], total: usize) -> Result<Shared, Error> {
-    let (_, length) = slice(cx, cx.rank, total);
-    if mine.len() != length || length != total {
-        return Err(Error::Invalid { code: 3 });
+    let range = crate::partition::slice_of(hosts(cx), cohort(cx), cx.rank, total)
+        .map_err(Error::Invalid)?;
+    if mine.len() != range.length || range.length != total {
+        return Err(Error::Invalid(Invalid::BadShareLength));
     }
     Ok(Shared(mine.to_vec()))
 }
@@ -199,67 +168,55 @@ pub fn bytes(segment: &Shared) -> &[u8] {
     &segment.0
 }
 
-/// Nothing was mapped, so nothing has to be unmapped and the handle stays valid.
-pub fn unshare(_cx: &mut Context, _segment: &mut Shared) -> Result<(), Error> {
+/// Nothing was mapped, so retiring the handle is dropping it.
+pub fn unshare(_cx: &mut Context, _segment: Shared) -> Result<(), (Shared, Error)> {
     Ok(())
-}
-
-/// The host's monotonic clock, with this process as its comparison domain.
-pub fn reading(_cx: &Context) -> Result<Reading, Error> {
-    Ok(clock::reading())
 }
 
 /// The leader route of a launch that has one participant to lead nobody with.
 ///
-/// The route opens: a lone process leads itself, and a leader with an empty worker set is the
-/// honest shape of a deployment with nothing deployed. Its traffic is the dummy's, like `send`'s.
+/// The route opens: a lone process leads itself. Its traffic is the dummy's, like `send`'s.
 pub mod leader {
-    use super::Context;
-    use crate::contract::{Deployment, Error, Failure, Frame, Rank, Tag, Wait};
+    use super::{Context, ME};
+    use crate::contract::{
+        BackendFault, Deployment, Error, Failure, FailureKind, Frame, FrameBytes, Invalid, Rank,
+        Tag,
+    };
 
     /// The leader's end: a route over an empty worker set.
     pub struct Leader(());
 
     impl Leader {
-        /// Open the route. A deployment naming workers is refused, because they are not here.
+        /// Open the route. Only the lone process itself may be named, because nobody else is here.
         pub fn open(
             _env: super::Environment,
             deployment: Deployment<'_>,
         ) -> Result<Leader, Failure> {
-            if deployment
-                .workers
-                .iter()
-                .chain(deployment.leaders)
-                .any(|&rank| rank != 0)
-            {
+            if deployment.workers() != [ME] || deployment.leaders().is_some() {
                 return Err(Failure {
-                    participant: 0,
+                    participant: ME,
                     operation: "leader::open",
-                    code: 1,
+                    kind: FailureKind::Backend(BackendFault::Invalid(Invalid::RankOutsideJob)),
                 });
             }
             Ok(Leader(()))
         }
 
-        pub fn send(&self, _to: Rank, _tag: Tag, _data: &[u8], _wait: Wait) -> Result<(), Error> {
+        pub fn send(&self, _to: Rank, _tag: Tag, _data: &[u8]) -> Result<(), Error> {
             Ok(())
         }
 
-        pub fn recv(&self, _out: &mut [u8], _wait: Wait) -> Result<Option<Frame>, Error> {
+        pub fn recv(&self, _out: &mut [u8]) -> Result<Option<Frame>, Error> {
             Ok(None)
         }
     }
 
     /// The worker's end: a lone process leads itself, and what it says to itself goes nowhere.
-    pub fn send(_cx: &mut Context, _tag: Tag, _data: &[u8], _wait: Wait) -> Result<(), Error> {
+    pub fn send(_cx: &mut Context, _tag: Tag, _data: &[u8]) -> Result<(), Error> {
         Ok(())
     }
 
-    pub fn recv(
-        _cx: &mut Context,
-        _out: &mut [u8],
-        _wait: Wait,
-    ) -> Result<Option<(Tag, u32)>, Error> {
+    pub fn recv(_cx: &mut Context, _out: &mut [u8]) -> Result<Option<(Tag, FrameBytes)>, Error> {
         Ok(None)
     }
 }

@@ -1,6 +1,6 @@
 //! The leader route, both ends, on the host model.
 
-use crate::contract::{Deployment, Error, Frame, Rank, Wait};
+use crate::contract::{Deployment, Error, Rank, Tag};
 use crate::nv::Environment;
 use crate::nv::error::RecvError;
 use crate::nv::layout::Layout;
@@ -18,22 +18,20 @@ unsafe impl Send for Region {}
 unsafe impl Sync for Region {}
 
 /// The leader of `workers`, over `region`. The leader's rank is one past the last worker.
-fn open(region: *mut u32, workers: &[Rank]) -> Leader {
+fn open(region: *mut u32, workers: &[u32]) -> Leader {
     let size = workers.len() as u32;
-    let leaders = vec![size; workers.len()];
+    let workers: Vec<Rank> = workers.iter().copied().map(Rank::from_index).collect();
+    let leaders = vec![Rank::from_index(size); workers.len()];
     Leader::open(
         Environment {
-            rank: size,
+            rank: Rank::from_index(size),
             size,
             fabric: Fabric::new(size, Layout::new(DEPTH, CAPACITY).expect("a valid layout")),
             segment: std::ptr::null_mut(),
             segment_bytes: 0,
             leader_region: region,
         },
-        Deployment {
-            workers,
-            leaders: &leaders,
-        },
+        Deployment::new(&workers, Some(&leaders)).expect("a valid deployment"),
     )
     .expect("a deployment with a leader")
 }
@@ -53,11 +51,10 @@ fn a_leader_and_its_workers_talk_both_ways() {
             // Two workers, so the leader must see both — an empty answer made after one check
             // would leave a job running that nobody was listening to.
             while heard.len() < 2 {
-                let mut buf = [0u8; CAPACITY as usize];
-                if let Some(Frame { source, tag, len }) =
-                    leader.recv(&mut buf, Wait::Poll).expect("a frame")
-                {
-                    heard.push((source, tag, buf[..len as usize].to_vec()));
+                let mut buf = vec![0u8; CAPACITY as usize];
+                if let Some(frame) = leader.recv(&mut buf).expect("a frame") {
+                    let len = frame.len().get() as usize;
+                    heard.push((frame.source(), frame.tag(), buf[..len].to_vec()));
                 }
             }
             heard.sort();
@@ -66,7 +63,7 @@ fn a_leader_and_its_workers_talk_both_ways() {
             // the other's.
             for (rank, tag, _) in &heard {
                 leader
-                    .send(*rank, tag + 100, b"ack", Wait::Poll)
+                    .send(*rank, Tag::new(tag.get() + 100), b"ack")
                     .expect("room for an ack");
             }
             heard
@@ -78,18 +75,15 @@ fn a_leader_and_its_workers_talk_both_ways() {
                 scope.spawn(move || {
                     let mut worker = unsafe { Worker::new(region.0, route, rank) };
                     unsafe { worker.send(rank + 7, b"hello") }.expect("an empty link");
-                    let mut buf = [0u8; CAPACITY as usize];
-                    let mut answer = None;
-                    // A wait here is a spin because the leader answers both workers only after
-                    // hearing from both, and there is no device to yield to in this model.
-                    for _ in 0..100_000_000u64 {
-                        if let Some((tag, len)) = unsafe { worker.recv(&mut buf) }.expect("an ack")
-                        {
-                            answer = Some((tag, buf[..len as usize].to_vec()));
-                            break;
+                    let mut buf = vec![0u8; CAPACITY as usize];
+                    // A spin, because the leader answers both workers only after hearing from
+                    // both, and there is no device to yield to in this model.
+                    loop {
+                        match unsafe { worker.recv(&mut buf) } {
+                            Ok(m) => break (m.tag, buf[..m.len as usize].to_vec()),
+                            Err(refused) => assert_eq!(refused, RecvError::Empty),
                         }
                     }
-                    answer.expect("the leader answers")
                 })
             })
             .collect();
@@ -102,9 +96,13 @@ fn a_leader_and_its_workers_talk_both_ways() {
         (heard, answers)
     });
 
+    let r = Rank::from_index;
     assert_eq!(
         up,
-        vec![(0, 7, b"hello".to_vec()), (1, 8, b"hello".to_vec())]
+        vec![
+            (r(0), Tag::new(7), b"hello".to_vec()),
+            (r(1), Tag::new(8), b"hello".to_vec())
+        ]
     );
     assert_eq!(down, vec![(107, b"ack".to_vec()), (108, b"ack".to_vec())]);
 }
@@ -115,27 +113,27 @@ fn a_full_link_refuses_and_an_empty_one_reports() {
     let mut arena = vec![0u32; route.words()];
     route.init(&mut arena);
     let leader = open(arena.as_mut_ptr(), &[0]);
-    let mut buf = [0u8; CAPACITY as usize];
+    let mut buf = vec![0u8; CAPACITY as usize];
     let mut worker = unsafe { Worker::new(arena.as_mut_ptr(), route, 0) };
+    let zero = Rank::from_index(0);
+    let tag = |n: u32| Tag::new(n as u16);
 
     // Nothing has been sent, so the leader is told so rather than made to wait.
-    assert!(leader.recv(&mut buf, Wait::Poll).expect("empty").is_none());
-    assert!(unsafe { worker.recv(&mut buf) }.expect("empty").is_none());
+    assert!(leader.recv(&mut buf).expect("empty").is_none());
+    assert_eq!(unsafe { worker.recv(&mut buf) }, Err(RecvError::Empty));
 
     for n in 0..DEPTH {
         leader
-            .send(0, n, b"x", Wait::Poll)
+            .send(zero, tag(n), b"x")
             .expect("room while the link is not full");
     }
-    assert_eq!(leader.send(0, DEPTH, b"x", Wait::Poll), Err(Error::Full));
+    assert_eq!(leader.send(zero, tag(DEPTH), b"x"), Err(Error::Full));
 
     // The refusal consumed nothing: the first frame the worker takes is still the first one.
-    assert_eq!(
-        unsafe { worker.recv(&mut buf) }.expect("a frame"),
-        Some((0u32, 1u32))
-    );
+    let first = unsafe { worker.recv(&mut buf) }.expect("a frame");
+    assert_eq!((first.tag, first.len), (0, 1));
     leader
-        .send(0, DEPTH, b"x", Wait::Poll)
+        .send(zero, tag(DEPTH), b"x")
         .expect("the worker's receive made room");
 
     let mut small = [0u8; 0];
@@ -144,8 +142,23 @@ fn a_full_link_refuses_and_an_empty_one_reports() {
         Err(RecvError::TooSmall { needed: 1 })
     ));
     // And a too-small output consumed nothing either, so the same frame is still there.
-    assert_eq!(
-        unsafe { worker.recv(&mut buf) }.expect("a frame"),
-        Some((1u32, 1u32))
-    );
+    let second = unsafe { worker.recv(&mut buf) }.expect("a frame");
+    assert_eq!((second.tag, second.len), (1, 1));
+}
+
+#[test]
+fn a_partial_word_is_copied_by_its_byte_count() {
+    let route = Route::sized(1).expect("one worker");
+    let mut arena = vec![0u32; route.words()];
+    route.init(&mut arena);
+    let leader = open(arena.as_mut_ptr(), &[0]);
+    let mut worker = unsafe { Worker::new(arena.as_mut_ptr(), route, 0) };
+    leader
+        .send(Rank::from_index(0), Tag::new(1), b"hello")
+        .expect("an empty link");
+    // Five bytes into six: the frame's last word is partial, and the byte past it is the caller's.
+    let mut out = [0xa5u8; 6];
+    let got = unsafe { worker.recv(&mut out) }.expect("a frame");
+    assert_eq!(got.len, 5);
+    assert_eq!(out, *b"hello\xa5");
 }

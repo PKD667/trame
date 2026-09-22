@@ -1,6 +1,5 @@
 //! Deterministic executable model of one directed link.
 
-use crate::contract::{Rank, Tag};
 use crate::nv::error::{RecvError, SendError};
 use crate::nv::layout::Layout;
 use crate::nv::transport::Message;
@@ -24,7 +23,7 @@ impl Link {
         }
     }
 
-    pub fn send(&mut self, src: Rank, tag: Tag, data: &[u8]) -> Result<(), SendError> {
+    pub fn send(&mut self, src: u32, tag: u32, data: &[u8]) -> Result<(), SendError> {
         if data.len() > self.layout.capacity() as usize {
             return Err(SendError::TooLarge);
         }

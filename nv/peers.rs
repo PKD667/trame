@@ -18,7 +18,6 @@
 //! constructing one from raw device memory is `unsafe`, and on the host model it is an ordinary
 //! allocation with nothing to uphold.
 
-use crate::contract::{Rank, Tag};
 use crate::nv::error::{RecvError, SendError};
 use crate::nv::layout::Layout;
 use crate::nv::transport::Message;
@@ -58,13 +57,13 @@ pub enum Refused {
 /// `data` is copied before this returns, so the caller's borrow ends here. The whole warp executes
 /// one call: the payload is copied lane-strided, which is why the pointer and the length have to
 /// be the same in every lane.
-pub fn try_send(links: &mut Links, dest: Rank, tag: Tag, data: &[u8]) -> Result<(), Refused> {
+pub fn try_send(links: &mut Links, dest: u32, tag: u32, data: &[u8]) -> Result<(), Refused> {
     links.send(dest, tag, data)
 }
 
 /// Take one frame from `src`, if one is ready. `out` is written lane-strided, so its pointer and
 /// length are uniform across the warp for the same reason.
-pub fn try_recv(links: &mut Links, src: Rank, out: &mut [u8]) -> Result<Message, Refused> {
+pub fn try_recv(links: &mut Links, src: u32, out: &mut [u8]) -> Result<Message, Refused> {
     links.recv(src, out)
 }
 
@@ -81,7 +80,6 @@ pub(crate) fn refused_send(error: SendError) -> Refused {
         SendError::Full => Refused::Full,
         SendError::TooLarge => Refused::TooLarge,
         // The same meaning the peer module already has for it: an address that names nobody.
-        SendError::NoSuchRank => Refused::NoSuchPeer,
     }
 }
 

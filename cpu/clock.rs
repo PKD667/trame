@@ -18,39 +18,32 @@
 // spike's due time belong to the application (`src/nerve/time.rs`) and this module imports none
 // of it. It also owns no schedule: a deadline is a comparison the caller makes.
 //
-// A device backend supplies the same two calls or refuses them: a GPU has no `SystemTime`, and
+// A device backend supplies the same call: a GPU has no `SystemTime`, and
 // its monotonic counter is per-device. `backend.md` §7 states what that means for a caller that
 // wants to stamp work running there.
 
-/// A span of host time. The standard type: it is a plain `(secs, nanos)` pair with no clock
-/// attached, so re-exporting it adds no OS call and hides nothing.
+/// A span of host time, for NERVE's host control plane (`interface/control.rs`, `io/host.rs`).
 pub use std::time::Duration;
 
-pub use crate::contract::{ClockId, Reading, Span};
+use crate::contract::{ClockId, Reading, Span};
 
 /// The host's clock, as the portable reading.
 ///
 /// One origin per process, taken once, so two readings taken far apart differ by the span between
 /// them. The reading is the contract's [`Reading`] and not a host type of its own: a second
-/// reading type would be a second thing for an application to convert between, and the point of
-/// the generalized name is that the application names one.
+/// reading type would be a second thing for an application to convert between.
 pub fn reading() -> Reading {
-    Reading {
-        clock: clock_id(),
-        elapsed: Span::from_nanos(origin().elapsed().as_nanos() as u64),
-    }
+    Reading::new(
+        clock_id(),
+        Span::from_nanos(origin().elapsed().as_nanos() as u64),
+    )
 }
 
-/// The identity two readings must share before they may be subtracted.
-///
-/// One per process, formed from the origin and the process id. It is deliberately not a rank: two
-/// runs on one rank are different clocks, and a rank says where a participant sits rather than
-/// which readings may be compared.
-pub fn clock_id() -> ClockId {
+/// The identity two readings must share before they may be subtracted: one per process, formed
+/// from the process id. Not a rank, because two runs on one rank are different clocks.
+fn clock_id() -> ClockId {
     static ID: std::sync::OnceLock<ClockId> = std::sync::OnceLock::new();
-    *ID.get_or_init(|| ClockId {
-        incarnation: std::process::id(),
-    })
+    *ID.get_or_init(|| ClockId::new(std::process::id()))
 }
 
 fn origin() -> std::time::Instant {

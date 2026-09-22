@@ -23,27 +23,37 @@ not require an allocator. Storage is supplied at entry or acquired under a decla
 allocation policy.
 
 ```rust
-type Rank = u32;
-type Tag = u32;
+struct Rank(u32);                       // private field; `Rank::from_index`, `get`
+struct Tag(u16);                        // private field; `Tag::new`, `get`
+struct FrameBytes(u32);                 // private field; `TryFrom<usize>`, `get`
+struct ByteRange { offset: usize, length: usize }
+enum Backend { Mpi, Rma, RmaLossy, None, Nv }   // `wire_id`, `name`
 type Environment;                       // entry-supplied identity, resources and lifetime
 type Context;                           // participant-local state established by init
-struct Deployment<'a> { workers: &'a [Rank], leaders: &'a [Rank] }
+struct Deployment<'a>;                  // built only by `Deployment::new`
 type Shared;                            // immutable mapping with explicit retirement
-type ClockId;                           // comparison domain, including clock incarnation
-type Failure;                           // participant, operation and diagnosis code
+struct ClockId;                         // comparison domain, including clock incarnation
+struct Failure<A = Infallible> { participant: Rank, operation: &'static str, kind: FailureKind<A> }
 
-enum Wait { Poll, Wait }
 enum Channel { Message(Tag), Lane }
-struct Frame { source: Rank, tag: Tag, len: u32 }
-struct Edge { source: Rank, destination: Rank, affected: u32 }
-struct Span { nanos: u64 }
-struct Reading { clock: ClockId, elapsed: Span }
+struct Frame;                           // `source`, `tag`, `len`
+struct Edge;                            // `Edge::new(source, destination, affected: NonZeroU32)`
+struct Span;                            // nanoseconds
+struct Reading;                         // `clock`, `elapsed`, `since`
+
+const ID: Backend;
+const LOSSY: bool;
+const MAX_FRAME: FrameBytes;            // >= 65_544 on every backend, checked at compile time
 ```
 
-Frame lengths and capacities are bytes. Each backend shall declare its maximum frame length;
-conversion to a narrower transport count shall be checked. Segment lengths use `usize`, in
-bytes of the target address space. `Rank` values are dense in `[0, size)`; tag limits are declared.
-A clock identity shall not be inferred from a participant rank.
+Frame lengths and capacities are bytes, as `FrameBytes`; conversion to a narrower transport count
+shall be checked. Segment lengths use `usize`, in bytes of the target address space. `Rank` values
+are dense in `[0, size)`. A clock identity shall not be inferred from a participant rank.
+
+Every route carries a frame of `MAX_FRAME` bytes: a 64 KiB log block behind an eight-byte batch
+header is 65,544 bytes, and every backend shall provision at least that and refuse at entry a
+launch whose storage cannot hold it. `Backend::wire_id` is on disk in every `LOAD` record, so its
+values only grow at the end.
 
 Signatures describe logical participant borrows, not a per-lane device ABI. Cooperative lowering
 shall transform mutable parameters and every access to them together, before overlapping Rust
@@ -51,36 +61,9 @@ shall transform mutable parameters and every access to them together, before ove
 Borrowed values shall not escape to unlowered callees; native adapters shall specify their
 ownership and convergence obligations. Unsupported ownership shapes shall fail compilation.
 
-The selected backend shall publish the following declarations. Sets are closed: unknown names
-shall be refused. Their storage representation is not part of the caller interface.
-
-| Declaration | Values |
-|---|---|
-| `operations` | supported function names from this document; `init`, identity and `done` are mandatory |
-| `families` | supported `turn`, `publication`, `transfer`, `atomics` |
-| `atomic_scopes` | supported `participant`, `domain`, `system`; `domain` means a declared sharing domain |
-| `lane_reliability` | `reliable`, `lossy`, `unavailable` |
-| `waiting` | `blocking`, or `attempts(n)` with `n > 0`; may be declared per route |
-| `pressure` | `reported`, `unreported`, where a refused attempt could report `Full`; may be declared per route |
-| `release` | `local`, `cohort`, `unavailable` |
-| `publication` | `collective`, `prepublished`, `unavailable` |
-| `priority` | `equal_only`, `ordered` |
-| `execution` | `spawned`, `resident` |
-| `lowering` | grammar identifier |
-
-`trame::require!` shall accept operation and family names, and these property requirements:
-`reliable_lanes`, `bounded_wait`, `global_release`, `collective_share`, `priority`,
-`backpressure` and `atomic_scope(participant|domain|system)`.
-The first four select respectively `reliable`, `attempts(n)`, `cohort` and `collective`;
-`priority` selects `ordered`; `backpressure` selects `reported`.
-
-```rust
-trame::require!(send, recv, reliable_lanes, global_release);
-```
-
-Unsupported operations and requirements shall fail compilation, including metadata-only builds.
-A reported capability without that refusal is insufficient. Grammar identifiers shall name a
-specified subset, not imply arbitrary Rust support.
+There are no capability declarations. Every public operation has one meaning under every backend,
+so a caller cannot select behaviour per backend and has nothing to require at build time. What
+differs between backends is only `ID`, `LOSSY` and `MAX_FRAME`.
 
 ## 3. Entry and failure
 
@@ -91,8 +74,7 @@ fn Leader::open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, 
 fn rank(cx: &Context) -> Rank;
 fn size(cx: &Context) -> u32;
 fn hosts(cx: &Context) -> &[Rank];
-fn cohort(cx: &Context) -> &[Rank];
-fn done(cx: &mut Context, outcome: Result<(), Failure>) -> Result<(), Failure>;
+fn done<A>(cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>>;
 ```
 
 The environment shall separate participant-local identity and endpoints from launch-wide metadata
@@ -109,15 +91,12 @@ backend uses for its launch's warp or block index, so no backend translates betw
 lists are parallel: position `i` of `workers` is contract rank `i`, and `leaders[i]` leads it. Their
 lengths shall be equal, and a mismatch is refused by name.
 
-Empty and non-empty are the only two cases, which is what keeps the type single-valued: an empty
-`workers` implies an empty `leaders` and means there is no leader at all, so every participant is a
-worker; a non-empty `workers` names every worker and the leader of each. A deployment with a leader
-must name its workers, because a leader that cannot say whom it leads has no route to build.
-Nothing in between is legal, so nothing in between has to be interpreted.
-
-The backend shall verify the deployment before acting on it, and refuse by name rather than resolve:
-a leader listed among the workers, a `leaders` list of a different length from `workers`, or a rank
-outside the job, is two facts stated as one and the two disagree.
+`Deployment::new(workers, leaders)` is the only constructor, and it refuses by name rather than
+resolve: an empty `workers` (`EmptyDeployment`), a worker named twice (`DuplicateWorker`), a
+`leaders` list of a different length (`UnequalLists`), or a rank that is both (`WorkerIsLeader`).
+`leaders` of `None` means the workers are unled. There is no empty deployment meaning "every
+participant", so a single-participant launch names its one worker. A backend shall still refuse
+a rank outside the job (`RankOutsideJob`), because only it knows the job.
 
 The launch description is the launcher's authority, and it carries three things: the participants,
 which of them leads which, and how to reach the leaders out of band. The first two are the
@@ -159,28 +138,30 @@ portable, and absence of a failure record is not evidence of completion.
 A transport that terminates the participant inside a failing call, before returning a code, cannot
 satisfy this clause whatever the caller does: the backend shall configure the transport to return
 errors. An operation that still aborts or panics where a record is required is an unsupported
-operation, not a reported one, and shall be declared as such.
+operation, not a reported one.
+
+A failure names its kind: `FailureKind::Backend(BackendFault)` for what the backend observed below
+the contract, or `FailureKind::Application(A)` for the application's own, so a record never has to
+be decoded from a number.
 
 ## 4. Communication
 
 ```rust
-fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8], wait: Wait)
-    -> Result<(), Error>;
-fn recv(cx: &mut Context, out: &mut [u8], wait: Wait) -> Result<Option<Frame>, Error>;
-fn flush(cx: &mut Context, wait: Wait) -> Result<(), Error>;
+fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error>;
+fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error>;
+fn flush(cx: &mut Context) -> Result<(), Error>;
 
 enum Error {
     Full, Busy, Closed,
-    TooLarge { limit: u32 }, TooSmall { needed: u32 },
-    Exhausted { attempts: u32 },
-    Invalid { code: u32 }, Failed(Failure),
+    TooLarge { limit: FrameBytes }, TooSmall { needed: FrameBytes },
+    Invalid(Invalid), Failed(Failure),
 }
 ```
 
 `send` success means **accepted**. Before returning, the backend shall copy the bytes into
 transport-owned storage or finish using them. No reference to `data` shall escape the call.
 Capacity shall be fixed or bounded by the environment. Refusal shall accept no part of a frame;
-acceptance shall occur once, including when the operation waits.
+acceptance shall occur once.
 
 `Message(tag)` shall be reliable and FIFO per `(source, destination, tag)` during a healthy run.
 `Lane` uses the geometry and tag established by `reshape`; its loss and ordering guarantees shall
@@ -193,12 +174,12 @@ is a separate route with its own transport:
 ```rust
 pub struct Leader; // the host process's end
 impl Leader {
-    pub fn open(env: Environment) -> Result<Leader, Failure>;
-    pub fn send(&self, to: Rank, tag: Tag, data: &[u8], wait: Wait) -> Result<(), Error>;
-    pub fn recv(&self, out: &mut [u8], wait: Wait) -> Result<Option<Frame>, Error>;
+    pub fn open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure>;
+    pub fn send(&self, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error>;
+    pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error>;
 }
-pub fn send(cx: &mut Context, tag: Tag, data: &[u8], wait: Wait) -> Result<(), Error>;
-pub fn recv(cx: &mut Context, out: &mut [u8], wait: Wait) -> Result<Option<(Tag, u32)>, Error>;
+pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error>;
+pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, FrameBytes)>, Error>;
 ```
 
 The worker end takes no destination, because the backend knows its leader and nothing derives it
@@ -217,13 +198,11 @@ side. That holds under every backend, a device one included: what a backend decl
 nor forbids that, because the leader never enters the participant surface, so no lowering has to
 distinguish it.
 
-A device lowering may realize the control route as memory the participant polls at declared
-points. A waiting `leader::recv` shall then be a bounded poll that returns a frame or an error; it
-shall not return `None` as though the caller had asked to poll. The bound is load-bearing rather
-than a policy choice there, because a device has no way to wait on a host process.
+A device lowering may realize the control route as memory the participant polls; its `recv` is
+then one look at that memory, like every other `recv`.
 
 `recv` shall return one complete frame from any source, with its tag and bytes paired. `None`
-means no frame was available to a polling call. A waiting call shall return a frame or an error.
+means no frame was available.
 There is no tagged receive: the caller dispatches each frame by its tag. Broadcast is an
 iteration of sends with explicit per-destination outcomes. A backend that matches a probe
 atomically may hold the matched frame inside its receive scope when a refusal names it; the next
@@ -237,21 +216,19 @@ serialize matching and consumption within the receive scope; a competing local r
 not invalidate a probed length, and a probe-then-receive pair is not sufficient because a peer
 may send between the two, pairing one frame's length with another's bytes. A matched message
 shall not be abandoned on refusal. A receive
-loop shall provision the declared maximum capacity or handle `TooSmall` by supplying enough
+loop shall provision `MAX_FRAME` or handle `TooSmall` by supplying enough
 storage or failing the run; repeating the same undersized receive is not progress.
 
 `flush` success means all previously accepted local sends have released their operation-specific
-send resources. It does **not** mean that receivers have consumed or applied them. Polling an
+send resources. It does **not** mean that receivers have consumed or applied them. An
 incomplete flush returns `Busy`. MPI eager completion and receiver-released ring storage may
 satisfy this obligation at different times without changing its meaning. A backend whose sends
 retire inside the call has nothing to wait for and may answer `flush` immediately; that is a
 property of its admission, not a stronger guarantee.
 
 `Full` shall be reported whenever an attempt is refused for lack of capacity, including when the
-attempt's own failure is the only observation of that capacity. A backend shall not abort, wait
-unboundedly, or drop in that case. A route whose admission capacity cannot be observed at all
-shall declare its pressure `unreported`, and a caller that depends on flow control shall require
-`backpressure` rather than reading the absence of `Full` as room.
+attempt's own failure is the only observation of that capacity. A backend shall not abort, wait,
+or drop in that case.
 
 `send`, `recv` and `flush` shall drive local transport progress. No background thread or
 asynchronous device progress is assumed. Accepted frames shall not require a caller-owned
@@ -260,22 +237,16 @@ A failure after acceptance shall fail the run visibly; it shall not become a saf
 
 ## 5. Waiting
 
-`Poll` makes one bounded attempt and does not wait for a peer. `Wait` uses the backend's declared
-policy: blocking, or at most a stated number of attempts. A bounded policy shall return
-`Exhausted`, distinct from capacity pressure and peer departure. An application requiring bounded
-waiting shall declare that requirement at build time.
+The backend does not wait. Every `send`, `recv`, `flush` and both leader ends make exactly one
+attempt and answer `Full`, `Busy`, `Ok(None)` or an outcome. Waiting is the caller's: it repeats
+the attempt, and it decides whether to spin, yield to other work or give up, because only the
+caller knows what else it could be doing.
 
-Waiting is declared per route because one backend's routes need not share a policy: a reliable
-lane may have to spin on an acknowledgement while its message route copies and returns. A route
-that cannot make a one-shot attempt shall refuse `Poll` by name instead of performing a blocking
-attempt, and a caller that requires a route's `Poll` shall require `bounded_wait`.
-
-Exhaustion shall not roll back an earlier accepted operation. An exhausted send accepted nothing;
-an exhausted flush leaves earlier sends owned by the backend. The caller shall either continue
-driving the run or report failure, not reclaim storage on the strength of exhaustion.
+Where a backend's machinery cannot make a genuine single attempt, the site is marked `C3:` in the
+source and keeps its current behaviour until it is fixed; it is a defect in that backend, not a
+second meaning of the operation.
 
 A device backend shall state its progress assumptions, including residency and convergence.
-A retry budget bounds attempts, not elapsed time, and does not make an absent participant run.
 
 ## 6. Geometry and lifetime
 
@@ -283,9 +254,8 @@ A retry budget bounds attempts, not elapsed time, and does not make an absent pa
 fn reshape(cx: &mut Context, workers: &[Rank], edges: &[Edge], bytes: u32, tag: Tag)
     -> Result<(), Error>;
 fn release(cx: &mut Context) -> Result<(), Error>;
-fn slice(cx: &Context, rank: Rank, total: usize) -> (usize, usize);
-fn slice_of(hosts: &[Rank], domain: &[Rank], rank: Rank, total: usize, align: usize)
-    -> (usize, usize);
+fn partition::slice_of(hosts: &[Rank], domain: &[Rank], rank: Rank, total: usize)
+    -> Result<ByteRange, Invalid>;
 fn share(cx: &mut Context, mine: &[u8], total: usize) -> Result<Shared, Error>;
 fn bytes(segment: &Shared) -> &[u8];
 fn unshare(cx: &mut Context, segment: Shared) -> Result<(), (Shared, Error)>;
@@ -304,16 +274,11 @@ release or cohort-wide quiescence. Local return is not evidence that peers stopp
 storage. A caller requiring global reclamation shall require the stronger capability or provide
 an explicit protocol proving every outstanding access has ended.
 
-`slice(cx, rank, total)` answers for the sharing domain the caller's context names, and is a
-member's operation. A caller outside that domain receives a well-formed `(offset, length)` for
-the wrong one, which no backend can detect, so this is a precondition rather than a refusal: a
-view belongs to a domain, not to the asker.
-
-The layout rule is pure, allocation-free and published separately as
-`slice_of(hosts, domain, rank, total, align)`, whose cohort is a parameter. It is the only way to
-obtain a domain's geometry from outside that domain, and `slice` is it applied to the caller's own
-domain. A caller that must size another domain's contributions, as a launcher does for its
-workers, uses `slice_of` and not a context it does not belong to.
+The layout rule is pure, allocation-free and published as `partition::slice_of(hosts, domain,
+rank, total)`, whose domain is a parameter and whose alignment is the selected backend's. It is
+the one definition of where the cuts are: `share` applies it to the caller's own domain, and a
+caller that must size another domain's contributions, as a launcher does for its workers, calls it
+with that domain stated.
 
 `share` shall expose one immutable copy per sharing domain. `share` takes no domain because
 publication is a capability: only a member can expose a copy as that domain's copy, so a domain
@@ -340,7 +305,7 @@ by participant would give one fact two spellings. The identity is what says whic
 compared, and a backend whose identity is recomputed per call has no comparable readings at all.
 
 Readings shall be monotonic within one clock identity. Only readings with that identity may be
-subtracted. `Span` is integer nanoseconds, not a standard-library duration; a backend shall state
+subtracted: `Reading::since` refuses any other pair with `ClockMismatch`. `Span` is integer nanoseconds, not a standard-library duration; a backend shall state
 resolution, conversion from native ticks and overflow behavior. Conversion shall not invent
 cross-context synchronization. Realtime is signed nanoseconds since the Unix epoch and may move
 backwards. An unavailable realtime clock shall cause a compile error, not return zero or `None`.
@@ -421,9 +386,9 @@ No capability requires a run-time registry, scheduler object or trait hierarchy.
 ## 10. Conformance
 
 Conformance requires checks independent of NERVE, using synthetic payloads. Required evidence:
-compile-time refusal of unsupported requirements; environment and cohort agreement; frame
-ownership, refusal and ordering; exhaustion without consumption; geometry refusal; sharing
-lifetime; clock context separation; and declaration/lowering agreement.
+deployment refusal; environment and cohort agreement; a `MAX_FRAME` frame on every route; frame
+ownership, refusal and ordering; one attempt per call; geometry refusal; sharing lifetime; and
+clock context separation.
 
 For the resident-device backend, evidence shall additionally cover distinct per-participant
 identity and endpoints, convergent transport calls, fixed storage, a full lane, a short receive
