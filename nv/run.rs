@@ -2,12 +2,11 @@
 //! so `cx` is lane-private, and each lane returns the first `Err` of its own items in list order:
 //! the host model has no collective to bring another lane's answer across.
 //!
-//! There is no `concurrent` here. A participant is one warp (`warp::here_id` is the launch index
-//! over [`LANES`]), so a launch has no second warp to give one participant for another item, and
-//! the attribute refuses `#[concurrent]` under `nv` by name.
+//! `concurrent!` runs every arm on the calling warp, since a participant is one warp: round-robin
+//! in source order, one step per live arm per turn.
 
 use super::warp::{self, LANES, Split};
-use crate::{Invoked, Keyed};
+use crate::{Invoked, Keyed, Step};
 
 /// Lane `k` runs items `k`, `k + 32`, … of the list.
 pub fn parallel<I: Copy, C, E>(
@@ -57,4 +56,81 @@ pub fn ordered<I: Copy, K: Copy + Into<usize>, T, C, E>(
     }
     warp::sync();
     first
+}
+
+/// Fixes an arm's closure signature where it is written. `Send` keeps it portable across lowerings.
+#[inline(always)]
+pub fn arm<F, E>(arm: F) -> F
+where
+    F: FnMut() -> Result<Step, E> + Send,
+{
+    arm
+}
+
+pub struct Arms<E, const N: usize> {
+    done: [bool; N],
+    at: usize,
+    failed: Option<E>,
+}
+
+impl<E, const N: usize> Arms<E, N> {
+    pub fn arm<F>(&mut self, arm: &mut F)
+    where
+        F: FnMut() -> Result<Step, E> + Send,
+    {
+        let at = self.at;
+        self.at += 1;
+        if self.failed.is_some() || self.done[at] {
+            return;
+        }
+        let step = arm();
+        uniform(&step);
+        match step {
+            Ok(Step::Progress | Step::Idle) => {}
+            Ok(Step::Done) => self.done[at] = true,
+            Err(e) => self.failed = Some(e),
+        }
+    }
+}
+
+/// The first error ends the run before any other arm steps, so it is the only one recorded.
+pub fn concurrent<B, E: Send, const N: usize>(mut body: B) -> Result<(), E>
+where
+    B: FnMut(&mut Arms<E, N>),
+{
+    let mut arms = Arms {
+        done: [false; N],
+        at: 0,
+        failed: None,
+    };
+    loop {
+        arms.at = 0;
+        body(&mut arms);
+        if let Some(e) = arms.failed.take() {
+            return Err(e);
+        }
+        if arms.done.iter().all(|&done| done) {
+            return Ok(());
+        }
+    }
+}
+
+/// A step whose lanes disagree would send the warp down two paths of the runner; trap so the
+/// driver reports it instead.
+#[inline(always)]
+fn uniform<E>(step: &Result<Step, E>) {
+    #[cfg(feature = "cuda")]
+    {
+        let code = match step {
+            Ok(Step::Progress) => 0,
+            Ok(Step::Idle) => 1,
+            Ok(Step::Done) => 2,
+            Err(_) => 3,
+        };
+        if !warp::all(warp::shuffle(code, 0) == code) {
+            cuda_device::debug::trap();
+        }
+    }
+    #[cfg(not(feature = "cuda"))]
+    let _ = step;
 }

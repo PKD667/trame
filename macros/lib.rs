@@ -1,4 +1,4 @@
-// `#[parallel]`, `#[concurrent]` and `#[ordered]`. Each rewrites a function into its driver: the
+// `#[parallel]` and `#[ordered]`. Each rewrites a function into its driver: the
 // same name, taking a `trame::Invocation`, the context and the item list, and running the body
 // once per item through `trame::run`, the selected backend's lowering. The body survives only as
 // a closure inside the driver, so the driver is the one way to run it and `invoke!` the one way to
@@ -11,20 +11,7 @@ use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, Tok
 
 #[proc_macro_attribute]
 pub fn parallel(attr: TokenStream, item: TokenStream) -> TokenStream {
-    lower("parallel", attr, item)
-}
-
-#[proc_macro_attribute]
-pub fn concurrent(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if cfg!(feature = "nv") {
-        return refuse(Wrong {
-            at: Span::call_site(),
-            says: "`#[concurrent]` has no nv lowering: a participant is one warp (its rank is the \
-                   launch index over 32 lanes), so a launch has no second warp to give it"
-                .into(),
-        });
-    }
-    lower("concurrent", attr, item)
+    lower(attr, item)
 }
 
 /// Reached only when no `#[parallel]` above it consumed it.
@@ -36,27 +23,27 @@ pub fn ordered(_: TokenStream, _: TokenStream) -> TokenStream {
     })
 }
 
-fn lower(mode: &str, attr: TokenStream, item: TokenStream) -> TokenStream {
+fn lower(attr: TokenStream, item: TokenStream) -> TokenStream {
     if let Some(t) = attr.into_iter().next() {
         return refuse(Wrong {
             at: t.span(),
-            says: format!("`#[{mode}]` takes no arguments"),
+            says: "`#[parallel]` takes no arguments".into(),
         });
     }
-    match function(item, mode).and_then(|f| driver(mode, f)) {
+    match function(item).and_then(driver) {
         Ok(out) => out,
         Err(w) => refuse(w),
     }
 }
 
-/// The item, the keyed slot if ordered, and the context, checked against the mode.
+/// The item, the keyed slot if ordered, and the context.
 struct Shape<'f> {
     item: &'f Param,
     slot: Option<&'f Param>,
     cx: &'f Param,
 }
 
-fn shape<'f>(mode: &str, f: &'f Fun) -> Result<Shape<'f>, Wrong> {
+fn shape(f: &Fun) -> Result<Shape<'_>, Wrong> {
     if let Some(r) = &f.receiver {
         let shared = matches!(r.as_slice(), [a, s] if is(a, '&') && word(s, "self"))
             || matches!(r.as_slice(), [a, q, _, s] if is(a, '&') && is(q, '\'') && word(s, "self"));
@@ -64,28 +51,22 @@ fn shape<'f>(mode: &str, f: &'f Fun) -> Result<Shape<'f>, Wrong> {
             return wrong(r[0].span(), extra("&mut self"));
         }
         if !shared {
-            return wrong(r[0].span(), format!("`#[{mode}]` takes `&self` or no receiver"));
+            return wrong(r[0].span(), "`#[parallel]` takes `&self` or no receiver");
         }
     }
     let [item, middle @ .., cx] = f.params.as_slice() else {
         return wrong(
             f.name.span(),
-            format!("`#[{mode}]` takes an item and then its context"),
+            "`#[parallel]` takes an item and then its context",
         );
     };
     if item.unique() {
         return wrong(item.at(), extra(&item.written()));
     }
-    let parallel = mode == "parallel";
-    if !(if parallel { cx.unique() } else { cx.shared() }) {
-        let kind = if parallel {
-            "`&mut C`: each call owns it"
-        } else {
-            "`&C`: every unit shares it"
-        };
+    if !cx.unique() {
         return wrong(
             cx.at(),
-            format!("`#[{mode}]` takes its context as {kind}; `{}` is not", cx.written()),
+            format!("`#[parallel]` takes its context as `&mut C`: each call owns it; `{}` is not", cx.written()),
         );
     }
     for p in middle {
@@ -159,13 +140,8 @@ fn key(args: &[TokenTree], at: Span, item: &Param) -> Result<(Vec<TokenTree>, Ve
     Ok((place.to_vec(), ty.to_vec()))
 }
 
-fn driver(mode: &str, f: Fun) -> Result<TokenStream, Wrong> {
-    if mode == "concurrent"
-        && let Some((_, at)) = f.ordered
-    {
-        return wrong(at, "`#[ordered]` orders a `#[parallel]` function; a `#[concurrent]` one has no order");
-    }
-    let s = shape(mode, &f)?;
+fn driver(f: Fun) -> Result<TokenStream, Wrong> {
+    let s = shape(&f)?;
     let hidden = |name: &str| TokenTree::Ident(Ident::new(name, Span::mixed_site()));
     let (cx, items, keyed) = (hidden("cx"), hidden("items"), hidden("keyed"));
     let item_ty = &s.item.ty;
@@ -177,7 +153,7 @@ fn driver(mode: &str, f: Fun) -> Result<TokenStream, Wrong> {
     signature.push(group(Delimiter::Bracket, item_ty.clone()));
     let mut ret = code("-> ::core::result::Result<(),");
     let mut call = code("::trame::run::");
-    let lowering = if f.ordered.is_some() { "ordered" } else { mode };
+    let lowering = if f.ordered.is_some() { "ordered" } else { "parallel" };
     call.push(TokenTree::Ident(Ident::new(lowering, Span::call_site())));
     let mut args = vec![cx, punct(','), items, punct(',')];
 

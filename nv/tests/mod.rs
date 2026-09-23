@@ -9,10 +9,9 @@
 mod declare;
 #[cfg(not(feature = "cuda"))]
 mod warp;
-// The turn, on the host model, under real contention.
-mod sync;
-// Publication and ownership transfer over the same fixed storage a launch supplies.
-mod family_b;
+// `concurrent!`'s turn order on the calling warp.
+#[cfg(not(feature = "cuda"))]
+mod step;
 // The wire's deterministic model of one directed link, the geometry it is cut by, and the host
 // transport over a mesh of them.
 mod layout;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# `#[parallel]`, `#[concurrent]` and `#[ordered]`, checked against the compiler that
+# `#[parallel]`, `#[ordered]` and `concurrent!`, checked against the compiler that
 # has to accept and refuse them.
 #
 #   trame/scripts/declare/check.sh              build trame, then run every stage

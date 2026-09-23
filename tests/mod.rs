@@ -5,8 +5,10 @@
 // The ownership boundary, in every build and every feature selection. It also checks that the
 // device backend names none of the host mechanisms under `cpu/`.
 mod boundary;
-// `#[parallel]` and `#[concurrent]` through `invoke!`, per lowering: host threads here, the warp
-// in `nv_declare`.
+// `concurrent!` and the step primitives, against whichever backend is selected.
+mod step;
+// `#[parallel]` through `invoke!` and `concurrent!`'s scheduling, per lowering: host threads here,
+// the warp in `nv_declare`.
 #[cfg(not(feature = "nv"))]
 mod invoke;
 #[cfg(feature = "nv")]
