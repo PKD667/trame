@@ -5,8 +5,8 @@
 // about a host process rather than about the backend contract.
 //
 //   `clock`  the process's monotonic origin and the readings taken from it
-//   `sync`   the three sharing primitive families, built on `std::sync` and thread parking
-//   `run`    the lowering of `#[parallel]` and `#[concurrent]`: a loop, and scoped threads
+//   `sync`   the step primitives, over `std`'s atomics
+//   `run`    the lowering of `#[parallel]` and `concurrent!`: a loop, and scoped threads
 //
 // The transport surface in `../lib.rs` is what every backend answers. This is what a *particular
 // kind* of backend answers: one whose participants are OS threads in one address space. `mpi/`,

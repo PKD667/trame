@@ -1,9 +1,9 @@
-//~ says: `#[concurrent]` takes its context as `&C`: every unit shares it; `cx: & mut u32` is not
+//~ says: `#[parallel]` takes its context as `&mut C`: each call owns it
 struct W;
 impl W {
-    #[trame::concurrent]
-    fn role(&self, role: u8, cx: &mut u32) -> Result<(), ()> {
-        *cx += role as u32;
+    #[trame::parallel]
+    fn add(&self, at: u8, cx: &u32) -> Result<(), ()> {
+        let _ = (at, cx);
         Ok(())
     }
 }

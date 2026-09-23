@@ -8,6 +8,7 @@ autoexamples = false
 description = "Every MPI call NERVE makes. Which transport is linked is a feature, not a run-time choice."
 
 [dependencies]
+bytemuck = { version = "1", default-features = false, features = ["derive", "min_const_generics"] }
 libc = "0.2"
 # The execution declarations. A compiler plugin with no dependencies of
 # its own, built for the host and linked into no binary: `declare` re-exports its attributes so
@@ -22,14 +23,6 @@ cuda-host = { git = "https://github.com/NVlabs/cuda-oxide", rev = "a105afd522b73
 mpi = { version = "0.8", optional = true }
 mpi-rma = { path = "../mpi-rma", optional = true }
 
-# Interleaving exploration for `sync/`. Only a `--cfg loom` build depends on it, so an ordinary
-# build, and CI, never fetch or compile it: `RUSTFLAGS="--cfg loom" cargo test -p trame`.
-[target.'cfg(loom)'.dependencies]
-loom = "0.7"
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
-
 # No features selects the single-process backend.
 [features]
 default = []
@@ -38,9 +31,8 @@ rma = ["ring"]
 rma-lossy = ["ring"]
 # Shared MPI dependency.
 ring = ["mpi"]
-# The device backend of `trame/nv/`: one CUDA warp per rank. It selects the macros' warp
-# lowering too, so the declarations and the transport are one choice.
-nv = ["dep:cuda-device", "trame-macros/nv"]
+# The device backend of `trame/nv/`: one CUDA warp per rank.
+nv = ["dep:cuda-device"]
 # The device half of `nv/` rather than its host model: the same backend source, built for a GPU.
 cuda = ["nv", "dep:cuda-core", "dep:cuda-host"]
 
@@ -53,12 +45,6 @@ path = "lib.rs"
 [[example]]
 name = "execution"
 path = "experiments/execution.rs"
-
-# Family A, differentially: one workload against the host family and against the device family,
-# which are different machines making the same promise.
-[[example]]
-name = "turn"
-path = "experiments/turn.rs"
 
 # Backend measurements. Each example needs peers and an MPI transport.
 [[example]]

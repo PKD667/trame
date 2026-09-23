@@ -1,60 +1,33 @@
-//! Family B reliable ownership transfer over fixed launch-owned storage.
-//!
-//! The launch supplies two arrays of `depth` slots: a FIFO for submitted payloads and a stack for
-//! storage returned to the producer. A short metadata lock moves ownership by changing counts and
-//! indices; payloads themselves are written once into an uninitialized slot and read once out of
-//! it. Every working-path call attempts the lock once, so a descheduled peer is reported as
-//! `Busy` rather than waited for.
+//! Bounded ownership transfer between one producer and one consumer, over storage the owner holds
+//! inline. Payloads are padding-free copy values; a refused one comes back with the reason.
 
-use core::cell::Cell as NotSync;
-use core::marker::PhantomData;
+use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
-use core::sync::atomic::Ordering;
+use core::ops::{Deref, DerefMut};
 
-use super::atomic::AtomicU32;
+use super::atomic::{AtomicBool, Ordering::Acquire, Ordering::Relaxed, Ordering::Release};
+use super::{NoUninit, from_lane_zero, last_lane, one_lane};
 
-/// Metadata words required by [`handoff`] and [`stocked`].
-pub const WORDS: usize = 6;
-
-const LOCK: usize = 0;
-const FULL_HEAD: usize = 1;
-const FULL_LEN: usize = 2;
-const FREE_LEN: usize = 3;
-const SENDING: usize = 4;
-const RECEIVING: usize = 5;
-const FREE: u32 = 0;
-const TAKEN: u32 = 1;
-
-/// Prepare handoff metadata before either endpoint can run.
-pub fn init_header(words: &mut [u32]) {
-    assert!(words.len() >= WORDS, "handoff metadata needs {WORDS} words");
-    words[LOCK] = FREE;
-    words[FULL_HEAD] = 0;
-    words[FULL_LEN] = 0;
-    words[FREE_LEN] = 0;
-    words[SENDING] = 1;
-    words[RECEIVING] = 1;
-}
-
+/// Why a payload was not taken. It is handed back with this.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Refused {
+    /// Already `D` deep: capacity.
     Full,
+    /// The peer was mid-call: contention, nothing implied about capacity.
     Busy,
+    /// The peer endpoint is gone: every later attempt is refused the same way.
     Closed,
 }
 
+/// A payload that was not accepted, returned intact.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Unsent<T> {
+pub struct Unsent<T: NoUninit> {
     pub why: Refused,
     pub value: T,
 }
 
-impl<T> Unsent<T> {
-    pub fn into_inner(self) -> T {
-        self.value
-    }
-}
-
+/// Why nothing was taken. `Empty` and `Closed` differ so a consumer that must drain knows when
+/// nothing more can arrive.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Idle {
     Empty,
@@ -62,381 +35,275 @@ pub enum Idle {
     Closed,
 }
 
-/// Open an empty handoff over caller-owned arrays.
-///
-/// # Safety
-///
-/// `words` must address [`WORDS`] words prepared by [`init_header`]. `full` and `free` must each
-/// address `depth` `MaybeUninit<T>` slots, with `depth >= 1`. The regions must remain alive and
-/// otherwise untouched until both handles are gone.
-pub unsafe fn handoff<T>(
-    words: *mut u32,
-    full: *mut MaybeUninit<T>,
-    free: *mut MaybeUninit<T>,
-    depth: u32,
-) -> (Sender<T>, Receiver<T>) {
-    assert!(depth >= 1, "a handoff needs room for at least one payload");
-    split(Common {
-        words,
-        full,
-        free,
-        depth,
-    })
+/// Every buffer is in exactly one place: held by an endpoint, on the spare stack, or in one
+/// queued slot; a refused `send` or `give` hands back that same value.
+pub struct Handoff<T: NoUninit, const D: usize> {
+    claim: AtomicBool,
+    /// Cleared by the endpoint's drop, so its peer can tell "not yet" from "never".
+    sending: AtomicBool,
+    receiving: AtomicBool,
+    yard: UnsafeCell<Yard<T, D>>,
 }
 
-/// Open a handoff whose entire returned-spare array is already initialized.
-///
-/// # Safety
-///
-/// As [`handoff`], and every one of the `depth` slots at `free` must contain a valid `T` whose
-/// ownership is transferred to the handoff.
-pub unsafe fn stocked<T>(
-    words: *mut u32,
-    full: *mut MaybeUninit<T>,
-    free: *mut MaybeUninit<T>,
-    depth: u32,
-) -> (Sender<T>, Receiver<T>) {
-    assert!(depth >= 1, "a handoff needs room for at least one payload");
-    // SAFETY: construction is exclusive and the caller promised every free slot initialized.
-    unsafe { words.add(FREE_LEN).write(depth) };
-    split(Common {
-        words,
-        full,
-        free,
-        depth,
-    })
+struct Yard<T, const D: usize> {
+    full: [MaybeUninit<T>; D],
+    head: usize,
+    queued: usize,
+    spare: [MaybeUninit<T>; D],
+    spares: usize,
 }
 
-fn split<T>(common: Common<T>) -> (Sender<T>, Receiver<T>) {
-    (
-        Sender {
-            common,
-            alone: PhantomData,
-        },
-        Receiver {
-            common,
-            alone: PhantomData,
-        },
-    )
-}
+// SAFETY: `yard` is reached only under `claim`, one endpoint at a time, and payloads move whole
+// between the endpoints' warps, which needs `T: Send`.
+unsafe impl<T: NoUninit + Send, const D: usize> Sync for Handoff<T, D> {}
 
-struct Common<T> {
-    words: *mut u32,
-    full: *mut MaybeUninit<T>,
-    free: *mut MaybeUninit<T>,
-    depth: u32,
-}
-
-impl<T> Copy for Common<T> {}
-
-impl<T> Clone for Common<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T> Common<T> {
-    fn atomic(&self, at: usize) -> &AtomicU32 {
-        // SAFETY: each constructor requires the metadata region to remain valid.
-        unsafe { AtomicU32::from_ptr(self.words.add(at)) }
-    }
-
-    fn try_lock(&self) -> bool {
-        self.atomic(LOCK)
-            .compare_exchange(FREE, TAKEN, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
-    }
-
-    fn lock(&self) {
-        while !self.try_lock() {
-            super::spin();
+impl<T: NoUninit, const D: usize> Handoff<T, D> {
+    /// `D` spares built up front, so steady-state production allocates nothing.
+    pub fn new(mut init: impl FnMut() -> T) -> Self {
+        const { assert!(D >= 1, "a handoff needs room for at least one payload") };
+        Handoff {
+            claim: AtomicBool::new(false),
+            sending: AtomicBool::new(false),
+            receiving: AtomicBool::new(false),
+            yard: UnsafeCell::new(Yard {
+                full: [const { MaybeUninit::uninit() }; D],
+                head: 0,
+                queued: 0,
+                spare: core::array::from_fn(|_| MaybeUninit::new(init())),
+                spares: D,
+            }),
         }
     }
 
-    fn unlock(&self) {
-        self.atomic(LOCK).store(FREE, Ordering::Release);
+    /// Callable again once both endpoints are gone, so one handoff serves successive drives.
+    pub fn split(&mut self) -> (Sender<'_, T, D>, Receiver<'_, T, D>) {
+        last_lane(|| {
+            self.sending.store(true, Relaxed);
+            self.receiving.store(true, Relaxed);
+        });
+        let on = &*self;
+        (Sender { on }, Receiver { on })
     }
 
-    unsafe fn get(&self, at: usize) -> u32 {
-        unsafe { self.words.add(at).read() }
-    }
-
-    unsafe fn set(&self, at: usize, value: u32) {
-        unsafe { self.words.add(at).write(value) }
-    }
-
-    fn live(&self, at: usize) -> bool {
-        self.atomic(at).load(Ordering::Acquire) != 0
+    fn claim(&self) -> Option<Claimed<'_, T, D>> {
+        let won = one_lane(|| {
+            self.claim
+                .compare_exchange(false, true, Acquire, Relaxed)
+                .is_ok() as u32
+        });
+        // Lazily: a `Claimed` built for a lost claim would release the winner's on drop.
+        (won != 0).then(|| Claimed { on: self })
     }
 }
 
-pub struct Sender<T> {
-    common: Common<T>,
-    alone: PhantomData<NotSync<()>>,
+fn live(flag: &AtomicBool) -> bool {
+    one_lane(|| flag.load(Acquire) as u32) != 0
 }
 
-unsafe impl<T: Send> Send for Sender<T> {}
+struct Claimed<'a, T: NoUninit, const D: usize> {
+    on: &'a Handoff<T, D>,
+}
 
-impl<T> Sender<T> {
-    /// Open the unique sending endpoint over prepared handoff storage.
-    ///
-    /// # Safety
-    ///
-    /// As [`handoff`], and no other sender endpoint may exist for these regions.
-    pub unsafe fn new(
-        words: *mut u32,
-        full: *mut MaybeUninit<T>,
-        free: *mut MaybeUninit<T>,
-        depth: u32,
-    ) -> Self {
-        assert!(depth >= 1, "a handoff needs room for at least one payload");
-        Sender {
-            common: Common {
-                words,
-                full,
-                free,
-                depth,
-            },
-            alone: PhantomData,
-        }
+impl<T: NoUninit, const D: usize> Deref for Claimed<'_, T, D> {
+    type Target = Yard<T, D>;
+
+    fn deref(&self) -> &Yard<T, D> {
+        // SAFETY: this claim is the one `claim` admitted.
+        unsafe { &*self.on.yard.get() }
     }
+}
 
+impl<T: NoUninit, const D: usize> DerefMut for Claimed<'_, T, D> {
+    fn deref_mut(&mut self) -> &mut Yard<T, D> {
+        // SAFETY: as `deref`.
+        unsafe { &mut *self.on.yard.get() }
+    }
+}
+
+impl<T: NoUninit, const D: usize> Drop for Claimed<'_, T, D> {
+    fn drop(&mut self) {
+        last_lane(|| self.on.claim.store(false, Release));
+    }
+}
+
+/// The one producer.
+pub struct Sender<'a, T: NoUninit, const D: usize> {
+    on: &'a Handoff<T, D>,
+}
+
+impl<T: NoUninit, const D: usize> Sender<'_, T, D> {
+    /// `Ok` is acceptance into a queue whose consumer existed, not delivery.
     pub fn send(&mut self, value: T) -> Result<(), Unsent<T>> {
-        if !self.common.live(RECEIVING) {
+        if !live(&self.on.receiving) {
             return Err(Unsent {
                 why: Refused::Closed,
                 value,
             });
         }
-        if !self.common.try_lock() {
+        let Some(mut yard) = self.on.claim() else {
             return Err(Unsent {
                 why: Refused::Busy,
                 value,
             });
-        }
-        if !self.common.live(RECEIVING) {
-            self.common.unlock();
+        };
+        let inserted = one_lane(|| {
+            if yard.queued == D {
+                0
+            } else {
+                let tail = (yard.head + yard.queued) % D;
+                yard.full[tail].write(value);
+                yard.queued += 1;
+                1
+            }
+        });
+        if inserted == 0 {
             return Err(Unsent {
-                why: Refused::Closed,
+                why: Refused::Full,
                 value,
             });
         }
-        unsafe {
-            let len = self.common.get(FULL_LEN);
-            if len == self.common.depth {
-                self.common.unlock();
-                return Err(Unsent {
-                    why: Refused::Full,
-                    value,
-                });
-            }
-            let head = self.common.get(FULL_HEAD);
-            let tail = (head + len) % self.common.depth;
-            self.common
-                .full
-                .add(tail as usize)
-                .write(MaybeUninit::new(value));
-            self.common.set(FULL_LEN, len + 1);
-        }
-        self.common.unlock();
         Ok(())
     }
 
     pub fn spare(&mut self) -> Result<T, Idle> {
-        let live = self.common.live(RECEIVING);
-        if !self.common.try_lock() {
+        // Loaded before the pool: a consumer gives back and then drops, so an empty pool after
+        // a cleared flag is empty for good.
+        let live = live(&self.on.receiving);
+        let Some(mut yard) = self.on.claim() else {
             return Err(Idle::Busy);
-        }
-        let result = unsafe {
-            let len = self.common.get(FREE_LEN);
-            if len == 0 {
-                Err(if live && self.common.live(RECEIVING) {
-                    Idle::Empty
-                } else {
-                    Idle::Closed
-                })
-            } else {
-                self.common.set(FREE_LEN, len - 1);
-                Ok(self
-                    .common
-                    .free
-                    .add((len - 1) as usize)
-                    .read()
-                    .assume_init())
-            }
         };
-        self.common.unlock();
-        result
-    }
-
-    pub fn taking(&self) -> bool {
-        self.common.live(RECEIVING)
-    }
-
-    pub fn pending(&self) -> usize {
-        self.common.lock();
-        let len = unsafe { self.common.get(FULL_LEN) as usize };
-        self.common.unlock();
-        len
+        let mut value = None;
+        let available = one_lane(|| {
+            if yard.spares == 0 {
+                0
+            } else {
+                let at = yard.spares - 1;
+                // SAFETY: slot `at` is below `spares`, so it holds a spare.
+                value = Some(unsafe { yard.spare[at].assume_init_read() });
+                yard.spares = at;
+                1
+            }
+        });
+        if available == 0 {
+            return Err(if live { Idle::Empty } else { Idle::Closed });
+        }
+        Ok(from_lane_zero::<T>(value))
     }
 }
 
-impl<T> Drop for Sender<T> {
+impl<T: NoUninit, const D: usize> Drop for Sender<'_, T, D> {
     fn drop(&mut self) {
-        self.common.atomic(SENDING).store(0, Ordering::Release);
-        self.common.lock();
-        unsafe {
-            let len = self.common.get(FREE_LEN);
-            for at in 0..len {
-                self.common.free.add(at as usize).read().assume_init_drop();
-            }
-            self.common.set(FREE_LEN, 0);
-        }
-        self.common.unlock();
+        last_lane(|| self.on.sending.store(false, Release));
     }
 }
 
-pub struct Receiver<T> {
-    common: Common<T>,
-    alone: PhantomData<NotSync<()>>,
+/// The one consumer.
+pub struct Receiver<'a, T: NoUninit, const D: usize> {
+    on: &'a Handoff<T, D>,
 }
 
-unsafe impl<T: Send> Send for Receiver<T> {}
-
-impl<T> Receiver<T> {
-    /// Open the unique receiving endpoint over prepared handoff storage.
-    ///
-    /// # Safety
-    ///
-    /// As [`handoff`], and no other receiver endpoint may exist for these regions.
-    pub unsafe fn new(
-        words: *mut u32,
-        full: *mut MaybeUninit<T>,
-        free: *mut MaybeUninit<T>,
-        depth: u32,
-    ) -> Self {
-        assert!(depth >= 1, "a handoff needs room for at least one payload");
-        Receiver {
-            common: Common {
-                words,
-                full,
-                free,
-                depth,
-            },
-            alone: PhantomData,
-        }
-    }
-
+impl<T: NoUninit, const D: usize> Receiver<'_, T, D> {
+    /// The oldest payload.
     pub fn recv(&mut self) -> Result<T, Idle> {
-        let live = self.common.live(SENDING);
-        if !self.common.try_lock() {
+        // Loaded before the queue, for the reason `spare` gives.
+        let live = live(&self.on.sending);
+        let Some(mut yard) = self.on.claim() else {
             return Err(Idle::Busy);
-        }
-        let result = unsafe {
-            let len = self.common.get(FULL_LEN);
-            if len == 0 {
-                Err(if live && self.common.live(SENDING) {
-                    Idle::Empty
-                } else {
-                    Idle::Closed
-                })
-            } else {
-                let head = self.common.get(FULL_HEAD);
-                let value = self.common.full.add(head as usize).read().assume_init();
-                self.common.set(FULL_HEAD, (head + 1) % self.common.depth);
-                self.common.set(FULL_LEN, len - 1);
-                Ok(value)
-            }
         };
-        self.common.unlock();
-        result
+        let mut value = None;
+        let taken = one_lane(|| {
+            if yard.queued == 0 {
+                0
+            } else {
+                let at = yard.head;
+                // SAFETY: slot `at` is the head of the queued payloads.
+                value = Some(unsafe { yard.full[at].assume_init_read() });
+                yard.head = (at + 1) % D;
+                yard.queued -= 1;
+                1
+            }
+        });
+        if taken == 0 {
+            return Err(if live { Idle::Empty } else { Idle::Closed });
+        }
+        Ok(from_lane_zero::<T>(value))
     }
 
+    /// Return emptied storage for the producer to fill again.
     pub fn give(&mut self, value: T) -> Result<(), Unsent<T>> {
-        if !self.common.live(SENDING) {
+        if !live(&self.on.sending) {
             return Err(Unsent {
                 why: Refused::Closed,
                 value,
             });
         }
-        if !self.common.try_lock() {
+        let Some(mut yard) = self.on.claim() else {
             return Err(Unsent {
                 why: Refused::Busy,
                 value,
             });
-        }
-        if !self.common.live(SENDING) {
-            self.common.unlock();
+        };
+        let inserted = one_lane(|| {
+            if yard.spares == D {
+                0
+            } else {
+                let at = yard.spares;
+                yard.spare[at].write(value);
+                yard.spares += 1;
+                1
+            }
+        });
+        if inserted == 0 {
             return Err(Unsent {
-                why: Refused::Closed,
+                why: Refused::Full,
                 value,
             });
         }
-        unsafe {
-            let len = self.common.get(FREE_LEN);
-            if len == self.common.depth {
-                self.common.unlock();
-                return Err(Unsent {
-                    why: Refused::Full,
-                    value,
-                });
-            }
-            self.common
-                .free
-                .add(len as usize)
-                .write(MaybeUninit::new(value));
-            self.common.set(FREE_LEN, len + 1);
-        }
-        self.common.unlock();
         Ok(())
     }
 
     pub fn sending(&self) -> bool {
-        self.common.live(SENDING)
+        live(&self.on.sending)
     }
+}
 
-    pub fn spares(&self) -> usize {
-        self.common.lock();
-        let len = unsafe { self.common.get(FREE_LEN) as usize };
-        self.common.unlock();
-        len
-    }
-
-    /// Hold the metadata lock so a sender's `Busy` answer is deterministic.
-    #[cfg(test)]
-    pub(crate) fn hold(&self) -> impl Drop + '_ {
-        self.common.lock();
-        Held {
-            common: self.common,
-        }
+impl<T: NoUninit, const D: usize> Drop for Receiver<'_, T, D> {
+    fn drop(&mut self) {
+        last_lane(|| self.on.receiving.store(false, Release));
     }
 }
 
 #[cfg(test)]
-struct Held<T> {
-    common: Common<T>,
-}
+mod tests {
+    use super::{Handoff, Idle, Refused, Unsent};
 
-#[cfg(test)]
-impl<T> Drop for Held<T> {
-    fn drop(&mut self) {
-        self.common.unlock();
-    }
-}
+    #[test]
+    fn a_held_claim_refuses_each_endpoint_operation_until_released() {
+        let mut handoff = Handoff::<u32, 2>::new(|| 0);
+        let (mut sender, mut receiver) = handoff.split();
+        let held = sender.on.claim().expect("claim was free");
 
-impl<T> Drop for Receiver<T> {
-    fn drop(&mut self) {
-        self.common.atomic(RECEIVING).store(0, Ordering::Release);
-        self.common.lock();
-        unsafe {
-            let head = self.common.get(FULL_HEAD);
-            let len = self.common.get(FULL_LEN);
-            for offset in 0..len {
-                let at = (head + offset) % self.common.depth;
-                self.common.full.add(at as usize).read().assume_init_drop();
-            }
-            self.common.set(FULL_LEN, 0);
-        }
-        self.common.unlock();
+        assert_eq!(
+            sender.send(7),
+            Err(Unsent {
+                why: Refused::Busy,
+                value: 7,
+            })
+        );
+        assert_eq!(receiver.recv(), Err(Idle::Busy));
+        assert_eq!(sender.spare(), Err(Idle::Busy));
+        assert_eq!(
+            receiver.give(9),
+            Err(Unsent {
+                why: Refused::Busy,
+                value: 9,
+            })
+        );
+
+        drop(held);
+        let value = sender.spare().expect("claim released");
+        sender.send(value).expect("send after release");
+        let value = receiver.recv().expect("receive after release");
+        receiver.give(value).expect("give after release");
     }
 }

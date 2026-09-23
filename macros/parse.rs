@@ -103,10 +103,6 @@ impl Param {
         format!("{}: {}", text(&self.pattern), text(&self.ty))
     }
 
-    pub fn shared(&self) -> bool {
-        is(&self.ty[0], '&') && !self.unique()
-    }
-
     pub fn unique(&self) -> bool {
         self.pointee().is_some()
     }
@@ -155,7 +151,7 @@ fn attribute(g: &Group) -> Option<(String, Vec<TokenTree>)> {
     }
 }
 
-pub fn function(item: TokenStream, mode: &str) -> Result<Fun, Wrong> {
+pub fn function(item: TokenStream) -> Result<Fun, Wrong> {
     let tokens: Vec<TokenTree> = item.into_iter().collect();
     let mut at = 0;
     let mut attrs = Vec::new();
@@ -166,11 +162,8 @@ pub fn function(item: TokenStream, mode: &str) -> Result<Fun, Wrong> {
         };
         match attribute(g) {
             Some((name, args)) if name == "ordered" => ordered = Some((args, tokens[at].span())),
-            Some((name, _)) if name == "parallel" || name == "concurrent" => {
-                return wrong(
-                    tokens[at].span(),
-                    "a function is either `#[parallel]` or `#[concurrent]`, once",
-                );
+            Some((name, _)) if name == "parallel" => {
+                return wrong(tokens[at].span(), "a function is `#[parallel]` once");
             }
             _ => attrs.extend_from_slice(&tokens[at..at + 2]),
         }
@@ -188,12 +181,12 @@ pub fn function(item: TokenStream, mode: &str) -> Result<Fun, Wrong> {
         }
     }
     let Some(fn_at) = tokens[at..].iter().position(|t| word(t, "fn")) else {
-        return wrong(Span::call_site(), format!("`#[{mode}]` goes on a function"));
+        return wrong(Span::call_site(), "`#[parallel]` goes on a function");
     };
     if let Some(q) = tokens.get(at).filter(|_| fn_at > 0) {
         return wrong(
             q.span(),
-            format!("`#[{mode}]` takes a plain `fn`, not `{} fn`: a unit of work is done when it returns", q),
+            format!("`#[parallel]` takes a plain `fn`, not `{} fn`: a unit of work is done when it returns", q),
         );
     }
     at += 1;
@@ -206,7 +199,7 @@ pub fn function(item: TokenStream, mode: &str) -> Result<Fun, Wrong> {
         Some(t) => {
             return wrong(
                 t.span(),
-                format!("`#[{mode}]` takes no generic parameters: `invoke!` names one function"),
+                "`#[parallel]` takes no generic parameters: `invoke!` names one function",
             );
         }
         None => return wrong(name.span(), "a function has parameters"),
@@ -218,7 +211,7 @@ pub fn function(item: TokenStream, mode: &str) -> Result<Fun, Wrong> {
     let error = result_error(signature).ok_or_else(|| Wrong {
         at: name.span(),
         says: format!(
-            "`#[{mode}]` returns `Result<(), E>`: `invoke!` returns the first `Err` in list order"
+            "`#[parallel]` returns `Result<(), E>`: `invoke!` returns the first `Err` in list order"
         ),
     })?;
     let mut receiver = None;

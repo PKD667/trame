@@ -84,11 +84,13 @@ The environment shall separate participant-local identity and endpoints from lau
 (size, membership, arena and geometry). Local state shall not occupy a shared mutable slot.
 Shared metadata shall be initialized once before readers enter and remain immutable.
 A host binding may discover the environment; a device entry may receive it as arguments.
-`Environment` is `Clone`, and a clone names the same job: that is how `init` and `Leader::open` in
-one process reach one set of routes without a process-global.
 `hosts(cx)[rank(cx)]` names the participant's sharing-domain representative, which is a worker
 rank; the management leader is a different thing, and it is absent from `hosts` by construction
 rather than subtracted from it.
+
+`Environment` is `Clone`, and a clone names the same job. That is how `none` runs its worker,
+`Launch(0)`, and an optional leader, `Launch(1)`, in one process: `init` and `Leader::open` take
+clones of one environment and reach the same bounded in-process FIFOs, with no process-global.
 
 The deployment states which participants are workers and which one leads each of them, in the
 launch's own numbering: `workers` and `leaders` are `Launch` values, the same space a device

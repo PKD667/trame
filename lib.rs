@@ -44,11 +44,11 @@ extern crate self as trame;
 #[cfg_attr(feature = "nv", allow(dead_code, unused_imports))]
 mod cpu;
 
-// How a unit of work is run. The attributes live in `macros/`; which lowering a driver calls is the
-// same compile-time choice as the transport.
+// How a unit of work is run. The attributes live in `macros/`; which lowering a driver or
+// `concurrent!` calls is the same compile-time choice as the transport.
 mod invoke;
-pub use invoke::{Invocation, Invoked, Keyed};
-pub use trame_macros::{concurrent, ordered, parallel};
+pub use invoke::{Invocation, Invoked, Keyed, Step};
+pub use trame_macros::{ordered, parallel};
 
 // The MPI environment and point-to-point traffic, shared by the three lane transports that ride
 // on it. Not compiled without MPI: it names no model type, but it does name the wire.

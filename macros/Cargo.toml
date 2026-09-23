@@ -2,7 +2,7 @@
 name = "trame-macros"
 version = "0.1.0"
 edition = "2024"
-description = "#[parallel], #[concurrent] and #[ordered]: a function rewritten into the driver trame::invoke! calls."
+description = "#[parallel] and #[ordered]: a function rewritten into the driver trame::invoke! calls."
 
 # A compiler plugin, not a library: nothing links this at run time, and the only crate that
 # re-exports it is the backend. It depends on nothing, not even `syn`: the supported grammar is
@@ -14,8 +14,3 @@ path = "lib.rs"
 proc-macro = true
 
 [dependencies]
-
-# Turned on by the backend's own `nv` feature and by nothing else. The lowering itself lives in
-# `trame::run`; this only refuses `#[concurrent]`, which nv has no lowering for.
-[features]
-nv = []
