@@ -8,9 +8,9 @@ The portable worker shall not name an OS, transport library, allocator or backen
 
 A **participant** is one independently identified execution unit with a rank in the deployment.
 It may be a process, a thread, or a cooperating group of device lanes, and it is a **worker**:
-`size`, `rank`, `hosts` and `cohort` describe workers and nothing else. A deployment may also
+`size`, `rank` and `hosts` describe workers and nothing else. A deployment may also
 include a **leader**, which is a host process: it is not a participant, it has no rank, and it
-appears in none of those four. A **sharing domain** is a set of participants that can read one
+appears in none of those three. A **sharing domain** is a set of participants that can read one
 immutable allocation. Neither term implies an OS process or a physical host.
 
 `shall` denotes a requirement. An unsupported requirement shall fail compilation; invalid
@@ -24,8 +24,8 @@ allocation policy.
 
 ```rust
 struct Rank(u32);                       // private field; `Rank::from_index`, `get`
+struct Launch(u32);                     // private field; `Launch::new`, `get`
 struct Tag(u16);                        // private field; `Tag::new`, `get`
-struct FrameBytes(u32);                 // private field; `TryFrom<usize>`, `get`
 struct ByteRange { offset: usize, length: usize }
 enum Backend { Mpi, Rma, RmaLossy, None, Nv }   // `wire_id`, `name`
 type Environment;                       // entry-supplied identity, resources and lifetime
@@ -33,7 +33,8 @@ type Context;                           // participant-local state established b
 struct Deployment<'a>;                  // built only by `Deployment::new`
 type Shared;                            // immutable mapping with explicit retirement
 struct ClockId;                         // comparison domain, including clock incarnation
-struct Failure<A = Infallible> { participant: Rank, operation: &'static str, kind: FailureKind<A> }
+struct Failure<A = Infallible> { participant: Participant, operation: &'static str, kind: FailureKind<A> }
+enum Participant { Worker(Rank), Leader(Launch), Entering(Option<Launch>) }
 
 enum Channel { Message(Tag), Lane }
 struct Frame;                           // `source`, `tag`, `len`
@@ -43,12 +44,15 @@ struct Reading;                         // `clock`, `elapsed`, `since`
 
 const ID: Backend;
 const LOSSY: bool;
-const MAX_FRAME: FrameBytes;            // >= 65_544 on every backend, checked at compile time
+const MAX_FRAME: usize;                 // >= 65_544 and <= u32::MAX on every backend, checked at compile time
 ```
 
-Frame lengths and capacities are bytes, as `FrameBytes`; conversion to a narrower transport count
+Frame lengths and capacities are bytes, as `usize`; conversion to a narrower transport count
 shall be checked. Segment lengths use `usize`, in bytes of the target address space. `Rank` values
-are dense in `[0, size)`. A clock identity shall not be inferred from a participant rank.
+are dense in `[0, size)`; `Launch` values are the transport's own numbering, and the two are
+distinct identities. A backend shall convert between them in one place and shall not use a launch
+rank where a contract rank is meant. A clock identity shall not be inferred from a participant
+rank.
 
 Every route carries a frame of `MAX_FRAME` bytes: a 64 KiB log block behind an eight-byte batch
 header is 65,544 bytes, and every backend shall provision at least that and refuse at entry a
@@ -61,9 +65,8 @@ shall transform mutable parameters and every access to them together, before ove
 Borrowed values shall not escape to unlowered callees; native adapters shall specify their
 ownership and convergence obligations. Unsupported ownership shapes shall fail compilation.
 
-There are no capability declarations. Every public operation has one meaning under every backend,
-so a caller cannot select behaviour per backend and has nothing to require at build time. What
-differs between backends is only `ID`, `LOSSY` and `MAX_FRAME`.
+Every public operation has one meaning under every backend, so a caller cannot select behaviour
+per backend. What differs between backends is only `ID`, `LOSSY` and `MAX_FRAME`.
 
 ## 3. Entry and failure
 
@@ -81,14 +84,16 @@ The environment shall separate participant-local identity and endpoints from lau
 (size, membership, arena and geometry). Local state shall not occupy a shared mutable slot.
 Shared metadata shall be initialized once before readers enter and remain immutable.
 A host binding may discover the environment; a device entry may receive it as arguments.
+`Environment` is `Clone`, and a clone names the same job: that is how `init` and `Leader::open` in
+one process reach one set of routes without a process-global.
 `hosts(cx)[rank(cx)]` names the participant's sharing-domain representative, which is a worker
 rank; the management leader is a different thing, and it is absent from `hosts` by construction
 rather than subtracted from it.
 
 The deployment states which participants are workers and which one leads each of them, in the
-launch's own numbering: the same space as `workers` and `leaders`, and the same space a device
-backend uses for its launch's warp or block index, so no backend translates between two. The two
-lists are parallel: position `i` of `workers` is contract rank `i`, and `leaders[i]` leads it. Their
+launch's own numbering: `workers` and `leaders` are `Launch` values, the same space a device
+backend uses for its launch's warp or block index. The two lists are parallel: position `i` of
+`workers` is contract rank `i`, and `leaders[i]` leads it. Their
 lengths shall be equal, and a mismatch is refused by name.
 
 `Deployment::new(workers, leaders)` is the only constructor, and it refuses by name rather than
@@ -153,7 +158,7 @@ fn flush(cx: &mut Context) -> Result<(), Error>;
 
 enum Error {
     Full, Busy, Closed,
-    TooLarge { limit: FrameBytes }, TooSmall { needed: FrameBytes },
+    TooLarge { limit: usize }, TooSmall { needed: usize },
     Invalid(Invalid), Failed(Failure),
 }
 ```
@@ -164,8 +169,8 @@ Capacity shall be fixed or bounded by the environment. Refusal shall accept no p
 acceptance shall occur once.
 
 `Message(tag)` shall be reliable and FIFO per `(source, destination, tag)` during a healthy run.
-`Lane` uses the geometry and tag established by `reshape`; its loss and ordering guarantees shall
-be declared separately. A lossy lane does not permit loss on the message channel. Worker-to-worker
+`Lane` uses the geometry and tag established by `reshape`; `LOSSY` says whether it may lose a
+frame. A lossy lane does not permit loss on the message channel. Worker-to-worker
 traffic uses `Message` and `Lane` and nothing else.
 
 A worker's route to its leader, and the leader's route to its workers, is `trame::leader`, and it
@@ -179,7 +184,7 @@ impl Leader {
     pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error>;
 }
 pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error>;
-pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, FrameBytes)>, Error>;
+pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, usize)>, Error>;
 ```
 
 The worker end takes no destination, because the backend knows its leader and nothing derives it
@@ -192,7 +197,7 @@ general fairness obligation between them: a worker chooses when to check its lea
 check its peers, and neither route can starve the other behind its back. How leader bytes move is
 the backend's choice, and it is not the worker-to-worker mechanism.
 
-The leader is a host process reachable by `Leader::open(env)`, mirroring `init` from the other
+The leader is a host process reachable by `Leader::open(env, deployment)`, mirroring `init` from the other
 side. That holds under every backend, a device one included: what a backend declares is the
 *route*, not the leader's kind. It may use sockets, files and threads; the contract neither permits
 nor forbids that, because the leader never enters the participant surface, so no lowering has to
@@ -242,6 +247,9 @@ attempt and answer `Full`, `Busy`, `Ok(None)` or an outcome. Waiting is the call
 the attempt, and it decides whether to spin, yield to other work or give up, because only the
 caller knows what else it could be doing.
 
+Collectives block and have no timeout. If a peer never arrives, nothing in the contract notices:
+liveness belongs to `mpirun`, the nv driver and the job's walltime.
+
 Where a backend's machinery cannot make a genuine single attempt, the site is marked `C3:` in the
 source and keeps its current behaviour until it is fixed; it is a defect in that backend, not a
 second meaning of the operation.
@@ -251,7 +259,7 @@ A device backend shall state its progress assumptions, including residency and c
 ## 6. Geometry and lifetime
 
 ```rust
-fn reshape(cx: &mut Context, workers: &[Rank], edges: &[Edge], bytes: u32, tag: Tag)
+fn reshape(cx: &mut Context, workers: &[Rank], edges: &[Edge], frame: usize, tag: Tag)
     -> Result<(), Error>;
 fn release(cx: &mut Context) -> Result<(), Error>;
 fn partition::slice_of(hosts: &[Rank], domain: &[Rank], rank: Rank, total: usize)
@@ -263,16 +271,15 @@ fn unshare(cx: &mut Context, segment: Shared) -> Result<(), (Shared, Error)>;
 
 Workers shall be ascending and unique. Edges shall be ordered by `(source, destination)`, without
 duplicates; both endpoints shall be workers. `affected` is the number of destination elements
-reachable from that source; `bytes` is the lane frame capacity. Validation shall not require a
+reachable from that source; `frame` is the lane frame capacity. Validation shall not require a
 hash map. Invalid or unsupported geometry shall be refused at `reshape`, before any lane send.
 
 A backend may use one launch-wide geometry. It shall validate every declared pair against that
 geometry rather than resize or truncate silently. `reshape` shall not replace live resources.
 
-`release` discharges the caller's lane obligations. Its declared guarantee is either local
-release or cohort-wide quiescence. Local return is not evidence that peers stopped accessing
-storage. A caller requiring global reclamation shall require the stronger capability or provide
-an explicit protocol proving every outstanding access has ended.
+`release` discharges the caller's lane obligations. Local return is not evidence that peers
+stopped accessing storage. A caller requiring global reclamation shall provide an explicit
+protocol proving every outstanding access has ended.
 
 The layout rule is pure, allocation-free and published as `partition::slice_of(hosts, domain,
 rank, total)`, whose domain is a parameter and whose alignment is the selected backend's. It is
@@ -296,7 +303,6 @@ quiet statistics nor a local transport flush proves that boundary.
 
 ```rust
 fn clock::reading() -> Reading;
-fn clock::unix_nanos() -> Result<i64, Unrepresentable>;
 ```
 
 A reading is a property of the machine rather than of the participant, so the call takes no
@@ -307,8 +313,7 @@ compared, and a backend whose identity is recomputed per call has no comparable 
 Readings shall be monotonic within one clock identity. Only readings with that identity may be
 subtracted: `Reading::since` refuses any other pair with `ClockMismatch`. `Span` is integer nanoseconds, not a standard-library duration; a backend shall state
 resolution, conversion from native ticks and overflow behavior. Conversion shall not invent
-cross-context synchronization. Realtime is signed nanoseconds since the Unix epoch and may move
-backwards. An unavailable realtime clock shall cause a compile error, not return zero or `None`.
+cross-context synchronization.
 
 ## 8. Shared-state primitives
 
@@ -380,7 +385,7 @@ A cooperative receive shall use disjoint lane writes under the logical exclusive
 Native address-and-length operations may implement it; ownership shall not be weakened.
 
 The portable worker uses these attributes and the selected backend's primitive families.
-`cpu::exec`, `cpu::sync` and `cpu::clock` are host implementation details, not portable imports.
+`cpu::sync` and `cpu::clock` are host implementation details, not portable imports.
 No capability requires a run-time registry, scheduler object or trait hierarchy.
 
 ## 10. Conformance
@@ -397,16 +402,9 @@ a passing host model alone is insufficient. Numerical equivalence remains a sepa
 
 On device (RTX 2080 Ti, sm_75): a partitioned dispatch region (the predecessor of `#[parallel]`) ran 96 indices over 32 lanes with
 each index executed exactly once; a 64-byte round trip passed; a short buffer was told it needed
-64 bytes with the frame still present afterwards; a full lane refused the next send rather than
-overwriting; and a bounded wait against a peer that was never launched terminated after exactly
-its stated attempts and reported, rather than hanging.
+64 bytes with the frame still present afterwards; and a full lane refused the next send rather than
+overwriting.
 
-`request.md` items map to sections: 1–2 → §3; 3 → §2; 4 → §4; 5 → §5/§8;
-6 → §6; 7 → §9; 8 → §6; 9 → §7; 10–12 → §9; 13 → §1/§9.
-Current gaps include the global entry API, allocating transport signatures, host-only worker
-imports, send handles, missing capability refusals and differing declaration metadata.
-NV additionally has shared mutable rank and endpoint state (`launch::WORLD`, `peers::cuda::LINKS`)
-and concurrent cohort initialization. These violate §3; the host adapter does not validate them.
 The MPI family reports capacity refusal on its message route (`MPI_ERRORS_RETURN`, raw `MPI_Bsend`
 mapped to `Full`) but its other calls go through wrappers that panic on a non-success code, so
 their failures are not yet records. That is a §3 gap, not a §4 one.

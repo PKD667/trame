@@ -27,7 +27,8 @@ use mpi_rma::Ring;
 #[cfg(feature = "ring")]
 use crate::contract::Frame;
 use crate::contract::{
-    BackendFault, Deployment, Edge, Error, Failure, FailureKind, FrameBytes, Invalid, Rank, Tag,
+    BackendFault, Deployment, Edge, Error, Failure, FailureKind, Invalid, Launch, Participant, Rank,
+    Tag,
 };
 
 /// Megabytes attached for buffered sends, when the entry says nothing.
@@ -36,16 +37,21 @@ const BSEND_MB: usize = 128;
 /// The longest frame: half the default attached buffer. Every send is buffered, so a frame must fit
 /// the attached buffer beside MPI's per-message bookkeeping, whose size MPI does not state; the
 /// other half is that margin. `init` and `Leader::open` refuse a smaller buffer.
-pub const MAX_FRAME: FrameBytes = FrameBytes::new((BSEND_MB << 20) as u32 / 2);
+pub const MAX_FRAME: usize = (BSEND_MB << 20) / 2;
 
 /// The smallest attached buffer an entry may state.
-const BSEND_MIN: usize = 2 * MAX_FRAME.get() as usize;
+const BSEND_MIN: usize = 2 * MAX_FRAME;
 
 /// What the entry supplies.
 ///
 /// MPI discovers its own world, so there is nothing here that a process could not find out,
 /// except the one number MPI will not report: the attached buffer's size, which is where every
 /// accepted frame waits.
+///
+/// The environment owns no MPI object — `init` and `Leader::open` each enter `MPI_COMM_WORLD`
+/// and the `Universe` lives in the returned `Context` — so a clone is just the same stated
+/// buffer size, and the job is whatever `MPI_COMM_WORLD` already is.
+#[derive(Clone)]
 pub struct Environment {
     /// Bytes attached for buffered sends; at least twice `MAX_FRAME`.
     pub bsend_bytes: usize,
@@ -112,7 +118,7 @@ pub struct Context {
     leader: Option<InterCommunicator>,
     /// The leader route's own hold slot. One per route, because a frame the leader route matched
     /// and could not deliver must not be surrendered because the message route refused one.
-    leader_held: Option<(Message, FrameBytes)>,
+    leader_held: Option<(Message, usize)>,
     lane: Lane,
     /// A message that was matched and did not fit the caller's buffer.
     ///
@@ -121,7 +127,7 @@ pub struct Context {
     /// told to grow for is the frame the next call hands over — and it is why the refusal can be
     /// reported at all, since a plain probe would have to be followed by a receive that a
     /// concurrent sender may have already invalidated.
-    held: Option<(Message, FrameBytes)>,
+    held: Option<(Message, usize)>,
 }
 
 /// # Safety
@@ -236,7 +242,7 @@ impl Context {
         let Some((source, data)) = self.lane.taken.front() else {
             return Ok(None);
         };
-        let len = FrameBytes::try_from(data.len()).map_err(Error::Invalid)?;
+        let len = data.len();
         if data.len() > out.len() {
             return Err(Error::TooSmall { needed: len });
         }
@@ -252,7 +258,7 @@ impl Context {
     /// and could not deliver — and both are fields of this record. Returning them together is what
     /// lets one generic receive serve this route and the leader's: `split` is the borrow that makes
     /// a single rule reachable from two communicators, rather than a second copy of the rule.
-    pub(crate) fn split(&mut self) -> (&SimpleCommunicator, &mut Option<(Message, FrameBytes)>) {
+    pub(crate) fn split(&mut self) -> (&SimpleCommunicator, &mut Option<(Message, usize)>) {
         (
             self.world
                 .as_ref()
@@ -265,14 +271,14 @@ impl Context {
     /// deployment named no leader. The same shape as [`split`](Self::split) for the same reason.
     pub(crate) fn leader_split(
         &mut self,
-    ) -> Option<(&InterCommunicator, &mut Option<(Message, FrameBytes)>)> {
+    ) -> Option<(&InterCommunicator, &mut Option<(Message, usize)>)> {
         let leader = self.leader.as_ref()?;
         Some((leader, &mut self.leader_held))
     }
 
     pub(crate) fn failure(&self, operation: &'static str) -> Error {
         Error::Failed(Failure {
-            participant: self.rank,
+            participant: Participant::Worker(self.rank),
             operation,
             kind: FailureKind::Backend(BackendFault::Transport),
         })
@@ -311,9 +317,9 @@ fn groups(world: &SimpleCommunicator) -> Vec<Rank> {
         .collect()
 }
 
-/// A refusal `init` or `Leader::open` reports before it has a rank of its own to report it as.
+/// A refusal `init` or `Leader::open` reports, as observed by whoever the process is so far.
 pub(crate) fn refused(
-    participant: Rank,
+    participant: Participant,
     operation: &'static str,
     fault: BackendFault,
 ) -> Failure {
@@ -324,30 +330,35 @@ pub(crate) fn refused(
     }
 }
 
+/// The one place the launch's own numbering enters this backend. MPI reports a rank as a
+/// non-negative `int`, so the narrowing to `u32` is exact; `Launch` keeps it from ever being read
+/// as a contract [`Rank`].
+fn launch(rank: i32) -> Launch {
+    Launch::new(rank as u32)
+}
+
 /// Enter MPI with the threading and attached buffer every participant and leader needs.
 pub(crate) fn enter(
     env: &Environment,
     operation: &'static str,
-) -> Result<(Universe, SimpleCommunicator, Rank, u32), Failure> {
-    let nobody = Rank::from_index(0);
-    if env.bsend_bytes < BSEND_MIN {
-        return Err(refused(nobody, operation, BackendFault::Storage));
-    }
+) -> Result<(Universe, SimpleCommunicator, Launch, u32), Failure> {
+    // Before `MPI_Init` a process has no launch rank, so only this refusal is unattributed.
     let (mut universe, threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
-        .ok_or(refused(nobody, operation, BackendFault::Transport))?;
+        .ok_or(refused(Participant::Entering(None), operation, BackendFault::Transport))?;
+    let job = universe.world();
+    let job_rank = launch(job.rank());
+    let me = Participant::Entering(Some(job_rank));
+    if env.bsend_bytes < BSEND_MIN {
+        return Err(refused(me, operation, BackendFault::Storage));
+    }
     if threading != mpi::Threading::Multiple {
         // A rank that cannot be called from two threads is not a rank this runtime can run, and
         // finding that out here is the difference between a refusal and a data race.
-        return Err(refused(nobody, operation, BackendFault::Transport));
+        return Err(refused(me, operation, BackendFault::Transport));
     }
     universe.set_buffer_size(env.bsend_bytes);
-    let job = universe.world();
-    let unrepresentable = BackendFault::Invalid(Invalid::Unrepresentable);
-    let job_rank = u32::try_from(job.rank())
-        .map(Rank::from_index)
-        .map_err(|_| refused(nobody, operation, unrepresentable))?;
-    let job_size =
-        u32::try_from(job.size()).map_err(|_| refused(job_rank, operation, unrepresentable))?;
+    let job_size = u32::try_from(job.size())
+        .map_err(|_| refused(me, operation, BackendFault::Invalid(Invalid::Unrepresentable)))?;
     // Return errors instead of aborting: with MPI's default handler a single failing call kills the
     // process, so no failure could reach the caller as a record — and a buffered send that finds
     // its buffer full is exactly such a call.
@@ -408,16 +419,16 @@ pub fn init(
     let key = worker.map_or(job.rank(), |at| at.get() as i32);
     let world = job
         .split_by_color_with_key(Color::with_value(color), key)
-        .ok_or(refused(job_rank, "init", BackendFault::Transport))?;
+        .ok_or(refused(Participant::Entering(Some(job_rank)), "init", BackendFault::Transport))?;
     if let Some(why) = fault {
-        return Err(refused(job_rank, "init", BackendFault::Invalid(why)));
+        return Err(refused(Participant::Entering(Some(job_rank)), "init", BackendFault::Invalid(why)));
     }
 
     let unrepresentable = BackendFault::Invalid(Invalid::Unrepresentable);
     let rank = u32::try_from(world.rank())
         .map(Rank::from_index)
-        .map_err(|_| refused(job_rank, "init", unrepresentable))?;
-    let size = u32::try_from(world.size()).map_err(|_| refused(rank, "init", unrepresentable))?;
+        .map_err(|_| refused(Participant::Entering(Some(job_rank)), "init", unrepresentable))?;
+    let size = u32::try_from(world.size()).map_err(|_| refused(Participant::Worker(rank), "init", unrepresentable))?;
     return_errors(&world);
     // Domains are discovered inside the participant set, after the split. The leader is not in this
     // communicator, so it cannot be inside a worker's sharing domain.
@@ -430,23 +441,23 @@ pub fn init(
         None => None,
         Some(index) => {
             let leader = deployment.leader_of(rank).ok_or(refused(
-                rank,
+                Participant::Worker(rank),
                 "init",
                 BackendFault::Invalid(Invalid::NoLeader),
             ))?;
             Some(
                 super::leader::bridge(&world, &job, leader, index)
-                    .ok_or(refused(rank, "init", BackendFault::Transport))?,
+                    .ok_or(refused(Participant::Worker(rank), "init", BackendFault::Transport))?,
             )
         }
     };
 
     // The rule returns a colour, so two ranks that agree run collectives together and the caller
     // names no list.
-    let color = i32::try_from(rule(rank, &hosts)).map_err(|_| refused(rank, "init", unrepresentable))?;
+    let color = i32::try_from(rule(rank, &hosts)).map_err(|_| refused(Participant::Worker(rank), "init", unrepresentable))?;
     let together = world
         .split_by_color_with_key(Color::with_value(color), world.rank())
-        .ok_or(refused(rank, "init", BackendFault::Transport))?;
+        .ok_or(refused(Participant::Worker(rank), "init", BackendFault::Transport))?;
 
     return_errors(&together);
 
@@ -504,7 +515,7 @@ pub fn align() -> usize {
 /// ordered and duplicate-free, both endpoints workers, and a frame the backend can carry. Whether
 /// the window can hold the implied depth is each transport's own, because only it knows what it
 /// built.
-pub(crate) fn validate(workers: &[Rank], edges: &[Edge], bytes: FrameBytes) -> Result<(), Error> {
+pub(crate) fn validate(workers: &[Rank], edges: &[Edge], bytes: usize) -> Result<(), Error> {
     if workers.windows(2).any(|w| w[0] >= w[1]) {
         return Err(Error::Invalid(Invalid::UnorderedWorkers));
     }
@@ -540,7 +551,7 @@ pub const FACTOR: usize = 4;
 pub(crate) fn window(
     workers: &[Rank],
     edges: &[Edge],
-    bytes: FrameBytes,
+    bytes: usize,
 ) -> Result<Vec<(i32, i32, usize, usize)>, Error> {
     let position = |rank: Rank| {
         let at = workers
@@ -559,7 +570,7 @@ pub(crate) fn window(
             position(edge.source())?,
             position(edge.destination())?,
             depth,
-            bytes.get() as usize,
+            bytes,
         ));
     }
     lanes.sort_unstable();

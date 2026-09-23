@@ -51,10 +51,13 @@ impl Transport for CudaTransport {
     }
 
     fn try_send(&mut self, dst: u32, tag: u32, data: &[u8]) -> Result<(), SendError> {
-        unsafe { self.tx[dst as usize].send(tag, data.as_ptr(), data.len() as u32) }
+        let len = u32::try_from(data.len()).map_err(|_| SendError::TooLarge)?;
+        unsafe { self.tx[dst as usize].send(tag, data.as_ptr(), len) }
     }
 
     fn try_recv(&mut self, src: u32, out: &mut [u8]) -> Result<Message, RecvError> {
-        unsafe { self.rx[src as usize].recv(out.as_mut_ptr(), out.len() as u32) }
+        // A buffer beyond `u32::MAX` bytes holds any frame a slot can, so its room saturates.
+        let room = u32::try_from(out.len()).unwrap_or(u32::MAX);
+        unsafe { self.rx[src as usize].recv(out.as_mut_ptr(), room) }
     }
 }

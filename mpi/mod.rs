@@ -4,7 +4,7 @@
 // out-of-band state: a lane is a frame under the tag `reshape` named, and the `Lane` route differs
 // from `Message` only in who chose the tag.
 
-use crate::contract::{Backend, Channel, Edge, Error, Frame, FrameBytes, Rank, Tag};
+use crate::contract::{Backend, Channel, Edge, Error, Frame, Rank, Tag};
 
 pub use crate::shared::context::{
     Context, Environment, MAX_FRAME, align, done, hosts, init, rank, size,
@@ -48,7 +48,7 @@ pub fn reshape(
     cx: &mut Context,
     workers: &[Rank],
     edges: &[Edge],
-    bytes: FrameBytes,
+    bytes: usize,
     tag: Tag,
 ) -> Result<(), Error> {
     crate::shared::context::validate(workers, edges, bytes)?;

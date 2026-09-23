@@ -22,7 +22,6 @@
 // `metadata`. Both are stated at every method.
 
 pub mod atomic;
-pub mod channel;
 pub mod handoff;
 pub mod publish;
 pub mod turn;

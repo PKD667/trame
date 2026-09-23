@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::num::NonZeroU32;
 
 use crate::contract::{
-    BackendFault, Channel, Deployment, Edge, Error, FailureKind, FrameBytes, Invalid, Rank, Tag,
+    BackendFault, Channel, Deployment, Edge, Error, FailureKind, Invalid, Launch, Rank, Tag,
 };
 use crate::nv::layout::Layout;
 use crate::nv::peers::Fabric;
@@ -31,6 +31,11 @@ fn r(index: u32) -> Rank {
     Rank::from_index(index)
 }
 
+/// A launch rank, the number the transport assigned rather than the contract's dense index.
+fn l(index: u32) -> Launch {
+    Launch::new(index)
+}
+
 fn t(tag: u16) -> Tag {
     Tag::new(tag)
 }
@@ -39,19 +44,29 @@ fn ranks(indices: &[u32]) -> Vec<Rank> {
     indices.iter().copied().map(r).collect()
 }
 
+fn launches(indices: &[u32]) -> Vec<Launch> {
+    indices.iter().copied().map(l).collect()
+}
+
 /// Every participant's entry into one launch whose links have `layout`.
 ///
 /// The segment is leaked because the launch owns it for its whole life and the contexts borrow it,
 /// which is exactly the lifetime the device's arena has.
 fn enter(size: u32, layout: Layout) -> Vec<Result<nv::Context, crate::Failure>> {
+    let workers: Vec<Launch> = (0..size).map(l).collect();
+    enter_as(&workers, layout)
+}
+
+/// As [`enter`], with the worker list in contract-rank order; the result is by launch rank.
+fn enter_as(workers: &[Launch], layout: Layout) -> Vec<Result<nv::Context, crate::Failure>> {
+    let size = workers.len() as u32;
     let fabric = Fabric::new(size, layout);
     let segment: &'static mut [u8] = vec![0u8; SEGMENT].leak();
-    let workers: Vec<Rank> = (0..size).map(r).collect();
     (0..size)
         .map(|rank| {
             nv::init(
                 Environment {
-                    rank: r(rank),
+                    rank: l(rank),
                     size,
                     fabric: fabric.clone(),
                     segment: segment.as_mut_ptr(),
@@ -59,7 +74,7 @@ fn enter(size: u32, layout: Layout) -> Vec<Result<nv::Context, crate::Failure>> 
                     // No leader in this launch, which is what a null region says.
                     leader_region: std::ptr::null_mut(),
                 },
-                Deployment::new(&workers, None).expect("every rank a worker"),
+                Deployment::new(workers, None).expect("every rank a worker"),
                 // One device: every rank is in the one cohort, whatever colour the rule returns.
                 |_, _| 0,
             )
@@ -69,7 +84,7 @@ fn enter(size: u32, layout: Layout) -> Vec<Result<nv::Context, crate::Failure>> 
 
 /// One launch provisioned for `MAX_FRAME`, as a value per participant.
 fn launch(size: u32, depth: u32) -> Vec<nv::Context> {
-    let layout = Layout::new(depth, MAX_FRAME.get()).expect("a valid layout");
+    let layout = Layout::new(depth, MAX_FRAME as u32).expect("a valid layout");
     enter(size, layout)
         .into_iter()
         .map(|cx| cx.expect("a launch the model can build"))
@@ -78,7 +93,7 @@ fn launch(size: u32, depth: u32) -> Vec<nv::Context> {
 
 #[test]
 fn a_launch_whose_slots_cannot_hold_max_frame_is_refused() {
-    let layout = Layout::new(2, MAX_FRAME.get() - 1).expect("a valid layout");
+    let layout = Layout::new(2, MAX_FRAME as u32 - 1).expect("a valid layout");
     for cx in enter(2, layout) {
         let failure = cx.err().expect("refused before entry");
         assert_eq!(failure.kind, FailureKind::Backend(BackendFault::Storage));
@@ -102,10 +117,32 @@ fn every_participant_has_its_own_identity_and_endpoints() {
     let mut buf = [0u8; 16];
     let got = nv::recv(&mut a[0], &mut buf).expect("no fault").expect("one frame");
     assert_eq!((got.source(), got.tag()), (r(1), t(2)));
-    assert_eq!(&buf[..got.len().get() as usize], b"from one");
+    assert_eq!(&buf[..got.len()], b"from one");
     let got = nv::recv(&mut a[1], &mut buf).expect("no fault").expect("one frame");
     assert_eq!((got.source(), got.tag()), (r(0), t(1)));
-    assert_eq!(&buf[..got.len().get() as usize], b"from zero");
+    assert_eq!(&buf[..got.len()], b"from zero");
+}
+
+#[test]
+fn contract_ranks_become_launch_ranks_at_the_link_and_back() {
+    // Launch rank 1 is contract rank 0 and launch rank 0 is contract rank 1. A backend that used a
+    // contract rank as a link index would deliver to the sender itself and name the wrong source.
+    let layout = Layout::new(2, MAX_FRAME as u32).expect("a valid layout");
+    let mut cx: Vec<nv::Context> = enter_as(&launches(&[1, 0]), layout)
+        .into_iter()
+        .map(|cx| cx.expect("a launch the model can build"))
+        .collect();
+    assert_eq!((nv::rank(&cx[0]), nv::rank(&cx[1])), (r(1), r(0)));
+    nv::send(&mut cx[1], r(1), Channel::Message(t(5)), b"to one").expect("accepted");
+    let mut buf = [0u8; 16];
+    assert_eq!(nv::recv(&mut cx[1], &mut buf), Ok(None));
+    let got = nv::recv(&mut cx[0], &mut buf).expect("no fault").expect("one frame");
+    assert_eq!((got.source(), got.tag()), (r(0), t(5)));
+    assert_eq!(&buf[..got.len()], b"to one");
+    nv::send(&mut cx[0], r(0), Channel::Message(t(6)), b"to zero").expect("accepted");
+    let got = nv::recv(&mut cx[1], &mut buf).expect("no fault").expect("one frame");
+    assert_eq!((got.source(), got.tag()), (r(1), t(6)));
+    assert_eq!(&buf[..got.len()], b"to zero");
 }
 
 #[test]
@@ -115,11 +152,11 @@ fn a_frame_arrives_with_its_tag_and_bytes_paired() {
     nv::send(&mut cx[0], r(1), Channel::Message(t(10)), b"second").expect("accepted");
     let mut buf = [0u8; 32];
     let first = nv::recv(&mut cx[1], &mut buf).expect("no fault").expect("a frame");
-    assert_eq!((first.source(), first.tag(), first.len().get()), (r(0), t(9), 7));
+    assert_eq!((first.source(), first.tag(), first.len()), (r(0), t(9), 7));
     assert_eq!(&buf[..7], b"payload");
     // FIFO per (source, destination, tag) holds across the two different tags on one link.
     let second = nv::recv(&mut cx[1], &mut buf).expect("no fault").expect("a frame");
-    assert_eq!((second.tag(), second.len().get()), (t(10), 6));
+    assert_eq!((second.tag(), second.len()), (t(10), 6));
     assert_eq!(&buf[..6], b"second");
     // And then nothing, which is the normal answer and not an error.
     assert_eq!(nv::recv(&mut cx[1], &mut buf), Ok(None));
@@ -132,16 +169,14 @@ fn a_short_buffer_is_reported_without_consuming_the_frame() {
     let mut small = [0xa5u8; 4];
     assert_eq!(
         nv::recv(&mut cx[1], &mut small),
-        Err(Error::TooSmall {
-            needed: FrameBytes::try_from(8).unwrap()
-        })
+        Err(Error::TooSmall { needed: 8 })
     );
     // The refusal changed nothing: not the caller's buffer, and not the link, so the frame is
     // still there for a caller that grew.
     assert_eq!(small, [0xa5; 4]);
     let mut big = [0u8; 32];
     let got = nv::recv(&mut cx[1], &mut big).expect("no fault").expect("a frame");
-    assert_eq!(got.len().get(), 8);
+    assert_eq!(got.len(), 8);
     assert_eq!(&big[..8], b"abcdefgh");
 }
 
@@ -160,7 +195,7 @@ fn a_full_lane_is_refused_and_accepts_nothing() {
     let mut buf = [0u8; 8];
     for _ in 0..2 {
         let got = nv::recv(&mut cx[1], &mut buf).unwrap().unwrap();
-        assert_eq!((got.len().get(), buf[0]), (1, b'x'));
+        assert_eq!((got.len(), buf[0]), (1, b'x'));
     }
     assert_eq!(nv::recv(&mut cx[1], &mut buf), Ok(None));
 }
@@ -168,7 +203,7 @@ fn a_full_lane_is_refused_and_accepts_nothing() {
 #[test]
 fn a_frame_larger_than_max_frame_is_refused() {
     let mut cx = launch(2, 2);
-    let over = vec![0u8; MAX_FRAME.get() as usize + 1];
+    let over = vec![0u8; MAX_FRAME + 1];
     assert_eq!(
         nv::send(&mut cx[0], r(1), Channel::Message(t(1)), &over),
         Err(Error::TooLarge { limit: MAX_FRAME })
@@ -201,7 +236,7 @@ fn edges(pairs: &[(u32, u32)]) -> Vec<Edge> {
 fn reshape_validates_before_anything_is_sent() {
     let mut cx = launch(3, 4);
     let workers = ranks(&[0, 1, 2]);
-    let bytes = FrameBytes::try_from(16).unwrap();
+    let bytes = 16;
     assert_eq!(
         nv::reshape(&mut cx[0], &workers, &edges(&[(0, 1)]), bytes, t(7)),
         Ok(())
@@ -227,7 +262,7 @@ fn reshape_validates_before_anything_is_sent() {
     // can serve.
     assert_eq!(nv::reshape(&mut cx[0], &ranks(&[0, 1]), &[], bytes, t(7)), Ok(()));
     // A frame wider than the launched slot is refused at declaration, never truncated at send.
-    let over = FrameBytes::try_from(MAX_FRAME.get() as usize + 1).unwrap();
+    let over = MAX_FRAME + 1;
     assert_eq!(
         nv::reshape(&mut cx[0], &workers, &[], over, t(7)),
         Err(Error::TooLarge { limit: MAX_FRAME })
@@ -244,7 +279,7 @@ fn reshape_validates_before_anything_is_sent() {
 fn lane_traffic_rides_the_tag_the_load_declared() {
     let mut cx = launch(2, 4);
     let workers = ranks(&[0, 1]);
-    let bytes = FrameBytes::try_from(16).unwrap();
+    let bytes = 16;
     for c in cx.iter_mut() {
         nv::reshape(c, &workers, &edges(&[(0, 1)]), bytes, t(42)).expect("a valid declaration");
     }
@@ -331,7 +366,7 @@ fn the_plan_is_the_topology_the_contract_asks_for() {
     // declaration is validated against the launch rather than compiled into a table.
     let mut cx = launch(2, 4);
     let workers = ranks(&[0, 1]);
-    let bytes = FrameBytes::try_from(8).unwrap();
+    let bytes = 8;
     let mut fanin = HashMap::new();
     fanin.insert((0u32, 1u32), 1usize);
     assert_eq!(fanin.len(), 1, "the map is the test's, not the backend's");
