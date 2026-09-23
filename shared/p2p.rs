@@ -15,7 +15,7 @@ use mpi::topology::Communicator;
 
 use super::context::{Context, MAX_FRAME};
 use crate::contract::{
-    BackendFault, Error, Failure, FailureKind, Frame, FrameBytes, Invalid, Rank, Tag,
+    BackendFault, Error, Failure, FailureKind, Frame, Invalid, Participant, Rank, Tag,
 };
 
 fn unrepresentable<T>(_: T) -> Error {
@@ -33,16 +33,14 @@ fn contract_tag(tag: i32) -> Result<Tag, Error> {
 }
 
 /// How many bytes MPI reported behind a probed message.
-fn counted(status: &Status) -> Result<FrameBytes, Error> {
+fn counted(status: &Status) -> Result<usize, Error> {
     let count = status.count(u8::equivalent_datatype());
-    usize::try_from(count)
-        .map_err(unrepresentable)
-        .and_then(|count| FrameBytes::try_from(count).map_err(Error::Invalid))
+    usize::try_from(count).map_err(unrepresentable)
 }
 
 /// Send one frame, copying it out of the caller's borrow before this returns.
 pub fn send(cx: &mut Context, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error> {
-    let me = cx.rank();
+    let me = Participant::Worker(cx.rank());
     send_on(cx.world(), me, to, tag, data)
 }
 
@@ -57,7 +55,7 @@ pub fn send(cx: &mut Context, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Err
 /// caller's mistake that the contract has a value for.
 pub(crate) fn send_on<C: Communicator>(
     comm: &C,
-    me: Rank,
+    me: Participant,
     to: Rank,
     tag: Tag,
     data: &[u8],
@@ -66,7 +64,7 @@ pub(crate) fn send_on<C: Communicator>(
         return Err(Error::Invalid(Invalid::RankOutsideJob));
     }
     let to = i32::try_from(to.get()).map_err(unrepresentable)?;
-    if data.len() > MAX_FRAME.get() as usize {
+    if data.len() > MAX_FRAME {
         return Err(Error::TooLarge { limit: MAX_FRAME });
     }
     // Called through the raw interface, because rsmpi's wrapper panics on a refusal and a refusal
@@ -112,7 +110,7 @@ pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
 /// a message route's frame is not made to surrender it because the leader route refused one.
 pub(crate) fn take<C: Communicator>(
     comm: &C,
-    held: &mut Option<(Message, FrameBytes)>,
+    held: &mut Option<(Message, usize)>,
     out: &mut [u8],
 ) -> Result<Option<Frame>, Error> {
     let (message, needed) = match held.take() {
@@ -124,7 +122,7 @@ pub(crate) fn take<C: Communicator>(
             (message, counted(&status)?)
         }
     };
-    if needed.get() as usize > out.len() {
+    if needed > out.len() {
         *held = Some((message, needed));
         return Err(Error::TooSmall { needed });
     }

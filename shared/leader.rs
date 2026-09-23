@@ -36,7 +36,8 @@ use mpi::topology::{Color, Communicator, InterCommunicator, SimpleCommunicator};
 use super::context::{Context, Environment, enter, refused};
 use super::p2p::{self, send_on, take};
 use crate::contract::{
-    BackendFault, Deployment, Error, Failure, FailureKind, Frame, FrameBytes, Invalid, Rank, Tag,
+    BackendFault, Deployment, Error, Failure, FailureKind, Frame, Invalid, Launch, Participant, Rank,
+    Tag,
 };
 
 /// The tag that labels the bridge's creation. It names the collective that builds the
@@ -64,7 +65,7 @@ pub(crate) fn bridge_tag(index: usize) -> i32 {
 pub(crate) fn bridge(
     local: &SimpleCommunicator,
     world: &SimpleCommunicator,
-    remote_leader: Rank,
+    remote_leader: Launch,
     index: usize,
 ) -> Option<InterCommunicator> {
     let mut handle = unsafe { mpi::ffi::RSMPI_COMM_NULL };
@@ -96,6 +97,8 @@ pub(crate) fn bridge(
 /// is collective over both groups, so a leader that released its bridge at an arbitrary moment —
 /// whenever a value happened to die — would be choosing a moment its workers did not choose.
 pub struct Leader {
+    /// Who this leader's failures are observed by: its launch rank, since it has no contract rank.
+    me: Participant,
     inter: InterCommunicator,
     /// This leader's workers, as contract ranks, in the order the bridge addresses them.
     ///
@@ -112,7 +115,7 @@ pub struct Leader {
     /// A frame that was matched and did not fit the caller's buffer, for the same reason a
     /// participant holds one: MPI has no un-probe, and a refusal must not consume the frame the
     /// caller was told to grow for.
-    held: Mutex<Option<(Message, FrameBytes)>>,
+    held: Mutex<Option<(Message, usize)>>,
 }
 
 impl Leader {
@@ -123,7 +126,8 @@ impl Leader {
     /// arithmetic the workers run, which is why the two ends cannot disagree about the pairing.
     pub fn open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure> {
         let (universe, job, me, _) = enter(&env, "leader::open")?;
-        let wrong = |why| refused(me, "leader::open", BackendFault::Invalid(why));
+        let unentered = Participant::Entering(Some(me));
+        let wrong = |why| refused(unentered, "leader::open", BackendFault::Invalid(why));
         if deployment.leaders().is_none() {
             return Err(wrong(Invalid::NoLeader));
         }
@@ -134,21 +138,24 @@ impl Leader {
         let color = index.map_or(i32::MAX, |index| (index * 2 + 1) as i32);
         let group = job
             .split_by_color_with_key(Color::with_value(color), 0)
-            .ok_or(refused(me, "leader::open", BackendFault::Transport))?;
+            .ok_or(refused(unentered, "leader::open", BackendFault::Transport))?;
         let index = index.ok_or(wrong(Invalid::WrongLeader))?;
 
         // This leader's workers, by contract rank and in the remote group's order. The workers'
         // key was their contract rank, so the bridge addresses them in ascending contract rank and
         // this list is the map between the two. Not empty: `leader_index` found `me` in the list.
-        let mine: Box<[Rank]> = (0..deployment.workers().len() as u32)
+        let workers = u32::try_from(deployment.workers().len())
+            .map_err(|_| wrong(Invalid::Unrepresentable))?;
+        let mine: Box<[Rank]> = (0..workers)
             .map(Rank::from_index)
             .filter(|&contract| deployment.leader_of(contract) == Some(me))
             .collect();
         let remote_leader = deployment.workers()[mine[0].get() as usize];
         let inter = bridge(&group, &job, remote_leader, index)
-            .ok_or(refused(me, "leader::open", BackendFault::Transport))?;
+            .ok_or(refused(Participant::Leader(me), "leader::open", BackendFault::Transport))?;
 
         Ok(Leader {
+            me: Participant::Leader(me),
             inter,
             mine,
             _group: group,
@@ -167,7 +174,7 @@ impl Leader {
             .iter()
             .position(|&contract| contract == to)
             .ok_or(Error::Invalid(Invalid::RankOutsideJob))?;
-        p2p::send_on(&self.inter, LEADER, Rank::from_index(remote as u32), tag, data)
+        p2p::send_on(&self.inter, self.me, Rank::from_index(remote as u32), tag, data)
     }
 
     /// Take the next frame from any worker.
@@ -177,7 +184,7 @@ impl Leader {
     pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
         let mut held = self.held.lock().map_err(|_| {
             Error::Failed(Failure {
-                participant: LEADER,
+                participant: self.me,
                 operation: "leader::recv",
                 kind: FailureKind::Backend(BackendFault::Internal),
             })
@@ -201,7 +208,7 @@ impl Leader {
 /// written. §4 gives the worker end no destination, and this is what that costs at the point of
 /// use: nothing.
 pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
-    let me = cx.rank();
+    let me = Participant::Worker(cx.rank());
     let (comm, _) = cx.leader_split().ok_or(Error::Invalid(Invalid::NoLeader))?;
     send_on(comm, me, LEADER, tag, data)
 }
@@ -210,7 +217,7 @@ pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
 ///
 /// No source, for the reason a worker's send has no destination: every frame on this route came
 /// from the leader.
-pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, FrameBytes)>, Error> {
+pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, usize)>, Error> {
     let (comm, held) = cx
         .leader_split()
         .ok_or(Error::Invalid(Invalid::NoLeader))?;
@@ -222,6 +229,5 @@ pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, FrameBytes)
 
 /// The leader's rank *in the worker group's view of the bridge*: the leader end is one rank, and
 /// this is its number. Not a contract rank, and not the launch's numbering either — it is the
-/// remote rank on this communicator, which is why nothing outside this module names it. Also the
-/// rank a leader's own failures are reported as observed by, since a leader has no rank.
+/// remote rank on this communicator, which is why nothing outside this module names it.
 const LEADER: Rank = Rank::from_index(0);

@@ -28,7 +28,7 @@
 mod contract;
 pub use contract::{
     Backend, BackendFault, ByteRange, Channel, ClockId, ClockMismatch, Deployment, Edge, Error,
-    Failure, FailureKind, Frame, FrameBytes, Invalid, Rank, Reading, Span, Tag,
+    Failure, FailureKind, Frame, Invalid, Launch, Participant, Rank, Reading, Span, Tag,
 };
 
 // The byte-range rule every published segment is cut by, shared because the origin and every
@@ -113,11 +113,12 @@ pub const LOSSY: bool = matches!(ID, Backend::RmaLossy);
 
 /// The longest frame every route of this backend carries, leader route included. The selected
 /// backend states which storage provides it and refuses a launch that does not.
-pub const MAX_FRAME: FrameBytes = selected::MAX_FRAME;
+pub const MAX_FRAME: usize = selected::MAX_FRAME;
 
-// A 64 KiB log block behind an eight-byte batch header is 65_544 bytes, and every route must carry
-// one.
-const _: () = assert!(MAX_FRAME.get() >= 65_544);
+// A 64 KiB log block behind an eight-byte batch header is 65_544 bytes, and every route must
+// carry one. The upper bound is what lets a backend narrow `MAX_FRAME` to the `u32` its wire or
+// slot header carries without a fallible conversion.
+const _: () = assert!(MAX_FRAME >= 65_544 && MAX_FRAME <= u32::MAX as usize);
 
 // Compile-time checks that the selection is coherent. The three lane transports ride one MPI
 // environment, and the device backend rides none of it, so the combinations that would ask one

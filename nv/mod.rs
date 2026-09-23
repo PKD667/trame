@@ -42,8 +42,8 @@
 //! require one.
 
 use crate::contract::{
-    Backend, BackendFault, Channel, Deployment, Edge, Error, Failure, FailureKind, Frame,
-    FrameBytes, Invalid, Rank, Tag,
+    Backend, BackendFault, Channel, Deployment, Edge, Error, Failure, FailureKind, Frame, Invalid,
+    Launch, Participant, Rank, Tag,
 };
 
 pub mod clock;
@@ -73,7 +73,7 @@ pub const ID: Backend = Backend::Nv;
 /// Provisioned, not discovered. Peer links are slots of the launch's arena, whose `Layout` the
 /// launch fixes before entry and `init` refuses when a slot holds less; the leader route's slots
 /// are `leader::CAPACITY`, which is this number, in the region the launch sizes by `Route::words`.
-pub const MAX_FRAME: FrameBytes = FrameBytes::new(65_544);
+pub const MAX_FRAME: usize = 65_544;
 
 /// Alignment is one byte: a device has no pages, and aligning for a mapping that will not happen
 /// would shrink every share for nothing.
@@ -93,9 +93,14 @@ pub const FACTOR: u64 = 4;
 /// It is a value rather than a call because a device cannot discover any of it. There is no
 /// `MPI_Comm_size` to ask: the entry knows the launch's width and where its memory is, and hands
 /// both down. That is also why there is no `install` and no global for it to write to.
+///
+/// The fabric and the raw pointers are the launch's memory, borrowed rather than owned: the
+/// environment has no `Drop`, so a clone names the same launch's memory and frees nothing twice.
+/// A clone is sound for the same reason the launch hands the same fabric to each of its warps.
+#[derive(Clone)]
 pub struct Environment {
-    /// This participant's rank in the launch.
-    pub rank: Rank,
+    /// This participant's rank in the launch, in the launch's own numbering.
+    pub rank: Launch,
     /// How many participants the launch started.
     pub size: u32,
     /// The links' fabric: device memory the launch allocated, or the host model's mesh.
@@ -117,6 +122,9 @@ pub struct Environment {
 pub struct Context {
     rank: Rank,
     size: u32,
+    /// Each contract rank's launch rank: the links are the launch's, so this is where a contract
+    /// rank becomes a link index and a link index becomes a contract rank again.
+    launch: [Launch; MAX_RANKS],
     links: Links,
     /// The worker's end of the leader route, when the launch named a leader.
     leader: Option<leader::Worker>,
@@ -178,41 +186,42 @@ pub fn init(
         kind: FailureKind::Backend(fault),
     };
     let outside = BackendFault::Invalid(Invalid::RankOutsideJob);
+    let unentered = Participant::Entering(Some(env.rank));
     // The contract's participant set is the workers, and every one must be a rank this launch
     // started and the transport table can hold.
     let launch = deployment.workers();
     if launch.len() > MAX_RANKS {
-        return Err(refuse(env.rank, BackendFault::Storage));
+        return Err(refuse(unentered, BackendFault::Storage));
     }
     if launch.iter().any(|worker| worker.get() >= env.size) {
-        return Err(refuse(env.rank, outside));
+        return Err(refuse(unentered, outside));
     }
     let count = launch.len();
-    let mut all = [Rank::from_index(0); MAX_RANKS];
-    all[..count].copy_from_slice(launch);
+    let mut launched = [Launch::new(0); MAX_RANKS];
+    launched[..count].copy_from_slice(launch);
     // The rank the contract reports is the position in the declaration; the number the launch
-    // knows this participant by is the one in the table. They coincide unless the launch said
-    // otherwise, and when it does, this is the one place the difference exists.
-    let rank = deployment
-        .contract(env.rank)
-        .ok_or(refuse(env.rank, outside))?;
-    let _colour = cohort(rank, launch);
+    // knows this participant by is the one in the table. This is the launch-to-contract half of
+    // the one conversion pair.
+    let rank = contract_of(&launched[..count], env.rank).ok_or(refuse(unentered, outside))?;
+    let me = Participant::Worker(rank);
+    let mut all = [Rank::from_index(0); MAX_RANKS];
+    for (at, slot) in all.iter_mut().enumerate().take(count) {
+        *slot = Rank::from_index(at as u32);
+    }
+    let _colour = cohort(rank, &all[..count]);
     // Every peer-link slot must hold a `MAX_FRAME` frame, and the arena is fixed before entry, so
     // a launch that provisioned less is refused here rather than at its first long frame.
-    if env.fabric.layout().capacity() < MAX_FRAME.get() {
-        return Err(refuse(rank, BackendFault::Storage));
+    if (env.fabric.layout().capacity() as usize) < MAX_FRAME {
+        return Err(refuse(me, BackendFault::Storage));
     }
 
     // `Links::open` refuses only a rank outside the launch.
     let links =
-        Links::open(&env.fabric, env.rank.get(), env.size).map_err(|_| refuse(rank, outside))?;
-
-    let mut hosts = [Rank::from_index(0); MAX_RANKS];
-    // Every rank of a launch shares the device's memory, so every rank's leader is the first. The
-    // table is one entry per rank and not one entry, which would say the launch has one rank.
-    for slot in hosts.iter_mut().take(count) {
-        *slot = launch[0];
-    }
+        Links::open(&env.fabric, env.rank.get(), env.size).map_err(|_| refuse(me, outside))?;
+    let hosts = [Rank::from_index(0); MAX_RANKS];
+    // Every rank of a launch shares the device's memory, so every rank's leader is contract rank
+    // zero. The table is one entry per rank and not one entry, which would say the launch has one
+    // rank.
 
     // The worker end of the leader route, when the declaration names a leader for this worker. The
     // geometry comes from the declaration, not from the environment: both ends must agree on it and
@@ -221,10 +230,10 @@ pub fn init(
         None => None,
         Some(_) => {
             if env.leader_region.is_null() {
-                return Err(refuse(rank, BackendFault::Storage));
+                return Err(refuse(me, BackendFault::Storage));
             }
             let route =
-                Route::sized(count as u32).map_err(|_| refuse(rank, BackendFault::Storage))?;
+                Route::sized(count as u32).map_err(|_| refuse(me, BackendFault::Storage))?;
             // SAFETY: the launch prepared this region for exactly this route and owns it for the
             // life of the job; this worker is the only producer on its up link and the only
             // consumer of its down link.
@@ -235,6 +244,7 @@ pub fn init(
     Ok(Context {
         rank,
         size: count as u32,
+        launch: launched,
         links,
         leader,
         layout: env.fabric.layout(),
@@ -280,7 +290,7 @@ pub fn done<A>(_cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(),
 /// `Full`. Not the caller's input, so it is the backend's own fault.
 fn internal(cx: &Context, operation: &'static str) -> Error {
     Error::Failed(Failure {
-        participant: cx.rank,
+        participant: Participant::Worker(cx.rank),
         operation,
         kind: FailureKind::Backend(BackendFault::Internal),
     })
@@ -295,15 +305,45 @@ pub fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result
             .tag
             .ok_or(Error::Invalid(Invalid::LaneNotConfigured))?,
     };
-    match peers::try_send(&mut cx.links, to.get(), u32::from(tag.get()), data) {
+    if data.len() > MAX_FRAME {
+        return Err(Error::TooLarge { limit: MAX_FRAME });
+    }
+    let link = launch_of(&cx.launch[..cx.size as usize], to)?.get();
+    match peers::try_send(&mut cx.links, link, u32::from(tag.get()), data) {
         Ok(()) => Ok(()),
         Err(Refused::Full) => Err(Error::Full),
-        Err(Refused::TooLarge) => Err(Error::TooLarge {
-            limit: FrameBytes::new(cx.layout.capacity()),
-        }),
         Err(Refused::NoSuchPeer) => Err(Error::Invalid(Invalid::RankOutsideJob)),
-        Err(Refused::Empty | Refused::TooSmall { .. }) => Err(internal(cx, "send")),
+        // `init` refused a slot smaller than `MAX_FRAME`, so a slot refusing a frame this size is
+        // the backend's own fault.
+        Err(Refused::TooLarge | Refused::Empty | Refused::TooSmall { .. }) => {
+            Err(internal(cx, "send"))
+        }
     }
+}
+
+/// A contract rank's launch rank: the link index the launch's arena is addressed by. The one
+/// place a contract rank becomes a launch rank here.
+fn launch_of(launched: &[Launch], contract: Rank) -> Result<Launch, Error> {
+    launched
+        .get(contract.get() as usize)
+        .copied()
+        .ok_or(Error::Invalid(Invalid::RankOutsideJob))
+}
+
+/// A launch rank's contract rank, the one place a link index becomes a participant again. This is
+/// where a frame's `src` is translated, so a link index is never mistaken for a contract rank.
+fn contract_of(launched: &[Launch], launch: Launch) -> Option<Rank> {
+    launched
+        .iter()
+        .position(|&l| l == launch)
+        .map(|at| Rank::from_index(at as u32))
+}
+
+/// The receive room a link is told about: no frame exceeds `MAX_FRAME`, so a longer buffer is
+/// offered as `MAX_FRAME` bytes and the link never sees a length it would have to narrow.
+fn room(out: &mut [u8]) -> &mut [u8] {
+    let room = out.len().min(MAX_FRAME);
+    &mut out[..room]
 }
 
 /// Take one frame from any source, into the caller's buffer, in one pass over the sources.
@@ -314,26 +354,30 @@ pub fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result
 /// nobody declared.
 pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     let mut needed = 0u32;
-    for src in 0..cx.size {
-        match peers::try_recv(&mut cx.links, src, out) {
-            Ok(Message { src, tag, len }) => {
-                // The tag word was written from a `u16` by the link's only producer.
+    let out = room(out);
+    for source in 0..cx.size {
+        let launch = cx.launch[source as usize];
+        match peers::try_recv(&mut cx.links, launch.get(), out) {
+            Ok(Message { tag, len, src }) => {
+                // The tag word was written from a `u16` by the link's only producer. The source
+                // word is a launch rank, so it becomes a contract rank here and nowhere else.
                 return Ok(Some(Frame::new(
-                    Rank::from_index(src),
+                    contract_of(&cx.launch[..cx.size as usize], Launch::new(src))
+                        .ok_or(Error::Invalid(Invalid::RankOutsideJob))?,
                     Tag::new(tag as u16),
-                    FrameBytes::new(len),
+                    len as usize,
                 )));
             }
             Err(Refused::TooSmall { needed: n }) => needed = needed.max(n),
-            // A source with nothing waiting, and a source that is not a participant at all, are
-            // both "no frame here"; the destination check belongs to a send.
-            Err(Refused::Empty | Refused::NoSuchPeer) => {}
-            Err(Refused::Full | Refused::TooLarge) => return Err(internal(cx, "recv")),
+            Err(Refused::Empty) => {}
+            Err(Refused::Full | Refused::TooLarge | Refused::NoSuchPeer) => {
+                return Err(internal(cx, "recv"));
+            }
         }
     }
     if needed > 0 {
         return Err(Error::TooSmall {
-            needed: FrameBytes::new(needed),
+            needed: needed as usize,
         });
     }
     Ok(None)
@@ -364,7 +408,7 @@ pub fn reshape(
     cx: &mut Context,
     workers: &[Rank],
     edges: &[Edge],
-    bytes: FrameBytes,
+    bytes: usize,
     tag: Tag,
 ) -> Result<(), Error> {
     if workers.windows(2).any(|w| w[0] >= w[1]) {
@@ -383,10 +427,8 @@ pub fn reshape(
             return Err(Error::Invalid(Invalid::EdgeOutsideWorkers));
         }
     }
-    if bytes.get() > cx.layout.capacity() {
-        return Err(Error::TooLarge {
-            limit: FrameBytes::new(cx.layout.capacity()),
-        });
+    if bytes > MAX_FRAME {
+        return Err(Error::TooLarge { limit: MAX_FRAME });
     }
     if edges
         .iter()

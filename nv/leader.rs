@@ -31,7 +31,7 @@ use std::sync::Mutex;
 
 use super::{Context, Environment};
 use crate::contract::{
-    BackendFault, Deployment, Error, Failure, FailureKind, Frame, FrameBytes, Invalid, Rank, Tag,
+    BackendFault, Deployment, Error, Failure, FailureKind, Frame, Invalid, Participant, Rank, Tag,
 };
 use crate::nv::error::{LayoutError, RecvError, SendError};
 use crate::nv::layout::Layout;
@@ -45,7 +45,7 @@ pub const DEPTH: u32 = 4;
 
 /// The largest frame a control slot carries: `MAX_FRAME`, because the contract promises it on the
 /// leader route too, and a log block is the largest thing a worker sends its leader.
-pub const CAPACITY: u32 = super::MAX_FRAME.get();
+pub const CAPACITY: u32 = super::MAX_FRAME as u32;
 
 /// The geometry of a leader route: how many workers, and how big their links are.
 #[derive(Clone, Copy)]
@@ -137,8 +137,9 @@ unsafe fn publish(
         return Err(SendError::Full);
     }
     let words = data.len().div_ceil(4);
+    let len = u32::try_from(data.len()).map_err(|_| SendError::TooLarge)?;
     unsafe {
-        slot.add(1).write(data.len() as u32);
+        slot.add(1).write(len);
         slot.add(2).write(src);
         slot.add(3).write(tag);
         for word in 0..words {
@@ -202,6 +203,8 @@ unsafe fn consume(
 /// `hosts` and `cohort`, and nothing here needs one. What it addresses with is the worker's
 /// contract rank, which is a position in the declaration rather than an identity of its own.
 pub struct Leader {
+    /// Who this leader's failures are observed by: its launch rank, since it has no contract rank.
+    me: Participant,
     region: *mut u32,
     route: Route,
     /// Behind a lock because §4 gives `send` and `recv` a shared borrow, and the sequence counters
@@ -217,30 +220,26 @@ struct Cursor {
     departing: u32,
 }
 
-/// The number a leader's own failures are reported as observed by: a leader is not a participant
-/// and has no rank, and `0` is what the MPI backends report for the same reason.
-const LEADER: Rank = Rank::from_index(0);
-
-fn opening(fault: BackendFault) -> Failure {
+fn opening(participant: Participant, fault: BackendFault) -> Failure {
     Failure {
-        participant: LEADER,
+        participant,
         operation: "leader::open",
         kind: FailureKind::Backend(fault),
     }
 }
 
-fn poisoned(operation: &'static str) -> Error {
+fn poisoned(participant: Participant, operation: &'static str) -> Error {
     Error::Failed(Failure {
-        participant: LEADER,
+        participant,
         operation,
         kind: FailureKind::Backend(BackendFault::Internal),
     })
 }
 
-/// A slot header's words as a frame. The tag word was written from a `u16` by the only producer on
-/// the link, so narrowing it back loses nothing.
-fn frame(source: Rank, message: Message) -> Frame {
-    Frame::new(source, Tag::new(message.tag as u16), FrameBytes::new(message.len))
+/// A slot header's tag word. It was written from a `u16` by the only producer on the link, so
+/// narrowing it back loses nothing.
+fn tag(message: Message) -> Tag {
+    Tag::new(message.tag as u16)
 }
 
 impl Leader {
@@ -252,16 +251,20 @@ impl Leader {
     pub fn open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure> {
         if deployment.leaders().is_none() {
             // A process that opened the route anyway is a process the launch did not ask for.
-            return Err(opening(BackendFault::Invalid(Invalid::NoLeader)));
+            return Err(opening(
+                Participant::Entering(Some(env.rank)),
+                BackendFault::Invalid(Invalid::NoLeader),
+            ));
         }
+        let me = Participant::Leader(env.rank);
         let ranks = u32::try_from(deployment.workers().len())
-            .map_err(|_| opening(BackendFault::Invalid(Invalid::Unrepresentable)))?;
+            .map_err(|_| opening(me, BackendFault::Invalid(Invalid::Unrepresentable)))?;
         if env.leader_region.is_null() {
             // Refused rather than given an empty route, because an empty route is a leader that
             // silently hears nobody.
-            return Err(opening(BackendFault::Storage));
+            return Err(opening(me, BackendFault::Storage));
         }
-        let route = Route::sized(ranks).map_err(|_| opening(BackendFault::Storage))?;
+        let route = Route::sized(ranks).map_err(|_| opening(me, BackendFault::Storage))?;
         let idle = Cursor {
             arriving: 0,
             departing: 0,
@@ -269,6 +272,7 @@ impl Leader {
         // The launch prepared this region for exactly this route and owns it for the life of the
         // job; nothing else produces on the down links or consumes the up links.
         Ok(Leader {
+            me,
             region: env.leader_region,
             route,
             cursors: Mutex::new(vec![idle; ranks as usize].into_boxed_slice()),
@@ -283,7 +287,10 @@ impl Leader {
         if to.get() >= self.route.ranks() {
             return Err(Error::Invalid(Invalid::RankOutsideJob));
         }
-        let mut cursors = self.cursors.lock().map_err(|_| poisoned("leader::send"))?;
+        if data.len() > super::MAX_FRAME {
+            return Err(Error::TooLarge { limit: super::MAX_FRAME });
+        }
+        let mut cursors = self.cursors.lock().map_err(|_| poisoned(self.me, "leader::send"))?;
         let cursor = &mut cursors[to.get() as usize];
         // SAFETY: `open`'s region, and the lock makes this the only producer on the down links.
         let link = unsafe { self.route.down(self.region, to.get()) };
@@ -295,7 +302,7 @@ impl Leader {
             }
             Err(SendError::Full) => Err(Error::Full),
             Err(SendError::TooLarge) => Err(Error::TooLarge {
-                limit: FrameBytes::new(self.route.layout().capacity()),
+                limit: self.route.layout().capacity() as usize,
             }),
         }
     }
@@ -306,7 +313,8 @@ impl Leader {
     /// that the one checked first was. A leader that polled only its first worker would be a
     /// leader that could not hear a job that was still running.
     pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
-        let mut cursors = self.cursors.lock().map_err(|_| poisoned("leader::recv"))?;
+        let out = super::room(out);
+        let mut cursors = self.cursors.lock().map_err(|_| poisoned(self.me, "leader::recv"))?;
         for source in 0..self.route.ranks() {
             let cursor = &mut cursors[source as usize];
             // SAFETY: as `send`, as the only consumer on the up links.
@@ -314,12 +322,13 @@ impl Leader {
             match unsafe { consume(link, self.route.layout(), cursor.arriving, out) } {
                 Ok(message) => {
                     cursor.arriving = cursor.arriving.wrapping_add(1);
-                    return Ok(Some(frame(Rank::from_index(source), message)));
+                    let len = message.len as usize;
+                    return Ok(Some(Frame::new(Rank::from_index(source), tag(message), len)));
                 }
                 Err(RecvError::Empty) => {}
                 Err(RecvError::TooSmall { needed }) => {
                     return Err(Error::TooSmall {
-                        needed: FrameBytes::new(needed),
+                        needed: needed as usize,
                     });
                 }
             }
@@ -348,6 +357,9 @@ pub use sim::Worker;
 ///
 /// No destination, because a worker is the producer on exactly one link and the route knows which.
 pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
+    if data.len() > super::MAX_FRAME {
+        return Err(Error::TooLarge { limit: super::MAX_FRAME });
+    }
     let worker = cx.leader()?;
     // SAFETY: the region belongs to the launch, this worker is its only producer on the up link,
     // and `cx` gives one worker end to one caller.
@@ -355,23 +367,21 @@ pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
         Ok(()) => Ok(()),
         Err(SendError::Full) => Err(Error::Full),
         Err(SendError::TooLarge) => Err(Error::TooLarge {
-            limit: FrameBytes::new(CAPACITY),
+            limit: super::MAX_FRAME,
         }),
     }
 }
 
 /// A worker's receive: the leader's next frame, as `(tag, length)`.
-pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, FrameBytes)>, Error> {
+pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, usize)>, Error> {
+    let out = super::room(out);
     let worker = cx.leader()?;
     // SAFETY: as `send`, on this worker's down link.
     match unsafe { worker.recv(out) } {
-        Ok(message) => {
-            let frame = frame(LEADER, message);
-            Ok(Some((frame.tag(), frame.len())))
-        }
+        Ok(message) => Ok(Some((tag(message), message.len as usize))),
         Err(RecvError::Empty) => Ok(None),
         Err(RecvError::TooSmall { needed }) => Err(Error::TooSmall {
-            needed: FrameBytes::new(needed),
+            needed: needed as usize,
         }),
     }
 }

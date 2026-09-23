@@ -33,7 +33,8 @@ impl Worker {
     /// As the transport's own send, on this worker's up link.
     #[inline(always)]
     pub unsafe fn send(&mut self, tag: u32, data: &[u8]) -> Result<(), SendError> {
-        unsafe { self.tx.send(tag, data.as_ptr(), data.len() as u32) }
+        let len = u32::try_from(data.len()).map_err(|_| SendError::TooLarge)?;
+        unsafe { self.tx.send(tag, data.as_ptr(), len) }
     }
 
     /// # Safety
@@ -41,6 +42,8 @@ impl Worker {
     /// As the transport's own receive, on this worker's down link.
     #[inline(always)]
     pub unsafe fn recv(&mut self, out: &mut [u8]) -> Result<Message, RecvError> {
-        unsafe { self.rx.recv(out.as_mut_ptr(), out.len() as u32) }
+        // A buffer beyond `u32::MAX` bytes holds any frame a slot can, so its room saturates.
+        let room = u32::try_from(out.len()).unwrap_or(u32::MAX);
+        unsafe { self.rx.recv(out.as_mut_ptr(), room) }
     }
 }

@@ -5,10 +5,16 @@
 // promises to distinguish. `Context`, `Environment` and `Shared` are *not* here, because those are
 // where a backend's storage, identity and lifetime actually differ.
 //
-// `Rank`, `Tag` and `FrameBytes` are newtypes with private fields so that a rank cannot be passed
-// where a byte count was meant, and a backend converts each at its own boundary with a check: a
-// value that does not fit is an `Invalid` rather than a truncation, because a truncated rank is a
-// frame delivered to the wrong participant.
+// `Rank` and `Tag` are newtypes with private fields so that a rank cannot be passed where a tag
+// was meant, and a backend converts each at its own boundary with a check: a value that does not
+// fit is an `Invalid` rather than a truncation, because a truncated rank is a frame delivered to
+// the wrong participant.
+//
+// `Rank` and `Launch` are two identities and never interchangeable. A `Rank` is a contract rank:
+// a participant's dense index in the cohort. A `Launch` is a launch rank: the number the transport
+// itself assigned the process. The same contract rank is a different launch rank in a different
+// job, so a backend converts between them in exactly one place and the types force every other
+// use through it.
 //
 // `Span` is an integer count of nanoseconds and deliberately not `std::time::Duration`: a device
 // has no such type, and a duration that carries its own clock is a duration that can be subtracted
@@ -33,6 +39,21 @@ impl Rank {
     }
 }
 
+/// A process's launch rank: the number the transport assigned it. Distinct from [`Rank`], which
+/// is its dense contract rank, and never passed where one is meant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Launch(u32);
+
+impl Launch {
+    pub const fn new(rank: u32) -> Self {
+        Launch(rank)
+    }
+
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
 /// A frame's tag. One width for every backend, so a program cannot depend on a tag one backend
 /// carries and another does not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -45,31 +66,6 @@ impl Tag {
 
     pub const fn get(self) -> u16 {
         self.0
-    }
-}
-
-/// A frame's length in bytes. Transport counts are `u32` on every backend, so a `usize` length is
-/// converted once, checked, where it enters.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FrameBytes(u32);
-
-impl FrameBytes {
-    pub(crate) const fn new(bytes: u32) -> Self {
-        FrameBytes(bytes)
-    }
-
-    pub const fn get(self) -> u32 {
-        self.0
-    }
-}
-
-impl TryFrom<usize> for FrameBytes {
-    type Error = Invalid;
-
-    fn try_from(bytes: usize) -> Result<Self, Invalid> {
-        u32::try_from(bytes)
-            .map(FrameBytes)
-            .map_err(|_| Invalid::Unrepresentable)
     }
 }
 
@@ -135,8 +131,8 @@ impl TryFrom<u8> for Backend {
 /// for the contradictions a backend could otherwise only resolve by guessing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Deployment<'a> {
-    workers: &'a [Rank],
-    leaders: Option<&'a [Rank]>,
+    workers: &'a [Launch],
+    leaders: Option<&'a [Launch]>,
 }
 
 impl<'a> Deployment<'a> {
@@ -146,9 +142,16 @@ impl<'a> Deployment<'a> {
     ///
     /// The other half of the check — a number outside the job — is the backend's, because only
     /// the backend knows how large its job is.
-    pub fn new(workers: &'a [Rank], leaders: Option<&'a [Rank]>) -> Result<Self, Invalid> {
+    pub fn new(workers: &'a [Launch], leaders: Option<&'a [Launch]>) -> Result<Self, Invalid> {
         if workers.is_empty() {
             return Err(Invalid::EmptyDeployment);
+        }
+        // A position in a list wider than `u32::MAX` cannot be a `Rank`, and every later
+        // narrowing of one is sound only because this refuses first.
+        if workers.len() > u32::MAX as usize
+            || leaders.is_some_and(|leaders| leaders.len() > u32::MAX as usize)
+        {
+            return Err(Invalid::Unrepresentable);
         }
         if workers
             .iter()
@@ -168,34 +171,44 @@ impl<'a> Deployment<'a> {
         Ok(Deployment { workers, leaders })
     }
 
-    pub(crate) fn workers(self) -> &'a [Rank] {
+    pub(crate) fn workers(self) -> &'a [Launch] {
         self.workers
     }
 
-    pub(crate) fn leaders(self) -> Option<&'a [Rank]> {
+    pub(crate) fn leaders(self) -> Option<&'a [Launch]> {
         self.leaders
     }
 
-    /// Which contract rank `rank` is, if it names a worker. A search, because the declaration is
-    /// the authority on the order.
-    #[cfg_attr(not(any(feature = "mpi", feature = "nv")), allow(dead_code))]
-    pub(crate) fn contract(self, rank: Rank) -> Option<Rank> {
+    /// Which contract rank `launch` is, if it names a worker. A search, because the declaration
+    /// is the authority on the order.
+    #[cfg_attr(not(feature = "mpi"), allow(dead_code))]
+    pub(crate) fn contract(self, launch: Launch) -> Option<Rank> {
         self.workers
             .iter()
-            .position(|&worker| worker == rank)
+            .position(|&worker| worker == launch)
             .map(|at| Rank(at as u32))
     }
 
     /// This worker's leader, by contract rank.
     #[cfg_attr(not(any(feature = "mpi", feature = "nv")), allow(dead_code))]
-    pub(crate) fn leader_of(self, contract: Rank) -> Option<Rank> {
+    pub(crate) fn leader_of(self, contract: Rank) -> Option<Launch> {
         self.leaders?.get(contract.0 as usize).copied()
     }
 
+    /// The distinct leaders in order of first appearance: one per host. The one rule for host
+    /// order, so an application numbering its hosts reads this rather than keeping a copy.
+    pub fn hosts(self) -> impl Iterator<Item = Launch> + 'a {
+        let leaders = self.leaders.unwrap_or(&[]);
+        (0..leaders.len()).filter_map(move |at| {
+            let leader = leaders[at];
+            (!leaders[..at].contains(&leader)).then_some(leader)
+        })
+    }
+
     /// The position of `leader` among the distinct leaders, in order of first appearance. Both
-    /// ends of a bridge derive their pairing from this one computation.
-    #[cfg_attr(not(feature = "mpi"), allow(dead_code))]
-    pub(crate) fn leader_index(self, leader: Rank) -> Option<usize> {
+    /// ends of a bridge derive their pairing from this one computation, and an application that
+    /// numbers its hosts by leader reads the same one rather than keeping a copy that can diverge.
+    pub fn leader_index(self, leader: Launch) -> Option<usize> {
         let leaders = self.leaders?;
         let first = leaders.iter().position(|&l| l == leader)?;
         Some(
@@ -265,6 +278,32 @@ pub enum FailureKind<A> {
     Application(A),
 }
 
+/// Who observed a [`Failure`].
+///
+/// A leader has no contract rank, and a process refused at entry has not been given one, so a bare
+/// `Rank` would have to invent one for them; rank zero invented is worker zero blamed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Participant {
+    /// A worker, by contract rank.
+    Worker(Rank),
+    /// A leader, by its launch rank.
+    Leader(Launch),
+    /// A process inside `init` or `Leader::open` that has no contract identity yet; `None` means
+    /// the transport has not yet assigned a launch rank.
+    Entering(Option<Launch>),
+}
+
+impl fmt::Display for Participant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Participant::Worker(rank) => write!(f, "worker {}", rank.0),
+            Participant::Leader(rank) => write!(f, "leader at launch rank {}", rank.0),
+            Participant::Entering(Some(rank)) => write!(f, "launch rank {}", rank.0),
+            Participant::Entering(None) => f.write_str("a process with no launch rank"),
+        }
+    }
+}
+
 /// A failure a participant can observe and record.
 ///
 /// A value the participant produces rather than a channel the backend writes to: stderr does not
@@ -273,7 +312,7 @@ pub enum FailureKind<A> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Failure<A = Infallible> {
     /// The participant that observed it.
-    pub participant: Rank,
+    pub participant: Participant,
     /// The operation it was in, as a name a reader can find in the source.
     pub operation: &'static str,
     pub kind: FailureKind<A>,
@@ -293,9 +332,9 @@ pub enum Error {
     /// The peer is gone.
     Closed,
     /// The frame exceeds what this route can carry.
-    TooLarge { limit: FrameBytes },
+    TooLarge { limit: usize },
     /// The caller's buffer is smaller than the frame. Nothing was consumed.
-    TooSmall { needed: FrameBytes },
+    TooSmall { needed: usize },
     Invalid(Invalid),
     /// A failure the participant observed. Fails the run; it is not a safe retry.
     Failed(Failure),
@@ -307,13 +346,13 @@ impl fmt::Display for Error {
             Error::Full => f.write_str("no capacity"),
             Error::Busy => f.write_str("busy"),
             Error::Closed => f.write_str("the peer is gone"),
-            Error::TooLarge { limit } => write!(f, "the frame exceeds the {}-byte limit", limit.0),
-            Error::TooSmall { needed } => write!(f, "the buffer needs {} bytes", needed.0),
+            Error::TooLarge { limit } => write!(f, "the frame exceeds the {}-byte limit", limit),
+            Error::TooSmall { needed } => write!(f, "the buffer needs {} bytes", needed),
             Error::Invalid(why) => write!(f, "invalid input: {why:?}"),
             Error::Failed(failure) => write!(
                 f,
-                "participant {} failed in {}: {:?}",
-                failure.participant.0, failure.operation, failure.kind
+                "{} failed in {}: {:?}",
+                failure.participant, failure.operation, failure.kind
             ),
         }
     }
@@ -337,12 +376,12 @@ pub enum Channel {
 pub struct Frame {
     source: Rank,
     tag: Tag,
-    len: FrameBytes,
+    len: usize,
 }
 
 impl Frame {
     #[cfg_attr(not(any(feature = "mpi", feature = "nv")), allow(dead_code))]
-    pub(crate) const fn new(source: Rank, tag: Tag, len: FrameBytes) -> Self {
+    pub(crate) const fn new(source: Rank, tag: Tag, len: usize) -> Self {
         Frame { source, tag, len }
     }
 
@@ -354,7 +393,7 @@ impl Frame {
         self.tag
     }
 
-    pub const fn len(&self) -> FrameBytes {
+    pub const fn len(&self) -> usize {
         self.len
     }
 }

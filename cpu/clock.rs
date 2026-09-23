@@ -22,9 +22,6 @@
 // its monotonic counter is per-device. `backend.md` §7 states what that means for a caller that
 // wants to stamp work running there.
 
-/// A span of host time, for NERVE's host control plane (`interface/control.rs`, `io/host.rs`).
-pub use std::time::Duration;
-
 use crate::contract::{ClockId, Reading, Span};
 
 /// The host's clock, as the portable reading.

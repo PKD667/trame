@@ -40,13 +40,14 @@ fn until<T>(mut attempt: impl FnMut() -> Result<Option<T>, Error>) -> Result<T, 
     }
 }
 
-/// The deployment the launch stated in `TRAME_WORKERS`.
-fn workers() -> Vec<trame::Rank> {
+/// The deployment the launch stated in `TRAME_WORKERS`, as launch ranks: every one is a worker and
+/// none leads. The deployment names launch ranks, and the contract ranks are the positions.
+fn workers() -> Vec<trame::Launch> {
     let stated = std::env::var(WORKERS).unwrap_or_else(|e| panic!("{WORKERS}: {e}"));
     let n: u32 = stated
         .parse()
         .unwrap_or_else(|_| panic!("{WORKERS}: `{stated}` is not a count"));
-    (0..n).map(trame::Rank::from_index).collect()
+    (0..n).map(trame::Launch::new).collect()
 }
 
 /// Bytes attached for buffered sends. The experiments send frames far below this; it is stated
@@ -179,13 +180,13 @@ impl Wire {
             let mut buf = vec![0u8; self.cap];
             match recv(&mut self.cx, &mut buf) {
                 Ok(Some(frame)) => {
-                    buf.truncate(frame.len().get() as usize);
+                    buf.truncate(frame.len());
                     return Ok(Some((frame.source().get(), frame.tag().get(), buf)));
                 }
                 Ok(None) => return Ok(None),
                 // The refusal consumed nothing, so asking again with a larger buffer is the whole
                 // fix and the frame is still there.
-                Err(Error::TooSmall { needed }) => self.cap = needed.get() as usize,
+                Err(Error::TooSmall { needed }) => self.cap = needed,
                 Err(e) => return Err(e),
             }
         }

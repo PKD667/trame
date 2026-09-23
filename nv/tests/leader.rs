@@ -1,6 +1,6 @@
 //! The leader route, both ends, on the host model.
 
-use crate::contract::{Deployment, Error, Rank, Tag};
+use crate::contract::{Deployment, Error, Launch, Rank, Tag};
 use crate::nv::Environment;
 use crate::nv::error::RecvError;
 use crate::nv::layout::Layout;
@@ -20,11 +20,11 @@ unsafe impl Sync for Region {}
 /// The leader of `workers`, over `region`. The leader's rank is one past the last worker.
 fn open(region: *mut u32, workers: &[u32]) -> Leader {
     let size = workers.len() as u32;
-    let workers: Vec<Rank> = workers.iter().copied().map(Rank::from_index).collect();
-    let leaders = vec![Rank::from_index(size); workers.len()];
+    let workers: Vec<Launch> = workers.iter().copied().map(Launch::new).collect();
+    let leaders = vec![Launch::new(size); workers.len()];
     Leader::open(
         Environment {
-            rank: Rank::from_index(size),
+            rank: Launch::new(size),
             size,
             fabric: Fabric::new(size, Layout::new(DEPTH, CAPACITY).expect("a valid layout")),
             segment: std::ptr::null_mut(),
@@ -53,7 +53,7 @@ fn a_leader_and_its_workers_talk_both_ways() {
             while heard.len() < 2 {
                 let mut buf = vec![0u8; CAPACITY as usize];
                 if let Some(frame) = leader.recv(&mut buf).expect("a frame") {
-                    let len = frame.len().get() as usize;
+                    let len = frame.len();
                     heard.push((frame.source(), frame.tag(), buf[..len].to_vec()));
                 }
             }

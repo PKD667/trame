@@ -32,7 +32,7 @@ impl Link {
             return Err(SendError::Full);
         }
 
-        self.arena[slot + 1] = data.len() as u32;
+        self.arena[slot + 1] = u32::try_from(data.len()).map_err(|_| SendError::TooLarge)?;
         self.arena[slot + 2] = src;
         self.arena[slot + 3] = tag;
         let payload = &mut self.arena[slot + 4..slot + self.layout.slot_words()];
