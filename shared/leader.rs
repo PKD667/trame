@@ -7,14 +7,14 @@
 //! worker population with unused fields, and what connects them is a **route of its own** rather
 //! than the message route with a filter on it.
 //!
-//! Concretely, the job is split into a worker group and a leader group and an inter-communicator is
-//! built between them. Three things follow, and each is the contract rather than a convenience:
+//! Concretely, the job is split into the worker world and individual leader groups. Each worker
+//! subgroup builds a bridge to its leader. Three things follow:
 //!
 //! - The worker group *is* the contract's participant set. A worker's rank in it is its contract
 //!   rank, `size` is how many there are, and the leader is not in it — so the leader is absent from
 //!   `size`, `rank`, `hosts` and `cohort` by construction rather than by remembering to exclude it.
-//! - The remote group's ranks *are* those same contract ranks, so `Frame::source` on the leader's
-//!   receive is a worker's contract rank directly and there is no renumber map to get wrong.
+//! - The bridge's remote ranks are subgroup positions, translated by `mine` to contract ranks
+//!   on the leader's receive.
 //! - Each end of the bridge has a known population and neither needs to name the other: a worker's
 //!   send has no destination because the leader end is one rank, and the leader's receive has no
 //!   source filter because every frame on it came from a worker. That is why §4 gives the worker no
@@ -26,19 +26,20 @@
 //! ends pass different arguments. So the raw interface is called and the code mapped, the same way
 //! and for the same reason as `MPI_Bsend` in `p2p`.
 
-use std::sync::Mutex;
+use std::marker::PhantomData;
+use std::num::NonZeroU64;
 
 use mpi::environment::Universe;
-use mpi::point_to_point::Message;
 use mpi::raw::traits::AsRaw;
 use mpi::topology::{Color, Communicator, InterCommunicator, SimpleCommunicator};
 
-use super::context::{Context, Environment, enter, refused};
+use super::context::{Context, Environment, Io, enter, refused};
 use super::p2p::{self, send_on, take};
 use crate::contract::{
-    BackendFault, Deployment, Error, Failure, FailureKind, Frame, Invalid, Launch, Participant, Rank,
-    Tag,
+    BackendFault, Deployment, Error, Failure, Frame, Handle, Invalid, Launch,
+    Participant, Rank, Tag,
 };
+use crate::invoke::Owner;
 
 /// The tag that labels the bridge's creation. It names the collective that builds the
 /// inter-communicator and is consumed by MPI's context-id machinery, so it never reaches a message
@@ -112,18 +113,15 @@ pub struct Leader {
     /// communicator the bridge was built against.
     _group: SimpleCommunicator,
     _universe: Universe,
-    /// A frame that was matched and did not fit the caller's buffer, for the same reason a
-    /// participant holds one: MPI has no un-probe, and a refusal must not consume the frame the
-    /// caller was told to grow for.
-    held: Mutex<Option<(Message, usize)>>,
+    // Auto traits match the nv backend's, so the public surface is the same on every backend.
+    _local: PhantomData<*const ()>,
 }
 
 impl Leader {
     /// Open the route. This is the leader process's MPI entry.
     ///
     /// A leader serves the workers the declaration assigns to it and no others, so it builds one
-    /// bridge to that group. Which group that is comes from the declaration alone: the same colour
-    /// arithmetic the workers run, which is why the two ends cannot disagree about the pairing.
+    /// bridge to their worker subgroup. Both ends derive the subgroup from the declaration.
     pub fn open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure> {
         let (universe, job, me, _) = enter(&env, "leader::open")?;
         let unentered = Participant::Entering(Some(me));
@@ -132,10 +130,10 @@ impl Leader {
             return Err(wrong(Invalid::NoLeader));
         }
 
-        // The odd half of the pair the workers' even colours name. A process the deployment does
-        // not name as a leader still takes part in the split, so the ranks that are do not hang.
+        // The same job split as `init`: workers all use colour zero, each leader gets its own
+        // group. A process the declaration does not name still takes part in this split.
         let index = deployment.leader_index(me);
-        let color = index.map_or(i32::MAX, |index| (index * 2 + 1) as i32);
+        let color = index.map_or(i32::MAX, |index| index as i32 + 1);
         let group = job
             .split_by_color_with_key(Color::with_value(color), 0)
             .ok_or(refused(unentered, "leader::open", BackendFault::Transport))?;
@@ -160,7 +158,7 @@ impl Leader {
             mine,
             _group: group,
             _universe: universe,
-            held: Mutex::new(None),
+            _local: PhantomData,
         })
     }
 
@@ -182,22 +180,15 @@ impl Leader {
     /// Every frame on this route came from a worker, so there is no source to filter and none is
     /// taken. `Frame::source` is the sending worker's contract rank.
     pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
-        let mut held = self.held.lock().map_err(|_| {
-            Error::Failed(Failure {
-                participant: self.me,
-                operation: "leader::recv",
-                kind: FailureKind::Backend(BackendFault::Internal),
-            })
-        })?;
-        let Some(frame) = p2p::take(&self.inter, &mut held, out)? else {
+        let Some((remote, tag, len)) = take(&self.inter, self.me, Owner::ALL, &mut 0, out)? else {
             return Ok(None);
         };
         // The remote rank is a position in this leader's group, not a contract rank: see `mine`.
-        let source = *self
-            .mine
-            .get(frame.source().get() as usize)
+        let source = usize::try_from(remote)
+            .ok()
+            .and_then(|at| self.mine.get(at).copied())
             .ok_or(Error::Invalid(Invalid::RankOutsideJob))?;
-        Ok(Some(Frame::new(source, frame.tag(), frame.len())))
+        Ok(Some(Frame::new(Some(source), tag, len)))
     }
 }
 
@@ -209,25 +200,68 @@ impl Leader {
 /// use: nothing.
 pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
     let me = Participant::Worker(cx.rank());
-    let (comm, _) = cx.leader_split().ok_or(Error::Invalid(Invalid::NoLeader))?;
+    let comm = cx.leader_route().ok_or(Error::Invalid(Invalid::NoLeader))?;
     send_on(comm, me, LEADER, tag, data)
 }
 
-/// A worker's receive: the leader's next frame, as `(tag, length)`.
-///
-/// No source, for the reason a worker's send has no destination: every frame on this route came
-/// from the leader.
-pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, usize)>, Error> {
-    let (comm, held) = cx
-        .leader_split()
-        .ok_or(Error::Invalid(Invalid::NoLeader))?;
-    let Some(frame) = take(comm, held, out)? else {
-        return Ok(None);
-    };
-    Ok(Some((frame.tag(), frame.len())))
+/// A worker's receive: the leader's next frame. It has no source, for the reason a worker's send
+/// has no destination: every frame on this route came from the leader.
+pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
+    let me = Participant::Worker(cx.rank());
+    let comm = cx.leader_route().ok_or(Error::Invalid(Invalid::NoLeader))?;
+    Ok(take(comm, me, Owner::ALL, &mut 0, out)?.map(|(_, tag, len)| Frame::new(None, tag, len)))
+}
+
+impl Io<'_> {
+    /// One frame to this worker's leader.
+    pub fn lead(&mut self, tag: Tag, data: &[u8]) -> Result<(), Error> {
+        let comm = self.leader.ok_or(Error::Invalid(Invalid::NoLeader))?;
+        send_on(comm, Participant::Worker(self.rank), LEADER, tag, data)
+    }
 }
 
 /// The leader's rank *in the worker group's view of the bridge*: the leader end is one rank, and
 /// this is its number. Not a contract rank, and not the launch's numbering either — it is the
 /// remote rank on this communicator, which is why nothing outside this module names it.
 const LEADER: Rank = Rank::from_index(0);
+
+/// The leader's published segment: it owns the mapping and the handle that names it.
+pub struct Published(
+    mpi_rma::Segment,
+    Handle,
+    // Auto traits match the nv backend's, so the public surface is the same on every backend.
+    PhantomData<*const ()>,
+);
+
+/// Publish `bytes` as `revision`: write the whole object, then publish the revision.
+///
+/// The token is this process's id, because the segment is a node-local object its creator names.
+pub fn publish(leader: &Leader, revision: NonZeroU64, bytes: &[u8]) -> Result<Published, Error> {
+    let token = std::process::id();
+    let length = u64::try_from(bytes.len()).map_err(|_| Error::Invalid(Invalid::Unrepresentable))?;
+    let size = bytes
+        .len()
+        .checked_add(64)
+        .ok_or(Error::Invalid(Invalid::Unrepresentable))?;
+    i64::try_from(size).map_err(|_| Error::Invalid(Invalid::Unrepresentable))?;
+    let segment = mpi_rma::Segment::create(&super::segment_name(token, revision), revision, bytes)
+        .map_err(|e| super::os_failure(leader.me, "publish", e))?;
+    Ok(Published(
+        segment,
+        Handle::new(revision, length, u64::from(token)),
+        PhantomData,
+    ))
+}
+
+/// The handle that names `segment` to its workers.
+pub fn handle(segment: &Published) -> Handle {
+    segment.1
+}
+
+/// Retire `segment`: unmap and unlink the publication.
+pub fn retire(leader: &Leader, mut segment: Published) -> Result<(), (Published, Error)> {
+    if let Err(e) = segment.0.retire() {
+        return Err((segment, super::os_failure(leader.me, "retire", e)));
+    }
+    Ok(())
+}

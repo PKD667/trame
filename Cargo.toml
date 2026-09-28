@@ -52,12 +52,11 @@ name = "pingpong"
 path = "experiments/pingpong.rs"
 required-features = ["mpi"]
 
-# Not a measurement: the evidence a `pressure` declaration needs. It asks whether an
-# exhausted attached buffer is *reported* or absorbed, which decides whether this family's message
-# route may be declared `reported` or must be declared `unreported`.
+# The conformance claims of `backend.md`, one process per participant; `scripts/conform.sh`
+# launches it. nv's host model runs the same body from `nv/tests/conformance.rs`.
 [[example]]
-name = "pressure"
-path = "experiments/pressure.rs"
+name = "conformance"
+path = "conformance/main.rs"
 required-features = ["mpi"]
 
 [[example]]
@@ -75,18 +74,9 @@ name = "traffic"
 path = "experiments/traffic.rs"
 required-features = ["mpi"]
 
-# The resident-device evidence (`backend.md` §10), on a real GPU through `cargo-nvmpi`: a round
-# trip; a short buffer, a full lane and a peer that never runs; and a partitioned dispatch region.
-[[example]]
-name = "nv-pingpong"
-path = "experiments/nv/pingpong.rs"
-required-features = ["cuda"]
-
-[[example]]
-name = "nv-cases"
-path = "experiments/nv/cases.rs"
-required-features = ["cuda"]
-
+# The resident-device evidence (`backend.md` §10), on a real GPU through `cargo-nv`: a
+# partitioned dispatch region. The ring measurements name machinery below the surface, so they are
+# ignored tests in `nv/measure/`.
 [[example]]
 name = "nv-declared"
 path = "experiments/nv/declared.rs"

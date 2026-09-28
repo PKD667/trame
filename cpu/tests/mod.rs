@@ -3,3 +3,5 @@
 // about the backend contract the transport surface states.
 
 mod clock;
+// `#[parallel]` through `invoke!`, and `concurrent!`'s scheduling, on host threads.
+mod invoke;

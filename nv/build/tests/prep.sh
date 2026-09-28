@@ -96,6 +96,6 @@ fi
 
 run cargo oxide setup
 
-# Build the nvmpi cargo subcommand so tests can run `cargo nvmpi run`.
-cd "$NVMPI_PROJECT/trame/cargo-nvmpi"
+# Build nv's cargo subcommand so tests can run `cargo nv run`.
+cd "$NVMPI_PROJECT/trame/nv/cargo"
 run cargo build --release

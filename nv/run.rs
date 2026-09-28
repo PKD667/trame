@@ -6,6 +6,8 @@
 //! in source order, one step per live arm per turn.
 
 use super::warp::{self, LANES, Split};
+use super::{Context, Io};
+use crate::invoke::{Owner, Receive};
 use crate::{Invoked, Keyed, Step};
 
 /// Lane `k` runs items `k`, `k + 32`, … of the list.
@@ -99,6 +101,67 @@ where
     B: FnMut(&mut Arms<E, N>),
 {
     let mut arms = Arms {
+        done: [false; N],
+        at: 0,
+        failed: None,
+    };
+    loop {
+        arms.at = 0;
+        body(&mut arms);
+        if let Some(e) = arms.failed.take() {
+            return Err(e);
+        }
+        if arms.done.iter().all(|&done| done) {
+            return Ok(());
+        }
+    }
+}
+
+/// As `Arms`, lending each arm the whole context for the length of its step.
+pub struct IoArms<'c, 'r, E, const N: usize> {
+    cx: &'c mut Context,
+    receive: &'r [Receive<'r>; N],
+    leader_first: [bool; N],
+    done: [bool; N],
+    at: usize,
+    failed: Option<E>,
+}
+
+impl<E, const N: usize> IoArms<'_, '_, E, N> {
+    pub fn arm<F>(&mut self, arm: &mut F)
+    where
+        F: for<'p> FnMut(&mut Io<'p>) -> Result<Step, E> + Send,
+    {
+        let at = self.at;
+        self.at += 1;
+        if self.failed.is_some() || self.done[at] {
+            return;
+        }
+        let owner = Owner::new(self.receive, at);
+        let step = arm(&mut Io::new(&mut *self.cx, owner, &mut self.leader_first[at]));
+        uniform(&step);
+        match step {
+            Ok(Step::Progress | Step::Idle) => {}
+            Ok(Step::Done) => self.done[at] = true,
+            Err(e) => self.failed = Some(e),
+        }
+    }
+}
+
+/// `concurrent` given a context: the arms take turns on the warp, each lent `cx` for its step.
+#[doc(hidden)]
+pub fn concurrent_io<'c, 'r, B, E: Send, const N: usize>(
+    cx: &'c mut Context,
+    receive: &'r [Receive<'r>; N],
+    mut body: B,
+) -> Result<(), E>
+where
+    B: FnMut(&mut IoArms<'c, 'r, E, N>),
+{
+    let mut arms = IoArms {
+        cx,
+        receive,
+        leader_first: [false; N],
         done: [false; N],
         at: 0,
         failed: None,

@@ -1,4 +1,5 @@
 use super::*;
+use cuda_device::atomic::SystemAtomicU32;
 
 pub struct Tx {
     ptr: *mut u32,
@@ -23,12 +24,30 @@ impl Tx {
     /// identical arguments.
     #[inline(always)]
     pub unsafe fn new(ptr: *mut u32, layout: Layout, src: u32) -> Self {
+        unsafe { Self::resume(ptr, layout, src, 0) }
+    }
+
+    /// The endpoint of a link whose sequence is held apart from its pointer, resumed for one call;
+    /// [`Tx::seq`] is what to hold after it. `CudaTransport` holds its links this way because
+    /// cuda-oxide cannot lower an array of pointer-bearing endpoints inside an enum's payload, and
+    /// `init` returns its context in a `Result`.
+    ///
+    /// # Safety
+    ///
+    /// As [`Tx::new`], and `seq` is the sequence this link's sender last reached.
+    #[inline(always)]
+    pub(crate) unsafe fn resume(ptr: *mut u32, layout: Layout, src: u32, seq: u32) -> Self {
         Self {
             ptr,
             layout,
             src,
-            seq: 0,
+            seq,
         }
+    }
+
+    #[inline(always)]
+    pub(crate) fn seq(&self) -> u32 {
+        self.seq
     }
 
     /// Attempts one warp-cooperative send.
@@ -47,7 +66,8 @@ impl Tx {
         let slot = self.layout.slot(self.seq);
         let state_ptr = unsafe { self.ptr.add(slot) };
         let observed = if lane == 0 {
-            unsafe { DeviceAtomicU32::from_ptr(state_ptr) }.load(AtomicOrdering::Acquire)
+            // System scope: the leader end of this link is a CPU thread, and device scope does not order against it.
+            unsafe { SystemAtomicU32::from_ptr(state_ptr) }.load(AtomicOrdering::Acquire)
         } else {
             0
         };
@@ -89,7 +109,7 @@ impl Tx {
         }
         warp::sync_mask(WARP);
         if lane == 0 {
-            unsafe { DeviceAtomicU32::from_ptr(state_ptr) }
+            unsafe { SystemAtomicU32::from_ptr(state_ptr) }
                 .store(self.seq.wrapping_add(1), AtomicOrdering::Release);
         }
         warp::sync_mask(WARP);

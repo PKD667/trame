@@ -14,18 +14,16 @@
 // a global, so this test cannot pass against that design at all.
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::num::NonZeroU32;
 
 use crate::contract::{
     BackendFault, Channel, Deployment, Edge, Error, FailureKind, Invalid, Launch, Rank, Tag,
 };
+use crate::nv::launch::{self, Description};
 use crate::nv::layout::Layout;
 use crate::nv::peers::Fabric;
-use crate::nv::{self, Environment, MAX_FRAME};
-
-/// The segment every test's launch publishes into. Small: the partition rule is what is under
-/// test, not the size.
-const SEGMENT: usize = 64;
+use crate::nv::{self, Environment, MAX_FRAME, warp};
 
 fn r(index: u32) -> Rank {
     Rank::from_index(index)
@@ -49,37 +47,45 @@ fn launches(indices: &[u32]) -> Vec<Launch> {
 }
 
 /// Every participant's entry into one launch whose links have `layout`.
-///
-/// The segment is leaked because the launch owns it for its whole life and the contexts borrow it,
-/// which is exactly the lifetime the device's arena has.
 fn enter(size: u32, layout: Layout) -> Vec<Result<nv::Context, crate::Failure>> {
     let workers: Vec<Launch> = (0..size).map(l).collect();
     enter_as(&workers, layout)
 }
 
 /// As [`enter`], with the worker list in contract-rank order; the result is by launch rank.
+///
+/// This thread is the model's launcher: it writes the description, and each participant then
+/// discovers it as the warp whose index is its launch rank.
 fn enter_as(workers: &[Launch], layout: Layout) -> Vec<Result<nv::Context, crate::Failure>> {
     let size = workers.len() as u32;
-    let fabric = Fabric::new(size, layout);
-    let segment: &'static mut [u8] = vec![0u8; SEGMENT].leak();
-    (0..size)
-        .map(|rank| {
-            nv::init(
-                Environment {
-                    rank: l(rank),
-                    size,
-                    fabric: fabric.clone(),
-                    segment: segment.as_mut_ptr(),
-                    segment_bytes: segment.len(),
-                    // No leader in this launch, which is what a null region says.
-                    leader_region: std::ptr::null_mut(),
-                },
-                Deployment::new(workers, None).expect("every rank a worker"),
-                // One device: every rank is in the one cohort, whatever colour the rule returns.
-                |_, _| 0,
-            )
-        })
-        .collect()
+    // No leader in this launch, which is what a null region says.
+    let description = Description::stated(
+        size,
+        None,
+        Fabric::new(size, layout),
+        std::ptr::null_mut(),
+        0,
+    );
+    std::thread::scope(|scope| {
+        let entered: Vec<_> = (0..size)
+            .map(|rank| {
+                let description = description.clone();
+                scope.spawn(move || {
+                    launch::describe(description);
+                    warp::sim_warp(rank, || entry(workers))
+                })
+            })
+            .collect();
+        entered.into_iter().map(|rank| rank.join().expect("a worker does not panic")).collect()
+    })
+}
+
+/// One participant's entry, through the discovery path every caller uses.
+fn entry(workers: &[Launch]) -> Result<nv::Context, crate::Failure> {
+    nv::init(
+        Environment::default(),
+        Deployment::new(workers, None).expect("every rank a worker"),
+    )
 }
 
 /// One launch provisioned for `MAX_FRAME`, as a value per participant.
@@ -89,6 +95,77 @@ fn launch(size: u32, depth: u32) -> Vec<nv::Context> {
         .into_iter()
         .map(|cx| cx.expect("a launch the model can build"))
         .collect()
+}
+
+/// A two-worker description with a valid header, for a test to spoil.
+fn described() -> Description {
+    let layout = Layout::new(2, MAX_FRAME as u32).expect("a valid layout");
+    Description::stated(
+        2,
+        None,
+        Fabric::new(2, layout),
+        std::ptr::null_mut(),
+        0,
+    )
+}
+
+/// What rank 0's entry says of `description`.
+fn entering(description: Description) -> Result<nv::Context, crate::Failure> {
+    let workers = launches(&[0, 1]);
+    std::thread::scope(|scope| {
+        let other = description.clone();
+        let peer = scope.spawn(|| {
+            launch::describe(other);
+            warp::sim_warp(1, || entry(&workers))
+        });
+        launch::describe(description);
+        let first = warp::sim_warp(0, || entry(&workers));
+        let second = peer.join().expect("the other worker does not panic");
+        assert_eq!(first.as_ref().err().map(|f| f.kind), second.as_ref().err().map(|f| f.kind));
+        first
+    })
+}
+
+fn refusal(result: Result<nv::Context, crate::Failure>) -> FailureKind<Infallible> {
+    result.err().expect("refused at entry").kind
+}
+
+const INCONSISTENT: FailureKind<Infallible> =
+    FailureKind::Backend(BackendFault::Invalid(Invalid::InconsistentLaunch));
+
+#[test]
+fn a_valid_description_initialises() {
+    let cx = entering(described()).expect("a consistent launch");
+    assert_eq!((nv::rank(&cx), nv::size(&cx)), (r(0), 2));
+}
+
+#[test]
+fn a_launch_that_wrote_nothing_is_refused() {
+    let unwritten = std::thread::spawn(|| refusal(entry(&launches(&[0]))));
+    assert_eq!(unwritten.join().expect("no panic"), INCONSISTENT);
+}
+
+#[test]
+fn a_wrong_header_is_refused() {
+    let mut magic = described();
+    magic.magic ^= 1;
+    assert_eq!(refusal(entering(magic)), INCONSISTENT);
+    let mut version = described();
+    version.version += 1;
+    assert_eq!(refusal(entering(version)), INCONSISTENT);
+    let mut bytes = described();
+    bytes.bytes -= 8;
+    assert_eq!(refusal(entering(bytes)), INCONSISTENT);
+}
+
+#[test]
+fn a_warp_outside_the_described_launch_is_refused() {
+    launch::describe(described());
+    let outside = warp::sim_warp(2, || entry(&launches(&[0, 1])));
+    assert_eq!(
+        refusal(outside),
+        FailureKind::Backend(BackendFault::Invalid(Invalid::RankOutsideJob))
+    );
 }
 
 #[test]
@@ -116,10 +193,10 @@ fn every_participant_has_its_own_identity_and_endpoints() {
     nv::send(&mut a[1], r(0), Channel::Message(t(2)), b"from one").expect("accepted");
     let mut buf = [0u8; 16];
     let got = nv::recv(&mut a[0], &mut buf).expect("no fault").expect("one frame");
-    assert_eq!((got.source(), got.tag()), (r(1), t(2)));
+    assert_eq!((got.source(), got.tag()), (Some(r(1)), t(2)));
     assert_eq!(&buf[..got.len()], b"from one");
     let got = nv::recv(&mut a[1], &mut buf).expect("no fault").expect("one frame");
-    assert_eq!((got.source(), got.tag()), (r(0), t(1)));
+    assert_eq!((got.source(), got.tag()), (Some(r(0)), t(1)));
     assert_eq!(&buf[..got.len()], b"from zero");
 }
 
@@ -137,11 +214,11 @@ fn contract_ranks_become_launch_ranks_at_the_link_and_back() {
     let mut buf = [0u8; 16];
     assert_eq!(nv::recv(&mut cx[1], &mut buf), Ok(None));
     let got = nv::recv(&mut cx[0], &mut buf).expect("no fault").expect("one frame");
-    assert_eq!((got.source(), got.tag()), (r(0), t(5)));
+    assert_eq!((got.source(), got.tag()), (Some(r(0)), t(5)));
     assert_eq!(&buf[..got.len()], b"to one");
     nv::send(&mut cx[0], r(0), Channel::Message(t(6)), b"to zero").expect("accepted");
     let got = nv::recv(&mut cx[1], &mut buf).expect("no fault").expect("one frame");
-    assert_eq!((got.source(), got.tag()), (r(1), t(6)));
+    assert_eq!((got.source(), got.tag()), (Some(r(1)), t(6)));
     assert_eq!(&buf[..got.len()], b"to zero");
 }
 
@@ -152,7 +229,7 @@ fn a_frame_arrives_with_its_tag_and_bytes_paired() {
     nv::send(&mut cx[0], r(1), Channel::Message(t(10)), b"second").expect("accepted");
     let mut buf = [0u8; 32];
     let first = nv::recv(&mut cx[1], &mut buf).expect("no fault").expect("a frame");
-    assert_eq!((first.source(), first.tag(), first.len()), (r(0), t(9), 7));
+    assert_eq!((first.source(), first.tag(), first.len()), (Some(r(0)), t(9), 7));
     assert_eq!(&buf[..7], b"payload");
     // FIFO per (source, destination, tag) holds across the two different tags on one link.
     let second = nv::recv(&mut cx[1], &mut buf).expect("no fault").expect("a frame");
@@ -216,13 +293,29 @@ fn a_frame_larger_than_max_frame_is_refused() {
 }
 
 #[test]
-fn local_release_discharges_the_callers_obligation() {
+fn release_is_a_worker_collective() {
     let mut cx = launch(2, 2);
-    nv::release(&mut cx[0]).expect("a local discharge cannot fail");
+    let (first, second) = cx.split_at_mut(1);
+    std::thread::scope(|scope| {
+        let peer = scope.spawn(|| nv::release(&mut second[0]));
+        nv::release(&mut first[0]).expect("first worker retires");
+        peer.join().expect("the other worker does not panic").expect("second worker retires");
+    });
 }
 
 // ---------------------------------------------------------------------------------------------
 // Geometry
+
+fn declare(cx: &mut [nv::Context], workers: &[Rank], edges: &[Edge], bytes: usize, tag: Tag) {
+    std::thread::scope(|scope| {
+        let calls: Vec<_> = cx.iter_mut()
+            .map(|c| scope.spawn(move || nv::reshape(c, workers, edges, bytes, tag)))
+            .collect();
+        for call in calls {
+            assert_eq!(call.join().expect("a worker does not panic"), Ok(()));
+        }
+    });
+}
 
 fn edge(source: u32, destination: u32, affected: u32) -> Edge {
     Edge::new(r(source), r(destination), NonZeroU32::new(affected).unwrap())
@@ -237,10 +330,7 @@ fn reshape_validates_before_anything_is_sent() {
     let mut cx = launch(3, 4);
     let workers = ranks(&[0, 1, 2]);
     let bytes = 16;
-    assert_eq!(
-        nv::reshape(&mut cx[0], &workers, &edges(&[(0, 1)]), bytes, t(7)),
-        Ok(())
-    );
+    declare(&mut cx, &workers, &edges(&[(0, 1)]), bytes, t(7));
 
     // Unsorted workers: a declaration whose order two participants could read differently.
     assert_eq!(
@@ -260,7 +350,7 @@ fn reshape_validates_before_anything_is_sent() {
     // A subset is legal: the arena is indexed by rank, so lanes among some participants need no
     // mapping, and requiring the workers to be the whole cohort would refuse a load the launch
     // can serve.
-    assert_eq!(nv::reshape(&mut cx[0], &ranks(&[0, 1]), &[], bytes, t(7)), Ok(()));
+    declare(&mut cx, &ranks(&[0, 1]), &[], bytes, t(7));
     // A frame wider than the launched slot is refused at declaration, never truncated at send.
     let over = MAX_FRAME + 1;
     assert_eq!(
@@ -280,13 +370,14 @@ fn lane_traffic_rides_the_tag_the_load_declared() {
     let mut cx = launch(2, 4);
     let workers = ranks(&[0, 1]);
     let bytes = 16;
-    for c in cx.iter_mut() {
-        nv::reshape(c, &workers, &edges(&[(0, 1)]), bytes, t(42)).expect("a valid declaration");
-    }
+    declare(&mut cx, &workers, &edges(&[(0, 1)]), bytes, t(42));
+    assert_eq!(nv::send(&mut cx[0], r(0), Channel::Lane, b"x"), Err(Error::Invalid(Invalid::NoLane)));
+    assert_eq!(nv::send(&mut cx[0], r(1), Channel::Lane, &[0; 17]), Err(Error::TooLarge { limit: bytes }));
+    assert_eq!(nv::send(&mut cx[0], r(1), Channel::Lane, &vec![0; MAX_FRAME + 1]), Err(Error::TooLarge { limit: bytes }));
     nv::send(&mut cx[0], r(1), Channel::Lane, b"lane").expect("accepted");
     let mut buf = [0u8; 16];
     let got = nv::recv(&mut cx[1], &mut buf).unwrap().unwrap();
-    assert_eq!((got.source(), got.tag()), (r(0), t(42)));
+    assert_eq!((got.source(), got.tag()), (Some(r(0)), t(42)));
 
     // Before a load there is no lane tag, so lane traffic has no route and says so.
     let mut fresh = launch(2, 4);
@@ -298,38 +389,6 @@ fn lane_traffic_rides_the_tag_the_load_declared() {
 
 // ---------------------------------------------------------------------------------------------
 // Lifetime
-
-#[test]
-fn the_segment_is_the_union_of_the_slices() {
-    let cx = launch(2, 2);
-    // One device, one sharing domain, so both ranks are in the same partition — and a device has
-    // no pages, so the split is even rather than page-rounded.
-    let hosts = nv::hosts(&cx[0]);
-    let domain = ranks(&[0, 1]);
-    let half = SEGMENT / 2;
-    let slice = |rank| crate::partition::slice_of(hosts, &domain, r(rank), SEGMENT).unwrap();
-    assert_eq!((slice(0).offset, slice(0).length), (0, half));
-    assert_eq!((slice(1).offset, slice(1).length), (half, half));
-    let mut two = launch(2, 2);
-    let shared = nv::share(&mut two[0], &[7u8; SEGMENT / 2], SEGMENT).expect("half the segment");
-    assert_eq!(nv::bytes(&shared).len(), SEGMENT);
-    assert_eq!(&nv::bytes(&shared)[..half], &[7u8; SEGMENT / 2]);
-    // The other rank fills the second half, and the two together are the whole copy.
-    nv::share(&mut two[1], &[9u8; SEGMENT / 2], SEGMENT).expect("the other half");
-    assert_eq!(&nv::bytes(&shared)[half..], &[9u8; SEGMENT / 2]);
-}
-
-#[test]
-fn a_participant_that_brings_the_wrong_number_of_bytes_is_refused() {
-    let mut cx = launch(1, 2);
-    assert!(
-        matches!(
-            nv::share(&mut cx[0], b"too long", 2),
-            Err(Error::Invalid(Invalid::BadShareLength))
-        ),
-        "a slice of the wrong length is not a segment"
-    );
-}
 
 // ---------------------------------------------------------------------------------------------
 // Clocks
@@ -349,8 +408,9 @@ fn readings_are_monotonic_within_one_device() {
 #[test]
 fn the_launch_a_test_builds_is_the_launch_the_device_builds() {
     // Host-model initialization shall match device initialization. What that means here is
-    // that nothing about the launch is ambient — every fact comes from the environment the entry
-    // supplies, so a second launch in the same process cannot inherit the first one's identity.
+    // that both discover the launch the same way — every fact comes from the description the
+    // launcher wrote and the warp's own index, so a second launch that writes its own description
+    // cannot inherit the first one's identity.
     let first = launch(2, 2);
     let second = launch(4, 2);
     assert_eq!(nv::size(&first[0]), 2);
@@ -370,13 +430,6 @@ fn the_plan_is_the_topology_the_contract_asks_for() {
     let mut fanin = HashMap::new();
     fanin.insert((0u32, 1u32), 1usize);
     assert_eq!(fanin.len(), 1, "the map is the test's, not the backend's");
-    assert_eq!(
-        nv::reshape(&mut cx[0], &workers, &edges(&[(0, 1)]), bytes, t(1)),
-        Ok(())
-    );
-    assert_eq!(
-        nv::reshape(&mut cx[0], &workers, &edges(&[(0, 1)]), bytes, t(1)),
-        Ok(()),
-        "a repeated load with the same declaration is accepted"
-    );
+    declare(&mut cx, &workers, &edges(&[(0, 1)]), bytes, t(1));
+    declare(&mut cx, &workers, &edges(&[(0, 1)]), bytes, t(1));
 }

@@ -26,13 +26,16 @@
 //! waiting is the caller's loop and never this route's: a full link is `Full`, an empty one is
 //! `None`.
 
+use core::num::NonZeroU64;
 use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
 use super::{Context, Environment};
 use crate::contract::{
-    BackendFault, Deployment, Error, Failure, FailureKind, Frame, Invalid, Participant, Rank, Tag,
+    BackendFault, Deployment, Error, Failure, FailureKind, Frame, Handle, Invalid, Participant, Rank,
+    Tag,
 };
+use crate::invoke::Owner;
 use crate::nv::error::{LayoutError, RecvError, SendError};
 use crate::nv::layout::Layout;
 use crate::nv::transport::Message;
@@ -41,15 +44,15 @@ use crate::nv::transport::Message;
 ///
 /// Small on purpose: a deep queue would let a worker run ahead of a leader that has stopped
 /// listening without either end finding out.
-pub const DEPTH: u32 = 4;
+pub(crate) const DEPTH: u32 = 4;
 
 /// The largest frame a control slot carries: `MAX_FRAME`, because the contract promises it on the
 /// leader route too, and a log block is the largest thing a worker sends its leader.
-pub const CAPACITY: u32 = super::MAX_FRAME as u32;
+pub(crate) const CAPACITY: u32 = super::MAX_FRAME as u32;
 
 /// The geometry of a leader route: how many workers, and how big their links are.
 #[derive(Clone, Copy)]
-pub struct Route {
+pub(crate) struct Route {
     layout: Layout,
     ranks: u32,
 }
@@ -116,12 +119,12 @@ impl Route {
     }
 }
 
-/// Write one frame into the slot for `seq`, then publish it, or refuse without writing.
+/// Write one frame into the slot for `seq`, then post it, or refuse without writing.
 ///
 /// # Safety
 ///
 /// `link` must address `layout.words()` words of a link this caller alone produces on.
-unsafe fn publish(
+unsafe fn post(
     link: *mut u32,
     layout: Layout,
     seq: u32,
@@ -157,7 +160,16 @@ unsafe fn publish(
 ///
 /// # Safety
 ///
-/// As [`publish`], and the caller must be the link's only consumer.
+/// As [`post`], and the caller must be the link's only consumer.
+/// The tag of the frame published at `seq`, if one is. Nothing is consumed.
+unsafe fn peek(link: *mut u32, layout: Layout, seq: u32) -> Option<u32> {
+    let slot = unsafe { link.add(layout.slot(seq)) };
+    if unsafe { AtomicU32::from_ptr(slot) }.load(Ordering::Acquire) != seq.wrapping_add(1) {
+        return None;
+    }
+    Some(unsafe { slot.add(3).read() })
+}
+
 unsafe fn consume(
     link: *mut u32,
     layout: Layout,
@@ -249,28 +261,42 @@ impl Leader {
     /// declaration is the one thing they both have: the host process builds it here and every
     /// worker builds the same one from the same list.
     pub fn open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure> {
-        if deployment.leaders().is_none() {
+        let env = env
+            .description
+            .check()
+            .map_err(|fault| opening(Participant::Entering(None), fault))?;
+        let Some(leaders) = deployment.leaders() else {
             // A process that opened the route anyway is a process the launch did not ask for.
             return Err(opening(
-                Participant::Entering(Some(env.rank)),
+                Participant::Entering(env.leader),
                 BackendFault::Invalid(Invalid::NoLeader),
             ));
+        };
+        // A launch with no leader has no region, and is refused rather than given an empty route,
+        // because an empty route is a leader that silently hears nobody.
+        let Some(rank) = env.leader else {
+            return Err(opening(Participant::Entering(None), BackendFault::Storage));
+        };
+        let me = Participant::Leader(rank);
+        if !leaders.iter().all(|&leader| leader == rank) {
+            return Err(opening(me, BackendFault::Invalid(Invalid::WrongLeader)));
         }
-        let me = Participant::Leader(env.rank);
+        if deployment.workers().iter().any(|worker| worker.get() >= env.size) {
+            return Err(opening(me, BackendFault::Invalid(Invalid::RankOutsideJob)));
+        }
         let ranks = u32::try_from(deployment.workers().len())
             .map_err(|_| opening(me, BackendFault::Invalid(Invalid::Unrepresentable)))?;
-        if env.leader_region.is_null() {
-            // Refused rather than given an empty route, because an empty route is a leader that
-            // silently hears nobody.
+        let route = Route::sized(ranks).map_err(|_| opening(me, BackendFault::Storage))?;
+        if env.leader_words != route.words() {
             return Err(opening(me, BackendFault::Storage));
         }
-        let route = Route::sized(ranks).map_err(|_| opening(me, BackendFault::Storage))?;
         let idle = Cursor {
             arriving: 0,
             departing: 0,
         };
-        // The launch prepared this region for exactly this route and owns it for the life of the
-        // job; nothing else produces on the down links or consumes the up links.
+        // The launcher's write of the description vouched that this region is `leader_words` words
+        // prepared for this route and owned for the life of the job, and `leader_words` is the
+        // route's size; nothing else produces on the down links or consumes the up links.
         Ok(Leader {
             me,
             region: env.leader_region,
@@ -295,7 +321,7 @@ impl Leader {
         // SAFETY: `open`'s region, and the lock makes this the only producer on the down links.
         let link = unsafe { self.route.down(self.region, to.get()) };
         let tag = u32::from(tag.get());
-        match unsafe { publish(link, self.route.layout(), cursor.departing, 0, tag, data) } {
+        match unsafe { post(link, self.route.layout(), cursor.departing, 0, tag, data) } {
             Ok(()) => {
                 cursor.departing = cursor.departing.wrapping_add(1);
                 Ok(())
@@ -323,7 +349,7 @@ impl Leader {
                 Ok(message) => {
                     cursor.arriving = cursor.arriving.wrapping_add(1);
                     let len = message.len as usize;
-                    return Ok(Some(Frame::new(Rank::from_index(source), tag(message), len)));
+                    return Ok(Some(Frame::new(Some(Rank::from_index(source)), tag(message), len)));
                 }
                 Err(RecvError::Empty) => {}
                 Err(RecvError::TooSmall { needed }) => {
@@ -349,9 +375,9 @@ mod cuda;
 mod sim;
 
 #[cfg(feature = "cuda")]
-pub use cuda::Worker;
+pub(crate) use cuda::Worker;
 #[cfg(not(feature = "cuda"))]
-pub use sim::Worker;
+pub(crate) use sim::Worker;
 
 /// A worker's send: one frame to this job's leader.
 ///
@@ -373,15 +399,52 @@ pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
 }
 
 /// A worker's receive: the leader's next frame, as `(tag, length)`.
-pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, usize)>, Error> {
+/// A worker's receive from its leader. The frame has no source.
+pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
+    take(cx, Owner::ALL, out)
+}
+
+/// The next frame from the leader if `owner` owns it. The down link delivers in order, so a head
+/// another arm owns holds it for this one.
+pub(crate) fn take(cx: &mut Context, owner: Owner<'_>, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     let out = super::room(out);
     let worker = cx.leader()?;
     // SAFETY: as `send`, on this worker's down link.
+    if !owner.every() && !unsafe { worker.head() }.is_some_and(|tag| owner.owns(Tag::new(tag as u16))) {
+        return Ok(None);
+    }
+    // SAFETY: as `send`, on this worker's down link.
     match unsafe { worker.recv(out) } {
-        Ok(message) => Ok(Some((tag(message), message.len as usize))),
+        Ok(message) => Ok(Some(Frame::new(None, tag(message), message.len as usize))),
         Err(RecvError::Empty) => Ok(None),
         Err(RecvError::TooSmall { needed }) => Err(Error::TooSmall {
             needed: needed as usize,
         }),
     }
+}
+
+/// The published segment's leader half. No nv value exists yet: it is the owner role, distinct
+/// from a worker's attachment so the type checker keeps the two apart.
+pub struct Published {
+    never: core::convert::Infallible,
+    _local: core::marker::PhantomData<*const ()>,
+}
+
+/// Publish `bytes` as `revision`: refused, because nv has no device segment to publish into.
+pub fn publish(leader: &Leader, _revision: NonZeroU64, _bytes: &[u8]) -> Result<Published, Error> {
+    Err(Error::Failed(Failure {
+        participant: leader.me,
+        operation: super::named(b"publish"),
+        kind: FailureKind::Backend(BackendFault::Unimplemented),
+    }))
+}
+
+/// The handle that names `segment` to its workers.
+pub fn handle(segment: &Published) -> Handle {
+    match segment.never {}
+}
+
+/// Retire `segment`.
+pub fn retire(_leader: &Leader, segment: Published) -> Result<(), (Published, Error)> {
+    match segment.never {}
 }

@@ -4,6 +4,8 @@
 
 use core::marker::PhantomData;
 
+use crate::contract::Tag;
+
 /// The first parameter of every driver. A function marked `#[parallel]` cannot be called by its
 /// own name without one, and `invoke!` is what makes one.
 pub struct Invocation(());
@@ -74,14 +76,89 @@ pub enum Step {
     Done,
 }
 
+/// Which tags a `concurrent!` arm receives. The macro builds one per arm.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug)]
+pub enum Receive<'a> {
+    Nothing,
+    All,
+    Only(&'a [Tag]),
+}
+
+impl Receive<'_> {
+    fn names(self, tag: Tag) -> bool {
+        match self {
+            Receive::Nothing => false,
+            Receive::All => true,
+            Receive::Only(tags) => tags.contains(&tag),
+        }
+    }
+}
+
+/// One arm's tags: those it names that no earlier arm names.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Owner<'a> {
+    arms: &'a [Receive<'a>],
+    at: usize,
+}
+
+// A backend that carries frames uses all of this; one that carries none asks only `receives`.
+#[allow(dead_code)]
+impl<'a> Owner<'a> {
+    /// A participant outside `concurrent!`, which owns every tag.
+    pub(crate) const ALL: Owner<'static> = Owner { arms: &[Receive::All], at: 0 };
+
+    pub(crate) fn new(arms: &'a [Receive<'a>], at: usize) -> Self {
+        Owner { arms, at }
+    }
+
+    /// This arm's own setting.
+    pub(crate) fn mine(self) -> Receive<'a> {
+        self.arms[self.at]
+    }
+
+    pub(crate) fn receives(self) -> bool {
+        !matches!(self.mine(), Receive::Nothing)
+    }
+
+    pub(crate) fn owns(self, tag: Tag) -> bool {
+        self.mine().names(tag) && !self.arms[..self.at].iter().any(|earlier| earlier.names(tag))
+    }
+
+    /// Every tag is this arm's, so a receive need not look at tags.
+    pub(crate) fn every(self) -> bool {
+        matches!(self.mine(), Receive::All)
+            && self.arms[..self.at].iter().all(|earlier| matches!(earlier, Receive::Nothing))
+    }
+}
+
+/// Fixes a context arm's closure signature where it is written; `Send` keeps it portable across
+/// lowerings.
+#[doc(hidden)]
+#[inline(always)]
+pub fn arm_io<F, E>(arm: F) -> F
+where
+    F: for<'p> FnMut(&mut crate::Io<'p>) -> Result<Step, E> + Send,
+{
+    arm
+}
+
 /// Step every arm until all are `Done` or one fails; the answer is the first `Err` in source
 /// order among those recorded, and no step starts after one is.
 ///
+/// Given a context, each arm takes the `&mut Io` it is lent for one step. `recv(..)` receives
+/// every tag, `recv(A, B)` those tags, and a frame goes to the first arm in source order that
+/// names its tag.
+///
 /// ```ignore
 /// trame::concurrent! { || intake(&mut a), || delivery(&mut b) }?;
+/// trame::concurrent!(cx; recv(..) => |io| intake(io), |io| delivery(io))?;
 /// ```
 #[macro_export]
 macro_rules! concurrent {
+    ($cx:expr; $($arms:tt)+) => {
+        $crate::__concurrent!(@io $cx, __run [] [] [] [0] $($arms)+)
+    };
     ($($arm:expr),+ $(,)?) => {
         $crate::__concurrent!(@arm __run [] [] [0] $($arm,)+)
     };
@@ -102,5 +179,38 @@ macro_rules! __concurrent {
     (@arm $run:ident [$($made:tt)*] [$($steps:tt)*] [$($n:tt)*]) => {{
         $($made)*
         $crate::run::concurrent::<_, _, { $($n)* }>(|$run| { $($steps)* })
+    }};
+    // Arms given a context: each also adds its `Receive` to the list the runner reads.
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]
+        recv(..) => $arm:expr $(, $($rest:tt)*)?) => {
+        $crate::__concurrent!(@io $cx, $run
+            [$($made)* let mut arm = $crate::arm_io($arm);]
+            [$($steps)* $run.arm(&mut arm);]
+            [$($recv)* $crate::Receive::All,]
+            [$($n)* + 1]
+            $($($rest)*)?)
+    };
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]
+        recv($($tag:expr),+ $(,)?) => $arm:expr $(, $($rest:tt)*)?) => {
+        $crate::__concurrent!(@io $cx, $run
+            [$($made)* let tags = [$($tag),+]; let mut arm = $crate::arm_io($arm);]
+            [$($steps)* $run.arm(&mut arm);]
+            [$($recv)* $crate::Receive::Only(&tags),]
+            [$($n)* + 1]
+            $($($rest)*)?)
+    };
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]
+        $arm:expr $(, $($rest:tt)*)?) => {
+        $crate::__concurrent!(@io $cx, $run
+            [$($made)* let mut arm = $crate::arm_io($arm);]
+            [$($steps)* $run.arm(&mut arm);]
+            [$($recv)* $crate::Receive::Nothing,]
+            [$($n)* + 1]
+            $($($rest)*)?)
+    };
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]) => {{
+        $($made)*
+        let receive = [$($recv)*];
+        $crate::concurrent_io::<_, _, { $($n)* }>($cx, &receive, |$run| { $($steps)* })
     }};
 }

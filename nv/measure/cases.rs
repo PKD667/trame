@@ -12,18 +12,25 @@
 //!                        most: a warp spinning on a warp that is not resident makes no progress,
 //!                        and the only honest answer is a budget that runs out and says so.
 //!
+//!   discovery           every warp enters `trame::init` through `Environment::default()`, which
+//!                        reads the launch description this launcher wrote before the kernel
+//!                        started, and must come back with its own warp as its rank.
+//!
 //! Each case is deterministic by construction. The first runs two warps and orders them through
 //! the ring itself. The second and third run *one* warp on purpose: the peer is unscheduled
 //! because it was never launched, which is the situation a bounded wait is for and the one a
 //! second warp could not be made to produce on demand.
 
-use std::env;
 use std::ffi::c_void;
+use std::sync::Arc;
 
-use trame::rings::device;
-use trame::rings::error::{RecvError, SendError};
-use trame::rings::layout::Layout;
-use cuda_core::{CudaContext, DeviceBuffer, LaunchConfig, launch_kernel_on_stream};
+use crate::nv::device;
+use crate::nv::error::{RecvError, SendError};
+use crate::nv::launch::{Description, MAGIC, NO_LEADER, VERSION};
+use crate::nv::layout::Layout;
+use crate::nv::peers::Arena;
+use crate::{Deployment, Environment, Launch};
+use cuda_core::{CudaContext, CudaModule, DeviceBuffer, LaunchConfig, launch_kernel_on_stream};
 use cuda_device::{DisjointSlice, kernel, thread, warp};
 use cuda_host::{
     CudaKernel, load_embedded_module, push_kernel_device_slice, push_kernel_scalar,
@@ -36,6 +43,9 @@ const TAG: u32 = 3;
 /// Attempts a bounded loop makes before it reports. The same shape a backend uses: a budget on
 /// attempts, never on elapsed time, and exhaustion is a diagnosis rather than a hang.
 const BUDGET: u32 = 1_000_000;
+
+/// The name `trame`'s `#[constant]` description is exported under.
+const DESCRIPTION: &str = "cuda_oxide_const_246e25db_TRAME_NV_LAUNCH";
 
 mod kernels {
     use super::*;
@@ -143,6 +153,17 @@ mod kernels {
                     failures += 1;
                 }
             }
+        } else if case == 2 {
+            // Every warp is a worker of the two-warp launch; the note is its rank plus one, so a
+            // zero is a warp that did not enter.
+            let workers = [Launch::new(0), Launch::new(1)];
+            match Deployment::new(&workers, None) {
+                Ok(deployment) => match crate::init(Environment::default(), deployment) {
+                    Ok(cx) => note = crate::rank(&cx).get() + 1,
+                    Err(_) => failures += 1,
+                },
+                Err(_) => failures += 1,
+            }
         } else if case == 1 && rank == 0 {
             let mut tx = unsafe { device::Tx::new(arena_ptr, layout, 0) };
             // Fill the lane exactly. Every one of these has a free slot.
@@ -199,13 +220,20 @@ mod kernels {
 /// One case, one launch. Returns the per-thread error counters and notes.
 fn run(
     stream: &cuda_core::CudaStream,
+    module: &Arc<CudaModule>,
     fun: &cuda_core::CudaFunction,
     case: u32,
     warps: u32,
 ) -> (Vec<u32>, Vec<u32>) {
-    let layout = Layout::new(DEPTH, BYTES).expect("layout");
+    // `init` refuses peer slots that cannot hold `MAX_FRAME`, so the discovery case provisions them.
+    let layout = if case == 2 {
+        Layout::new(2, crate::MAX_FRAME as u32)
+    } else {
+        Layout::new(DEPTH, BYTES)
+    }
+    .expect("layout");
     let rings = (warps * warps) as usize;
-    let mut arena_host = vec![0u32; rings * layout.words()];
+    let mut arena_host = vec![0u32; rings * layout.words() + crate::nv::peers::BARRIER];
     for ring in 0..rings {
         let range = ring * layout.words()..(ring + 1) * layout.words();
         layout.init(&mut arena_host[range]);
@@ -219,6 +247,9 @@ fn run(
     let mut scratch = DeviceBuffer::from_host(stream, &scratch_host).unwrap();
     let mut errors = DeviceBuffer::from_host(stream, &errors_host).unwrap();
     let mut notes = DeviceBuffer::from_host(stream, &notes_host).unwrap();
+    if case == 2 {
+        describe(stream, module, &arena, layout, warps);
+    }
 
     let mut args: Vec<*mut c_void> = Vec::new();
     let (mut arena_ptr, mut arena_len) = writable_device_buffer_arg(&mut arena);
@@ -259,9 +290,62 @@ fn run(
     )
 }
 
-fn main() {
+/// Write the launch description `trame` discovers: this launch's warps, its peer arena and no
+/// leader.
+fn describe(
+    stream: &cuda_core::CudaStream,
+    module: &Arc<CudaModule>,
+    arena: &DeviceBuffer<u32>,
+    layout: Layout,
+    warps: u32,
+) {
+    let description = Description {
+        magic: MAGIC,
+        version: VERSION,
+        bytes: size_of::<Description>() as u32,
+        size: warps,
+        leader: NO_LEADER,
+        depth: layout.depth(),
+        capacity: layout.capacity(),
+        arena: Arena {
+            base: arena.cu_deviceptr() as *mut u32,
+            words: arena.len(),
+        },
+        leader_region: core::ptr::null_mut(),
+        leader_words: 0,
+    };
+    let (symbol, bytes) = module.get_global(DESCRIPTION).expect("trame's launch description");
+    assert_eq!(
+        bytes,
+        size_of::<Description>(),
+        "the description symbol is not this build's description"
+    );
+    // The arena upload above was queued on `stream`; the write below is synchronous and does not
+    // order against it, so the upload is finished first.
+    stream.synchronize().expect("arena uploaded");
+    // SAFETY: `symbol` is the device global `get_global` resolved in a module this process holds,
+    // and it is exactly `size_of::<Description>()` bytes (asserted above), which is what is copied
+    // from a live local. What this writer guarantees, and the only thing `init` takes on trust:
+    // `arena` is `arena.len()` words of device global memory this process allocated, holding
+    // `warps * warps` rings of `layout`, each initialised by `Layout::init` at
+    // `(src * warps + dst) * layout.words()`; it outlives the kernel, because `run` drops it only
+    // after reading the results back, which waits for the kernel; nothing but the launched warps
+    // touches it while they run; and there is no leader region, which is what the
+    // null pointers and zero lengths say. No kernel reads the symbol while it is written, because
+    // the copy returns before the launch is issued.
+    unsafe {
+        module.copy_bytes_to_device_global_sync(
+            symbol,
+            (&raw const description).cast(),
+            size_of::<Description>(),
+        )
+    }
+    .expect("description written");
+}
+
+pub(super) fn main() {
     let mut device_id = 1usize;
-    let mut args = env::args().skip(1);
+    let mut args = super::arguments();
     while let Some(arg) = args.next() {
         if arg == "--device" {
             device_id = args
@@ -282,8 +366,9 @@ fn main() {
     for (case, warps, what) in [
         (0u32, 2u32, "too_small"),
         (1, 1, "full_lane_and_unscheduled_peer"),
+        (2, 2, "discovery"),
     ] {
-        let (errors, notes) = run(&stream, &fun, case, warps);
+        let (errors, notes) = run(&stream, &module, &fun, case, warps);
         let faults: u32 = errors.iter().sum();
         // A note is warp-uniform, so a warp's lane 0 carries it and the index is the *thread*
         // index: rank r's notes start at `32 * r`.
@@ -293,7 +378,9 @@ fn main() {
                 0 => notes[32] == BYTES,
                 // Rank 0 saw one refusal and then exhausted a million attempts on a peer that
                 // was never launched.
-                _ => notes[0] > 1,
+                1 => notes[0] > 1,
+                // Each warp entered, and as itself.
+                _ => notes[0] == 1 && notes[32] == 2,
             };
         ok &= case_ok;
         println!(

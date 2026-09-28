@@ -45,6 +45,12 @@ impl Link {
         Ok(())
     }
 
+    /// The tag of the frame `recv` would take next, if one is published.
+    pub fn head(&self) -> Option<u32> {
+        let slot = self.layout.slot(self.recv);
+        (self.arena[slot] == self.recv.wrapping_add(1)).then(|| self.arena[slot + 3])
+    }
+
     pub fn recv(&mut self, out: &mut [u8]) -> Result<Message, RecvError> {
         let slot = self.layout.slot(self.recv);
         if self.arena[slot] != self.recv.wrapping_add(1) {

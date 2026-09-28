@@ -41,6 +41,11 @@ impl Worker {
     ///
     /// As the transport's own receive, on this worker's down link.
     #[inline(always)]
+    pub unsafe fn head(&self) -> Option<u32> {
+        unsafe { self.rx.head() }
+    }
+
+    #[inline(always)]
     pub unsafe fn recv(&mut self, out: &mut [u8]) -> Result<Message, RecvError> {
         // A buffer beyond `u32::MAX` bytes holds any frame a slot can, so its room saturates.
         let room = u32::try_from(out.len()).unwrap_or(u32::MAX);

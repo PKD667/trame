@@ -9,10 +9,16 @@
 use std::sync::Arc;
 
 use super::{Refused, refused_recv, refused_send};
+use crate::contract::{BackendFault, Invalid};
 use crate::nv::layout::Layout;
 use crate::nv::transport::Message;
 use crate::nv::transport::Transport;
 use crate::nv::transport::sim::{Mesh, SimTransport};
+
+/// The arena as the model's launch description states it: the fabric itself, or `None` when the
+/// description names none. The model's arena is an allocation the description owns a handle to, so
+/// there is no pointer to trust and no word count to compare.
+pub type Arena = Option<Fabric>;
 
 /// What a launch supplies for its links to exist: the model's shared mesh and its geometry.
 ///
@@ -29,6 +35,15 @@ impl Fabric {
         Fabric {
             mesh: Arc::new(Mesh::new(size, layout)),
             layout,
+        }
+    }
+
+    /// The fabric the launch description states, or `InconsistentLaunch` when it names none or
+    /// names one whose width or geometry the description contradicts.
+    pub fn described(arena: Arena, layout: Layout, size: u32) -> Result<Fabric, BackendFault> {
+        match arena {
+            Some(fabric) if fabric.mesh.size() == size && fabric.layout == layout => Ok(fabric),
+            _ => Err(BackendFault::Invalid(Invalid::InconsistentLaunch)),
         }
     }
 
@@ -89,5 +104,18 @@ impl Links {
             return Err(Refused::NoSuchPeer);
         }
         self.transport.try_recv(src, out).map_err(refused_recv)
+    }
+
+    /// Wait until `members` participants of the launch have called this.
+    pub fn barrier(&mut self, members: u32) {
+        self.transport.barrier(members)
+    }
+
+    /// The tag of the frame `recv` from `src` would take next, if one is published.
+    pub fn head(&mut self, src: u32) -> Option<u32> {
+        if src >= self.size {
+            return None;
+        }
+        self.transport.head(src)
     }
 }

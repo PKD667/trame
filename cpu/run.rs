@@ -89,25 +89,73 @@ where
         let cut = Arc::clone(&arms.cut);
         let _cut = CutOnPanic(&cut);
         body(&mut arms);
-        let mut panic = None;
-        let mut first = Ok(());
-        for thread in arms.running.into_iter().flatten() {
-            match thread.join() {
-                Err(payload) => {
-                    panic.get_or_insert(payload);
-                }
-                Ok(outcome) => {
-                    if first.is_ok() {
-                        first = outcome;
-                    }
+        join(arms.running)
+    })
+}
+
+/// As `Arms`, each arm also holding its own endpoint `I`.
+pub struct IoArms<'scope, 'env: 'scope, I, E, const N: usize> {
+    scope: &'scope Scope<'scope, 'env>,
+    cut: Arc<AtomicBool>,
+    running: [Option<ScopedJoinHandle<'scope, Result<(), E>>>; N],
+    ios: [Option<I>; N],
+    at: usize,
+}
+
+impl<'scope, 'env, I: Send + 'scope, E: Send + 'scope, const N: usize> IoArms<'scope, 'env, I, E, N> {
+    pub fn arm<F>(&mut self, arm: &'scope mut F)
+    where
+        F: FnMut(&mut I) -> Result<Step, E> + Send,
+    {
+        let cut = Arc::clone(&self.cut);
+        let mut io = self.ios[self.at].take().expect("one endpoint per arm");
+        self.running[self.at] = Some(self.scope.spawn(move || drive(&cut, &mut || arm(&mut io))));
+        self.at += 1;
+    }
+}
+
+/// `concurrent` with arm `i` stepped on `ios[i]`. A host-thread backend lends its endpoints and
+/// calls this; which endpoint type it lends is its own business.
+pub fn spawn<'env, I: Send + 'env, B, E: Send, const N: usize>(ios: [I; N], body: B) -> Result<(), E>
+where
+    B: for<'scope> FnOnce(&mut IoArms<'scope, 'env, I, E, N>),
+{
+    let ios = ios.map(Some);
+    thread::scope(|scope| {
+        let mut arms = IoArms {
+            scope,
+            cut: Arc::new(AtomicBool::new(false)),
+            running: std::array::from_fn(|_| None),
+            ios,
+            at: 0,
+        };
+        let cut = Arc::clone(&arms.cut);
+        let _cut = CutOnPanic(&cut);
+        body(&mut arms);
+        join(arms.running)
+    })
+}
+
+/// Join every arm; a panic is resumed after all have joined, else the first error in source order.
+fn join<E, const N: usize>(running: [Option<ScopedJoinHandle<'_, Result<(), E>>>; N]) -> Result<(), E> {
+    let mut panic = None;
+    let mut first = Ok(());
+    for thread in running.into_iter().flatten() {
+        match thread.join() {
+            Err(payload) => {
+                panic.get_or_insert(payload);
+            }
+            Ok(outcome) => {
+                if first.is_ok() {
+                    first = outcome;
                 }
             }
         }
-        if let Some(payload) = panic {
-            resume_unwind(payload);
-        }
-        first
-    })
+    }
+    if let Some(payload) = panic {
+        resume_unwind(payload);
+    }
+    first
 }
 
 /// The cutoff is the check before each step: a step already past it may run after a sibling

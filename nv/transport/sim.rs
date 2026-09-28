@@ -1,5 +1,6 @@
 //! Host transport: each rank is a thread over a `model::Link` mesh.
 
+use std::sync::atomic::{AtomicU32, Ordering::AcqRel, Ordering::Acquire, Ordering::Relaxed, Ordering::Release};
 use std::sync::{Arc, Mutex};
 
 use super::Transport;
@@ -11,6 +12,9 @@ use crate::nv::transport::Message;
 struct Links {
     size: u32,
     links: Vec<Mutex<Link>>,
+    /// The barrier: arrivals so far, and the generation the last arrival moves.
+    count: AtomicU32,
+    generation: AtomicU32,
 }
 
 impl Links {
@@ -30,7 +34,12 @@ impl Mesh {
             .map(|_| Mutex::new(Link::new(layout)))
             .collect();
         Self {
-            inner: Arc::new(Links { size, links }),
+            inner: Arc::new(Links {
+                size,
+                links,
+                count: AtomicU32::new(0),
+                generation: AtomicU32::new(0),
+            }),
         }
     }
 
@@ -93,5 +102,26 @@ impl Transport for SimTransport {
             .lock()
             .expect("link poisoned")
             .recv(out)
+    }
+
+    fn head(&mut self, src: u32) -> Option<u32> {
+        self.inner
+            .link(src, self.rank)
+            .lock()
+            .expect("link poisoned")
+            .head()
+    }
+
+    /// The last to arrive resets the count and moves the generation, which releases the rest.
+    fn barrier(&mut self, members: u32) {
+        let seen = self.inner.generation.load(Acquire);
+        if self.inner.count.fetch_add(1, AcqRel) + 1 == members {
+            self.inner.count.store(0, Relaxed);
+            self.inner.generation.store(seen.wrapping_add(1), Release);
+            return;
+        }
+        while self.inner.generation.load(Acquire) == seen {
+            std::thread::yield_now();
+        }
     }
 }

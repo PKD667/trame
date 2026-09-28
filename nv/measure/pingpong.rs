@@ -1,9 +1,11 @@
-use std::env;
+//! Two warps, one round trip at a time, over a pair of rings: a frame crosses the wire intact, and
+//! under `--bench` how long a round trip takes. Run as `nv::measure` says.
+
 use std::ffi::c_void;
 
-use trame::rings::device;
-use trame::rings::error::{RecvError, SendError};
-use trame::rings::layout::Layout;
+use crate::nv::device;
+use crate::nv::error::{RecvError, SendError};
+use crate::nv::layout::Layout;
 use cuda_core::{CudaContext, DeviceBuffer, LaunchConfig, launch_kernel_on_stream};
 use cuda_device::{DisjointSlice, debug, kernel, thread, warp};
 use cuda_host::{
@@ -191,7 +193,7 @@ struct Config {
     device: usize,
 }
 
-fn main() {
+pub(super) fn main() {
     let config = parse_args();
     let ctx = CudaContext::new(config.device).expect("cuda context");
     let stream = ctx.default_stream();
@@ -312,7 +314,7 @@ fn parse_args() -> Config {
     // Which device to measure on. Defaulted rather than fixed, because a shared host runs other
     // work on device 0 and a timing taken against a co-tenant is not a timing of this transport.
     let mut device = 0;
-    let mut args = env::args().skip(1);
+    let mut args = super::arguments();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--bench" => bench = true,

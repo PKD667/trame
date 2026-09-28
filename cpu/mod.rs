@@ -21,6 +21,7 @@
 // as `nv/` does for the warp.
 
 pub mod clock;
+pub(crate) mod lanes;
 pub mod run;
 pub mod sync;
 

@@ -1,4 +1,4 @@
-use cargo_nvmpi::parse_arch;
+use nv_cargo::parse_arch;
 
 #[test]
 fn formats_device_arch_hints() {
