@@ -1,412 +1,502 @@
-# Backend contract
+# trame contract
 
-## 1. Scope
+Trame runs logical units that can communicate and share memory. A unit owns its state and advances
+asynchronously with respect to other units. A sharing domain identifies units that can access the
+same storage under the synchronization rules below. Neither a unit nor a domain names a physical
+thread, process, warp, block or machine.
 
-NERVE defines model state, operations, ownership and order. A backend defines their execution,
-communication, clocks and storage lifetime. Dependencies shall point from NERVE to the backend.
-The portable worker shall not name an OS, transport library, allocator or backend implementation.
+The public interface is functions over explicit handles, execution macros and declaration
+attributes. A build selects one implementation. There is no backend trait for applications to
+implement, scheduler object to manage, or run-time backend registry.
 
-A **participant** is one independently identified execution unit with a rank in the deployment.
-It may be a process, a thread, or a cooperating group of device lanes, and it is a **worker**:
-`size`, `rank` and `hosts` describe workers and nothing else. A deployment may also
-include a **leader**, which is a host process: it is not a participant, it has no rank, and it
-appears in none of those three. A **sharing domain** is a set of participants that can read one
-immutable allocation. Neither term implies an OS process or a physical host.
+**This is the target contract, not a certificate that every implementation satisfies it.**
+Struct-level `#[process]`, the function forms for endpoint operations, and ownership-based shared
+primitives below include proposed changes. The current source still has closure arms, endpoint
+methods and `NoUninit` bounds on shared primitives. [execution.md](execution.md) records the
+migration and existing failures; those failures remain failures of the version that was tested.
 
-`shall` denotes a requirement. An unsupported requirement shall fail compilation; invalid
-run-time inputs shall produce a named error. A backend shall not substitute a weaker guarantee.
+## Definition and implementation
 
-## 2. Values and selection
+The machine requires two capabilities: independently advancing units that exchange data, and
+storage shared within declared domains. The rest of this document defines the semantics trame
+builds from them. FIFO routes, bounded handoffs and execution declarations are library guarantees,
+not requirements for matching hardware instructions.
 
-One backend is selected at build time. The surface uses values, not trait objects, and shall
-not require an allocator. Storage is supplied at entry or acquired under a declared, bounded
-allocation policy.
+An implementation may serialize work, copy bytes, poll a transport or use physical parallelism.
+It must preserve ownership, publication, declared ordering and outcomes. `#[parallel]` permits
+parallel execution; it does not demand it. `concurrent!` permits cooperative stepping on one
+execution resource; it does not demand simultaneous execution. These are valid lowerings, not
+error-recovery paths that silently change a failed operation's meaning.
 
-```rust
-struct Rank(u32);                       // private field; `Rank::from_index`, `get`
-struct Launch(u32);                     // private field; `Launch::new`, `get`
-struct Tag(u16);                        // private field; `Tag::new`, `get`
-struct ByteRange { offset: usize, length: usize }
-enum Backend { Mpi, Rma, RmaLossy, None, Nv }   // `wire_id`, `name`
-type Environment;                       // entry-supplied identity, resources and lifetime
-type Context;                           // participant-local state established by init
-struct Deployment<'a>;                  // built only by `Deployment::new`
-type Shared;                            // immutable mapping with explicit retirement
-struct ClockId;                         // comparison domain, including clock incarnation
-struct Failure<A = Infallible> { participant: Participant, operation: &'static str, kind: FailureKind<A> }
-enum Participant { Worker(Rank), Leader(Launch), Entering(Option<Launch>) }
+The Rust surface has the same documented functions, macros, attributes, value fields and bounds
+on every selection. Private layouts and incidental compiler-generated traits are not the
+contract. Resource limits are explicit, and an impossible launch or geometry is refused before
+work uses it. A compiler limitation or a failed hardware experiment restricts the implementation
+we can claim to support; it does not redefine logical execution.
 
-enum Channel { Message(Tag), Lane }
-struct Frame;                           // `source`, `tag`, `len`
-struct Edge;                            // `Edge::new(source, destination, affected: NonZeroU32)`
-struct Span;                            // nanoseconds
-struct Reading;                         // `clock`, `elapsed`, `since`
-
-const ID: Backend;
-const LOSSY: bool;
-const MAX_FRAME: usize;                 // >= 65_544 and <= u32::MAX on every backend, checked at compile time
-```
-
-Frame lengths and capacities are bytes, as `usize`; conversion to a narrower transport count
-shall be checked. Segment lengths use `usize`, in bytes of the target address space. `Rank` values
-are dense in `[0, size)`; `Launch` values are the transport's own numbering, and the two are
-distinct identities. A backend shall convert between them in one place and shall not use a launch
-rank where a contract rank is meant. A clock identity shall not be inferred from a participant
-rank.
-
-Every route carries a frame of `MAX_FRAME` bytes: a 64 KiB log block behind an eight-byte batch
-header is 65,544 bytes, and every backend shall provision at least that and refuse at entry a
-launch whose storage cannot hold it. `Backend::wire_id` is on disk in every `LOAD` record, so its
-values only grow at the end.
-
-Signatures describe logical participant borrows, not a per-lane device ABI. Cooperative lowering
-shall transform mutable parameters and every access to them together, before overlapping Rust
-`&mut` references can exist. Uniform or partitioned access is determined per access, not per value.
-Borrowed values shall not escape to unlowered callees; native adapters shall specify their
-ownership and convergence obligations. Unsupported ownership shapes shall fail compilation.
-
-Every public operation has one meaning under every backend, so a caller cannot select behaviour
-per backend. What differs between backends is only `ID`, `LOSSY` and `MAX_FRAME`.
-
-## 3. Entry and failure
+## Identities and entry
 
 ```rust
-fn init(env: Environment, deployment: Deployment<'_>, cohort: fn(Rank, &[Rank]) -> u32)
-    -> Result<Context, Failure>;
-fn Leader::open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure>;
+struct Rank(u32);   // Rank::from_index, get
+struct Launch(u32); // Launch::new, get
+struct Tag(u16);    // Tag::new, get
+
+fn Deployment::new(workers: &[Launch], leaders: Option<&[Launch]>)
+    -> Result<Deployment, Invalid>;
+
+fn init(env: Environment, deployment: Deployment) -> Result<Context, Failure>;
 fn rank(cx: &Context) -> Rank;
 fn size(cx: &Context) -> u32;
 fn hosts(cx: &Context) -> &[Rank];
 fn done<A>(cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>>;
 ```
 
-The environment shall separate participant-local identity and endpoints from launch-wide metadata
-(size, membership, arena and geometry). Local state shall not occupy a shared mutable slot.
-Shared metadata shall be initialized once before readers enter and remain immutable.
-A host binding may discover the environment; a device entry may receive it as arguments.
-`hosts(cx)[rank(cx)]` names the participant's sharing-domain representative, which is a worker
-rank; the management leader is a different thing, and it is absent from `hosts` by construction
-rather than subtracted from it.
+A `Rank` is a worker unit's dense index in `[0, size)`. A `Launch` identifies a participant in the
+launch description. They are distinct even when their integer values happen to agree. Every
+`u16` is a valid `Tag`. Constructors and inspectors on value types are ordinary Rust methods;
+they do not start work.
 
-`Environment` is `Clone`, and a clone names the same job. That is how `none` runs its worker,
-`Launch(0)`, and an optional leader, `Launch(1)`, in one process: `init` and `Leader::open` take
-clones of one environment and reach the same bounded in-process FIFOs, with no process-global.
+`Deployment::new` rejects an empty worker list, duplicate workers, unequal worker/leader list
+lengths, and a participant that is both worker and leader. Position `i` assigns worker rank `i`
+and, when present, its leader. `init` additionally rejects a participant outside the launch,
+inconsistent entry information or insufficient storage. It must not silently narrow a deployment.
 
-The deployment states which participants are workers and which one leads each of them, in the
-launch's own numbering: `workers` and `leaders` are `Launch` values, the same space a device
-backend uses for its launch's warp or block index. The two lists are parallel: position `i` of
-`workers` is contract rank `i`, and `leaders[i]` leads it. Their
-lengths shall be equal, and a mismatch is refused by name.
+`Environment` is an opaque entry description with `Default`. `Context` owns the entered unit's
+backend resources. `rank`, `size` and `hosts` describe workers only. `hosts(cx)[r]` is the lowest
+worker rank in `r`'s sharing domain; equality of entries identifies a cohort, not necessarily a
+physical host. A domain may contain one worker.
 
-`Deployment::new(workers, leaders)` is the only constructor, and it refuses by name rather than
-resolve: an empty `workers` (`EmptyDeployment`), a worker named twice (`DuplicateWorker`), a
-`leaders` list of a different length (`UnequalLists`), or a rank that is both (`WorkerIsLeader`).
-`leaders` of `None` means the workers are unled. There is no empty deployment meaning "every
-participant", so a single-participant launch names its one worker. A backend shall still refuse
-a rank outside the job (`RankOutsideJob`), because only it knows the job.
+`Context` and `Io` are `Send`, not `Sync`: an owner may move them but cannot create concurrent
+shared access to one handle. `Shared`, `Published` and `Leader` are neither `Send` nor `Sync`; their views and
+operations retain the owning participant's lifetime. This does not prevent a safely borrowed byte
+slice from being shared where Rust permits it. Unstable compiler marker traits are not promises.
 
-The launch description is the launcher's authority, and it carries three things: the participants,
-which of them leads which, and how to reach the leaders out of band. The first two are the
-deployment and are this contract's input. The third is not the contract's business, and its absence
-is not a hole: a leader is a host process, and a host process reaches another host process the way
-hosts already do. There is therefore no leader-to-leader route, and a leader's address is not a
-participant rank.
+`done` is the explicit finalization boundary. On normal completion it returns the supplied
+outcome and ends use of the context; no further route or sharing operations use that context.
+Finalization is not a delivery barrier: accepted but unreceived frames may be lost, and completion
+must not require the application to receive them. An unrecoverable finalization failure is
+reported as abnormal termination, not a fabricated successful outcome. There is no promise to
+run destructors after a trap or killed process.
 
-That one leader serves many workers, and that the workers it serves share a host, are statements a
-launcher makes. The contract does not learn what a host is: it sees only that worker `i` is led by
-`leaders[i]`, and a launcher that wants one leader per host gives every worker of a host the same
-number. What participants share a domain with each other is discovered, because it is a property of
-the runtime and the hardware, and it is discovered within the participant set. What a participant
-is supposed to do is decided by the launch, because nothing in the machine says it. The two need not
-agree: `hosts(cx)[rank(cx)]` is a sharing-domain fact and is not evidence of leadership, which is
-why deriving a leader from it was a machine fact read as a role.
-
-The backend shall establish the participant set before computing any sharing domain, and this holds
-per leader: a leader that shares a host with workers - including other leaders' workers - must not
-join their domain, and it does not, because it is not a participant. That holds only while the two
-steps are in that order. Reordering them admits a non-participant into a worker's domain, and the
-symptom is a hang inside the domain computation rather than a wrong number.
-
-The cohort rule shall be pure and allocation-free. Equal returned colours identify one cohort;
-its members are ordered by rank. A backend may reject an unsupported grouping at `init`.
-No peer operation, plan or collective may precede successful initialization.
-
-Context and environment storage shall outlive their operations. Each physical context object
-shall have one owner. Cooperative lanes may own separate replicas; identity, endpoint state and
-operation sequence shall remain uniform across replicas. A shared object shall not be aliased
-through several mutable references. No implicit process-global context is part of the interface.
-
-`done` shall report the outcome and discharge local obligations; it may return. Observed backend
-failures shall produce a participant-visible record for the caller, independent of stderr and
-`Drop`. A trap need not write a record: the launcher shall report observed abnormal termination
-as failure. Failure detection is not guaranteed after loss of the launcher. Process exit is not
-portable, and absence of a failure record is not evidence of completion.
-
-A transport that terminates the participant inside a failing call, before returning a code, cannot
-satisfy this clause whatever the caller does: the backend shall configure the transport to return
-errors. An operation that still aborts or panics where a record is required is an unsupported
-operation, not a reported one.
-
-A failure names its kind: `FailureKind::Backend(BackendFault)` for what the backend observed below
-the contract, or `FailureKind::Application(A)` for the application's own, so a record never has to
-be decoded from a number.
-
-## 4. Communication
+## Communication
 
 ```rust
-fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error>;
-fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error>;
-fn flush(cx: &mut Context) -> Result<(), Error>;
+enum Channel { Message(Tag), Lane }
 
 enum Error {
     Full, Busy, Closed,
-    TooLarge { limit: usize }, TooSmall { needed: usize },
-    Invalid(Invalid), Failed(Failure),
+    TooLarge { limit: usize },
+    TooSmall { needed: usize },
+    Invalid(Invalid),
+    Failed(Failure),
 }
+
+fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error>;
+fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error>;
+fn flush(cx: &mut Context) -> Result<(), Error>;
 ```
 
-`send` success means **accepted**. Before returning, the backend shall copy the bytes into
-transport-owned storage or finish using them. No reference to `data` shall escape the call.
-Capacity shall be fixed or bounded by the environment. Refusal shall accept no part of a frame;
-acceptance shall occur once.
+Lengths, offsets and capacities are bytes, represented by `usize` at the Rust boundary. A frame
+is opaque bytes, not an implicitly serialized Rust value. `Frame::source`, `tag` and `len` describe
+the whole frame written into the caller's buffer. No partial frame is reported as a receive.
 
-`Message(tag)` shall be reliable and FIFO per `(source, destination, tag)` during a healthy run.
-`Lane` uses the geometry and tag established by `reshape`; `LOSSY` says whether it may lose a
-frame. A lossy lane does not permit loss on the message channel. Worker-to-worker
-traffic uses `Message` and `Lane` and nothing else.
+Each call makes one attempt. `Full` means no capacity, `Busy` means contention at that attempt,
+and `Ok(None)` means no eligible frame was received. Refusal accepts or consumes nothing.
+`TooSmall { needed }` leaves the frame available for a buffer with `needed` bytes. The caller
+may attempt again, perform other work or stop; the backend does not hide a waiting loop inside
+a refused operation. An observed backend failure is not a transient refusal.
 
-A worker's route to its leader, and the leader's route to its workers, is `trame::leader`, and it
-is a separate route with its own transport:
+Successful `send` accepts a private copy of the bytes before returning. The caller may reuse
+its buffer immediately. Successful `flush` means accepted sends retain no send-side storage;
+it does not mean a receiver consumed them. Publication of an accepted frame precedes its
+successful receive, including visibility of every payload byte.
+
+`Message` is reliable FIFO per sender/receiver pair across its tags while the route is live.
+`Lane` is FIFO per pair; only an explicitly lossy lane may skip frames, and it never reorders
+those delivered. Nothing orders a Message frame against a Lane frame. Closing a route or ending
+a participant does not imply delivery of its pending frames.
+
+A live route must not permanently refuse admissible traffic merely because its implementation
+never services pending work. Progress assumes a live launch, execution opportunities for the
+participating units, and receivers that perform the required receives. There is no wall-clock
+latency bound or promise of delivery to an application that never receives.
+
+### Leaders
+
+A leader is an external communication participant without a worker rank. It is an endpoint role,
+not a requirement for a dedicated operating-system process. Workers with no assigned leader get
+`Invalid(NoLeader)` on that route.
 
 ```rust
-pub struct Leader; // the host process's end
-impl Leader {
-    pub fn open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure>;
-    pub fn send(&self, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error>;
-    pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error>;
-}
-pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error>;
-pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<(Tag, usize)>, Error>;
+fn leader::open(env: Environment, deployment: Deployment) -> Result<Leader, Failure>;
+fn leader::send_to(leader: &Leader, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error>;
+fn leader::recv_from(leader: &Leader, out: &mut [u8]) -> Result<Option<Frame>, Error>;
+fn leader::done<A>(leader: &mut Leader, outcome: Result<(), Failure<A>>)
+    -> Result<(), Failure<A>>;
+
+fn leader::send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error>;
+fn leader::recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error>;
 ```
 
-The worker end takes no destination, because the backend knows its leader and nothing derives it
-from the numbering. The leader end takes no source, because its sources are workers and they are
-ranks, so `Frame` reports them. `leader::recv` returns `(tag, length)`: the worker end has one
-source, so there is no source to report and no type is spent on one.
+The send and receive functions have the same one-attempt and whole-frame rules. Each direction
+is FIFO per worker. A frame received by a worker from its leader has `source == None`; the leader
+receives the sending worker's rank. `open`, `send_to` and `recv_from` replace the currently
+implemented `Leader::open`, `send` and `recv`; no second interface is intended.
 
-Two verbs over two routes put route arbitration in the caller's hands, which is why there is no
-general fairness obligation between them: a worker chooses when to check its leader and when to
-check its peers, and neither route can starve the other behind its back. How leader bytes move is
-the backend's choice, and it is not the worker-to-worker mechanism.
+`leader::done` gives the leader the same explicit finalization boundary as a worker. It is a
+proposed addition: the current MPI implementation instead coordinates shutdown in `Leader`'s
+Drop. Normal programs finalize entered participants explicitly; dropping a handle is not an
+implicit successful finalization or a new collective participation point.
 
-The leader is a host process reachable by `Leader::open(env, deployment)`, mirroring `init` from the other
-side. That holds under every backend, a device one included: what a backend declares is the
-*route*, not the leader's kind. It may use sockets, files and threads; the contract neither permits
-nor forbids that, because the leader never enters the participant surface, so no lowering has to
-distinguish it.
-
-A device lowering may realize the control route as memory the participant polls; its `recv` is
-then one look at that memory, like every other `recv`.
-
-`recv` shall return one complete frame from any source, with its tag and bytes paired. `None`
-means no frame was available.
-There is no tagged receive: the caller dispatches each frame by its tag. Broadcast is an
-iteration of sends with explicit per-destination outcomes. A backend that matches a probe
-atomically may hold the matched frame inside its receive scope when a refusal names it; the next
-receive on that scope shall return that frame. Holding a frame a refusal named is not a tagged
-stash or a demultiplexer, and a probe cannot be undone, so this retention is required for any
-non-consuming refusal.
-
-`TooSmall` shall report the required length without consuming the frame or changing `out`.
-This does not prevent a lossy lane being overwritten before the next call. The backend shall
-serialize matching and consumption within the receive scope; a competing local receive shall
-not invalidate a probed length, and a probe-then-receive pair is not sufficient because a peer
-may send between the two, pairing one frame's length with another's bytes. A matched message
-shall not be abandoned on refusal. A receive
-loop shall provision `MAX_FRAME` or handle `TooSmall` by supplying enough
-storage or failing the run; repeating the same undersized receive is not progress.
-
-`flush` success means all previously accepted local sends have released their operation-specific
-send resources. It does **not** mean that receivers have consumed or applied them. An
-incomplete flush returns `Busy`. MPI eager completion and receiver-released ring storage may
-satisfy this obligation at different times without changing its meaning. A backend whose sends
-retire inside the call has nothing to wait for and may answer `flush` immediately; that is a
-property of its admission, not a stronger guarantee.
-
-`Full` shall be reported whenever an attempt is refused for lack of capacity, including when the
-attempt's own failure is the only observation of that capacity. A backend shall not abort, wait,
-or drop in that case.
-
-`send`, `recv` and `flush` shall drive local transport progress. No background thread or
-asynchronous device progress is assumed. Accepted frames shall not require a caller-owned
-handle to remain alive. There is no portable `Inflight`, implicit retry or `Drop`-driven wait.
-A failure after acceptance shall fail the run visibly; it shall not become a safe-to-retry refusal.
-
-## 5. Waiting
-
-The backend does not wait. Every `send`, `recv`, `flush` and both leader ends make exactly one
-attempt and answer `Full`, `Busy`, `Ok(None)` or an outcome. Waiting is the caller's: it repeats
-the attempt, and it decides whether to spin, yield to other work or give up, because only the
-caller knows what else it could be doing.
-
-Collectives block and have no timeout. If a peer never arrives, nothing in the contract notices:
-liveness belongs to `mpirun`, the nv driver and the job's walltime.
-
-Where a backend's machinery cannot make a genuine single attempt, the site is marked `C3:` in the
-source and keeps its current behaviour until it is fixed; it is a defect in that backend, not a
-second meaning of the operation.
-
-A device backend shall state its progress assumptions, including residency and convergence.
-
-## 6. Geometry and lifetime
+### Declared lanes
 
 ```rust
 fn reshape(cx: &mut Context, workers: &[Rank], edges: &[Edge], frame: usize, tag: Tag)
     -> Result<(), Error>;
 fn release(cx: &mut Context) -> Result<(), Error>;
-fn partition::slice_of(hosts: &[Rank], domain: &[Rank], rank: Rank, total: usize)
-    -> Result<ByteRange, Invalid>;
-fn share(cx: &mut Context, mine: &[u8], total: usize) -> Result<Shared, Error>;
-fn bytes(segment: &Shared) -> &[u8];
-fn unshare(cx: &mut Context, segment: Shared) -> Result<(), (Shared, Error)>;
 ```
 
-Workers shall be ascending and unique. Edges shall be ordered by `(source, destination)`, without
-duplicates; both endpoints shall be workers. `affected` is the number of destination elements
-reachable from that source; `frame` is the lane frame capacity. Validation shall not require a
-hash map. Invalid or unsupported geometry shall be refused at `reshape`, before any lane send.
+`reshape` declares a load's directed routes: ascending unique workers, edges ascending by
+`(source, destination)`, both endpoints among the workers, maximum frame length in bytes, and a
+tag. `Edge::new(source, destination, affected)` records a nonzero destination-element count used
+for capacity planning. Storage geometry is an implementation decision, not an application-visible
+ring formula. Unsupported geometry is refused before any lane send.
 
-A backend may use one launch-wide geometry. It shall validate every declared pair against that
-geometry rather than resize or truncate silently. `reshape` shall not replace live resources.
+Traffic before configuration is `Invalid(LaneNotConfigured)`. An undeclared pair is
+`Invalid(NoLane)`, and exceeding the declared length is `TooLarge { limit: frame }`. A lane frame
+uses the declared tag. `release` ends this participant's use of the lanes; it does not certify
+that peers consumed pending frames.
 
-`release` discharges the caller's lane obligations. Local return is not evidence that peers
-stopped accessing storage. A caller requiring global reclamation shall provide an explicit
-protocol proving every outstanding access has ended.
-
-The layout rule is pure, allocation-free and published as `partition::slice_of(hosts, domain,
-rank, total)`, whose domain is a parameter and whose alignment is the selected backend's. It is
-the one definition of where the cuts are: `share` applies it to the caller's own domain, and a
-caller that must size another domain's contributions, as a launcher does for its workers, calls it
-with that domain stated.
-
-`share` shall expose one immutable copy per sharing domain. `share` takes no domain because
-publication is a capability: only a member can expose a copy as that domain's copy, so a domain
-argument would promise what no backend could honour. Publication shall validate coverage and
-total size. A backend may require collective publication or use an allocation installed before
-participant entry. Returned bytes shall not become visible before publication is complete for
-that reader.
-
-`unshare` shall consume the mapping handle on success and return it on refusal.
-Physical reclamation requires the backend's stated completion boundary: collective
-retirement or an enclosing lifetime whose readers have all finished. Neither dropping a handle,
-quiet statistics nor a local transport flush proves that boundary.
-
-## 7. Clocks
+## Shared memory
 
 ```rust
+struct Handle; // Handle::BYTES, to_bytes, from_bytes
+
+fn leader::publish(leader: &Leader, revision: NonZeroU64, bytes: &[u8]) -> Result<Published, Error>;
+fn leader::handle(segment: &Published) -> Handle;
+fn leader::retire(leader: &Leader, segment: Published) -> Result<(), (Published, Error)>;
+
+unsafe fn attach(cx: &mut Context, handle: Handle) -> Result<Shared, Error>;
+fn bytes(segment: &Shared) -> &[u8];
+fn detach(cx: &mut Context, segment: Shared) -> Result<(), (Shared, Error)>;
+```
+
+A segment belongs to a leader. `publish` allocates storage for `bytes`, writes every byte, and
+then publishes it under `revision`; the leader is the segment's only writer and nothing writes it
+after publication. `handle` names it as a fixed-size value, `Handle::BYTES` long, that the
+application carries to its workers in an ordinary frame; the segment's bytes never travel as
+frames, so its length is not bounded by `MAX_FRAME`. A `Handle` holds the revision, the length and
+a backend-private token. Decoding accepts any bytes except revision zero; whether they name a
+segment is decided by `attach`.
+
+`attach` maps the named segment read-only. It acquires the segment's published revision before it
+reads any other header field or payload byte. A header disagreement in revision, length or format
+is `Invalid(NoSegment)`; an OS failure opening or mapping the name, including ENOENT when it was
+retired or its leader is not colocated, is `Failed(BackendFault::Os(errno))`.
+It is `unsafe` because the caller promises that the segment is not retired before the returned
+`Shared` is detached or dropped; on some storage retirement frees memory a live view reads. The
+`Shared` owns the mapping and `bytes` borrows it. `detach` consumes it on success and returns the
+same live handle and precise OS error on refusal, and so does `retire` for a `Published`. A
+recorded cleanup failure is sticky: the next `detach` or `retire` returns the same errno without
+issuing a syscall, and `retire` is the owner's alone, asserting on a reader. Cleanup in Drop is
+abnormal: an OS failure there is reported and aborts instead of panicking or disappearing.
+Dropping a returned refusal without handling it reports the original error and aborts, never retries.
+
+A leader may publish revision `n + 1` while `n` is attached, so a refused publication leaves the
+previous segment and its readers untouched. On named storage the MPI family refuses a revision the
+leader already holds live by name (`EEXIST`); `none` does not check it and relies on the leader
+never reusing a live revision, which NERVE's monotonic revision guarantees. Retiring is the
+leader's decision alone, taken after every attached worker has told it, by an ordinary frame, that
+it has detached.
+
+Publish reserves the whole object before it copies, so an initial load needs one segment of
+`/dev/shm` capacity and a reload needs two at once. An exhausted `/dev/shm` is a refused
+publication carrying its errno, such as `ENOSPC`, not a `SIGBUS` during the copy.
+
+A process that dies without unloading, whether by a fatal exit, a signal or a launcher abort,
+leaves its `/dev/shm/trame-<pid>-<rev>` objects behind. Removing them after a crash is the launch
+operator's job; there is no automatic crash cleanup yet.
+
+**Colocation is a launch precondition.** A leader runs on its workers' machine, in their POSIX
+shared-memory namespace (host backends) or their CUDA context (device backend). Nothing discovers
+or repairs a violation; `attach` refuses by name.
+
+Shared mutable state uses exclusive access, handoff or atomics, not an aliased `&mut` reference.
+Shared storage has no implicit global coherence outside its declared domain. Logical publication
+and acquisition must establish visibility regardless of which memory instructions implement them.
+
+A segment carries bytes from a leader to its workers. The Rust-value primitives below serve
+processes sharing one worker's valid address domain; they do not serialize arbitrary `T` into
+another worker's address space. Neither `Send` nor `NoUninit` makes a pointer valid in a different
+address domain. A lowering must keep these borrowed values accessible to their logical owners.
+
+### Exclusive access
+
+```rust
+fn sync::with<T, R>(state: &Exclusive<T>, body: impl FnOnce(&mut T) -> R)
+    -> Result<R, Locked>;
+```
+
+`Exclusive::new(value)` creates the owned state; `Exclusive<T>` is `Sync` when `T: Send`.
+`Locked` distinguishes `Busy` from `Abandoned`. `with` makes one acquisition attempt. On success
+it calls `body` exactly once with the only mutable borrow and returns its result to the logical
+caller. Release publishes the mutation to the next successful acquisition. Contention is
+`Locked::Busy`, not a hidden wait for another process step.
+
+If an unwinding panic escapes the body, later acquisitions report `Locked::Abandoned`; they do
+not silently treat partially mutated state as sound. A trap ends the launch instead. The return
+value `R` need not be a padding-free copy value. Duplicating it among physical execution lanes is
+not part of this operation. The current `Exclusive::with` method is the implementation to migrate.
+
+### Handoff
+
+`sync::handoff` supplies the following functions over `Handoff<T, D>`, `Sender` and `Receiver`:
+
+```rust
+fn new<T, const D: usize>(init: impl FnMut() -> T) -> Handoff<T, D>;
+fn split<T, const D: usize>(queue: &mut Handoff<T, D>)
+    -> (Sender<'_, T, D>, Receiver<'_, T, D>);
+fn spare<T, const D: usize>(sender: &mut Sender<'_, T, D>) -> Result<T, Idle>;
+fn send<T, const D: usize>(sender: &mut Sender<'_, T, D>, value: T) -> Result<(), Unsent<T>>;
+fn recv<T, const D: usize>(receiver: &mut Receiver<'_, T, D>) -> Result<T, Idle>;
+fn give<T, const D: usize>(receiver: &mut Receiver<'_, T, D>, value: T) -> Result<(), Unsent<T>>;
+fn sending<T, const D: usize>(receiver: &Receiver<'_, T, D>) -> bool;
+```
+
+`D` is a positive item count. Construction creates `D` spare values; the ready queue also has
+capacity `D`. One producer and one consumer borrow the handoff. Each operation attempts once.
+`send` publishes the moved value and `recv` acquires the oldest queued value. `give` returns a
+value to the spare pool. Publication includes the data the transferred ownership permits access to.
+
+`Unsent<T> { why, value }` returns the same unaccepted value with `Full`, `Busy` or `Closed`.
+An empty `spare` or `recv` reports `Empty`, `Busy` or `Closed` through `Idle`. Closing the sender
+does not erase queued values; the receiver can drain them. `sending` reports whether the sender
+still exists. Once both endpoints are gone the handoff may be split again.
+
+At each transfer an owned value is in one location: its caller, a spare slot or a ready slot.
+Ownership is moved, never duplicated. Reclamation drops retained values exactly once; dropping
+an endpoint does not fabricate acceptance of its outstanding work. `T: Send` is required when
+endpoints move between execution threads, through their Rust trait bounds, not because a wire
+serializes `T`. No `Copy` or `NoUninit` requirement follows from the logical ownership contract.
+These function forms replace the corresponding current constructor and endpoint methods.
+
+### Atomics
+
+`sync::atomic` provides `AtomicBool`, `AtomicU32`, `AtomicU64` and `Ordering`. The value widths
+are one Boolean, `u32` and `u64`, not unspecified machine words. Operations are `new`, `load`,
+`store`, `swap`, `compare_exchange`, `Default`, and integer `fetch_add`, with Rust's ordering
+semantics within the sharing domain. An implementation may serialize atomic operations; it may
+not omit the visibility an acquire/release pair promises.
+
+## Coordination boundaries
+
+Participants enter matching coordination operations in matching order:
+
+```rust
+fn barrier(cx: &mut Context);
+```
+
+| Boundary | Participants |
+|---|---|
+| Entry | Each declared worker calls `init`; each distinct declared leader calls `leader::open`. |
+| `reshape`, `release` | All entered workers, never leaders; `workers` in `reshape` describes the active route geometry, not a different collective membership. |
+| `barrier` | All entered workers, never leaders; it consumes no message or lane frame and does not finalize sends. |
+| `publish`, `retire` | The leader alone; `retire` only after each worker that attached has reported its `detach`. `attach` and `detach` are each one worker's own and coordinate with nobody. |
+| Finalization | Entered workers call `done`; entered leaders call `leader::done`. Releasing their joint resources may coordinate their completion, but never requires application delivery. |
+
+`barrier` separates application phases but does not certify delivery of pending frames: callers
+must finish their previous exchanges before entering.
+
+Route declarations agree among participants. Segment publication is not a collective: the leader
+publishes, and the handle reaches each worker as an application frame. The implementation must
+schedule all admitted participants needed by a boundary; physical simultaneous residency is not a
+caller obligation.
+
+These boundaries do not run inside a bounded process step or an invoked item. Such bodies must
+finish without requiring another body to be scheduled while they wait. Coordination has no
+intrinsic wall-clock timeout; the launcher owns termination of a stalled or failed launch.
+Resource impossibility is an explicit entry/configuration error, not a collective that waits
+for a unit the backend can never run.
+
+## Execution declarations
+
+### Persistent processes
+
+```rust
+#[trame::process]
+struct Intake { /* application-owned state */ }
+
+impl Intake {
+    fn step(&mut self) -> Result<trame::Step, WorkError> { /* bounded body */ }
+}
+
+trame::concurrent!(intake, delivery, transport)?;
+```
+
+The struct attribute declares retained work, not a new object hierarchy. It leaves fields and
+ordinary inherent methods intact. Its marker lets `concurrent!` reject undeclared objects; Rust
+checks the generated `.step()` call and infers its error type at invocation. No associated-error
+annotation or generated public factory closure is needed.
+
+`concurrent!` binds each expression once in source order before stepping any of them. Values are
+moved unless the caller explicitly passes a mutable borrow. The processes must be `Send`, may
+borrow scoped state, and return one compatible `E: Send`. Each process retains its state across
+calls and is never stepped simultaneously with itself.
+
+`Step::Progress` means work advanced; `Idle` means this attempt did not advance; `Done` permanently
+finishes that process. An idle process must permit other unfinished processes to run. While the
+launch remains live, unfinished processes get repeated execution opportunities; there is no
+promise of an exact interleaving, thread count, polling frequency or completion time.
+
+A sequential scheduler repeatedly gives each unfinished process a bounded step. Running one
+process to completion before admitting its communicating peer is not an equivalent lowering.
+Neither process bodies nor callers must name lanes or perform warp votes.
+
+An error stops admission of new steps. Already admitted steps may finish. After joining all
+admitted work, the first failing process in source order among the recorded errors supplies the
+result. This does not promise the same set of errors under every interleaving. A host panic is
+joined with the other work and then resumed; a device trap is reported by the launcher. Owners
+and borrowed resources stay alive until admitted work has ended.
+
+### Per-process communication
+
+```rust
+trame::concurrent!(cx;
+    recv(TAG_SYS) => control,
+    recv(..) => intake,
+    delivery,
+)?;
+
+fn io::send(io: &mut Io<'_>, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error>;
+fn io::lead(io: &mut Io<'_>, tag: Tag, data: &[u8]) -> Result<(), Error>;
+fn io::recv(io: &mut Io<'_>, out: &mut [u8]) -> Result<Option<Frame>, Error>;
+fn io::flush(io: &mut Io<'_>) -> Result<(), Error>;
+```
+
+In this form each step is callable as `step(&mut self, io: &mut Io<'_>)`. The endpoint borrow
+lasts one step. The functions above replace the current `Io` methods and retain the ordinary
+route guarantees; `lead` sends to the worker's assigned leader.
+
+`recv(A, B)` assigns those tags; `recv(..)` assigns every tag. A frame belongs to the first process
+in source order whose setting names its tag, whether it came from a peer, lane or leader. Frames
+no process names remain at the backend. A process without a setting gets `Invalid(NotReceiving)`
+if it tries to receive.
+
+Frames from one sending process to one receiving process retain per-channel FIFO across its tags.
+Frames assigned to different processes have no mutual order, and a frame may wait behind an
+earlier frame of the same sender owned by another process. Tag dispatch does not authorize
+silently dropping or reordering traffic.
+
+### Item invocation
+
+```rust
+#[trame::parallel]
+fn advance(item: Item, cx: &Pass) -> Result<(), WorkError> { /* bounded body */ }
+
+#[trame::parallel]
+#[trame::ordered(key = frame.target: Target)]
+fn integrate(frame: Frame, neuron: &mut Neuron, cx: &Pass) -> Result<(), WorkError> {
+    /* target-owned transition */
+}
+
+trame::invoke!(advance, &pass, &items)?;
+trame::invoke!(integrate, &pass, &frames, trame::Keyed::new(&mut neurons[..]))?;
+```
+
+`#[parallel]` dispatches a list. `#[ordered]` says which mutable state each item may touch: its
+key indexes one slot of a `Keyed` slice, so a frame reaches the neuron its target names and no
+other. That slot is the only mutable borrow an item receives. The context is shared, `&C` with
+`C: Sync`, and carries read-only inputs and the shared primitives below. Mutation outside the
+keyed slot goes through those primitives, never through an aliased `&mut`. An optional `&self`
+receiver is shared in the same way.
+
+Items come from `&[I]` with `I: Copy`, because each body receives an item by value from that
+borrowed list. A key is `Copy + Into<usize>`; its type distinguishes keyed views. Slots are
+`T: Send` and errors `E: Send`, because a body may run on an execution thread other than the
+caller's. These bounds describe the Rust call, not a device transport representation.
+
+This signature is a proposed change: the current declarations take `&mut C`, which no lowering
+other than a sequential loop can honour.
+
+`invoke!` visits every item once and joins the work before returning. An item error does not
+cancel later items. A keyed item outside the slice records `Invoked::OutOfRange { key, len }`
+without entering its body; an in-range body's failure is `Invoked::Failed(E)`. The first failing
+item in original list order determines the returned error, including out-of-range failures.
+Empty input succeeds without calling a body. A panic is not an item `Err`: before unwinding,
+a host lowering must join all work already admitted, but need not admit remaining items. A device
+trap is reported by the launcher, with no completion or destructor guarantee.
+
+Repeated keys are legal. Calls for one key retain input-list order and never overlap their
+mutable access to its slot. No additional cross-key execution order is promised. A sequential
+list-order loop is a complete implementation of both declarations.
+
+Distinct keys may run in parallel; the same key never overlaps itself. An implementation must
+not copy the context per lane, duplicate an effect, or replay an item to recover its error. A
+declaration does not waive Rust's ownership rules or make a collective safe in an item body.
+
+There is one logical result owner. `E` need not implement `Copy`, `Clone`, `NoUninit` or a device
+serialization trait. The retained error moves to that owner; on normal completion, other errors
+are dropped exactly once before return. Their destruction order is not otherwise specified.
+Moving an error to its owner needs `E: Send`, not a copy; a physical implementation's desire to
+broadcast it cannot strengthen the public bound. Different arithmetic precision or reordered same-target updates are not scheduling choices.
+
+## Failure and clocks
+
+```rust
+struct Failure<A = Infallible> {
+    participant: Participant,
+    operation: &'static str,
+    kind: FailureKind<A>,
+}
+enum FailureKind<A> { Backend(BackendFault), Application(A) }
+enum Participant { Worker(Rank), Leader(Launch), Entering(Option<Launch>) }
+
 fn clock::reading() -> Reading;
 ```
 
-A reading is a property of the machine rather than of the participant, so the call takes no
-context: a host has one process clock and a device one counter per power cycle, and parameterising
-by participant would give one fact two spellings. The identity is what says which readings may be
-compared, and a backend whose identity is recomputed per call has no comparable readings at all.
+A backend-observed failure returns as a value identifying its participant and operation. Failure
+is not rollback: effects already accepted remain effects, and work is not automatically replayed.
+Failed receive is `Error::Failed`, never fabricated data. Entry failure uses `Entering` rather than
+inventing a worker rank. A trap or lost participant cannot be required to create a record; the
+launcher reports abnormal termination. Application errors remain distinct from transport faults.
 
-Readings shall be monotonic within one clock identity. Only readings with that identity may be
-subtracted: `Reading::since` refuses any other pair with `ClockMismatch`. `Span` is integer nanoseconds, not a standard-library duration; a backend shall state
-resolution, conversion from native ticks and overflow behavior. Conversion shall not invent
-cross-context synchronization.
+A `Reading` is an integer `Span` in `u64` nanoseconds from an origin, tagged with `ClockId`.
+`Reading::since` refuses different identities with `ClockMismatch`. Clocks are not globally
+synchronized, and scheduling macros do not sample or substitute application model time.
 
-## 8. Shared-state primitives
+## Build description and evidence
 
-Exactly three families are required by workloads that use shared mutable state. A backend shall
-declare the scopes and operations it supports; transport reliability does not imply any of them.
+`ID: Backend` identifies the selected implementation for diagnostics and persisted records;
+existing `wire_id` values are append-only. `LOSSY: bool` licenses Lane overwrites and nothing
+else. `MAX_FRAME: usize` bounds every route, including the leader route. The present library
+profile requires at least 65,544 bytes and at most `u32::MAX`; a backend must provision that
+profile or refuse entry. This numerical profile is not a hardware definition.
 
-| Family | Required semantics |
-|---|---|
-| A: turn | One mutable owner; nonpreemptive release. Among waiters, higher priority first and FIFO among equals. Default priority is 1. Acquisition supports polling, declared waiting and explicit cancellation. |
-| B: publication / transfer | Publication exposes whole committed versions from a private writer draft. Reliable transfer moves ownership once. Both use bounded storage; refusal preserves the writer's draft or returns the transferred payload. Capacity, contention and closure remain distinct. |
-| C: atomics | Conventional atomic operations with stated ordering and visibility scope. No fairness or cross-scope visibility is implied. |
+`none` is the degenerate deployment: one worker and no functioning transport peer. It refuses
+other worker geometries, sends answer `Closed`, and receives produce no frame. Local execution and
+shared-state primitives still work, and its leader's segment is a process-local copy that the
+worker, in the same process, attaches by address; `attach` there cannot validate the handle and
+relies on its `unsafe` promise. It does not simulate evidence for communicating deployments.
 
-A FIFO ticket is a valid Family A implementation when only equal priorities are supported;
-nondefault priorities shall then be refused at compilation. The family does not require a waiter
-table, parking thread or host mutex. Cancellation and wait exhaustion shall be distinct outcomes.
-Family B shall state which side may wait; writer publication and transfer admission shall not.
+`nv` implements the segment surface as refusals: `leader::publish` and `attach` return `Failed`
+with `BackendFault::Unimplemented`, so no `Published` or `Shared` value exists on it and `bytes`,
+`detach` and `retire` cannot be reached. `Published` is `nv`'s own uninhabited type, distinct from
+the worker's `Shared`, not an alias of it. The intended implementation is a leader device
+allocation filled by host-to-device copy on a pre-created independent stream, with the handle's
+token the device pointer, valid in the launch's single CUDA context; one GPU per leader. cuda-core
+allocation and its freeing `Drop` are synchronous, so whether they make progress beside a
+persistent kernel is an open hardware question, not a settled lowering. In S1 conformance `nv`
+checks that `publish` and `attach` refuse with `Unimplemented`; the table reports `UNIMPLEMENTED`
+only when the leader's `publish` refusal and each of the four workers' `attach` refusals is the
+exact `Unimplemented` failure, and the cell is not evidence of segment transfer.
 
-## 9. Execution and lowering
+Backend build tooling belongs to its implementation: `trame/<module>/cargo`, package
+`<module>-cargo`, with Cargo's `cargo-<module>` executable convention. NV therefore has
+`trame/nv/cargo`, package `nv-cargo`, invoked as `cargo nv`. A module with no build tool needs no
+placeholder crate. Tooling is not part of the worker's execution interface.
 
-```rust
-#[trame::concurrent]
-fn worker(&self, role: Role, cx: &C) -> Result<(), E>
-#[trame::parallel]
-#[trame::ordered(key = f.target: Target)]
-fn integrate(&self, f: Frame, slot: &mut Slot, cx: &mut PassCx) -> Result<(), E>
-
-trame::invoke!(self.worker, &cx, &[Role::Intake, Role::Delivery])?;
-trame::invoke!(self.integrate, &mut pass, &frames, trame::Keyed::new(&mut slots[..]))?;
-```
-
-A `#[parallel]` function is one unit of data-parallel work; a `#[concurrent]` one is one unit of
-concurrent work. The first parameter after `&self` is the item; `invoke!` runs the function once
-per item of a `&[I]`, `I: Copy`, joins every call, and returns the first `Err` in list order. An
-`Err` does not stop the other items. The attribute rewrites the function into a driver whose first
-parameter is a `trame::Invocation` only `invoke!` constructs; the body exists only inside it.
-
-A `#[parallel]` context is `&mut C`: each call owns it (host: calls run in list order on one
-thread; nv: every lane has its own). A `#[concurrent]` context is `&C`, shared, and mutated only
-through §8's families. No other parameter may be `&mut` except an `#[ordered]` function's one
-keyed slot. `#[ordered(key = place: K)]` names a place in the item and its type; `invoke!` then
-takes a `trame::Keyed<K, T>` and hands each call the slot its key names. Equal keys run on one
-lane in issue order; different keys are unordered. A key naming no slot is
-`Invoked::OutOfRange`, never a skip. The key's type is checked against `K` and `K` against the
-`Keyed` the caller passes. Anything else is refused by name at expansion.
-
-Host lowering: `#[parallel]` is the loop over the list; `#[concurrent]` is `std::thread::scope`
-with one thread per item. nv lowering: unordered `#[parallel]` strides the list over the warp's
-32 lanes (`warp::Split`); ordered `#[parallel]` has every lane walk the list and run the items
-whose `key % 32` is its lane; both are bracketed by `warp::sync()`. Each lane answers for its own
-items. nv has no `#[concurrent]`: a participant is one warp (`here_id` is the launch index over 32
-lanes), so there is no second warp to give an item, and the attribute is refused.
-
-A context that cannot be copied is shared between a participant's concurrent units through a
-Family A exclusive, which lends it for one call. A unit that holds it across a wait starves its
-sibling; nothing can check that, so it is an author obligation, and the retry loop sits outside
-the guard.
-
-A device lowering compiles the call graph reachable from an entry, not the whole crate. Host-only
-code outside that graph is not lowered and need not be excluded from the crate. A body inside that
-graph shall not reach a device intrinsic through a helper the lowering cannot analyse: annotate the
-helper for the device, or read the per-lane value at the entry and pass it as an argument.
-
-For warp-cooperative transport, every lane shall execute `send`, `recv` and `flush` in convergence,
-with equal buffer addresses, lengths, channels and destinations where applicable. Endpoint
-sequences shall remain equal. Buffers shall not overlap transport storage. Different lane-local
-frames shall be assembled into one uniform frame before sending, or the work shall remain serial.
-
-A cooperative receive shall use disjoint lane writes under the logical exclusive borrow of §2.
-Native address-and-length operations may implement it; ownership shall not be weakened.
-
-The portable worker uses these attributes and the selected backend's primitive families.
-`cpu::sync` and `cpu::clock` are host implementation details, not portable imports.
-No capability requires a run-time registry, scheduler object or trait hierarchy.
-
-## 10. Conformance
-
-Conformance requires checks independent of NERVE, using synthetic payloads. Required evidence:
-deployment refusal; environment and cohort agreement; a `MAX_FRAME` frame on every route; frame
-ownership, refusal and ordering; one attempt per call; geometry refusal; sharing lifetime; and
-clock context separation.
-
-For the resident-device backend, evidence shall additionally cover distinct per-participant
-identity and endpoints, convergent transport calls, fixed storage, a full lane, a short receive
-buffer and an unscheduled peer. Host-model initialization shall match device initialization;
-a passing host model alone is insufficient. Numerical equivalence remains a separate NERVE check.
-
-On device (RTX 2080 Ti, sm_75): a partitioned dispatch region (the predecessor of `#[parallel]`) ran 96 indices over 32 lanes with
-each index executed exactly once; a 64-byte round trip passed; a short buffer was told it needed
-64 bytes with the frame still present afterwards; and a full lane refused the next send rather than
-overwriting.
-
-The MPI family reports capacity refusal on its message route (`MPI_ERRORS_RETURN`, raw `MPI_Bsend`
-mapped to `Full`) but its other calls go through wrappers that panic on a non-success code, so
-their failures are not yet records. That is a §3 gap, not a §4 one.
+Conformance checks observable effects against this contract, not which hardware instruction,
+scheduler or storage layout produced them. Verification records the specification version,
+source snapshot, compiler, configuration and hardware. A failed implementation is repaired or
+left uncertified; a changed contract requires an explicit migration and new evidence. Host
+models, compiler probes and hardware runs remain separate kinds of evidence.

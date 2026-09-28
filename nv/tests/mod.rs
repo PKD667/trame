@@ -20,3 +20,12 @@ mod transport;
 // Both ends of the leader route.
 #[cfg(not(feature = "cuda"))]
 mod leader;
+// The backend against the contract: identity, endpoints, refusals and the launch description.
+#[cfg(not(feature = "cuda"))]
+mod contract;
+// `#[parallel]` through `invoke!` on the warp.
+#[cfg(not(feature = "cuda"))]
+mod invoke;
+// The conformance claims, in-process: four warps and a leader on host threads.
+#[cfg(not(feature = "cuda"))]
+mod conformance;

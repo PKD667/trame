@@ -1,5 +1,5 @@
 [package]
-name = "cargo-nvmpi"
+name = "nv-cargo"
 version = "0.1.0"
 edition = "2024"
 description = "cargo subcommand: run cargo through the cuda-oxide codegen backend"
@@ -9,7 +9,7 @@ description = "cargo subcommand: run cargo through the cuda-oxide codegen backen
 [workspace]
 
 [[bin]]
-name = "cargo-nvmpi"
+name = "cargo-nv"
 path = "src/main.rs"
 
 [dependencies]

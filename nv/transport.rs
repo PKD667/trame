@@ -31,4 +31,8 @@ pub trait Transport {
     fn try_send(&mut self, dst: u32, tag: u32, data: &[u8]) -> Result<(), SendError>;
     /// One receive attempt from `src`.
     fn try_recv(&mut self, src: u32, out: &mut [u8]) -> Result<Message, RecvError>;
+    /// The tag of the frame `try_recv` from `src` would take next, if one is published.
+    fn head(&mut self, src: u32) -> Option<u32>;
+    /// Wait until `members` participants of the launch have called this.
+    fn barrier(&mut self, members: u32);
 }

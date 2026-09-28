@@ -9,13 +9,15 @@ use std::sync::Arc;
 
 use mpi_rma::Ring;
 
-use crate::contract::{Backend, Channel, Invalid, Edge, Error, Frame, Rank, Tag};
+use crate::contract::{Backend, Channel, Invalid, Edge, Error, Frame, Participant, Rank, Tag};
+use crate::shared::context::{failure, lane_index};
+use crate::shared::p2p::send_on;
 
 pub use crate::shared::context::{
-    Context, Environment, MAX_FRAME, align, done, hosts, init, rank, size,
+    Context, Environment, Io, MAX_FRAME, barrier, concurrent_io, done, hosts, init, rank, size,
 };
 pub use crate::shared::leader;
-pub use crate::shared::{Shared, bytes, share, unshare};
+pub use crate::shared::{Shared, attach, bytes, detach};
 
 /// The host answers these by being a host: OS threads for execution, and the primitives built on
 /// `std::sync`. A backend whose participants are not host threads answers none of these names.
@@ -49,6 +51,20 @@ pub fn send(
 /// The next frame from either route. One implementation, in `shared`, because the two ring
 /// transports differ in what they overwrite and not in how they receive — and the copy that was
 /// here had drifted out of step with the contract while the other one had too.
+impl Io<'_> {
+    pub fn send(&mut self, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error> {
+        match channel {
+            Channel::Message(tag) => send_on(self.world, Participant::Worker(self.rank), to, tag, data),
+            Channel::Lane => {
+                let index = lane_index(self.workers, to)?;
+                let ring = self.ring.ok_or(Error::Invalid(Invalid::LaneNotConfigured))?;
+                // The raw ring overwrites instead of refusing, so any refusal fails the lane.
+                ring.send(index, data).map(|_| ()).map_err(|_| failure(self.rank, "lane"))
+            }
+        }
+    }
+}
+
 pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     crate::shared::p2p::recv_from_either(cx, out)
 }
@@ -65,7 +81,7 @@ pub fn reshape(
     bytes: usize,
     tag: Tag,
 ) -> Result<(), Error> {
-    crate::shared::context::validate(workers, edges, bytes)?;
+    crate::cpu::lanes::validate(workers, edges, bytes, size(cx), MAX_FRAME)?;
     let lanes = crate::shared::context::window(workers, edges, bytes)?;
     let ring = Ring::raw(cx.together(), &lanes).map_err(|_| cx.failure("reshape"))?;
     cx.set_window(tag, workers.to_vec(), Arc::new(ring));

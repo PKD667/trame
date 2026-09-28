@@ -50,10 +50,6 @@ fn workers() -> Vec<trame::Launch> {
     (0..n).map(trame::Launch::new).collect()
 }
 
-/// Bytes attached for buffered sends. The experiments send frames far below this; it is stated
-/// because the entry has to state it and a silent default would be a bound nobody could act on.
-const ATTACHED: usize = 128 << 20;
-
 /// One participant, and the frames it has received but not yet been asked for.
 pub struct Wire {
     cx: Context,
@@ -67,19 +63,12 @@ pub struct Wire {
 }
 
 impl Wire {
-    /// Enter the world: one cohort, every rank in it.
-    ///
-    /// The rule is pure and returns a colour; the same colour is one cohort. An experiment wants
-    /// every rank in one, so it answers one colour for everybody.
+    /// Enter the world. The experiments use point-to-point only, so the cohort is never read.
     pub fn start() -> Wire {
         Wire {
             cx: init(
-                Environment {
-                    bsend_bytes: ATTACHED,
-                    ..Environment::default()
-                },
+                Environment::default(),
                 Deployment::new(&workers(), None).expect("a stated deployment"),
-                |_, _| 0,
             )
             .expect("this experiment needs MPI"),
             held: Vec::new(),
@@ -87,24 +76,7 @@ impl Wire {
         }
     }
 
-    /// Enter with a stated attached-buffer size, for a probe that needs the buffer to fill.
-    pub fn attach(bsend_bytes: usize) -> Wire {
-        Wire {
-            cx: init(
-                Environment {
-                    bsend_bytes,
-                    ..Environment::default()
-                },
-                Deployment::new(&workers(), None).expect("a stated deployment"),
-                |_, _| 0,
-            )
-            .expect("this experiment needs MPI"),
-            held: Vec::new(),
-            cap: 64,
-        }
-    }
-
-    /// One buffered attempt, with the refusal returned rather than turned into a panic.
+    /// One attempt, with the refusal returned rather than turned into a panic.
     pub fn try_post(&mut self, dest: Rank, tag: Tag, data: &[u8]) -> Result<(), Error> {
         let dest = trame::Rank::from_index(dest);
         send(&mut self.cx, dest, Channel::Message(trame::Tag::new(tag)), data)
@@ -118,13 +90,13 @@ impl Wire {
         size(&self.cx)
     }
 
-    /// Buffered: accepted once the bytes are copied, and never waiting on a busy peer.
+    /// One attempt that must be accepted.
     pub fn post(&mut self, dest: Rank, tag: Tag, data: &[u8]) {
         self.try_post(dest, tag, data)
             .unwrap_or_else(|e| panic!("post to {dest}: {e}"));
     }
 
-    /// Repeated until accepted: for a frame that meets a full attached buffer, and never in a
+    /// Repeated until accepted: for a frame refused with `Full`, and never in a
     /// symmetric exchange where both peers send before either receives.
     pub fn put(&mut self, dest: Rank, tag: Tag, data: &[u8]) {
         until(|| self.try_post(dest, tag, data).map(Some))
@@ -181,7 +153,8 @@ impl Wire {
             match recv(&mut self.cx, &mut buf) {
                 Ok(Some(frame)) => {
                     buf.truncate(frame.len());
-                    return Ok(Some((frame.source().get(), frame.tag().get(), buf)));
+                    let source = frame.source().expect("a peer frame names its sender").get();
+                    return Ok(Some((source, frame.tag().get(), buf)));
                 }
                 Ok(None) => return Ok(None),
                 // The refusal consumed nothing, so asking again with a larger buffer is the whole

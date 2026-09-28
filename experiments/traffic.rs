@@ -325,7 +325,8 @@ fn main() {
             }
             _ => {
                 wire.post(0, REPORT, &pack(row));
-                while !matches!(wire.poll(), Some((_, GO, _))) {}
+                // Held, not dropped: a peer released earlier may already be sending the next pattern.
+                wire.take(GO);
             }
         }
     }

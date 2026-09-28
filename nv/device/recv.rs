@@ -1,4 +1,5 @@
 use super::*;
+use cuda_device::atomic::SystemAtomicU32;
 
 pub struct Rx {
     ptr: *mut u32,
@@ -20,11 +21,23 @@ impl Rx {
     /// one full warp may receive from it, in convergence.
     #[inline(always)]
     pub unsafe fn new(ptr: *mut u32, layout: Layout) -> Self {
-        Self {
-            ptr,
-            layout,
-            seq: 0,
-        }
+        unsafe { Self::resume(ptr, layout, 0) }
+    }
+
+    /// The endpoint resumed at sequence `seq`, for the reason [`Tx::resume`](super::Tx::resume)
+    /// gives.
+    ///
+    /// # Safety
+    ///
+    /// As [`Rx::new`], and `seq` is the sequence this link's receiver last reached.
+    #[inline(always)]
+    pub(crate) unsafe fn resume(ptr: *mut u32, layout: Layout, seq: u32) -> Self {
+        Self { ptr, layout, seq }
+    }
+
+    #[inline(always)]
+    pub(crate) fn seq(&self) -> u32 {
+        self.seq
     }
 
     /// Attempts one warp-cooperative receive.
@@ -35,13 +48,38 @@ impl Rx {
     ///
     /// All lanes must call this in convergence with the same valid `out` and
     /// `capacity`. The output may not overlap this link's arena.
+    /// The tag of the frame `recv` would take next, if one is published. Nothing is released.
+    #[inline(always)]
+    pub unsafe fn head(&self) -> Option<u32> {
+        let lane = warp::lane_id();
+        let slot = self.layout.slot(self.seq);
+        let observed = if lane == 0 {
+            // System scope: the leader end of this link is a CPU thread, and device scope does not order against it.
+            unsafe { SystemAtomicU32::from_ptr(self.ptr.add(slot)) }.load(AtomicOrdering::Acquire)
+        } else {
+            0
+        };
+        if warp::shuffle(observed, 0) != self.seq.wrapping_add(1) {
+            return None;
+        }
+        warp::sync_mask(WARP);
+        Some(warp::shuffle(
+            if lane == 0 {
+                unsafe { self.ptr.add(slot + 3).read() }
+            } else {
+                0
+            },
+            0,
+        ))
+    }
+
     #[inline(always)]
     pub unsafe fn recv(&mut self, out: *mut u8, capacity: u32) -> Result<Message, RecvError> {
         let lane = warp::lane_id();
         let slot = self.layout.slot(self.seq);
         let state_ptr = unsafe { self.ptr.add(slot) };
         let observed = if lane == 0 {
-            unsafe { DeviceAtomicU32::from_ptr(state_ptr) }.load(AtomicOrdering::Acquire)
+            unsafe { SystemAtomicU32::from_ptr(state_ptr) }.load(AtomicOrdering::Acquire)
         } else {
             0
         };
@@ -102,7 +140,7 @@ impl Rx {
         }
         warp::sync_mask(WARP);
         if lane == 0 {
-            unsafe { DeviceAtomicU32::from_ptr(state_ptr) }.store(
+            unsafe { SystemAtomicU32::from_ptr(state_ptr) }.store(
                 self.seq.wrapping_add(self.layout.depth()),
                 AtomicOrdering::Release,
             );

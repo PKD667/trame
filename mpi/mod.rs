@@ -4,13 +4,15 @@
 // out-of-band state: a lane is a frame under the tag `reshape` named, and the `Lane` route differs
 // from `Message` only in who chose the tag.
 
-use crate::contract::{Backend, Channel, Edge, Error, Frame, Rank, Tag};
+use crate::contract::{Backend, Channel, Edge, Error, Frame, Participant, Rank, Tag};
+use crate::shared::context::lane_tag;
+use crate::shared::p2p::send_on;
 
 pub use crate::shared::context::{
-    Context, Environment, MAX_FRAME, align, done, hosts, init, rank, size,
+    Context, Environment, Io, MAX_FRAME, barrier, concurrent_io, done, hosts, init, rank, size,
 };
 pub use crate::shared::leader;
-pub use crate::shared::{Shared, bytes, share, unshare};
+pub use crate::shared::{Shared, attach, bytes, detach};
 
 /// The host answers these by being a host: OS threads for execution, and the primitives built on
 /// `std::sync`. A backend whose participants are not host threads answers none of these names.
@@ -35,6 +37,17 @@ pub fn send(
 }
 
 /// Every frame here is on the wire, so there is one route to receive from.
+impl Io<'_> {
+    /// Lanes are frames under the lane tag, like any other message.
+    pub fn send(&mut self, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error> {
+        let tag = match channel {
+            Channel::Message(tag) => tag,
+            Channel::Lane => lane_tag(self.workers, self.lane)?,
+        };
+        send_on(self.world, Participant::Worker(self.rank), to, tag, data)
+    }
+}
+
 pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     crate::shared::p2p::recv(cx, out)
 }
@@ -51,7 +64,7 @@ pub fn reshape(
     bytes: usize,
     tag: Tag,
 ) -> Result<(), Error> {
-    crate::shared::context::validate(workers, edges, bytes)?;
+    crate::cpu::lanes::validate(workers, edges, bytes, size(cx), MAX_FRAME)?;
     cx.set_lane(tag, workers.to_vec());
     Ok(())
 }

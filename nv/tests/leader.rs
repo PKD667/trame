@@ -2,6 +2,7 @@
 
 use crate::contract::{Deployment, Error, Launch, Rank, Tag};
 use crate::nv::Environment;
+use crate::nv::launch::{self, Description};
 use crate::nv::error::RecvError;
 use crate::nv::layout::Layout;
 use crate::nv::leader::{CAPACITY, DEPTH, Leader, Route, Worker};
@@ -18,19 +19,23 @@ unsafe impl Send for Region {}
 unsafe impl Sync for Region {}
 
 /// The leader of `workers`, over `region`. The leader's rank is one past the last worker.
+///
+/// The calling thread is the model's launcher as well as the leader: it writes the description
+/// the leader then discovers.
 fn open(region: *mut u32, workers: &[u32]) -> Leader {
     let size = workers.len() as u32;
     let workers: Vec<Launch> = workers.iter().copied().map(Launch::new).collect();
     let leaders = vec![Launch::new(size); workers.len()];
+    let route = Route::sized(size).expect("a route for these workers");
+    launch::describe(Description::stated(
+        size,
+        Some(Launch::new(size)),
+        Fabric::new(size, Layout::new(DEPTH, CAPACITY).expect("a valid layout")),
+        region,
+        route.words(),
+    ));
     Leader::open(
-        Environment {
-            rank: Launch::new(size),
-            size,
-            fabric: Fabric::new(size, Layout::new(DEPTH, CAPACITY).expect("a valid layout")),
-            segment: std::ptr::null_mut(),
-            segment_bytes: 0,
-            leader_region: region,
-        },
+        Environment::default(),
         Deployment::new(&workers, Some(&leaders)).expect("a valid deployment"),
     )
     .expect("a deployment with a leader")
@@ -54,7 +59,7 @@ fn a_leader_and_its_workers_talk_both_ways() {
                 let mut buf = vec![0u8; CAPACITY as usize];
                 if let Some(frame) = leader.recv(&mut buf).expect("a frame") {
                     let len = frame.len();
-                    heard.push((frame.source(), frame.tag(), buf[..len].to_vec()));
+                    heard.push((frame.source().expect("a worker sent it"), frame.tag(), buf[..len].to_vec()));
                 }
             }
             heard.sort();

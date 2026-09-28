@@ -23,6 +23,7 @@
 use core::convert::Infallible;
 use core::fmt;
 use core::num::NonZeroU32;
+use core::num::NonZeroU64;
 
 /// A participant's dense index in the cohort, `[0, size)`, or a launch's number for a process in a
 /// [`Deployment`].
@@ -69,11 +70,71 @@ impl Tag {
     }
 }
 
-/// A participant's bytes in a published segment.
+/// A published segment's name, as a worker receives it in an application frame.
+///
+/// Fixed-size and plain so any frame format can carry it: a revision, so a worker can tell which
+/// publication it attached, a length, and a token only the selected backend interprets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ByteRange {
-    pub offset: usize,
-    pub length: usize,
+pub struct Handle {
+    revision: NonZeroU64,
+    length: u64,
+    token: u64,
+}
+
+impl Handle {
+    pub const BYTES: usize = 24;
+
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
+    pub(crate) const fn new(revision: NonZeroU64, length: u64, token: u64) -> Self {
+        Handle {
+            revision,
+            length,
+            token,
+        }
+    }
+
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
+    pub(crate) const fn revision(self) -> NonZeroU64 {
+        self.revision
+    }
+
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
+    pub(crate) const fn length(self) -> u64 {
+        self.length
+    }
+
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
+    pub(crate) const fn token(self) -> u64 {
+        self.token
+    }
+
+    /// Revision, length, token, each little-endian.
+    pub fn to_bytes(self) -> [u8; Self::BYTES] {
+        let mut bytes = [0u8; Self::BYTES];
+        bytes[0..8].copy_from_slice(&self.revision.get().to_le_bytes());
+        bytes[8..16].copy_from_slice(&self.length.to_le_bytes());
+        bytes[16..24].copy_from_slice(&self.token.to_le_bytes());
+        bytes
+    }
+
+    /// Revision zero is never published, so it is refused as `Unrepresentable`.
+    pub fn from_bytes(bytes: [u8; Self::BYTES]) -> Result<Self, Invalid> {
+        let revision = NonZeroU64::new(u64::from_le_bytes(
+            bytes[0..8].try_into().expect("eight bytes"),
+        ))
+        .ok_or(Invalid::Unrepresentable)?;
+        let length = u64::from_le_bytes(bytes[8..16].try_into().expect("eight bytes"));
+        let token = u64::from_le_bytes(bytes[16..24].try_into().expect("eight bytes"));
+        Ok(Handle {
+            revision,
+            length,
+            token,
+        })
+    }
 }
 
 /// Which backend this build selected. The discriminants are on disk in every `LOAD` record, so
@@ -181,7 +242,8 @@ impl<'a> Deployment<'a> {
 
     /// Which contract rank `launch` is, if it names a worker. A search, because the declaration
     /// is the authority on the order.
-    #[cfg_attr(not(feature = "mpi"), allow(dead_code))]
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
     pub(crate) fn contract(self, launch: Launch) -> Option<Rank> {
         self.workers
             .iter()
@@ -190,7 +252,8 @@ impl<'a> Deployment<'a> {
     }
 
     /// This worker's leader, by contract rank.
-    #[cfg_attr(not(any(feature = "mpi", feature = "nv")), allow(dead_code))]
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
     pub(crate) fn leader_of(self, contract: Rank) -> Option<Launch> {
         self.leaders?.get(contract.0 as usize).copied()
     }
@@ -238,6 +301,8 @@ pub enum Invalid {
     WrongLeader,
     /// A leader-route call where the deployment named no leader.
     NoLeader,
+    /// A receive from a `concurrent!` arm that has no `recv` setting.
+    NotReceiving,
     /// A lane send to a rank the current load gave no lane.
     NoLane,
     /// Lane traffic before `reshape` declared a lane.
@@ -250,12 +315,14 @@ pub enum Invalid {
     EdgeOutsideWorkers,
     /// A lane geometry the launched storage cannot hold.
     UnsupportedGeometry,
-    /// A `share` whose bytes are not this participant's slice.
-    BadShareLength,
-    /// A `share` with no launch segment to publish into, or one too small.
-    MissingSegment,
+    /// An `attach` whose mapped header disagrees with the handle in format, length or revision.
+    /// POSIX open failures, including ENOENT, carry their errno in BackendFault::Os.
+    NoSegment,
     /// A value that does not fit the width the transport carries it in.
     Unrepresentable,
+    /// The environment the launch supplied disagrees with itself: header, sizes, alignment, or
+    /// leader. Consistency is what is checked; whether its pointers are real allocations is not.
+    InconsistentLaunch,
 }
 
 /// A failure the backend observed below the contract.
@@ -263,10 +330,15 @@ pub enum Invalid {
 pub enum BackendFault {
     /// The transport library reported an error.
     Transport,
-    /// The storage the entry supplied cannot hold a `MAX_FRAME` frame.
+    /// Storage the backend needs could not be obtained or is too small: an entry that cannot hold
+    /// a `MAX_FRAME` frame, or a segment the leader could not create.
     Storage,
     /// A lock guarding backend state was poisoned by a panicking holder.
     Internal,
+    /// The POSIX errno of the failing syscall.
+    Os(i32),
+    /// A contract operation this backend does not implement yet: nv segment publication.
+    Unimplemented,
     /// An input refused where there was no call to return it from.
     Invalid(Invalid),
 }
@@ -374,18 +446,20 @@ pub enum Channel {
 /// One received frame, without its bytes: those were written into the caller's buffer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Frame {
-    source: Rank,
+    source: Option<Rank>,
     tag: Tag,
     len: usize,
 }
 
 impl Frame {
-    #[cfg_attr(not(any(feature = "mpi", feature = "nv")), allow(dead_code))]
-    pub(crate) const fn new(source: Rank, tag: Tag, len: usize) -> Self {
+    // Built only by a backend that carries frames.
+    #[allow(dead_code)]
+    pub(crate) const fn new(source: Option<Rank>, tag: Tag, len: usize) -> Self {
         Frame { source, tag, len }
     }
 
-    pub const fn source(&self) -> Rank {
+    /// The sending worker, or `None` for this worker's leader, which has no rank.
+    pub const fn source(&self) -> Option<Rank> {
         self.source
     }
 
@@ -418,17 +492,20 @@ impl Edge {
         }
     }
 
-    #[cfg_attr(not(any(feature = "mpi", feature = "nv")), allow(dead_code))]
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
     pub(crate) fn source(self) -> Rank {
         self.source
     }
 
-    #[cfg_attr(not(any(feature = "mpi", feature = "nv")), allow(dead_code))]
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
     pub(crate) fn destination(self) -> Rank {
         self.destination
     }
 
-    #[cfg_attr(not(any(feature = "ring", feature = "nv")), allow(dead_code))]
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
     pub(crate) fn affected(self) -> NonZeroU32 {
         self.affected
     }

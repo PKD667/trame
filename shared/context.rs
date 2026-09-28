@@ -12,12 +12,13 @@
 
 #[cfg(feature = "ring")]
 use std::collections::VecDeque;
+use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 #[cfg(feature = "ring")]
 use std::sync::Arc;
 
+use mpi::collective::CommunicatorCollectives;
 use mpi::environment::Universe;
-use mpi::point_to_point::Message;
 use mpi::raw::traits::AsRaw;
 use mpi::topology::{Color, Communicator, InterCommunicator, SimpleCommunicator};
 
@@ -25,10 +26,11 @@ use mpi::topology::{Color, Communicator, InterCommunicator, SimpleCommunicator};
 use mpi_rma::Ring;
 
 #[cfg(feature = "ring")]
+use crate::contract::Edge;
 use crate::contract::Frame;
+use crate::invoke::{Owner, Receive};
 use crate::contract::{
-    BackendFault, Deployment, Edge, Error, Failure, FailureKind, Invalid, Launch, Participant, Rank,
-    Tag,
+    BackendFault, Deployment, Error, Failure, FailureKind, Invalid, Launch, Participant, Rank, Tag,
 };
 
 /// Megabytes attached for buffered sends, when the entry says nothing.
@@ -42,19 +44,14 @@ pub const MAX_FRAME: usize = (BSEND_MB << 20) / 2;
 /// The smallest attached buffer an entry may state.
 const BSEND_MIN: usize = 2 * MAX_FRAME;
 
-/// What the entry supplies.
+/// The MPI environment supplied at entry.
 ///
-/// MPI discovers its own world, so there is nothing here that a process could not find out,
-/// except the one number MPI will not report: the attached buffer's size, which is where every
-/// accepted frame waits.
-///
-/// The environment owns no MPI object — `init` and `Leader::open` each enter `MPI_COMM_WORLD`
-/// and the `Universe` lives in the returned `Context` — so a clone is just the same stated
-/// buffer size, and the job is whatever `MPI_COMM_WORLD` already is.
+/// The attached buffer has one fixed size: MPI discovers its own world, while this value carries
+/// the buffer size the backend needs for buffered sends. It owns no MPI object — `init` and
+/// `Leader::open` each enter `MPI_COMM_WORLD` and the `Universe` lives in the returned `Context`.
 #[derive(Clone)]
 pub struct Environment {
-    /// Bytes attached for buffered sends; at least twice `MAX_FRAME`.
-    pub bsend_bytes: usize,
+    bsend_bytes: usize,
 }
 
 impl Default for Environment {
@@ -116,18 +113,11 @@ pub struct Context {
     /// than a rank the message route could also have used: an inter-communicator addresses a remote
     /// group, and folding it into the message route would be treating two kinds of thing as one.
     leader: Option<InterCommunicator>,
-    /// The leader route's own hold slot. One per route, because a frame the leader route matched
-    /// and could not deliver must not be surrendered because the message route refused one.
-    leader_held: Option<(Message, usize)>,
+    /// The worker subgroup used to construct the bridge; released after the bridge.
+    leader_group: Option<SimpleCommunicator>,
     lane: Lane,
-    /// A message that was matched and did not fit the caller's buffer.
-    ///
-    /// MPI has no un-probe: a matched message is received or cancelled, and cancelling is not
-    /// guaranteed. Holding it is what keeps a refusal non-consuming — the frame the caller was
-    /// told to grow for is the frame the next call hands over — and it is why the refusal can be
-    /// reported at all, since a plain probe would have to be followed by a receive that a
-    /// concurrent sender may have already invalidated.
-    held: Option<(Message, usize)>,
+    // Auto traits match the nv backend's, so the public surface is the same on every backend.
+    _unshared: PhantomData<*const ()>,
 }
 
 /// # Safety
@@ -195,93 +185,222 @@ impl Context {
     // Only the lane transport that sends lanes as tagged frames reads these.
     #[cfg_attr(feature = "ring", allow(dead_code))]
     pub(crate) fn lane_tag(&self) -> Result<Tag, Error> {
-        if self.lane.workers.is_empty() {
-            return Err(Error::Invalid(Invalid::LaneNotConfigured));
-        }
-        Ok(self.lane.tag)
+        lane_tag(&self.lane.workers, self.lane.tag)
     }
 
     /// This participant's position in the lane table, which is what the window is indexed by.
-    ///
-    /// `Rank` is a world rank and a window is indexed by position among the workers, so the two
-    /// are not the same number and the mapping is not the identity.
     #[cfg(feature = "ring")]
     pub(crate) fn lane_index(&self, rank: Rank) -> Result<i32, Error> {
-        let at = self
-            .lane
-            .workers
-            .iter()
-            .position(|&worker| worker == rank)
-            .ok_or(Error::Invalid(Invalid::NoLane))?;
-        i32::try_from(at).map_err(|_| Error::Invalid(Invalid::Unrepresentable))
+        lane_index(&self.lane.workers, rank)
     }
 
-    /// The world rank a lane index names.
-    #[cfg(feature = "ring")]
-    fn lane_peer(&self, index: i32) -> Result<Rank, Error> {
-        usize::try_from(index)
-            .ok()
-            .and_then(|at| self.lane.workers.get(at).copied())
-            .ok_or(Error::Invalid(Invalid::RankOutsideJob))
-    }
-
-    /// One attempt at the next lane frame: the oldest frame already taken from the window, or, when
-    /// none is, one poll of it. A frame that does not fit stays first in line.
+    /// One attempt at the next lane frame. See [`lane_frame`].
     #[cfg(feature = "ring")]
     pub(crate) fn next_lane_frame(&mut self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
-        if self.lane.taken.is_empty() {
-            let Some(ring) = self.lane.ring.clone() else {
-                return Ok(None);
-            };
-            let messages = ring.poll().map_err(|_| self.failure("poll"))?;
-            for message in messages {
-                let source = self.lane_peer(message.origin)?;
-                self.lane.taken.push_back((source, message.data));
-            }
-        }
-        let Some((source, data)) = self.lane.taken.front() else {
+        let Some(ring) = self.lane.ring.clone() else {
             return Ok(None);
         };
-        let len = data.len();
-        if data.len() > out.len() {
-            return Err(Error::TooSmall { needed: len });
-        }
-        out[..data.len()].copy_from_slice(data);
-        let frame = Frame::new(*source, self.lane.tag, len);
-        self.lane.taken.pop_front();
-        Ok(Some(frame))
+        let lane = &mut self.lane;
+        lane_frame(&ring, &mut lane.taken, &lane.workers, lane.tag, self.rank, out)
     }
 
-    /// This route's communicator and hold slot, borrowed at once.
-    ///
-    /// A receive needs both — the communicator to match on, the slot to keep a frame it matched
-    /// and could not deliver — and both are fields of this record. Returning them together is what
-    /// lets one generic receive serve this route and the leader's: `split` is the borrow that makes
-    /// a single rule reachable from two communicators, rather than a second copy of the rule.
-    pub(crate) fn split(&mut self) -> (&SimpleCommunicator, &mut Option<(Message, usize)>) {
-        (
-            self.world
-                .as_ref()
-                .expect("the communicators were released by `done`"),
-            &mut self.held,
-        )
-    }
-
-    /// The leader route's communicator and hold slot, borrowed at once, or `None` when the
-    /// deployment named no leader. The same shape as [`split`](Self::split) for the same reason.
-    pub(crate) fn leader_split(
-        &mut self,
-    ) -> Option<(&InterCommunicator, &mut Option<(Message, usize)>)> {
-        let leader = self.leader.as_ref()?;
-        Some((leader, &mut self.leader_held))
+    /// The leader route, or `None` when the deployment named no leader.
+    pub(crate) fn leader_route(&self) -> Option<&InterCommunicator> {
+        self.leader.as_ref()
     }
 
     pub(crate) fn failure(&self, operation: &'static str) -> Error {
-        Error::Failed(Failure {
-            participant: Participant::Worker(self.rank),
-            operation,
-            kind: FailureKind::Backend(BackendFault::Transport),
-        })
+        failure(self.rank, operation)
+    }
+}
+
+/// A transport failure `rank` observed in `operation`.
+pub(crate) fn failure(rank: Rank, operation: &'static str) -> Error {
+    Error::Failed(Failure {
+        participant: Participant::Worker(rank),
+        operation,
+        kind: FailureKind::Backend(BackendFault::Transport),
+    })
+}
+
+/// A lane table's tag, or `Invalid` when no load declared one.
+#[cfg_attr(feature = "ring", allow(dead_code))]
+pub(crate) fn lane_tag(workers: &[Rank], tag: Tag) -> Result<Tag, Error> {
+    if workers.is_empty() {
+        return Err(Error::Invalid(Invalid::LaneNotConfigured));
+    }
+    Ok(tag)
+}
+
+/// `rank`'s position in the lane table, which is what the window is indexed by.
+///
+/// `Rank` is a world rank and a window is indexed by position among the workers, so the two
+/// are not the same number and the mapping is not the identity.
+#[cfg(feature = "ring")]
+pub(crate) fn lane_index(workers: &[Rank], rank: Rank) -> Result<i32, Error> {
+    let at = workers
+        .iter()
+        .position(|&worker| worker == rank)
+        .ok_or(Error::Invalid(Invalid::NoLane))?;
+    i32::try_from(at).map_err(|_| Error::Invalid(Invalid::Unrepresentable))
+}
+
+/// The oldest frame already taken from the window, or, when none is, one poll of it that
+/// acknowledges what it took. A frame that does not fit stays first in line.
+#[cfg(feature = "ring")]
+fn lane_frame(
+    ring: &Ring,
+    taken: &mut VecDeque<(Rank, Vec<u8>)>,
+    workers: &[Rank],
+    tag: Tag,
+    me: Rank,
+    out: &mut [u8],
+) -> Result<Option<Frame>, Error> {
+    if taken.is_empty() {
+        let messages = ring.poll().map_err(|_| failure(me, "poll"))?;
+        // The last sequence per origin: one cumulative ack each.
+        let mut last: Vec<(i32, u64)> = Vec::new();
+        for message in messages {
+            match last.iter_mut().find(|(origin, _)| *origin == message.origin) {
+                Some(seen) => seen.1 = message.sequence,
+                None => last.push((message.origin, message.sequence)),
+            }
+            let source = usize::try_from(message.origin)
+                .ok()
+                .and_then(|at| workers.get(at).copied())
+                .ok_or(failure(me, "recv"))?;
+            taken.push_back((source, message.data));
+        }
+        // The frames are owned in `taken`, so their slots are free. A raw ring's ack is a no-op.
+        for (origin, sequence) in last {
+            ring.ack(origin, sequence).map_err(|_| failure(me, "ack"))?;
+        }
+    }
+    let Some((source, data)) = taken.front() else {
+        return Ok(None);
+    };
+    let len = data.len();
+    if len > out.len() {
+        return Err(Error::TooSmall { needed: len });
+    }
+    out[..len].copy_from_slice(data);
+    let frame = Frame::new(Some(*source), tag, len);
+    taken.pop_front();
+    Ok(Some(frame))
+}
+
+/// One `concurrent!` arm's end of this participant's routes. The arms share the communicators,
+/// which `MPI_THREAD_MULTIPLE` permits, and only the arm that owns the lane tag polls the window.
+pub struct Io<'a> {
+    pub(crate) world: &'a SimpleCommunicator,
+    pub(crate) leader: Option<&'a InterCommunicator>,
+    pub(crate) rank: Rank,
+    /// The lane table: the tag lane frames carry and the workers the window is indexed by.
+    pub(crate) lane: Tag,
+    pub(crate) workers: &'a [Rank],
+    #[cfg(feature = "ring")]
+    pub(crate) ring: Option<&'a Ring>,
+    #[cfg(feature = "ring")]
+    taken: Option<&'a mut VecDeque<(Rank, Vec<u8>)>>,
+    owner: Owner<'a>,
+    /// Where the next receive starts: a route, and a tag within each probing route's list.
+    next: usize,
+    turn: [usize; 2],
+    // Auto traits match the nv backend's, so the public surface is the same on every backend.
+    _unshared: PhantomData<*const ()>,
+}
+
+// SAFETY: `init` refuses less than `MPI_THREAD_MULTIPLE`, so every arm's thread may call the
+// shared communicators, and the window keeps its own state behind its locks.
+unsafe impl Send for Io<'_> {}
+
+/// `concurrent!` given a context: each arm on its own endpoint and host thread.
+#[doc(hidden)]
+pub fn concurrent_io<'env, B, E: Send, const N: usize>(
+    cx: &'env mut Context,
+    receive: &'env [Receive<'env>; N],
+    body: B,
+) -> Result<(), E>
+where
+    B: for<'scope> FnOnce(&mut crate::cpu::run::IoArms<'scope, 'env, Io<'env>, E, N>),
+{
+    crate::cpu::run::spawn(lend(cx, receive), body)
+}
+
+/// One endpoint per arm. The lane-tag owner gets the frames the window already gave up.
+fn lend<'a, const N: usize>(cx: &'a mut Context, receive: &'a [Receive<'a>; N]) -> [Io<'a>; N] {
+    let world = cx.world.as_ref().expect("the communicators were released by `done`");
+    let leader = cx.leader.as_ref();
+    let (rank, tag) = (cx.rank, cx.lane.tag);
+    let workers: &'a [Rank] = &cx.lane.workers;
+    #[cfg(feature = "ring")]
+    let ring = cx.lane.ring.as_deref();
+    #[cfg(feature = "ring")]
+    let mut taken = Some(&mut cx.lane.taken);
+    core::array::from_fn(|at| {
+        let owner = Owner::new(receive, at);
+        Io {
+            world,
+            leader,
+            rank,
+            lane: tag,
+            workers,
+            #[cfg(feature = "ring")]
+            ring,
+            #[cfg(feature = "ring")]
+            taken: if owner.owns(tag) { taken.take() } else { None },
+            owner,
+            next: 0,
+            turn: [0; 2],
+            _unshared: PhantomData,
+        }
+    })
+}
+
+impl Io<'_> {
+    /// The first frame this arm owns from a peer, its leader or a lane. Each call starts one route
+    /// after the one that last delivered, so none starves the others.
+    pub fn recv(&mut self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
+        if !self.owner.receives() {
+            return Err(Error::Invalid(Invalid::NotReceiving));
+        }
+        let me = Participant::Worker(self.rank);
+        for k in 0..3 {
+            let route = (self.next + k) % 3;
+            let frame = match route {
+                0 => super::p2p::peer(super::p2p::take(self.world, me, self.owner, &mut self.turn[0], out)?)?,
+                1 => match self.leader {
+                    Some(leader) => super::p2p::take(leader, me, self.owner, &mut self.turn[1], out)?
+                        .map(|(_, tag, len)| Frame::new(None, tag, len)),
+                    None => None,
+                },
+                _ => self.lane_frame(out)?,
+            };
+            if frame.is_some() {
+                self.next = route + 1;
+                return Ok(frame);
+            }
+        }
+        Ok(None)
+    }
+
+    /// A buffered send leaves no caller storage outstanding.
+    pub fn flush(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    #[cfg(feature = "ring")]
+    fn lane_frame(&mut self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
+        match (self.ring, self.taken.as_deref_mut()) {
+            (Some(ring), Some(taken)) => lane_frame(ring, taken, self.workers, self.lane, self.rank, out),
+            _ => Ok(None),
+        }
+    }
+
+    /// Lanes are ordinary frames here, which the peer route already receives.
+    #[cfg(not(feature = "ring"))]
+    fn lane_frame(&mut self, _out: &mut [u8]) -> Result<Option<Frame>, Error> {
+        Ok(None)
     }
 }
 
@@ -376,11 +495,7 @@ const NEITHER: i32 = i32::MAX;
 /// The split comes before any collective that touches sharing domains, so a leader that shares a
 /// node with workers is never inside one of their domains. Reordering those steps does not produce
 /// a wrong number, it produces a hang inside `MPI_Comm_split_type`.
-pub fn init(
-    env: Environment,
-    deployment: Deployment<'_>,
-    rule: fn(Rank, &[Rank]) -> u32,
-) -> Result<Context, Failure> {
+pub fn init(env: Environment, deployment: Deployment<'_>) -> Result<Context, Failure> {
     let (universe, job, job_rank, job_size) = enter(&env, "init")?;
 
     // The contract's participant set is the workers, not the job.
@@ -389,33 +504,20 @@ pub fn init(
     // that left early hangs every rank that stayed. Faults are noted and raised after it.
     let worker = deployment.contract(job_rank);
     let mut fault = None;
-    // The colour pairs a worker with the leader that serves it: a worker's is even, its leader's is
-    // the odd number above it, and both ends derive the index from the declaration. One computation
-    // rather than two, which is what stops two leaders bridging to each other's workers.
-    let (color, pair) = match (worker, deployment.leaders()) {
-        (Some(_), None) => (0, None),
-        (Some(at), Some(_)) => match deployment
-            .leader_of(at)
-            .filter(|leader| leader.get() < job_size)
-            .and_then(|leader| deployment.leader_index(leader))
-        {
-            Some(index) => ((index * 2) as i32, Some(index)),
-            None => {
-                fault = Some(Invalid::RankOutsideJob);
-                (NEITHER, None)
-            }
-        },
-        (None, _) => {
-            // A leader or a rank the deployment does not name. Either way it entered through the
-            // wrong door: a leader's entry is `Leader::open`, which builds the other half of the
-            // bridge this rank would leave. It takes part so the split completes.
-            fault = Some(Invalid::RankOutsideJob);
-            match deployment.leader_index(job_rank) {
-                Some(index) => ((index * 2 + 1) as i32, None),
-                None => (NEITHER, None),
-            }
-        }
-    };
+    // One worker communicator is the entire contract world. The leader's bridge subgroup is
+    // split from it later; splitting the job per leader here would also shrink `size` and `hosts`.
+    let pair = worker.and_then(|at| deployment.leader_of(at))
+        .filter(|leader| leader.get() < job_size)
+        .and_then(|leader| deployment.leader_index(leader));
+    if worker.is_some() && deployment.leaders().is_some() && pair.is_none() {
+        fault = Some(Invalid::RankOutsideJob);
+    }
+    let color = if worker.is_some() { 0 } else {
+        // Leaders enter this same split from `Leader::open`; a caller entering through the wrong
+        // door must participate before reporting its fault.
+        fault = Some(Invalid::RankOutsideJob);
+        deployment.leader_index(job_rank).map_or(NEITHER, |index| index as i32 + 1)
+    }; 
     let key = worker.map_or(job.rank(), |at| at.get() as i32);
     let world = job
         .split_by_color_with_key(Color::with_value(color), key)
@@ -434,27 +536,28 @@ pub fn init(
     // communicator, so it cannot be inside a worker's sharing domain.
     let hosts = groups(&world);
 
-    // The bridge, when the declaration names a leader for this worker. Both ends run this
-    // collective, from two different entries: the workers from here and each leader from
-    // `Leader::open`.
-    let leader_route = match pair {
+    // Every worker splits the same worker world, including workers assigned to other leaders.
+    // Only members of each resulting subgroup build its bridge, against the job communicator.
+    let leader_group = match pair {
         None => None,
-        Some(index) => {
-            let leader = deployment.leader_of(rank).ok_or(refused(
-                Participant::Worker(rank),
-                "init",
-                BackendFault::Invalid(Invalid::NoLeader),
-            ))?;
-            Some(
-                super::leader::bridge(&world, &job, leader, index)
-                    .ok_or(refused(Participant::Worker(rank), "init", BackendFault::Transport))?,
-            )
-        }
+        Some(index) => Some(world.split_by_color_with_key(
+            Color::with_value(i32::try_from(index).map_err(|_| refused(Participant::Worker(rank), "init", unrepresentable))?),
+            world.rank(),
+        ).ok_or(refused(Participant::Worker(rank), "init", BackendFault::Transport))?),
     };
+    let leader_route = match (&leader_group, pair) {
+        (Some(group), Some(index)) => {
+            let leader = deployment.leader_of(rank).ok_or(refused(
+                Participant::Worker(rank), "init", BackendFault::Invalid(Invalid::NoLeader),
+            ))?;
+            Some(super::leader::bridge(group, &job, leader, index)
+                .ok_or(refused(Participant::Worker(rank), "init", BackendFault::Transport))?)
+        }
+        _ => None,
+    }; 
 
-    // The rule returns a colour, so two ranks that agree run collectives together and the caller
-    // names no list.
-    let color = i32::try_from(rule(rank, &hosts)).map_err(|_| refused(Participant::Worker(rank), "init", unrepresentable))?;
+    // The cohort is the sharing domain: the workers whose `hosts` entry is this rank's.
+    let color = i32::try_from(hosts[rank.get() as usize].get()).map_err(|_| refused(Participant::Worker(rank), "init", unrepresentable))?;
     let together = world
         .split_by_color_with_key(Color::with_value(color), world.rank())
         .ok_or(refused(Participant::Worker(rank), "init", BackendFault::Transport))?;
@@ -469,9 +572,9 @@ pub fn init(
         size,
         hosts,
         leader: leader_route,
-        leader_held: None,
+        leader_group,
         lane: Lane::none(),
-        held: None,
+        _unshared: PhantomData,
     })
 }
 
@@ -486,6 +589,7 @@ pub fn done<A>(cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(), 
     // The bridge first, because disconnecting it is collective over both groups and the workers'
     // ends are released at this same point in their own `done`.
     drop(cx.leader.take());
+    drop(cx.leader_group.take());
     drop(cx.together.take());
     drop(cx.world.take());
     let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -507,32 +611,13 @@ pub fn hosts(cx: &Context) -> &[Rank] {
     &cx.hosts
 }
 
-pub fn align() -> usize {
-    crate::partition::host_align()
-}
-
-/// The checks `reshape` makes whatever the lane transport is: ascending unique workers, edges
-/// ordered and duplicate-free, both endpoints workers, and a frame the backend can carry. Whether
-/// the window can hold the implied depth is each transport's own, because only it knows what it
-/// built.
-pub(crate) fn validate(workers: &[Rank], edges: &[Edge], bytes: usize) -> Result<(), Error> {
-    if workers.windows(2).any(|w| w[0] >= w[1]) {
-        return Err(Error::Invalid(Invalid::UnorderedWorkers));
-    }
-    if edges.windows(2).any(|w| {
-        (w[0].source(), w[0].destination()) >= (w[1].source(), w[1].destination())
-    }) {
-        return Err(Error::Invalid(Invalid::UnorderedEdges));
-    }
-    for edge in edges {
-        if !workers.contains(&edge.source()) || !workers.contains(&edge.destination()) {
-            return Err(Error::Invalid(Invalid::EdgeOutsideWorkers));
-        }
-    }
-    if bytes > MAX_FRAME {
-        return Err(Error::TooLarge { limit: MAX_FRAME });
-    }
-    Ok(())
+/// A collective over the entered workers, so a caller coordinates a phase without a frame.
+///
+/// It is `together()`, the worker-only communicator, and never the world or a leader bridge: a
+/// barrier that a leader could enter would not be a worker phase boundary. It consumes no message
+/// and no lane, so it cannot take a frame belonging to another claim.
+pub fn barrier(cx: &mut Context) {
+    cx.together().barrier();
 }
 
 /// Ring slots per destination element. The declaration's `affected` is read against this to size

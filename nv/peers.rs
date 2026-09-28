@@ -14,9 +14,9 @@
 //! one's identity because there is nowhere for it to be inherited from.
 //!
 //! Two halves, one interface, chosen at compile time exactly as `transport` chooses between `sim`
-//! and `cuda`. [`Links::open`] is safe on both because the obligation belongs to [`Fabric`]:
-//! constructing one from raw device memory is `unsafe`, and on the host model it is an ordinary
-//! allocation with nothing to uphold.
+//! and `cuda`. [`Links::open`] is safe on both because the obligation belongs to the launcher that
+//! wrote the launch description: on the device its arena is raw memory the launcher vouched for,
+//! and on the host model it is an ordinary allocation with nothing to uphold.
 
 use crate::nv::error::{RecvError, SendError};
 use crate::nv::layout::Layout;
@@ -28,10 +28,10 @@ mod cuda;
 mod sim;
 
 #[cfg(feature = "cuda")]
-pub use cuda::{Fabric, Links};
+pub use cuda::{Arena, Fabric, Links};
 
 #[cfg(not(feature = "cuda"))]
-pub use sim::{Fabric, Links};
+pub use sim::{Arena, Fabric, Links};
 
 /// One send or receive that the links could not perform.
 ///
@@ -65,6 +65,21 @@ pub fn try_send(links: &mut Links, dest: u32, tag: u32, data: &[u8]) -> Result<(
 /// length are uniform across the warp for the same reason.
 pub fn try_recv(links: &mut Links, src: u32, out: &mut [u8]) -> Result<Message, Refused> {
     links.recv(src, out)
+}
+
+/// Words after the link rings in a launch arena: the barrier entry and `reshape` wait at,
+/// zeroed by the launcher.
+pub const BARRIER: usize = 2;
+
+/// Wait until `members` participants of the launch have called this.
+pub fn barrier(links: &mut Links, members: u32) {
+    links.barrier(members)
+}
+
+/// The tag of the frame `try_recv` from `src` would take next, if one is published. Nothing is
+/// consumed, so a receive can leave a frame another arm owns where it is.
+pub fn head(links: &mut Links, src: u32) -> Option<u32> {
+    links.head(src)
 }
 
 /// The layout the launch's links were built with. One layout covers every pair, because the arena

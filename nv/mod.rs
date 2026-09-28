@@ -6,20 +6,19 @@
 //!
 //! # Participant-local state, and why there is no global
 //!
-//! The entry rules forbid an implicit process-global context. This backend used to have three: a
-//! word holding rank and size, a cell holding the cohort, and a cell holding the endpoints. Every
-//! warp of a launch wrote its own rank and its own endpoints into them, so the last writer won and
-//! every warp then used another warp's identity and another warp's links; the concurrent writes
-//! through aliased `UnsafeCell`s were undefined behaviour besides. All three are gone. Identity,
-//! the cohort tables and the endpoints are fields of [`Context`], which the entry builds once and
-//! the caller owns, and `peers::Links` holds the per-link sequence numbers that made sharing
-//! them wrong in the first place.
+//! The entry rules forbid an implicit process-global context, and on a device every warp of a
+//! launch would share one: the last writer's rank and links would be every warp's. Identity and
+//! the endpoints are fields of [`Context`], which the entry builds once and the
+//! caller owns, and `peers::Links` holds the per-link sequence numbers.
+//!
+//! The launch description `Environment::default` reads (`launch`) is a global of another kind: the
+//! launcher writes it before any participant runs, no participant writes it, and it states only
+//! what every participant of the launch shares. A warp's identity is its own index, never a field
+//! of it.
 //!
 //! # What a device changes about the surface
 //!
-//! * **One device, so one sharing domain and one cohort.** `hosts` is rank 0 for every rank. A
-//!   cohort rule that named a subset is refused by `init`: there is no second node for the
-//!   excluded ranks to be on.
+//! * **One device, so one sharing domain.** `hosts` is rank 0 for every rank.
 //! * **Every link has the launch's layout.** The arena is allocated before any graph is known, so
 //!   one geometry covers every pair, and `reshape` refuses a declaration whose implied depth or
 //!   frame size the launched arena cannot serve. Refusing at declaration is required: a frame
@@ -28,42 +27,43 @@
 //!   differ in the tag they carry and in what the caller may assume, not in the memory they use.
 //!   Lanes are acknowledged writes into the receiver's own slot, so they do not lose, and the
 //!   `Message` route's reliability is therefore inherited rather than promised separately.
-//! * **The primitive families are absent.** The device has no shared-state families yet, so
-//!   "unsupported operations shall be unavailable to compiled callers" is met by not exporting
-//!   them: a program that names `trame::sync` under this backend fails to compile, which is the
-//!   refusal the spec asks for.
-//!
-//! # Unwritten
-//!
-//! The three primitive families are declared unsupported: a device `Exclusive` is a ticket
-//! over a device-scope atomic, a device `publish` is the slot protocol, and both are real work
-//! that the host model cannot check, so they are not claimed here. `global_release` is false for
-//! the same reason — a cohort-wide barrier needs a cooperative launch and this backend does not
-//! require one.
+//! * **`sync` is warp-wide.** `Exclusive` and `Handoff` keep `cpu::sync`'s signatures; under
+//!   `cuda` the whole warp calls each method and one lane acts for it (see `sync`).
+//! * **Collectives wait at a barrier in the arena.** Two words after the link rings, which the
+//!   launcher zeroes (`peers::BARRIER`), count arrivals at entry and at lane declaration/retirement
+//!   so no worker sees an unfinished cohort.
 
 use crate::contract::{
-    Backend, BackendFault, Channel, Deployment, Edge, Error, Failure, FailureKind, Frame, Invalid,
-    Launch, Participant, Rank, Tag,
+    Backend, BackendFault, Channel, Deployment, Edge, Error, Failure, FailureKind, Frame, Handle,
+    Invalid, Launch, Participant, Rank, Tag,
 };
 
 pub mod clock;
 pub mod device;
 pub mod error;
+pub mod launch;
 pub mod layout;
 pub mod leader;
 pub mod model;
 pub mod peers;
 pub mod run;
+pub use run::concurrent_io;
 pub mod sync;
 pub mod transport;
 pub mod warp;
 
 #[cfg(test)]
 mod tests;
+// The rings measured on a GPU. Test-only, so their kernels stay out of the library.
+#[cfg(all(test, feature = "cuda"))]
+mod measure;
 
+use core::marker::PhantomData;
+
+use crate::invoke::Owner;
 use layout::Layout;
 use leader::Route;
-use peers::{Fabric, Links, Refused};
+use peers::{Links, Refused};
 use transport::{MAX_RANKS, Message};
 
 pub const ID: Backend = Backend::Nv;
@@ -75,50 +75,45 @@ pub const ID: Backend = Backend::Nv;
 /// are `leader::CAPACITY`, which is this number, in the region the launch sizes by `Route::words`.
 pub const MAX_FRAME: usize = 65_544;
 
-/// Alignment is one byte: a device has no pages, and aligning for a mapping that will not happen
-/// would shrink every share for nothing.
-pub fn align() -> usize {
-    1
-}
-
 /// Slots per destination element, the rule `affected` is read against.
 ///
 /// The launch's arena has one depth for every pair, so this is the factor the *widest* pair needs
 /// rather than a per-pair depth; `reshape` refuses a declaration the launched arena cannot hold.
 pub const FACTOR: u64 = 4;
 
-/// What the launch supplies: this participant's identity, the fabric its links live in, and the
-/// segment it may publish into.
+// A Rust `bool` inside `Context` makes cuda-oxide refuse the pointer-bearing `Result` from
+// `init`: its enum slot map cannot preserve provenance across that overlapping layout. Keep
+// device-resident flags as bytes; 0 and 1 are the only values written here.
+type Bool = u8;
+
+/// What the launch supplies, discovered rather than handed down.
 ///
-/// It is a value rather than a call because a device cannot discover any of it. There is no
-/// `MPI_Comm_size` to ask: the entry knows the launch's width and where its memory is, and hands
-/// both down. That is also why there is no `install` and no global for it to write to.
+/// `default` reads the launch description the launcher wrote before any participant ran, as MPI's
+/// participants discover their world; `init` and `Leader::open` check it before any of it is used,
+/// so a launch that wrote nothing is refused there. Nothing in it is public, because what a launch
+/// states is the launcher's business and a host that named it would know which backend it runs.
 ///
-/// The fabric and the raw pointers are the launch's memory, borrowed rather than owned: the
-/// environment has no `Drop`, so a clone names the same launch's memory and frees nothing twice.
-/// A clone is sound for the same reason the launch hands the same fabric to each of its warps.
+/// A clone is the same description: it names the launch's memory and frees nothing.
 #[derive(Clone)]
 pub struct Environment {
-    /// This participant's rank in the launch, in the launch's own numbering.
-    pub rank: Launch,
-    /// How many participants the launch started.
-    pub size: u32,
-    /// The links' fabric: device memory the launch allocated, or the host model's mesh.
-    pub fabric: Fabric,
-    /// The segment participants may publish into, or null when the launch has none.
-    pub segment: *mut u8,
-    /// How many bytes that segment has.
-    pub segment_bytes: usize,
-    /// The control region the launch prepared for the leader route, or null when it prepared none.
-    ///
-    /// Launch-owned memory both sides can see, which is what a device launch's leader route is: the
-    /// leader is a host process and the workers are warps, so the only thing they can share is
-    /// memory the launch owns. Null is the honest way to say a launch has no leader, and a leader
-    /// route asked for over a null region is refused rather than given an empty route.
-    pub leader_region: *mut u32,
+    description: launch::Description,
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Environment {
+            description: launch::read(),
+        }
+    }
 }
 
 /// This participant's state. Owned by the caller, passed by `&mut`, shared with nobody.
+///
+/// `repr(C)` so that its first 32 bytes are integers. `init` returns it in `Result<Context,
+/// Failure>`, whose `Err` rustc lays over the start of a `Context`, and cuda-oxide refuses to lower
+/// an enum whose variants lay a pointer over bytes that are not the same pointer; in rustc's own
+/// order a leader endpoint's pointer lay under a `Failure`'s participant.
+#[repr(C)]
 pub struct Context {
     rank: Rank,
     size: u32,
@@ -131,16 +126,12 @@ pub struct Context {
     layout: Layout,
     /// The tag lane traffic rides under, set by `reshape`.
     tag: Option<Tag>,
-    /// The workers of the current load, in declaration order, and how many there are.
-    workers: [Rank; MAX_RANKS],
-    worker_count: usize,
+    /// The declared outgoing edges and frame bound: a lane send may only use the current load.
+    lanes: [Bool; MAX_RANKS],
+    lane_frame: usize,
     /// One device: every rank's sharing-domain leader. Held here rather than in a static because
     /// a static is what made two participants share one identity.
     hosts: [Rank; MAX_RANKS],
-    /// The cohort: every worker of the launch, in order. The domain `share` partitions by.
-    cohort: [Rank; MAX_RANKS],
-    segment: *mut u8,
-    segment_bytes: usize,
 }
 
 // SAFETY: the context is one participant's state. The raw pointers it holds address memory the
@@ -158,35 +149,29 @@ impl Context {
     }
 }
 
-/// One immutable copy of a published segment.
-///
-/// A view, not a copy: on one device the segment is allocation every participant can already
-/// read, so publication is each participant writing its own slice into it and there is nothing to
-/// map at the end. That is why `unshare` has nothing to discharge and says so.
-pub struct Shared {
-    base: *const u8,
-    total: usize,
-}
-
 // ---------------------------------------------------------------------------------------------
 // Entry and failure
 
 /// Enter the launch.
-///
-/// The cohort rule is evaluated and then checked: a rule that does not name every rank is
-/// refused, because a launch is one node and the ranks it leaves out have nowhere to be.
-pub fn init(
-    env: Environment,
-    deployment: Deployment<'_>,
-    cohort: fn(Rank, &[Rank]) -> u32,
-) -> Result<Context, Failure> {
+pub fn init(env: Environment, deployment: Deployment<'_>) -> Result<Context, Failure> {
     let refuse = |participant, fault| Failure {
         participant,
-        operation: "init",
+        operation: named(b"init"),
         kind: FailureKind::Backend(fault),
     };
     let outside = BackendFault::Invalid(Invalid::RankOutsideJob);
-    let unentered = Participant::Entering(Some(env.rank));
+    // A worker is its warp: the launch-wide description cannot say which one this is.
+    let here = Launch::new(warp::here_id());
+    let unentered = Participant::Entering(Some(here));
+    // A `match`, not `map_err`: a `Result<Launched, Failure>` lays a `Failure` over the fabric's
+    // pointer, which cuda-oxide refuses to lower (see `Context`).
+    let env = match env.description.check() {
+        Ok(env) => env,
+        Err(fault) => return Err(refuse(unentered, fault)),
+    };
+    if here.get() >= env.size {
+        return Err(refuse(unentered, outside));
+    }
     // The contract's participant set is the workers, and every one must be a rank this launch
     // started and the transport table can hold.
     let launch = deployment.workers();
@@ -202,22 +187,19 @@ pub fn init(
     // The rank the contract reports is the position in the declaration; the number the launch
     // knows this participant by is the one in the table. This is the launch-to-contract half of
     // the one conversion pair.
-    let rank = contract_of(&launched[..count], env.rank).ok_or(refuse(unentered, outside))?;
+    let rank = contract_of(&launched[..count], here).ok_or(refuse(unentered, outside))?;
     let me = Participant::Worker(rank);
-    let mut all = [Rank::from_index(0); MAX_RANKS];
-    for (at, slot) in all.iter_mut().enumerate().take(count) {
-        *slot = Rank::from_index(at as u32);
-    }
-    let _colour = cohort(rank, &all[..count]);
     // Every peer-link slot must hold a `MAX_FRAME` frame, and the arena is fixed before entry, so
     // a launch that provisioned less is refused here rather than at its first long frame.
     if (env.fabric.layout().capacity() as usize) < MAX_FRAME {
         return Err(refuse(me, BackendFault::Storage));
     }
 
-    // `Links::open` refuses only a rank outside the launch.
-    let links =
-        Links::open(&env.fabric, env.rank.get(), env.size).map_err(|_| refuse(me, outside))?;
+    // `Links::open` refuses only a rank outside the launch. A `match` for the reason `check`'s is.
+    let mut links = match Links::open(&env.fabric, here.get(), env.size) {
+        Ok(links) => links,
+        Err(_) => return Err(refuse(me, outside)),
+    };
     let hosts = [Rank::from_index(0); MAX_RANKS];
     // Every rank of a launch shares the device's memory, so every rank's leader is contract rank
     // zero. The table is one entry per rank and not one entry, which would say the launch has one
@@ -226,21 +208,38 @@ pub fn init(
     // The worker end of the leader route, when the declaration names a leader for this worker. The
     // geometry comes from the declaration, not from the environment: both ends must agree on it and
     // the worker list is the one thing they both hold.
+    // One device launch has one host leader. A deployment naming another process cannot use
+    // this region: accepting it would silently connect a worker to the wrong leader.
+    if deployment
+        .leaders()
+        .is_some_and(|leaders| leaders.iter().any(|&leader| Some(leader) != env.leader))
+    {
+        return Err(refuse(me, outside));
+    }
     let leader = match deployment.leader_of(rank) {
         None => None,
         Some(_) => {
             if env.leader_region.is_null() {
                 return Err(refuse(me, BackendFault::Storage));
             }
-            let route =
-                Route::sized(count as u32).map_err(|_| refuse(me, BackendFault::Storage))?;
-            // SAFETY: the launch prepared this region for exactly this route and owns it for the
-            // life of the job; this worker is the only producer on its up link and the only
-            // consumer of its down link.
+            // A `match`: a `Result<Route, Failure>` lays the name's pointer over the route's layout.
+            let route = match Route::sized(count as u32) {
+                Ok(route) => route,
+                Err(_) => return Err(refuse(me, BackendFault::Storage)),
+            };
+            if env.leader_words != route.words() {
+                return Err(refuse(me, BackendFault::Storage));
+            }
+            // SAFETY: the launcher's write of the description vouched that this region is
+            // `leader_words` words prepared for this route and owned for the life of the job, and
+            // that is the route's size; this worker is the only producer on its up link and the
+            // only consumer of its down link.
             Some(unsafe { leader::Worker::new(env.leader_region, route, rank.get()) })
         }
     };
 
+    // Entry is a worker collective, not merely a local read of the launch description.
+    peers::barrier(&mut links, count as u32);
     Ok(Context {
         rank,
         size: count as u32,
@@ -249,12 +248,9 @@ pub fn init(
         leader,
         layout: env.fabric.layout(),
         tag: None,
-        workers: all,
-        worker_count: 0,
+        lanes: [0; MAX_RANKS],
+        lane_frame: 0,
         hosts,
-        cohort: all,
-        segment: env.segment,
-        segment_bytes: env.segment_bytes,
     })
 }
 
@@ -270,10 +266,6 @@ pub fn hosts(cx: &Context) -> &[Rank] {
     &cx.hosts[..cx.size as usize]
 }
 
-fn cohort(cx: &Context) -> &[Rank] {
-    &cx.cohort[..cx.size as usize]
-}
-
 /// Report the outcome and discharge nothing.
 ///
 /// A participant that is not a process ends by returning; what ends the launch is the kernel
@@ -285,6 +277,17 @@ pub fn done<A>(_cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(),
 
 // ---------------------------------------------------------------------------------------------
 // Communication
+
+/// An operation's name, as the `&'static str` a `Failure` carries.
+///
+/// It exists because cuda-oxide has no device translation for a `&str` constant (its issue #76):
+/// a string literal in code a kernel reaches does not compile, and a byte string does. Not inlined,
+/// so the conversion is not folded back into the `&str` constant it avoids.
+#[inline(never)]
+fn named(name: &'static [u8]) -> &'static str {
+    // SAFETY: every caller passes an ASCII byte-string literal.
+    unsafe { core::str::from_utf8_unchecked(name) }
+}
 
 /// A refusal the link layer cannot give for this operation: a send told `Empty`, a receive told
 /// `Full`. Not the caller's input, so it is the backend's own fault.
@@ -305,10 +308,19 @@ pub fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result
             .tag
             .ok_or(Error::Invalid(Invalid::LaneNotConfigured))?,
     };
-    if data.len() > MAX_FRAME {
-        return Err(Error::TooLarge { limit: MAX_FRAME });
-    }
     let link = launch_of(&cx.launch[..cx.size as usize], to)?.get();
+    let limit = match channel {
+        Channel::Message(_) => MAX_FRAME,
+        Channel::Lane => {
+            if cx.lanes[to.get() as usize] == 0 {
+                return Err(Error::Invalid(Invalid::NoLane));
+            }
+            cx.lane_frame
+        }
+    };
+    if data.len() > limit {
+        return Err(Error::TooLarge { limit });
+    }
     match peers::try_send(&mut cx.links, link, u32::from(tag.get()), data) {
         Ok(()) => Ok(()),
         Err(Refused::Full) => Err(Error::Full),
@@ -316,7 +328,7 @@ pub fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result
         // `init` refused a slot smaller than `MAX_FRAME`, so a slot refusing a frame this size is
         // the backend's own fault.
         Err(Refused::TooLarge | Refused::Empty | Refused::TooSmall { .. }) => {
-            Err(internal(cx, "send"))
+            Err(internal(cx, named(b"send")))
         }
     }
 }
@@ -353,17 +365,30 @@ fn room(out: &mut [u8]) -> &mut [u8] {
 /// and a backend that held frames for a tag nobody asked about would be a queue whose depth
 /// nobody declared.
 pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
+    take(cx, Owner::ALL, out)
+}
+
+/// The next peer frame `owner` owns. A link delivers in order, so a head another arm owns holds
+/// that link for this one.
+fn take(cx: &mut Context, owner: Owner<'_>, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     let mut needed = 0u32;
     let out = room(out);
     for source in 0..cx.size {
         let launch = cx.launch[source as usize];
+        if !owner.every()
+            && !peers::head(&mut cx.links, launch.get()).is_some_and(|tag| owner.owns(Tag::new(tag as u16)))
+        {
+            continue;
+        }
         match peers::try_recv(&mut cx.links, launch.get(), out) {
             Ok(Message { tag, len, src }) => {
                 // The tag word was written from a `u16` by the link's only producer. The source
                 // word is a launch rank, so it becomes a contract rank here and nowhere else.
                 return Ok(Some(Frame::new(
-                    contract_of(&cx.launch[..cx.size as usize], Launch::new(src))
-                        .ok_or(Error::Invalid(Invalid::RankOutsideJob))?,
+                    Some(
+                        contract_of(&cx.launch[..cx.size as usize], Launch::new(src))
+                            .ok_or(Error::Invalid(Invalid::RankOutsideJob))?,
+                    ),
                     Tag::new(tag as u16),
                     len as usize,
                 )));
@@ -371,7 +396,7 @@ pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
             Err(Refused::TooSmall { needed: n }) => needed = needed.max(n),
             Err(Refused::Empty) => {}
             Err(Refused::Full | Refused::TooLarge | Refused::NoSuchPeer) => {
-                return Err(internal(cx, "recv"));
+                return Err(internal(cx, named(b"recv")));
             }
         }
     }
@@ -381,6 +406,55 @@ pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
         });
     }
     Ok(None)
+}
+
+/// One `concurrent!` arm's end of this participant's routes, built for one step. The arms run one
+/// after another on the warp, so each borrows the whole context while it steps.
+pub struct Io<'a> {
+    cx: &'a mut Context,
+    owner: Owner<'a>,
+    /// Whether the next receive tries the leader first. The arm's, kept across its steps.
+    leader_first: &'a mut bool,
+}
+
+impl<'a> Io<'a> {
+    pub(crate) fn new(cx: &'a mut Context, owner: Owner<'a>, leader_first: &'a mut bool) -> Self {
+        Io { cx, owner, leader_first }
+    }
+}
+
+impl Io<'_> {
+    pub fn send(&mut self, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error> {
+        send(self.cx, to, channel, data)
+    }
+
+    pub fn lead(&mut self, tag: Tag, data: &[u8]) -> Result<(), Error> {
+        leader::send(self.cx, tag, data)
+    }
+
+    /// The first frame this arm owns, from a peer or its leader, alternating which goes first.
+    pub fn recv(&mut self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
+        if !self.owner.receives() {
+            return Err(Error::Invalid(Invalid::NotReceiving));
+        }
+        let first = *self.leader_first;
+        *self.leader_first = !first;
+        for from_leader in [first, !first] {
+            let frame = match from_leader {
+                true if self.cx.leader.is_none() => None,
+                true => leader::take(self.cx, self.owner, out)?,
+                false => take(self.cx, self.owner, out)?,
+            };
+            if frame.is_some() {
+                return Ok(frame);
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn flush(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 /// Report that every accepted send has released its send resource.
@@ -439,56 +513,58 @@ pub fn reshape(
         return Err(Error::Invalid(Invalid::UnsupportedGeometry));
     }
 
-    cx.workers[..workers.len()].copy_from_slice(workers);
-    cx.worker_count = workers.len();
+    cx.lanes.fill(0);
+    for edge in edges {
+        if edge.source() == cx.rank {
+            cx.lanes[edge.destination().get() as usize] = 1;
+        }
+    }
+    cx.lane_frame = bytes;
     cx.tag = Some(tag);
+    peers::barrier(&mut cx.links, cx.size);
     Ok(())
 }
 
-/// Discharge the caller's lane obligations. Local, and declared as such.
-///
-/// This backend does not claim cohort-wide quiescence: a participant that returns from here has
-/// stopped using the lanes, and nothing about that says its peers have. A caller that needs every
-/// outstanding access to have ended needs the stronger capability, which this backend does not
-/// declare, and must provide its own protocol.
+/// Retire the caller's lane table only after every worker has left this load's lane use.
 pub fn release(cx: &mut Context) -> Result<(), Error> {
-    cx.worker_count = 0;
+    peers::barrier(&mut cx.links, cx.size);
+    cx.lanes.fill(0);
+    cx.lane_frame = 0;
     cx.tag = None;
     Ok(())
 }
 
-/// Publish this participant's slice into the launch's segment.
-pub fn share(cx: &mut Context, mine: &[u8], total: usize) -> Result<Shared, Error> {
-    if cx.segment.is_null() || total > cx.segment_bytes {
-        return Err(Error::Invalid(Invalid::MissingSegment));
-    }
-    let crate::contract::ByteRange { offset, length } =
-        crate::partition::slice_of(hosts(cx), cohort(cx), cx.rank, total)
-            .map_err(Error::Invalid)?;
-    if mine.len() != length {
-        return Err(Error::Invalid(Invalid::BadShareLength));
-    }
-    // SAFETY: the environment's contract is that `segment` addresses `segment_bytes` writable
-    // bytes for the launch's life, and `slice_of` returned a range inside `total <= segment_bytes`.
-    unsafe {
-        core::ptr::copy_nonoverlapping(mine.as_ptr(), cx.segment.add(offset), length);
-    }
-    Ok(Shared {
-        base: cx.segment as *const u8,
-        total,
-    })
+/// A phase boundary over the entered workers: the arena barrier `release` uses, without touching
+/// the lane table. It consumes no link frame and does not finalize sends.
+pub fn barrier(cx: &mut Context) {
+    peers::barrier(&mut cx.links, cx.size);
 }
 
-pub fn bytes(segment: &Shared) -> &[u8] {
-    // SAFETY: written by `share` before the handle existed, read-only afterwards, and the handle
-    // cannot outlive the launch that owns the segment.
-    unsafe { core::slice::from_raw_parts(segment.base, segment.total) }
+/// No value exists: publication is not implemented on a device yet (`backend.md`).
+pub struct Shared {
+    never: core::convert::Infallible,
+    _local: PhantomData<*const ()>,
 }
 
-/// Nothing was mapped, so nothing has to be unmapped and the handle stays valid.
+/// Attach the segment named by `handle`.
 ///
-/// Unlike a host mapping there is no collective retirement to perform: the segment is the
-/// launch's memory and it ends when the launch does.
-pub fn unshare(_cx: &mut Context, _segment: Shared) -> Result<(), (Shared, Error)> {
-    Ok(())
+/// # Safety
+/// `handle` came from `leader::handle` of a segment not retired before the returned `Shared` is
+/// detached or dropped.
+pub unsafe fn attach(cx: &mut Context, _handle: Handle) -> Result<Shared, Error> {
+    Err(Error::Failed(Failure {
+        participant: Participant::Worker(cx.rank),
+        operation: named(b"attach"),
+        kind: FailureKind::Backend(BackendFault::Unimplemented),
+    }))
+}
+
+/// The segment, read-only.
+pub fn bytes(segment: &Shared) -> &[u8] {
+    match segment.never {}
+}
+
+/// Retire this worker's mapping.
+pub fn detach(_cx: &mut Context, segment: Shared) -> Result<(), (Shared, Error)> {
+    match segment.never {}
 }

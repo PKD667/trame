@@ -3,7 +3,7 @@
 //! This is what the host model uses: a rank is a thread over ordinary memory, so the link is the
 //! ring protocol driven by plain atomics, exactly as the leader's own end is.
 
-use super::{Route, consume, publish};
+use super::{Route, consume, peek, post};
 use crate::nv::error::{RecvError, SendError};
 use crate::nv::layout::Layout;
 use crate::nv::transport::Message;
@@ -38,7 +38,7 @@ impl Worker {
     ///
     /// As [`new`](Self::new), and no other thread may call this.
     pub unsafe fn send(&mut self, tag: u32, data: &[u8]) -> Result<(), SendError> {
-        unsafe { publish(self.up, self.layout, self.departing, self.rank, tag, data)? };
+        unsafe { post(self.up, self.layout, self.departing, self.rank, tag, data)? };
         self.departing = self.departing.wrapping_add(1);
         Ok(())
     }
@@ -46,6 +46,10 @@ impl Worker {
     /// # Safety
     ///
     /// As [`send`](Self::send).
+    pub unsafe fn head(&self) -> Option<u32> {
+        unsafe { peek(self.down, self.layout, self.arriving) }
+    }
+
     pub unsafe fn recv(&mut self, out: &mut [u8]) -> Result<Message, RecvError> {
         let message = unsafe { consume(self.down, self.layout, self.arriving, out)? };
         self.arriving = self.arriving.wrapping_add(1);

@@ -13,6 +13,27 @@ pub mod send;
 pub use recv::Rx;
 pub use send::Tx;
 
+/// Wait until `members` participants have arrived at the barrier whose words are at `words`: an
+/// arrival count and a generation. The last to arrive resets the count and moves the generation,
+/// which releases the rest. Warp-uniform: lane 0 touches the words and shares what it read.
+#[inline(always)]
+pub unsafe fn barrier(words: *mut u32, members: u32) {
+    let lane = warp::lane_id();
+    let count = unsafe { DeviceAtomicU32::from_ptr(words) };
+    let generation = unsafe { DeviceAtomicU32::from_ptr(words.add(1)) };
+    let seen = warp::shuffle(if lane == 0 { generation.load(AtomicOrdering::Acquire) } else { 0 }, 0);
+    let arrived = warp::shuffle(if lane == 0 { count.fetch_add(1, AtomicOrdering::AcqRel) } else { 0 }, 0);
+    if arrived + 1 == members {
+        if lane == 0 {
+            count.store(0, AtomicOrdering::Relaxed);
+            generation.store(seen.wrapping_add(1), AtomicOrdering::Release);
+        }
+        warp::sync_mask(WARP);
+        return;
+    }
+    while warp::shuffle(if lane == 0 { generation.load(AtomicOrdering::Acquire) } else { 0 }, 0) == seen {}
+}
+
 const WARP: u32 = u32::MAX;
 
 // Payload movement is the one place this transport touches caller memory in bulk, and the kernel

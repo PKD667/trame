@@ -1,7 +1,7 @@
-//! cargo nvmpi: build/run a crate through the cuda-oxide codegen backend.
+//! cargo nv: build/run a crate through the cuda-oxide codegen backend.
 //!
-//! Cargo invokes `cargo-nvmpi nvmpi <sub> <args>`. The subcommand sets
-//! CARGO_ENCODED_RUSTFLAGS to point rustc at the backend .so and delegates to
+//! Cargo invokes `cargo-nv nv <sub> <args>`, `<sub>` one of build, run, test. The
+//! subcommand sets CARGO_ENCODED_RUSTFLAGS to point rustc at the backend .so and delegates to
 //! cargo. Works on any plain crate that uses `#[kernel]`; no `#[cuda_module]`
 //! or cuda-oxide checkout required.
 
@@ -12,7 +12,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, exit};
 
-use cargo_nvmpi::detect_arch;
+use nv_cargo::detect_arch;
 
 use sha2::{Digest, Sha256};
 
@@ -39,7 +39,7 @@ fn backend_so() -> PathBuf {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: cargo nvmpi <build|run> [cargo args...]");
+    eprintln!("usage: cargo nv <build|run|test> [cargo args...]");
     exit(2);
 }
 
@@ -78,14 +78,17 @@ fn update_hash(hash: &mut Sha256, value: &[u8]) {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    // Cargo runs us as `cargo-nvmpi nvmpi <args>`; direct invocation may omit the name.
-    let start = if args.get(1).is_some_and(|a| a == "build" || a == "run") {
+    // Cargo runs us as `cargo-nv nv <args>`; direct invocation may omit the name.
+    let start = if args
+        .get(1)
+        .is_some_and(|a| a == "build" || a == "run" || a == "test")
+    {
         1
     } else {
         2
     };
     let Some(sub) = args.get(start) else { usage() };
-    if sub != "build" && sub != "run" {
+    if sub != "build" && sub != "run" && sub != "test" {
         usage();
     }
     let sub_args = &args[start + 1..];

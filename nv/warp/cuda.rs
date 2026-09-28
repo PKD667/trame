@@ -8,9 +8,13 @@
 //! that is a second code path rather than an argument to this one.
 
 /// This warp's index in the launch.
+///
+/// Read from the special registers, not `thread::index_1d`: that name is a stub the `#[kernel]`
+/// macro rewrites only inside an annotated body, and `init` is not one.
 #[inline(always)]
 pub fn here_id() -> u32 {
-    cuda_device::thread::index_1d().get() as u32 / super::LANES
+    use cuda_device::thread::{blockDim_x, blockIdx_x, threadIdx_x};
+    (blockIdx_x() * blockDim_x() + threadIdx_x()) / super::LANES
 }
 
 /// This lane's index within its warp.

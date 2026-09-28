@@ -27,27 +27,24 @@
 
 mod contract;
 pub use contract::{
-    Backend, BackendFault, ByteRange, Channel, ClockId, ClockMismatch, Deployment, Edge, Error,
-    Failure, FailureKind, Frame, Invalid, Launch, Participant, Rank, Reading, Span, Tag,
+    Backend, BackendFault, Channel, ClockId, ClockMismatch, Deployment, Edge, Error, Failure,
+    FailureKind, Frame, Handle, Invalid, Launch, Participant, Rank, Reading, Span, Tag,
 };
-
-// The byte-range rule every published segment is cut by, shared because the origin and every
-// participant must reach the same answer without communicating. Pure, and the only definition of
-// where the cuts are.
-pub mod partition;
 
 // Generated code says `::trame::...` whether it was expanded in an application or in this
 // crate's own tests, so this crate has to answer to its own library name too.
 extern crate self as trame;
 
 // The device backend answers none of it, so under `nv` it is only its own tests' subject.
-#[cfg_attr(feature = "nv", allow(dead_code, unused_imports))]
+#[cfg(not(feature = "nv"))]
 mod cpu;
 
 // How a unit of work is run. The attributes live in `macros/`; which lowering a driver or
 // `concurrent!` calls is the same compile-time choice as the transport.
 mod invoke;
 pub use invoke::{Invocation, Invoked, Keyed, Step};
+#[doc(hidden)]
+pub use invoke::{Receive, arm_io};
 pub use trame_macros::{ordered, parallel};
 
 // The MPI environment and point-to-point traffic, shared by the three lane transports that ride
@@ -58,19 +55,11 @@ mod shared;
 #[cfg(not(any(feature = "mpi", feature = "nv")))]
 mod none;
 
-// The host model and the device build each use part of this, and the device experiments reach
-// the rings through `rings`, so what one build leaves unused is not dead.
+// The host model and the device build each use part of this, and the device measurements
+// (`nv/measure/`) use the rings below the contract, so what one build leaves unused is not dead.
 #[cfg(feature = "nv")]
 #[allow(dead_code, unused_imports)]
 mod nv;
-
-// The device experiments (`experiments/nv/`) measure the rings below the contract, so they name
-// the ring machinery directly. It is not a surface.
-#[cfg(feature = "nv")]
-#[doc(hidden)]
-pub mod rings {
-    pub use crate::nv::{device, error, layout};
-}
 
 #[cfg(feature = "rma-lossy")]
 mod lossy;
@@ -98,11 +87,11 @@ use rma as selected;
 // There is no `exec` here. Starting a named body on another host thread is the host lowering's
 // own business. `sync` remains in the surface because Family A is a backend family.
 pub use selected::{
-    Context, Environment, Shared, bytes, clock, done, flush, hosts, init, leader, rank, recv,
-    release, reshape, send, share, size, sync, unshare,
+    Context, Environment, Io, Shared, attach, barrier, bytes, clock, detach, done, flush, hosts, init,
+    leader, rank, recv, release, reshape, send, size, sync,
 };
 #[doc(hidden)]
-pub use selected::run;
+pub use selected::{concurrent_io, run};
 
 /// Which backend this build selected.
 pub const ID: Backend = selected::ID;
