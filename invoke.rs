@@ -132,7 +132,7 @@ impl<'a> Owner<'a> {
     }
 }
 
-/// Fixes a context arm's closure signature where it is written; `Send` keeps it portable across
+/// Fixes the closure the macro builds around an arm's `step(io)`; `Send` keeps it portable across
 /// lowerings.
 #[doc(hidden)]
 #[inline(always)]
@@ -150,9 +150,11 @@ where
 /// every tag, `recv(A, B)` those tags, and a frame goes to the first arm in source order that
 /// names its tag.
 ///
+/// Arms are `#[process]` objects, moved in or lent as `&mut`, stepped by their `step` method.
+///
 /// ```ignore
-/// trame::concurrent! { || intake(&mut a), || delivery(&mut b) }?;
-/// trame::concurrent!(cx; recv(..) => |io| intake(io), |io| delivery(io))?;
+/// trame::concurrent!(transport, intake, &mut delivery)?;
+/// trame::concurrent!(cx; recv(..) => intake, delivery)?;
 /// ```
 #[macro_export]
 macro_rules! concurrent {
@@ -164,14 +166,14 @@ macro_rules! concurrent {
     };
 }
 
-// Each zero-argument arm is bound once, before the first step, so its state persists; every level
-// of the recursion names its binding `arm`, and hygiene keeps the levels' bindings apart.
+// Each process is bound once, before the first step, so its state persists; every level of the
+// recursion names its bindings `process` and `arm`, and hygiene keeps the levels' bindings apart.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __concurrent {
     (@arm $run:ident [$($made:tt)*] [$($steps:tt)*] [$($n:tt)*] $arm:expr, $($rest:tt)*) => {
         $crate::__concurrent!(@arm $run
-            [$($made)* let mut arm = $crate::run::arm($arm);]
+            [$($made)* let mut process = $arm; process.__declared(); let mut arm = $crate::run::arm(|| process.step());]
             [$($steps)* $run.arm(&mut arm);]
             [$($n)* + 1]
             $($rest)*)
@@ -184,7 +186,7 @@ macro_rules! __concurrent {
     (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]
         recv(..) => $arm:expr $(, $($rest:tt)*)?) => {
         $crate::__concurrent!(@io $cx, $run
-            [$($made)* let mut arm = $crate::arm_io($arm);]
+            [$($made)* let mut process = $arm; process.__declared(); let mut arm = $crate::arm_io(|io| process.step(io));]
             [$($steps)* $run.arm(&mut arm);]
             [$($recv)* $crate::Receive::All,]
             [$($n)* + 1]
@@ -193,7 +195,7 @@ macro_rules! __concurrent {
     (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]
         recv($($tag:expr),+ $(,)?) => $arm:expr $(, $($rest:tt)*)?) => {
         $crate::__concurrent!(@io $cx, $run
-            [$($made)* let tags = [$($tag),+]; let mut arm = $crate::arm_io($arm);]
+            [$($made)* let tags = [$($tag),+]; let mut process = $arm; process.__declared(); let mut arm = $crate::arm_io(|io| process.step(io));]
             [$($steps)* $run.arm(&mut arm);]
             [$($recv)* $crate::Receive::Only(&tags),]
             [$($n)* + 1]
@@ -202,7 +204,7 @@ macro_rules! __concurrent {
     (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]
         $arm:expr $(, $($rest:tt)*)?) => {
         $crate::__concurrent!(@io $cx, $run
-            [$($made)* let mut arm = $crate::arm_io($arm);]
+            [$($made)* let mut process = $arm; process.__declared(); let mut arm = $crate::arm_io(|io| process.step(io));]
             [$($steps)* $run.arm(&mut arm);]
             [$($recv)* $crate::Receive::Nothing,]
             [$($n)* + 1]

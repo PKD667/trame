@@ -796,50 +796,107 @@ fn idle(stalls: &mut u64, arm: &str) -> Result<trame::Step, String> {
     Ok(trame::Step::Idle)
 }
 
-/// Send `seq..K` under `tag` to `to`, the frame being its sequence, keeping the place across
+/// Sends `seq..K` under `tag` to `to`, the frame being its sequence, keeping the place across
 /// refusals.
-fn post(io: &mut trame::Io<'_>, to: Addr, tag: Tag, seq: &mut u32, stalls: &mut u64) -> Result<trame::Step, String> {
-    while *seq < K {
-        match io.send(to, Channel::Message(tag), &seq.to_le_bytes()) {
-            Ok(()) => {
-                *seq += 1;
-                *stalls = 0;
-            }
-            Err(Error::Full | Error::Busy) => return idle(stalls, "sender"),
-            Err(e) => return Err(format!("send: {e}")),
-        }
-    }
-    Ok(trame::Step::Done)
+#[trame::process]
+struct Post {
+    to: Addr,
+    tag: Tag,
+    seq: u32,
+    stalls: u64,
 }
 
-/// Take every frame this arm owns into `got`, as source, tag and sequence, until it holds `want`.
-/// The buffer is smaller than `MAX_FRAME`, so a backend must size a frame before it takes one.
-fn gather(
-    io: &mut trame::Io<'_>,
-    got: &mut Vec<(Option<Addr>, Tag, u32)>,
-    want: usize,
-    stalls: &mut u64,
-) -> Result<trame::Step, String> {
-    let mut buf = [0u8; 16];
-    let before = got.len();
-    loop {
-        match io.recv(&mut buf) {
-            Ok(Some(frame)) => {
-                let seq = buf.get(..4).filter(|_| frame.len() == 4).ok_or(format!("a {}-byte frame", frame.len()))?;
-                got.push((frame.source(), frame.tag(), u32::from_le_bytes(seq.try_into().expect("four bytes"))));
+impl Post {
+    fn step(&mut self, io: &mut trame::Io<'_>) -> Result<trame::Step, String> {
+        while self.seq < K {
+            match io.send(self.to, Channel::Message(self.tag), &self.seq.to_le_bytes()) {
+                Ok(()) => {
+                    self.seq += 1;
+                    self.stalls = 0;
+                }
+                Err(Error::Full | Error::Busy) => return idle(&mut self.stalls, "sender"),
+                Err(e) => return Err(format!("send: {e}")),
             }
-            Ok(None) | Err(Error::Busy) => break,
-            Err(e) => return Err(format!("recv: {e}")),
         }
+        Ok(trame::Step::Done)
     }
-    if got.len() >= want {
-        return Ok(trame::Step::Done);
+}
+
+/// Takes every frame this arm owns into `got`, as source, tag and sequence, until it holds `want`.
+/// The buffer is smaller than `MAX_FRAME`, so a backend must size a frame before it takes one.
+#[trame::process]
+struct Gather {
+    got: Vec<(Option<Addr>, Tag, u32)>,
+    want: usize,
+    stalls: u64,
+}
+
+impl Gather {
+    fn new(want: usize) -> Self {
+        Gather { got: Vec::new(), want, stalls: 0 }
     }
-    if got.len() > before {
-        *stalls = 0;
-        return Ok(trame::Step::Progress);
+
+    fn step(&mut self, io: &mut trame::Io<'_>) -> Result<trame::Step, String> {
+        let mut buf = [0u8; 16];
+        let before = self.got.len();
+        loop {
+            match io.recv(&mut buf) {
+                Ok(Some(frame)) => {
+                    let seq = buf.get(..4).filter(|_| frame.len() == 4).ok_or(format!("a {}-byte frame", frame.len()))?;
+                    self.got.push((frame.source(), frame.tag(), u32::from_le_bytes(seq.try_into().expect("four bytes"))));
+                }
+                Ok(None) | Err(Error::Busy) => break,
+                Err(e) => return Err(format!("recv: {e}")),
+            }
+        }
+        if self.got.len() >= self.want {
+            return Ok(trame::Step::Done);
+        }
+        if self.got.len() > before {
+            self.stalls = 0;
+            return Ok(trame::Step::Progress);
+        }
+        idle(&mut self.stalls, "receiver")
     }
-    idle(stalls, "receiver")
+}
+
+/// Sends `K` frames under each of two tags, alternating, each carrying its place in its own stream.
+#[trame::process]
+struct Interleave {
+    to: Addr,
+    tags: [Tag; 2],
+    sent: u32,
+    stalls: u64,
+}
+
+impl Interleave {
+    fn step(&mut self, io: &mut trame::Io<'_>) -> Result<trame::Step, String> {
+        while self.sent < 2 * K {
+            let tag = self.tags[(self.sent % 2) as usize];
+            match io.send(self.to, Channel::Message(tag), &(self.sent / 2).to_le_bytes()) {
+                Ok(()) => {
+                    self.sent += 1;
+                    self.stalls = 0;
+                }
+                Err(Error::Full | Error::Busy) => return idle(&mut self.stalls, "sender"),
+                Err(e) => return Err(format!("send: {e}")),
+            }
+        }
+        Ok(trame::Step::Done)
+    }
+}
+
+/// Asks for a frame from an arm that named no tag.
+#[trame::process]
+struct Unnamed {
+    answer: Option<Result<Option<trame::Frame>, Error>>,
+}
+
+impl Unnamed {
+    fn step(&mut self, io: &mut trame::Io<'_>) -> Result<trame::Step, String> {
+        self.answer = Some(io.recv(&mut [0u8; 8]));
+        Ok(trame::Step::Done)
+    }
 }
 
 /// `backend.md`, Execution: "`concurrent!` given a context lends each arm an `Io` for one step"
@@ -849,13 +906,13 @@ fn c1(cx: &mut trame::Context) -> Verdict {
     let (me, n) = (rank(cx), size(cx));
     let (to, from) = (r((me + 1) % n), r((me + n - 1) % n));
     let (a, b) = (Tag::new(C1_TAG), Tag::new(C1_TAG + 1));
-    let (mut sa, mut sb, mut got) = (0, 0, Vec::new());
-    let (mut wa, mut wb, mut wr) = (0, 0, 0);
+    let mut taken = Gather::new(2 * K as usize);
     trame::concurrent!(cx;
-        recv(..) => |io| gather(io, &mut got, 2 * K as usize, &mut wr),
-        |io| post(io, to, a, &mut sa, &mut wa),
-        |io| post(io, to, b, &mut sb, &mut wb),
+        recv(..) => &mut taken,
+        Post { to, tag: a, seq: 0, stalls: 0 },
+        Post { to, tag: b, seq: 0, stalls: 0 },
     )?;
+    let got = taken.got;
     let sent: Vec<u32> = (0..K).collect();
     for tag in [a, b] {
         let stream: Vec<u32> = got.iter().filter(|g| g.1 == tag).map(|g| g.2).collect();
@@ -872,26 +929,13 @@ fn c2(cx: &mut trame::Context) -> Verdict {
     let (me, n) = (rank(cx), size(cx));
     let (to, from) = (r((me + 1) % n), r((me + n - 1) % n));
     let (a, b) = (Tag::new(C2_TAG), Tag::new(C2_TAG + 1));
-    let (mut named, mut rest, mut sent) = (Vec::new(), Vec::new(), 0u32);
-    let (mut wn, mut wr, mut ws) = (0, 0, 0);
+    let (mut named, mut rest) = (Gather::new(K as usize), Gather::new(K as usize));
     trame::concurrent!(cx;
-        recv(a) => |io| gather(io, &mut named, K as usize, &mut wn),
-        recv(..) => |io| gather(io, &mut rest, K as usize, &mut wr),
-        |io| {
-            while sent < 2 * K {
-                let tag = if sent % 2 == 0 { a } else { b };
-                match io.send(to, Channel::Message(tag), &(sent / 2).to_le_bytes()) {
-                    Ok(()) => {
-                        sent += 1;
-                        ws = 0;
-                    }
-                    Err(Error::Full | Error::Busy) => return idle(&mut ws, "sender"),
-                    Err(e) => return Err(format!("send: {e}")),
-                }
-            }
-            Ok(trame::Step::Done)
-        },
+        recv(a) => &mut named,
+        recv(..) => &mut rest,
+        Interleave { to, tags: [a, b], sent: 0, stalls: 0 },
     )?;
+    let (named, rest) = (named.got, rest.got);
     let each: Vec<u32> = (0..K).collect();
     let only = |got: &[(Option<Addr>, Tag, u32)], tag: Tag| {
         got.iter().all(|g| g.0 == Some(from) && g.1 == tag) && got.iter().map(|g| g.2).collect::<Vec<_>>() == each
@@ -903,15 +947,43 @@ fn c2(cx: &mut trame::Context) -> Verdict {
 
 /// `backend.md`, Execution: "`recv` on an arm with no setting returns `Invalid(NotReceiving)`."
 fn c3(cx: &mut trame::Context) -> Verdict {
-    let mut answer = None;
-    trame::concurrent!(cx;
-        |io| {
-            answer = Some(io.recv(&mut [0u8; 8]));
-            Ok::<_, String>(trame::Step::Done)
-        },
-    )?;
+    let mut unnamed = Unnamed { answer: None };
+    trame::concurrent!(cx; &mut unnamed)?;
+    let answer = unnamed.answer;
     ensure(answer == Some(Err(Error::Invalid(Invalid::NotReceiving))), || format!("{answer:?}"))?;
     Ok("an arm with no recv setting: Invalid(NotReceiving)".into())
+}
+
+/// F1's Lane phase: one exchange of lanes with every worker of the other hosts, in one arm.
+#[trame::process]
+struct Lanes<'a> {
+    link: &'a mut Cross,
+    me: u32,
+    others: &'a [u32],
+    lane: Tag,
+    report: String,
+}
+
+impl Lanes<'_> {
+    fn step(&mut self, io: &mut trame::Io<'_>) -> Result<trame::Step, String> {
+        let lane = self.lane;
+        self.report = exchange(
+            &mut (io, &mut *self.link),
+            self.me,
+            self.others,
+            self.others,
+            false,
+            |_| lane,
+            |(io, l), to, _, data| {
+                if !l.ready[to as usize] {
+                    return Err(Error::Busy);
+                }
+                io.send(l.addr(to), Channel::Lane, data)
+            },
+            |(io, l), out| l.take(out, |o| io.recv(o)),
+        )?;
+        Ok(trame::Step::Done)
+    }
 }
 
 /// F1's view of the launch: every worker by F1's id (its place in the table read host by host),
@@ -1018,28 +1090,10 @@ fn f1(cx: &mut trame::Context, hosts: &[&[Launch]], here: u16) -> Verdict {
         let to = link.addr(g);
         put(cx, to, Channel::Message(Tag::new(F1_DONE)), b"done")?;
     }
-    let mut lanes = String::new();
-    trame::concurrent!(cx;
-        recv(Tag::new(F1_DONE), lane) => |io| {
-            lanes = exchange(
-                &mut (io, &mut link),
-                me,
-                &others,
-                &others,
-                false,
-                |_| lane,
-                |(io, l), to, _, data| {
-                    if !l.ready[to as usize] {
-                        return Err(Error::Busy);
-                    }
-                    io.send(l.addr(to), Channel::Lane, data)
-                },
-                |(io, l), out| l.take(out, |o| io.recv(o)),
-            )?;
-            Ok::<_, String>(trame::Step::Done)
-        },
-    )
-    .map_err(|e| format!("Lane: {e}"))?;
+    let mut exchanging = Lanes { link: &mut link, me, others: &others, lane, report: String::new() };
+    trame::concurrent!(cx; recv(Tag::new(F1_DONE), lane) => &mut exchanging)
+        .map_err(|e| format!("Lane: {e}"))?;
+    let lanes = exchanging.report;
     release(cx).map_err(|e| format!("release: {e}"))?;
 
     for &g in &others {

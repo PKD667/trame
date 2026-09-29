@@ -5,5 +5,4 @@ pub mod atomic;
 pub mod handoff;
 mod turn;
 
-pub use bytemuck::NoUninit;
-pub use turn::{Exclusive, Locked};
+pub use turn::{Exclusive, Locked, with};
