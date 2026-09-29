@@ -91,26 +91,30 @@ impl Receive<'_> {
     }
 }
 
-/// One arm's tags: those it names that no earlier arm names.
+/// Plain receives own all tags without embedding a borrowed slice in a device constant;
+/// scoped arms still borrow the caller's ordered receive settings.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Owner<'a> {
-    arms: &'a [Receive<'a>],
-    at: usize,
+pub(crate) enum Owner<'a> {
+    All,
+    Scoped { arms: &'a [Receive<'a>], at: usize },
 }
 
 // A backend that carries frames uses all of this; one that carries none asks only `receives`.
 #[allow(dead_code)]
 impl<'a> Owner<'a> {
     /// A participant outside `concurrent!`, which owns every tag.
-    pub(crate) const ALL: Owner<'static> = Owner { arms: &[Receive::All], at: 0 };
+    pub(crate) const ALL: Owner<'static> = Owner::All;
 
     pub(crate) fn new(arms: &'a [Receive<'a>], at: usize) -> Self {
-        Owner { arms, at }
+        Owner::Scoped { arms, at }
     }
 
     /// This arm's own setting.
     pub(crate) fn mine(self) -> Receive<'a> {
-        self.arms[self.at]
+        match self {
+            Owner::All => Receive::All,
+            Owner::Scoped { arms, at } => arms[at],
+        }
     }
 
     pub(crate) fn receives(self) -> bool {
@@ -118,13 +122,23 @@ impl<'a> Owner<'a> {
     }
 
     pub(crate) fn owns(self, tag: Tag) -> bool {
-        self.mine().names(tag) && !self.arms[..self.at].iter().any(|earlier| earlier.names(tag))
+        match self {
+            Owner::All => true,
+            Owner::Scoped { arms, at } => {
+                arms[at].names(tag) && !arms[..at].iter().any(|earlier| earlier.names(tag))
+            }
+        }
     }
 
     /// Every tag is this arm's, so a receive need not look at tags.
     pub(crate) fn every(self) -> bool {
-        matches!(self.mine(), Receive::All)
-            && self.arms[..self.at].iter().all(|earlier| matches!(earlier, Receive::Nothing))
+        match self {
+            Owner::All => true,
+            Owner::Scoped { arms, at } => {
+                matches!(arms[at], Receive::All)
+                    && arms[..at].iter().all(|earlier| matches!(earlier, Receive::Nothing))
+            }
+        }
     }
 }
 

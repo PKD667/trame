@@ -392,3 +392,10 @@ scalar acquire/release operations on launch-owned global memory, not full-mask
 collectives. Caller-local buffers and owned invocation outcomes stay with the
 owner. Cross-owner sync backing and CPU-mapped leader admission still need their
 own device evidence; host simulation does not establish address-space legality.
+
+
+Plain receive's private Owner state is `All`, not a static slice of receive
+settings: cuda-oxide cannot lower the latter aggregate fat-pointer constant.
+Scoped receive still borrows the ordered arms and retains first-match ownership.
+The production lowering witness calls the same public receive and Io paths;
+its evidence and compiler-overlay limitations live in the lead report.
