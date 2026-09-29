@@ -342,10 +342,9 @@ fn a_panic_in_setup_after_an_arm_spawned_stops_that_arm_before_the_join() {
 }
 
 /// One item per hit, keyed by cell: each slot collects its amounts in the order it was given them.
-fn histories(threads: usize, hits: &[Hit], cells: usize) -> (Vec<Vec<i64>>, Result<(), Invoked<i64>>) {
+fn histories(hits: &[Hit], cells: usize) -> (Vec<Vec<i64>>, Result<(), Invoked<i64>>) {
     let mut slots = vec![Vec::new(); cells];
-    let answer = crate::run::ordered_on(
-        threads,
+    let answer = crate::run::ordered(
         &(),
         hits,
         Keyed::new(&mut slots[..]),
@@ -359,23 +358,24 @@ fn histories(threads: usize, hits: &[Hit], cells: usize) -> (Vec<Vec<i64>>, Resu
 }
 
 #[test]
-fn a_key_keeps_its_history_and_the_answer_is_the_same_at_any_thread_count() {
+fn a_key_keeps_its_history_and_the_first_failure_answers() {
     let hits: Vec<Hit> = (0..200).map(|i| Hit { cell: (i * 7) % 13, amount: if i == 32 || i == 150 { -(i as i64) } else { i as i64 } }).collect();
-    let (one, answer) = histories(1, &hits, 13);
+    let (slots, answer) = histories(&hits, 13);
     assert_eq!(answer, Err(Invoked::Failed(-32)), "the first failure in list order");
-    for threads in [2, 5, 64] {
-        assert_eq!(histories(threads, &hits, 13), (one.clone(), answer), "{threads} threads");
+    for (cell, history) in slots.iter().enumerate() {
+        let given: Vec<i64> = hits.iter().filter(|hit| hit.cell == cell).map(|hit| hit.amount).collect();
+        assert_eq!(history, &given, "cell {cell} saw every item, in list order");
     }
     let astray = [Hit { cell: 3, amount: 1 }, Hit { cell: 40, amount: 1 }, Hit { cell: 3, amount: -9 }];
-    assert_eq!(histories(4, &astray, 13).1, Err(Invoked::OutOfRange { key: 40, len: 13 }), "the astray key is item 1, before the failure at item 2");
+    assert_eq!(histories(&astray, 13).1, Err(Invoked::OutOfRange { key: 40, len: 13 }), "the astray key is item 1, before the failure at item 2");
 }
 
 #[test]
-fn distinct_keys_run_on_distinct_threads() {
+fn ordered_keys_run_inline_on_the_caller() {
     let hits: Vec<Hit> = (0..8).map(|cell| Hit { cell, amount: 0 }).collect();
+    let caller = thread::current().id();
     let mut slots = vec![None; 8];
-    crate::run::ordered_on(
-        4,
+    crate::run::ordered(
         &(),
         &hits,
         Keyed::new(&mut slots[..]),
@@ -386,18 +386,16 @@ fn distinct_keys_run_on_distinct_threads() {
         },
     )
     .expect("every key names a slot");
-    let threads: std::collections::HashSet<_> = slots.into_iter().collect();
-    assert_eq!(threads.len(), 4, "one thread per group");
+    assert!(slots.into_iter().all(|thread| thread == Some(caller)));
 }
 
 #[test]
-fn a_panic_joins_the_other_keys_work_before_it_unwinds() {
+fn a_panic_propagates_from_inline_dispatch() {
     let done = AtomicUsize::new(0);
     let hits: Vec<Hit> = (0..8).map(|cell| Hit { cell, amount: 0 }).collect();
     let mut slots = vec![(); 8];
     let unwound = catch_unwind(AssertUnwindSafe(|| {
-        crate::run::ordered_on(
-            8,
+        crate::run::ordered(
             &(),
             &hits,
             Keyed::new(&mut slots[..]),
@@ -410,5 +408,5 @@ fn a_panic_joins_the_other_keys_work_before_it_unwinds() {
         )
     }));
     assert!(unwound.is_err());
-    assert_eq!(done.load(SeqCst), 7, "every key but the one that panicked finished");
+    assert_eq!(done.load(SeqCst), 3, "inline execution stops at the panicking item");
 }

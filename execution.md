@@ -59,6 +59,15 @@ result, rather than force application errors into a padding-free representation.
 recommendation to require a transferable error is withdrawn: it mistook one physical mapping for
 the contract. Keep the first-error rule and reject an incorrect lowering, not a valid program.
 
+### Host items run inline
+
+The host runs `parallel` and `ordered` items on the caller's thread, in list order. That order
+keeps each key's calls in order and makes the first error met the first in list order, so the
+scalar lowering needs no grouping. Threads were dropped because none paid in the probes
+(`lowering-design.md`: a persistent four-thread pool lost to inline at 64 to 4096 frames on MIST);
+a threaded lowering returns only with a measured crossover on the real ordered body. Stable key
+grouping belongs with the SIMD wave lowering that consumes it. No real-body speedup is claimed.
+
 **CUDA conformance remains unverified.** The README records device transport, discovery and
 execution demonstrations on an RTX 2080 Ti, not the complete public contract. A host-model pass
 cannot establish actual warp votes, cross-lane error propagation, device memory visibility or
