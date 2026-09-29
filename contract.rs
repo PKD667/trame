@@ -5,16 +5,19 @@
 // promises to distinguish. `Context`, `Environment` and `Shared` are *not* here, because those are
 // where a backend's storage, identity and lifetime actually differ.
 //
-// `Rank` and `Tag` are newtypes with private fields so that a rank cannot be passed where a tag
-// was meant, and a backend converts each at its own boundary with a check: a value that does not
-// fit is an `Invalid` rather than a truncation, because a truncated rank is a frame delivered to
-// the wrong participant.
+// `Tag` is a newtype with a private field so that a tag cannot be passed where a rank was meant,
+// and a backend converts it at its own boundary with a check: a value that does not fit is an
+// `Invalid` rather than a truncation.
 //
-// `Rank` and `Launch` are two identities and never interchangeable. A `Rank` is a contract rank:
-// a participant's dense index in the cohort. A `Launch` is a launch rank: the number the transport
-// itself assigned the process. The same contract rank is a different launch rank in a different
-// job, so a backend converts between them in exactly one place and the types force every other
-// use through it.
+// A worker's local rank is a plain `u32`, its dense index among this deployment's workers. Every
+// API about this deployment alone takes that `u32`, so a worker of another host cannot reach one
+// by type. A peer route takes an `Addr`, which is `Local` for a worker of this deployment and
+// `Remote` for one of another host, so from any one viewpoint a worker has exactly one address.
+//
+// A local rank and a `Launch` are two identities and never interchangeable. A `Launch` is the
+// number the transport itself assigned the process. The same local rank is a different launch
+// rank in a different job, so a backend converts between them in exactly one place, and `Launch`
+// stays a newtype so no other use can skip it.
 //
 // `Span` is an integer count of nanoseconds and deliberately not `std::time::Duration`: a device
 // has no such type, and a duration that carries its own clock is a duration that can be subtracted
@@ -25,23 +28,21 @@ use core::fmt;
 use core::num::NonZeroU32;
 use core::num::NonZeroU64;
 
-/// A participant's dense index in the cohort, `[0, size)`, or a launch's number for a process in a
-/// [`Deployment`].
+/// A worker, as a peer route names it. `Local(r)` is rank `r < size` of this deployment.
+/// `Remote { host, rank }` is worker `rank` of the launch's host `host`, which is never this
+/// deployment's own: a worker here is always `Local`, so it has one address and not two.
+///
+/// The variants are the whole interface, with no methods, because a local worker is just its
+/// rank. The derived order is every `Local` before every `Remote`, which is the order
+/// `reshape`'s "ascending by `(source, destination)`" means.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Rank(u32);
-
-impl Rank {
-    pub const fn from_index(index: u32) -> Self {
-        Rank(index)
-    }
-
-    pub const fn get(self) -> u32 {
-        self.0
-    }
+pub enum Addr {
+    Local(u32),
+    Remote { host: u16, rank: u32 },
 }
 
-/// A process's launch rank: the number the transport assigned it. Distinct from [`Rank`], which
-/// is its dense contract rank, and never passed where one is meant.
+/// A process's launch rank: the number the transport assigned it. Distinct from a worker's local
+/// rank, and never passed where one is meant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Launch(u32);
 
@@ -185,102 +186,82 @@ impl TryFrom<u8> for Backend {
 ///
 /// A leader is not a participant, so nothing in a participant's own numbering says which process it
 /// is. The launch knows, so the launch states it, in its own numbering; no backend translates
-/// between two spaces. Several workers naming one leader is the launcher's arrangement of one sink
-/// per host, and nothing here reads anything more into it.
+/// between two spaces. The launch numbers its hosts and each host's workers, and gives every
+/// process the same table, so a worker's address on any host is fixed before anyone enters.
 ///
 /// Built only by [`Deployment::new`], so every value a backend receives has already been checked
 /// for the contradictions a backend could otherwise only resolve by guessing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Deployment<'a> {
-    workers: &'a [Launch],
-    leaders: Option<&'a [Launch]>,
+    hosts: &'a [&'a [Launch]],
+    here: u16,
+    leader: Launch,
 }
 
 impl<'a> Deployment<'a> {
-    /// `workers` in contract-rank order: the process at position `i` has contract rank `i`.
-    /// `leaders`, when present, is parallel to it: position `i` is led by `leaders[i]`. `None` is
-    /// a deployment with no leader route.
+    /// `hosts[h][r]` is the launch rank of host `h`'s worker `r`. `here` is this process's host:
+    /// its row is this deployment, in local-rank order. `leader` is this host's one leader.
     ///
     /// The other half of the check — a number outside the job — is the backend's, because only
     /// the backend knows how large its job is.
-    pub fn new(workers: &'a [Launch], leaders: Option<&'a [Launch]>) -> Result<Self, Invalid> {
-        if workers.is_empty() {
+    pub fn new(hosts: &'a [&'a [Launch]], here: u16, leader: Launch) -> Result<Self, Invalid> {
+        if hosts.is_empty() || hosts.iter().any(|row| row.is_empty()) {
             return Err(Invalid::EmptyDeployment);
         }
-        // A position in a list wider than `u32::MAX` cannot be a `Rank`, and every later
-        // narrowing of one is sound only because this refuses first.
-        if workers.len() > u32::MAX as usize
-            || leaders.is_some_and(|leaders| leaders.len() > u32::MAX as usize)
+        // A host past `u16::MAX` has no id, and a position in a row wider than `u32::MAX` cannot
+        // be a rank; every later narrowing of one is sound only because this refuses first.
+        if hosts.len() > usize::from(u16::MAX) + 1
+            || hosts.iter().any(|row| row.len() > u32::MAX as usize)
         {
             return Err(Invalid::Unrepresentable);
         }
-        if workers
-            .iter()
+        if usize::from(here) >= hosts.len() {
+            return Err(Invalid::RankOutsideJob);
+        }
+        let every = || hosts.iter().flat_map(|row| row.iter());
+        if every()
             .enumerate()
-            .any(|(at, worker)| workers[..at].contains(worker))
+            .any(|(at, worker)| every().take(at).any(|earlier| earlier == worker))
         {
             return Err(Invalid::DuplicateWorker);
         }
-        if let Some(leaders) = leaders {
-            if leaders.len() != workers.len() {
-                return Err(Invalid::UnequalLists);
-            }
-            if workers.iter().any(|worker| leaders.contains(worker)) {
-                return Err(Invalid::WorkerIsLeader);
-            }
+        if every().any(|&worker| worker == leader) {
+            return Err(Invalid::WorkerIsLeader);
         }
-        Ok(Deployment { workers, leaders })
+        Ok(Deployment { hosts, here, leader })
     }
 
+    /// This deployment's workers, in local-rank order.
     pub(crate) fn workers(self) -> &'a [Launch] {
-        self.workers
+        self.hosts[usize::from(self.here)]
     }
 
-    pub(crate) fn leaders(self) -> Option<&'a [Launch]> {
-        self.leaders
-    }
-
-    /// Which contract rank `launch` is, if it names a worker. A search, because the declaration
-    /// is the authority on the order.
+    /// Every host's workers: the whole launch table.
     // Read only by the backends that need it; which ones is not this file's to name.
     #[allow(dead_code)]
-    pub(crate) fn contract(self, launch: Launch) -> Option<Rank> {
-        self.workers
+    pub(crate) fn hosts(self) -> &'a [&'a [Launch]] {
+        self.hosts
+    }
+
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
+    pub(crate) fn here(self) -> u16 {
+        self.here
+    }
+
+    pub(crate) fn leader(self) -> Launch {
+        self.leader
+    }
+
+    /// Which local rank `launch` is, if it names one of this deployment's workers. A search,
+    /// because the declaration is the authority on the order.
+    // Read only by the backends that need it; which ones is not this file's to name.
+    #[allow(dead_code)]
+    pub(crate) fn contract(self, launch: Launch) -> Option<u32> {
+        self.workers()
             .iter()
             .position(|&worker| worker == launch)
-            .map(|at| Rank(at as u32))
-    }
-
-    /// This worker's leader, by contract rank.
-    // Read only by the backends that need it; which ones is not this file's to name.
-    #[allow(dead_code)]
-    pub(crate) fn leader_of(self, contract: Rank) -> Option<Launch> {
-        self.leaders?.get(contract.0 as usize).copied()
-    }
-
-    /// The distinct leaders in order of first appearance: one per host. The one rule for host
-    /// order, so an application numbering its hosts reads this rather than keeping a copy.
-    pub fn hosts(self) -> impl Iterator<Item = Launch> + 'a {
-        let leaders = self.leaders.unwrap_or(&[]);
-        (0..leaders.len()).filter_map(move |at| {
-            let leader = leaders[at];
-            (!leaders[..at].contains(&leader)).then_some(leader)
-        })
-    }
-
-    /// The position of `leader` among the distinct leaders, in order of first appearance. Both
-    /// ends of a bridge derive their pairing from this one computation, and an application that
-    /// numbers its hosts by leader reads the same one rather than keeping a copy that can diverge.
-    pub fn leader_index(self, leader: Launch) -> Option<usize> {
-        let leaders = self.leaders?;
-        let first = leaders.iter().position(|&l| l == leader)?;
-        Some(
-            leaders[..first]
-                .iter()
-                .enumerate()
-                .filter(|&(at, earlier)| !leaders[..at].contains(earlier))
-                .count(),
-        )
+            .map(|at| at as u32)
     }
 }
 
@@ -289,18 +270,14 @@ impl<'a> Deployment<'a> {
 pub enum Invalid {
     /// A deployment with no workers.
     EmptyDeployment,
-    /// A leader list that is not parallel to the worker list.
-    UnequalLists,
     /// A rank named twice as a worker.
     DuplicateWorker,
     /// A rank named both as a worker and as a leader.
     WorkerIsLeader,
-    /// A rank this job, cohort or route has no place for.
+    /// A worker address, local rank or host this deployment has no place for.
     RankOutsideJob,
     /// A process that opened a leader route the deployment does not give it.
     WrongLeader,
-    /// A leader-route call where the deployment named no leader.
-    NoLeader,
     /// A receive from a `concurrent!` arm that has no `recv` setting.
     NotReceiving,
     /// A lane send to a rank the current load gave no lane.
@@ -311,7 +288,7 @@ pub enum Invalid {
     UnorderedWorkers,
     /// An edge list that is not strictly ascending by `(source, destination)`.
     UnorderedEdges,
-    /// An edge whose endpoint is not one of the load's workers.
+    /// An edge with no `Local` endpoint, or whose `Local` endpoint is not one of the load's workers.
     EdgeOutsideWorkers,
     /// A lane geometry the launched storage cannot hold.
     UnsupportedGeometry,
@@ -320,8 +297,9 @@ pub enum Invalid {
     NoSegment,
     /// A value that does not fit the width the transport carries it in.
     Unrepresentable,
-    /// The environment the launch supplied disagrees with itself: header, sizes, alignment, or
-    /// leader. Consistency is what is checked; whether its pointers are real allocations is not.
+    /// The environment the launch supplied disagrees with itself: header, sizes, alignment,
+    /// leader, or the physical placement of a deployment's workers and its leader. Consistency is
+    /// what is checked; whether its pointers are real allocations is not.
     InconsistentLaunch,
 }
 
@@ -337,7 +315,8 @@ pub enum BackendFault {
     Internal,
     /// The POSIX errno of the failing syscall.
     Os(i32),
-    /// A contract operation this backend does not implement yet: nv segment publication.
+    /// A contract operation this backend does not implement yet: nv segment publication, and an
+    /// nv send to a `Remote` worker, which has no nv link yet.
     Unimplemented,
     /// An input refused where there was no call to return it from.
     Invalid(Invalid),
@@ -352,12 +331,12 @@ pub enum FailureKind<A> {
 
 /// Who observed a [`Failure`].
 ///
-/// A leader has no contract rank, and a process refused at entry has not been given one, so a bare
-/// `Rank` would have to invent one for them; rank zero invented is worker zero blamed.
+/// A leader has no local rank, and a process refused at entry has not been given one, so a bare
+/// rank would have to invent one for them; rank zero invented is worker zero blamed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Participant {
-    /// A worker, by contract rank.
-    Worker(Rank),
+    /// A worker, by its local rank: the observer is always on this deployment.
+    Worker(u32),
     /// A leader, by its launch rank.
     Leader(Launch),
     /// A process inside `init` or `Leader::open` that has no contract identity yet; `None` means
@@ -368,7 +347,7 @@ pub enum Participant {
 impl fmt::Display for Participant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Participant::Worker(rank) => write!(f, "worker {}", rank.0),
+            Participant::Worker(rank) => write!(f, "worker {rank}"),
             Participant::Leader(rank) => write!(f, "leader at launch rank {}", rank.0),
             Participant::Entering(Some(rank)) => write!(f, "launch rank {}", rank.0),
             Participant::Entering(None) => f.write_str("a process with no launch rank"),
@@ -446,7 +425,7 @@ pub enum Channel {
 /// One received frame, without its bytes: those were written into the caller's buffer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Frame {
-    source: Option<Rank>,
+    source: Option<Addr>,
     tag: Tag,
     len: usize,
 }
@@ -454,12 +433,13 @@ pub struct Frame {
 impl Frame {
     // Built only by a backend that carries frames.
     #[allow(dead_code)]
-    pub(crate) const fn new(source: Option<Rank>, tag: Tag, len: usize) -> Self {
+    pub(crate) const fn new(source: Option<Addr>, tag: Tag, len: usize) -> Self {
         Frame { source, tag, len }
     }
 
-    /// The sending worker, or `None` for this worker's leader, which has no rank.
-    pub const fn source(&self) -> Option<Rank> {
+    /// The sending worker, or `None` for this worker's leader, which has no rank. On the leader's
+    /// own route it is always `Local`: a leader's workers are its deployment.
+    pub const fn source(&self) -> Option<Addr> {
         self.source
     }
 
@@ -472,19 +452,20 @@ impl Frame {
     }
 }
 
-/// One directed lane pair, as declared to `reshape`.
+/// One directed lane pair, as declared to `reshape`. At least one end is `Local`: a pair between
+/// two other hosts is not this deployment's to declare.
 ///
 /// `affected` is the number of destination elements reachable from `source`. It sizes the pair's
 /// depth, and zero cannot size one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Edge {
-    source: Rank,
-    destination: Rank,
+    source: Addr,
+    destination: Addr,
     affected: NonZeroU32,
 }
 
 impl Edge {
-    pub fn new(source: Rank, destination: Rank, affected: NonZeroU32) -> Self {
+    pub fn new(source: Addr, destination: Addr, affected: NonZeroU32) -> Self {
         Edge {
             source,
             destination,
@@ -494,13 +475,13 @@ impl Edge {
 
     // Read only by the backends that need it; which ones is not this file's to name.
     #[allow(dead_code)]
-    pub(crate) fn source(self) -> Rank {
+    pub(crate) fn source(self) -> Addr {
         self.source
     }
 
     // Read only by the backends that need it; which ones is not this file's to name.
     #[allow(dead_code)]
-    pub(crate) fn destination(self) -> Rank {
+    pub(crate) fn destination(self) -> Addr {
         self.destination
     }
 

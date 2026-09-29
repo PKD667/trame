@@ -14,7 +14,7 @@
 # `traffic` runs eight named patterns, from uniform through incast to request/response.
 # `particles` needs a square rank count and is not in the default set for that reason.
 #
-# Never oversubscribe: pick a rank count at or below the core count.
+# Never oversubscribe: pick a worker count below the core count; the leader takes one more.
 set -eu
 cd "$(CDPATH= cd "$(dirname "$0")" && pwd)/.."
 
@@ -33,8 +33,8 @@ fi
 . "./$ENV"
 
 CORES=$(nproc 2>/dev/null || echo 1)
-if [ "$RANKS" -gt "$CORES" ]; then
-	echo "refusing $RANKS ranks on $CORES cores: oversubscribed MPI measures the scheduler" >&2
+if [ $((RANKS + 1)) -gt "$CORES" ]; then
+	echo "refusing $RANKS workers and a leader on $CORES cores: oversubscribed MPI measures the scheduler" >&2
 	exit 2
 fi
 
@@ -42,5 +42,5 @@ fi
 for name in $EXPERIMENTS; do
 	cargo build --release -p trame --features "$FEATURES" --example "$name" >&2
 	echo "=== $name: $BACKEND, $RANKS ranks" >&2
-	"$LAUNCH" "$LAUNCH_RANKS" "$RANKS" "target/release/examples/$name"
+	TRAME_WORKERS=$RANKS "$LAUNCH" "$LAUNCH_RANKS" "$RANKS" "target/release/examples/$name" : "$LAUNCH_RANKS" 1 "target/release/examples/$name" --leader
 done

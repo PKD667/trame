@@ -1,6 +1,6 @@
 //! The leader route, both ends, on the host model.
 
-use crate::contract::{Deployment, Error, Launch, Rank, Tag};
+use crate::contract::{Addr, Deployment, Error, Launch, Tag};
 use crate::nv::Environment;
 use crate::nv::launch::{self, Description};
 use crate::nv::error::RecvError;
@@ -25,7 +25,6 @@ unsafe impl Sync for Region {}
 fn open(region: *mut u32, workers: &[u32]) -> Leader {
     let size = workers.len() as u32;
     let workers: Vec<Launch> = workers.iter().copied().map(Launch::new).collect();
-    let leaders = vec![Launch::new(size); workers.len()];
     let route = Route::sized(size).expect("a route for these workers");
     launch::describe(Description::stated(
         size,
@@ -36,7 +35,7 @@ fn open(region: *mut u32, workers: &[u32]) -> Leader {
     ));
     Leader::open(
         Environment::default(),
-        Deployment::new(&workers, Some(&leaders)).expect("a valid deployment"),
+        Deployment::new(&[&workers[..]], 0, Launch::new(size)).expect("a valid deployment"),
     )
     .expect("a deployment with a leader")
 }
@@ -59,7 +58,10 @@ fn a_leader_and_its_workers_talk_both_ways() {
                 let mut buf = vec![0u8; CAPACITY as usize];
                 if let Some(frame) = leader.recv(&mut buf).expect("a frame") {
                     let len = frame.len();
-                    heard.push((frame.source().expect("a worker sent it"), frame.tag(), buf[..len].to_vec()));
+                    let Some(Addr::Local(rank)) = frame.source() else {
+                        panic!("a worker's frame names it as local, not {:?}", frame.source());
+                    };
+                    heard.push((rank, frame.tag(), buf[..len].to_vec()));
                 }
             }
             heard.sort();
@@ -101,12 +103,11 @@ fn a_leader_and_its_workers_talk_both_ways() {
         (heard, answers)
     });
 
-    let r = Rank::from_index;
     assert_eq!(
         up,
         vec![
-            (r(0), Tag::new(7), b"hello".to_vec()),
-            (r(1), Tag::new(8), b"hello".to_vec())
+            (0, Tag::new(7), b"hello".to_vec()),
+            (1, Tag::new(8), b"hello".to_vec())
         ]
     );
     assert_eq!(down, vec![(107, b"ack".to_vec()), (108, b"ack".to_vec())]);
@@ -120,7 +121,7 @@ fn a_full_link_refuses_and_an_empty_one_reports() {
     let leader = open(arena.as_mut_ptr(), &[0]);
     let mut buf = vec![0u8; CAPACITY as usize];
     let mut worker = unsafe { Worker::new(arena.as_mut_ptr(), route, 0) };
-    let zero = Rank::from_index(0);
+    let zero = 0;
     let tag = |n: u32| Tag::new(n as u16);
 
     // Nothing has been sent, so the leader is told so rather than made to wait.
@@ -159,7 +160,7 @@ fn a_partial_word_is_copied_by_its_byte_count() {
     let leader = open(arena.as_mut_ptr(), &[0]);
     let mut worker = unsafe { Worker::new(arena.as_mut_ptr(), route, 0) };
     leader
-        .send(Rank::from_index(0), Tag::new(1), b"hello")
+        .send(0, Tag::new(1), b"hello")
         .expect("an empty link");
     // Five bytes into six: the frame's last word is partial, and the byte past it is the caller's.
     let mut out = [0xa5u8; 6];

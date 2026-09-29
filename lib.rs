@@ -3,7 +3,7 @@
 //
 // The shape of the crate is the shape of the contract's two halves:
 //
-//   `contract.rs`  the values every backend shares — `Rank`, `Frame`, `Error`, `Deployment`.
+//   `contract.rs`  the values every backend shares — `Addr`, `Frame`, `Error`, `Deployment`.
 //                  Nothing here chooses a backend.
 //   `none/ mpi/ rma/ lossy/ nv/`  one module per backend, each answering the *whole* surface:
 //                  entry, identity, communication, geometry, lifetime, clocks, and the primitive
@@ -27,8 +27,8 @@
 
 mod contract;
 pub use contract::{
-    Backend, BackendFault, Channel, ClockId, ClockMismatch, Deployment, Edge, Error, Failure,
-    FailureKind, Frame, Handle, Invalid, Launch, Participant, Rank, Reading, Span, Tag,
+    Addr, Backend, BackendFault, Channel, ClockId, ClockMismatch, Deployment, Edge, Error, Failure,
+    FailureKind, Frame, Handle, Invalid, Launch, Participant, Reading, Span, Tag,
 };
 
 // Generated code says `::trame::...` whether it was expanded in an application or in this
@@ -87,7 +87,7 @@ use rma as selected;
 // There is no `exec` here. Starting a named body on another host thread is the host lowering's
 // own business. `sync` remains in the surface because Family A is a backend family.
 pub use selected::{
-    Context, Environment, Io, Shared, attach, barrier, bytes, clock, detach, done, flush, hosts, init,
+    Context, Environment, Io, Shared, attach, barrier, bytes, clock, detach, done, flush, init,
     leader, rank, recv, release, reshape, send, size, sync,
 };
 #[doc(hidden)]

@@ -32,7 +32,7 @@ use std::sync::Mutex;
 
 use super::{Context, Environment};
 use crate::contract::{
-    BackendFault, Deployment, Error, Failure, FailureKind, Frame, Handle, Invalid, Participant, Rank,
+    Addr, BackendFault, Deployment, Error, Failure, FailureKind, Frame, Handle, Invalid, Participant,
     Tag,
 };
 use crate::invoke::Owner;
@@ -211,9 +211,9 @@ unsafe fn consume(
 
 /// The leader: the host process's end of every worker's links.
 ///
-/// It holds no rank, because a leader is not a participant — it is absent from `size`, `rank`,
-/// `hosts` and `cohort`, and nothing here needs one. What it addresses with is the worker's
-/// contract rank, which is a position in the declaration rather than an identity of its own.
+/// It holds no rank, because a leader is not a participant — it is absent from `size` and `rank`,
+/// and nothing here needs one. What it addresses with is the worker's local rank, which is a
+/// position in the declaration rather than an identity of its own.
 pub struct Leader {
     /// Who this leader's failures are observed by: its launch rank, since it has no contract rank.
     me: Participant,
@@ -265,20 +265,13 @@ impl Leader {
             .description
             .check()
             .map_err(|fault| opening(Participant::Entering(None), fault))?;
-        let Some(leaders) = deployment.leaders() else {
-            // A process that opened the route anyway is a process the launch did not ask for.
-            return Err(opening(
-                Participant::Entering(env.leader),
-                BackendFault::Invalid(Invalid::NoLeader),
-            ));
-        };
         // A launch with no leader has no region, and is refused rather than given an empty route,
         // because an empty route is a leader that silently hears nobody.
         let Some(rank) = env.leader else {
             return Err(opening(Participant::Entering(None), BackendFault::Storage));
         };
         let me = Participant::Leader(rank);
-        if !leaders.iter().all(|&leader| leader == rank) {
+        if deployment.leader() != rank {
             return Err(opening(me, BackendFault::Invalid(Invalid::WrongLeader)));
         }
         if deployment.workers().iter().any(|worker| worker.get() >= env.size) {
@@ -305,21 +298,21 @@ impl Leader {
         })
     }
 
-    /// Send one frame to one worker, named by its contract rank.
+    /// Send one frame to one worker, named by its local rank.
     ///
     /// `Full` is this worker's down link still holding its previous frames, which is a fact about
     /// that worker rather than about the route: another worker's link may be empty.
-    pub fn send(&self, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error> {
-        if to.get() >= self.route.ranks() {
+    pub fn send(&self, to: u32, tag: Tag, data: &[u8]) -> Result<(), Error> {
+        if to >= self.route.ranks() {
             return Err(Error::Invalid(Invalid::RankOutsideJob));
         }
         if data.len() > super::MAX_FRAME {
             return Err(Error::TooLarge { limit: super::MAX_FRAME });
         }
         let mut cursors = self.cursors.lock().map_err(|_| poisoned(self.me, "leader::send"))?;
-        let cursor = &mut cursors[to.get() as usize];
+        let cursor = &mut cursors[to as usize];
         // SAFETY: `open`'s region, and the lock makes this the only producer on the down links.
-        let link = unsafe { self.route.down(self.region, to.get()) };
+        let link = unsafe { self.route.down(self.region, to) };
         let tag = u32::from(tag.get());
         match unsafe { post(link, self.route.layout(), cursor.departing, 0, tag, data) } {
             Ok(()) => {
@@ -349,7 +342,7 @@ impl Leader {
                 Ok(message) => {
                     cursor.arriving = cursor.arriving.wrapping_add(1);
                     let len = message.len as usize;
-                    return Ok(Some(Frame::new(Some(Rank::from_index(source)), tag(message), len)));
+                    return Ok(Some(Frame::new(Some(Addr::Local(source)), tag(message), len)));
                 }
                 Err(RecvError::Empty) => {}
                 Err(RecvError::TooSmall { needed }) => {
@@ -386,7 +379,7 @@ pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
     if data.len() > super::MAX_FRAME {
         return Err(Error::TooLarge { limit: super::MAX_FRAME });
     }
-    let worker = cx.leader()?;
+    let worker = cx.leader();
     // SAFETY: the region belongs to the launch, this worker is its only producer on the up link,
     // and `cx` gives one worker end to one caller.
     match unsafe { worker.send(u32::from(tag.get()), data) } {
@@ -408,7 +401,7 @@ pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
 /// another arm owns holds it for this one.
 pub(crate) fn take(cx: &mut Context, owner: Owner<'_>, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     let out = super::room(out);
-    let worker = cx.leader()?;
+    let worker = cx.leader();
     // SAFETY: as `send`, on this worker's down link.
     if !owner.every() && !unsafe { worker.head() }.is_some_and(|tag| owner.owns(Tag::new(tag as u16))) {
         return Ok(None);

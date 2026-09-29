@@ -18,15 +18,17 @@ use std::convert::Infallible;
 use std::num::NonZeroU32;
 
 use crate::contract::{
-    BackendFault, Channel, Deployment, Edge, Error, FailureKind, Invalid, Launch, Rank, Tag,
+    Addr, BackendFault, Channel, Deployment, Edge, Error, FailureKind, Invalid, Launch, Tag,
 };
 use crate::nv::launch::{self, Description};
 use crate::nv::layout::Layout;
+use crate::nv::leader::Route;
 use crate::nv::peers::Fabric;
 use crate::nv::{self, Environment, MAX_FRAME, warp};
 
-fn r(index: u32) -> Rank {
-    Rank::from_index(index)
+/// A worker of this deployment, as a peer route names it.
+fn r(index: u32) -> Addr {
+    Addr::Local(index)
 }
 
 /// A launch rank, the number the transport assigned rather than the contract's dense index.
@@ -38,12 +40,18 @@ fn t(tag: u16) -> Tag {
     Tag::new(tag)
 }
 
-fn ranks(indices: &[u32]) -> Vec<Rank> {
-    indices.iter().copied().map(r).collect()
-}
-
 fn launches(indices: &[u32]) -> Vec<Launch> {
     indices.iter().copied().map(l).collect()
+}
+
+/// A prepared leader region for `size` workers, never freed: the contexts built over it are
+/// returned to the tests, and a region freed under them would be a dangling route. Every
+/// deployment has a leader, so every launch here provisions its route even when no leader runs.
+fn region(size: u32) -> (*mut u32, usize) {
+    let route = Route::sized(size).expect("a route for the workers");
+    let arena: &'static mut [u32] = Box::leak(vec![0u32; route.words()].into_boxed_slice());
+    route.init(arena);
+    (arena.as_mut_ptr(), route.words())
 }
 
 /// Every participant's entry into one launch whose links have `layout`.
@@ -58,13 +66,14 @@ fn enter(size: u32, layout: Layout) -> Vec<Result<nv::Context, crate::Failure>> 
 /// discovers it as the warp whose index is its launch rank.
 fn enter_as(workers: &[Launch], layout: Layout) -> Vec<Result<nv::Context, crate::Failure>> {
     let size = workers.len() as u32;
-    // No leader in this launch, which is what a null region says.
+    // The leader is one past the workers; no leader thread runs, so its route stays idle.
+    let (region, words) = region(size);
     let description = Description::stated(
         size,
-        None,
+        Some(l(size)),
         Fabric::new(size, layout),
-        std::ptr::null_mut(),
-        0,
+        region,
+        words,
     );
     std::thread::scope(|scope| {
         let entered: Vec<_> = (0..size)
@@ -84,7 +93,7 @@ fn enter_as(workers: &[Launch], layout: Layout) -> Vec<Result<nv::Context, crate
 fn entry(workers: &[Launch]) -> Result<nv::Context, crate::Failure> {
     nv::init(
         Environment::default(),
-        Deployment::new(workers, None).expect("every rank a worker"),
+        Deployment::new(&[workers], 0, l(workers.len() as u32)).expect("every rank a worker"),
     )
 }
 
@@ -100,12 +109,13 @@ fn launch(size: u32, depth: u32) -> Vec<nv::Context> {
 /// A two-worker description with a valid header, for a test to spoil.
 fn described() -> Description {
     let layout = Layout::new(2, MAX_FRAME as u32).expect("a valid layout");
+    let (region, words) = region(2);
     Description::stated(
         2,
-        None,
+        Some(l(2)),
         Fabric::new(2, layout),
-        std::ptr::null_mut(),
-        0,
+        region,
+        words,
     )
 }
 
@@ -136,7 +146,7 @@ const INCONSISTENT: FailureKind<Infallible> =
 #[test]
 fn a_valid_description_initialises() {
     let cx = entering(described()).expect("a consistent launch");
-    assert_eq!((nv::rank(&cx), nv::size(&cx)), (r(0), 2));
+    assert_eq!((nv::rank(&cx), nv::size(&cx)), (0, 2));
 }
 
 #[test]
@@ -182,10 +192,8 @@ fn every_participant_has_its_own_identity_and_endpoints() {
     let cx = launch(3, 2);
     // Distinct identity: this is the assertion a shared global cannot satisfy, because the last
     // writer would make all three answer the same rank.
-    assert_eq!(cx.iter().map(nv::rank).collect::<Vec<_>>(), ranks(&[0, 1, 2]));
+    assert_eq!(cx.iter().map(nv::rank).collect::<Vec<_>>(), vec![0, 1, 2]);
     assert!(cx.iter().all(|c| nv::size(c) == 3));
-    // One device, so one sharing domain led by rank 0.
-    assert!(cx.iter().all(|c| nv::hosts(c) == ranks(&[0, 0, 0])));
     // Distinct endpoints: rank 0 reaching rank 1 is a different link from rank 2 reaching rank 1,
     // and a launch whose endpoints were one shared value could not deliver both.
     let mut a = launch(2, 2);
@@ -209,7 +217,7 @@ fn contract_ranks_become_launch_ranks_at_the_link_and_back() {
         .into_iter()
         .map(|cx| cx.expect("a launch the model can build"))
         .collect();
-    assert_eq!((nv::rank(&cx[0]), nv::rank(&cx[1])), (r(1), r(0)));
+    assert_eq!((nv::rank(&cx[0]), nv::rank(&cx[1])), (1, 0));
     nv::send(&mut cx[1], r(1), Channel::Message(t(5)), b"to one").expect("accepted");
     let mut buf = [0u8; 16];
     assert_eq!(nv::recv(&mut cx[1], &mut buf), Ok(None));
@@ -306,7 +314,7 @@ fn release_is_a_worker_collective() {
 // ---------------------------------------------------------------------------------------------
 // Geometry
 
-fn declare(cx: &mut [nv::Context], workers: &[Rank], edges: &[Edge], bytes: usize, tag: Tag) {
+fn declare(cx: &mut [nv::Context], workers: &[u32], edges: &[Edge], bytes: usize, tag: Tag) {
     std::thread::scope(|scope| {
         let calls: Vec<_> = cx.iter_mut()
             .map(|c| scope.spawn(move || nv::reshape(c, workers, edges, bytes, tag)))
@@ -328,13 +336,13 @@ fn edges(pairs: &[(u32, u32)]) -> Vec<Edge> {
 #[test]
 fn reshape_validates_before_anything_is_sent() {
     let mut cx = launch(3, 4);
-    let workers = ranks(&[0, 1, 2]);
+    let workers = [0, 1, 2];
     let bytes = 16;
     declare(&mut cx, &workers, &edges(&[(0, 1)]), bytes, t(7));
 
     // Unsorted workers: a declaration whose order two participants could read differently.
     assert_eq!(
-        nv::reshape(&mut cx[0], &ranks(&[1, 0, 2]), &[], bytes, t(7)),
+        nv::reshape(&mut cx[0], &[1, 0, 2], &[], bytes, t(7)),
         Err(Error::Invalid(Invalid::UnorderedWorkers))
     );
     // Duplicate edges cannot both own a slot.
@@ -344,13 +352,13 @@ fn reshape_validates_before_anything_is_sent() {
     );
     // A worker that is not a participant of this launch.
     assert_eq!(
-        nv::reshape(&mut cx[0], &ranks(&[0, 1, 9]), &[], bytes, t(7)),
+        nv::reshape(&mut cx[0], &[0, 1, 9], &[], bytes, t(7)),
         Err(Error::Invalid(Invalid::RankOutsideJob))
     );
     // A subset is legal: the arena is indexed by rank, so lanes among some participants need no
     // mapping, and requiring the workers to be the whole cohort would refuse a load the launch
     // can serve.
-    declare(&mut cx, &ranks(&[0, 1]), &[], bytes, t(7));
+    declare(&mut cx, &[0, 1], &[], bytes, t(7));
     // A frame wider than the launched slot is refused at declaration, never truncated at send.
     let over = MAX_FRAME + 1;
     assert_eq!(
@@ -368,7 +376,7 @@ fn reshape_validates_before_anything_is_sent() {
 #[test]
 fn lane_traffic_rides_the_tag_the_load_declared() {
     let mut cx = launch(2, 4);
-    let workers = ranks(&[0, 1]);
+    let workers = [0, 1];
     let bytes = 16;
     declare(&mut cx, &workers, &edges(&[(0, 1)]), bytes, t(42));
     assert_eq!(nv::send(&mut cx[0], r(0), Channel::Lane, b"x"), Err(Error::Invalid(Invalid::NoLane)));
@@ -415,8 +423,8 @@ fn the_launch_a_test_builds_is_the_launch_the_device_builds() {
     let second = launch(4, 2);
     assert_eq!(nv::size(&first[0]), 2);
     assert_eq!(nv::size(&second[0]), 4);
-    assert_eq!(nv::rank(&first[1]), r(1));
-    assert_eq!(nv::rank(&second[1]), r(1));
+    assert_eq!(nv::rank(&first[1]), 1);
+    assert_eq!(nv::rank(&second[1]), 1);
 }
 
 #[test]
@@ -425,7 +433,7 @@ fn the_plan_is_the_topology_the_contract_asks_for() {
     // an order two participants could disagree about. What replaces the old test is that the
     // declaration is validated against the launch rather than compiled into a table.
     let mut cx = launch(2, 4);
-    let workers = ranks(&[0, 1]);
+    let workers = [0, 1];
     let bytes = 8;
     let mut fanin = HashMap::new();
     fanin.insert((0u32, 1u32), 1usize);

@@ -26,7 +26,8 @@ pub use trame::{Channel, Context, Environment, Error};
 pub type Rank = u32;
 pub type Tag = u16;
 
-/// Where the launch states how many ranks it started: every one of them is a worker and none leads.
+/// Where the launch states how many workers it started. One more process, launch rank
+/// `TRAME_WORKERS`, is their leader, and says so with `--leader` in argv.
 const WORKERS: &str = "TRAME_WORKERS";
 
 /// Repeat a one-attempt call while it reports nothing yet, `Full` or `Busy`.
@@ -40,8 +41,8 @@ fn until<T>(mut attempt: impl FnMut() -> Result<Option<T>, Error>) -> Result<T, 
     }
 }
 
-/// The deployment the launch stated in `TRAME_WORKERS`, as launch ranks: every one is a worker and
-/// none leads. The deployment names launch ranks, and the contract ranks are the positions.
+/// The workers the launch stated in `TRAME_WORKERS`, as launch ranks. The contract ranks are the
+/// positions.
 fn workers() -> Vec<trame::Launch> {
     let stated = std::env::var(WORKERS).unwrap_or_else(|e| panic!("{WORKERS}: {e}"));
     let n: u32 = stated
@@ -64,13 +65,22 @@ pub struct Wire {
 
 impl Wire {
     /// Enter the world. The experiments use point-to-point only, so the cohort is never read.
+    ///
+    /// The process started with `--leader` is the deployment's leader. It carries nothing: it
+    /// opens the route every deployment has, holds it until the workers finish, and leaves.
     pub fn start() -> Wire {
+        let workers = workers();
+        let hosts: [&[trame::Launch]; 1] = [&workers];
+        let leader = trame::Launch::new(workers.len() as u32);
+        let deployment = Deployment::new(&hosts, 0, leader).expect("a stated deployment");
+        if std::env::args().any(|arg| arg == "--leader") {
+            let route = trame::leader::Leader::open(Environment::default(), deployment)
+                .expect("this experiment needs MPI");
+            drop(route);
+            std::process::exit(0);
+        }
         Wire {
-            cx: init(
-                Environment::default(),
-                Deployment::new(&workers(), None).expect("a stated deployment"),
-            )
-            .expect("this experiment needs MPI"),
+            cx: init(Environment::default(), deployment).expect("this experiment needs MPI"),
             held: Vec::new(),
             cap: 64,
         }
@@ -78,12 +88,12 @@ impl Wire {
 
     /// One attempt, with the refusal returned rather than turned into a panic.
     pub fn try_post(&mut self, dest: Rank, tag: Tag, data: &[u8]) -> Result<(), Error> {
-        let dest = trame::Rank::from_index(dest);
+        let dest = trame::Addr::Local(dest);
         send(&mut self.cx, dest, Channel::Message(trame::Tag::new(tag)), data)
     }
 
     pub fn rank(&self) -> Rank {
-        rank(&self.cx).get()
+        rank(&self.cx)
     }
 
     pub fn size(&self) -> u32 {
@@ -153,7 +163,10 @@ impl Wire {
             match recv(&mut self.cx, &mut buf) {
                 Ok(Some(frame)) => {
                     buf.truncate(frame.len());
-                    let source = frame.source().expect("a peer frame names its sender").get();
+                    let source = match frame.source() {
+                        Some(trame::Addr::Local(source)) => source,
+                        other => panic!("a peer frame names a sender of this deployment, not {other:?}"),
+                    };
                     return Ok(Some((source, frame.tag().get(), buf)));
                 }
                 Ok(None) => return Ok(None),

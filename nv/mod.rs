@@ -34,8 +34,8 @@
 //!   so no worker sees an unfinished cohort.
 
 use crate::contract::{
-    Backend, BackendFault, Channel, Deployment, Edge, Error, Failure, FailureKind, Frame, Handle,
-    Invalid, Launch, Participant, Rank, Tag,
+    Addr, Backend, BackendFault, Channel, Deployment, Edge, Error, Failure, FailureKind, Frame,
+    Handle, Invalid, Launch, Participant, Tag,
 };
 
 pub mod clock;
@@ -115,23 +115,27 @@ impl Default for Environment {
 /// order a leader endpoint's pointer lay under a `Failure`'s participant.
 #[repr(C)]
 pub struct Context {
-    rank: Rank,
+    rank: u32,
     size: u32,
     /// Each contract rank's launch rank: the links are the launch's, so this is where a contract
     /// rank becomes a link index and a link index becomes a contract rank again.
     launch: [Launch; MAX_RANKS],
     links: Links,
-    /// The worker's end of the leader route, when the launch named a leader.
-    leader: Option<leader::Worker>,
+    /// The worker's end of the leader route.
+    leader: leader::Worker,
     layout: Layout,
     /// The tag lane traffic rides under, set by `reshape`.
     tag: Option<Tag>,
     /// The declared outgoing edges and frame bound: a lane send may only use the current load.
     lanes: [Bool; MAX_RANKS],
     lane_frame: usize,
-    /// One device: every rank's sharing-domain leader. Held here rather than in a static because
-    /// a static is what made two participants share one identity.
-    hosts: [Rank; MAX_RANKS],
+    /// How many workers each host of the launch has, by host id, for the first `hosts` entries,
+    /// and which host this is: what [`resolve`] needs to tell an address that names no worker from
+    /// one on another host. Held here rather than in a static because a static is what made two
+    /// participants share one identity.
+    rows: [u32; MAX_RANKS],
+    hosts: u32,
+    here: u16,
 }
 
 // SAFETY: the context is one participant's state. The raw pointers it holds address memory the
@@ -140,12 +144,9 @@ pub struct Context {
 unsafe impl Send for Context {}
 
 impl Context {
-    /// This worker's end of the leader route, or a refusal when the launch named no leader.
-    ///
-    /// A refusal rather than `None`, because a caller that asked to reach its leader and has none
-    /// has made a mistake about where it runs, and the contract has a value for that.
-    pub(crate) fn leader(&mut self) -> Result<&mut leader::Worker, Error> {
-        self.leader.as_mut().ok_or(Error::Invalid(Invalid::NoLeader))
+    /// This worker's end of the leader route.
+    pub(crate) fn leader(&mut self) -> &mut leader::Worker {
+        &mut self.leader
     }
 }
 
@@ -178,6 +179,17 @@ pub fn init(env: Environment, deployment: Deployment<'_>) -> Result<Context, Fai
     if launch.len() > MAX_RANKS {
         return Err(refuse(unentered, BackendFault::Storage));
     }
+    // The launch's hosts by worker count, so a `Remote` address can be checked; only this host's
+    // launches are visible to a device.
+    let table = deployment.hosts();
+    if table.len() > MAX_RANKS {
+        return Err(refuse(unentered, BackendFault::Storage));
+    }
+    let mut rows = [0u32; MAX_RANKS];
+    for (row, workers) in rows.iter_mut().zip(table) {
+        // `Deployment::new` refused a row longer than `u32::MAX`.
+        *row = workers.len() as u32;
+    }
     if launch.iter().any(|worker| worker.get() >= env.size) {
         return Err(refuse(unentered, outside));
     }
@@ -200,43 +212,28 @@ pub fn init(env: Environment, deployment: Deployment<'_>) -> Result<Context, Fai
         Ok(links) => links,
         Err(_) => return Err(refuse(me, outside)),
     };
-    let hosts = [Rank::from_index(0); MAX_RANKS];
-    // Every rank of a launch shares the device's memory, so every rank's leader is contract rank
-    // zero. The table is one entry per rank and not one entry, which would say the launch has one
-    // rank.
-
-    // The worker end of the leader route, when the declaration names a leader for this worker. The
-    // geometry comes from the declaration, not from the environment: both ends must agree on it and
-    // the worker list is the one thing they both hold.
-    // One device launch has one host leader. A deployment naming another process cannot use
-    // this region: accepting it would silently connect a worker to the wrong leader.
-    if deployment
-        .leaders()
-        .is_some_and(|leaders| leaders.iter().any(|&leader| Some(leader) != env.leader))
-    {
+    // The worker end of the leader route. The geometry comes from the declaration, not from the
+    // environment: both ends must agree on it and the worker list is the one thing they both hold.
+    // One device launch has one host leader. A deployment naming another process cannot use this
+    // region: accepting it would silently connect a worker to the wrong leader.
+    if env.leader != Some(deployment.leader()) {
         return Err(refuse(me, outside));
     }
-    let leader = match deployment.leader_of(rank) {
-        None => None,
-        Some(_) => {
-            if env.leader_region.is_null() {
-                return Err(refuse(me, BackendFault::Storage));
-            }
-            // A `match`: a `Result<Route, Failure>` lays the name's pointer over the route's layout.
-            let route = match Route::sized(count as u32) {
-                Ok(route) => route,
-                Err(_) => return Err(refuse(me, BackendFault::Storage)),
-            };
-            if env.leader_words != route.words() {
-                return Err(refuse(me, BackendFault::Storage));
-            }
-            // SAFETY: the launcher's write of the description vouched that this region is
-            // `leader_words` words prepared for this route and owned for the life of the job, and
-            // that is the route's size; this worker is the only producer on its up link and the
-            // only consumer of its down link.
-            Some(unsafe { leader::Worker::new(env.leader_region, route, rank.get()) })
-        }
+    if env.leader_region.is_null() {
+        return Err(refuse(me, BackendFault::Storage));
+    }
+    // A `match`: a `Result<Route, Failure>` lays the name's pointer over the route's layout.
+    let route = match Route::sized(count as u32) {
+        Ok(route) => route,
+        Err(_) => return Err(refuse(me, BackendFault::Storage)),
     };
+    if env.leader_words != route.words() {
+        return Err(refuse(me, BackendFault::Storage));
+    }
+    // SAFETY: the launcher's write of the description vouched that this region is `leader_words`
+    // words prepared for this route and owned for the life of the job, and that is the route's
+    // size; this worker is the only producer on its up link and the only consumer of its down link.
+    let leader = unsafe { leader::Worker::new(env.leader_region, route, rank) };
 
     // Entry is a worker collective, not merely a local read of the launch description.
     peers::barrier(&mut links, count as u32);
@@ -250,20 +247,18 @@ pub fn init(env: Environment, deployment: Deployment<'_>) -> Result<Context, Fai
         tag: None,
         lanes: [0; MAX_RANKS],
         lane_frame: 0,
-        hosts,
+        rows,
+        hosts: table.len() as u32,
+        here: deployment.here(),
     })
 }
 
-pub fn rank(cx: &Context) -> Rank {
+pub fn rank(cx: &Context) -> u32 {
     cx.rank
 }
 
 pub fn size(cx: &Context) -> u32 {
     cx.size
-}
-
-pub fn hosts(cx: &Context) -> &[Rank] {
-    &cx.hosts[..cx.size as usize]
 }
 
 /// Report the outcome and discharge nothing.
@@ -301,18 +296,19 @@ fn internal(cx: &Context, operation: &'static str) -> Error {
 
 /// Send one frame, in one attempt. Success means *accepted*: the bytes are in the peer's slot or
 /// nowhere.
-pub fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error> {
+pub fn send(cx: &mut Context, to: Addr, channel: Channel, data: &[u8]) -> Result<(), Error> {
     let tag = match channel {
         Channel::Message(tag) => tag,
         Channel::Lane => cx
             .tag
             .ok_or(Error::Invalid(Invalid::LaneNotConfigured))?,
     };
-    let link = launch_of(&cx.launch[..cx.size as usize], to)?.get();
+    let to = resolve(cx, to)?;
+    let link = cx.launch[to as usize].get();
     let limit = match channel {
         Channel::Message(_) => MAX_FRAME,
         Channel::Lane => {
-            if cx.lanes[to.get() as usize] == 0 {
+            if cx.lanes[to as usize] == 0 {
                 return Err(Error::Invalid(Invalid::NoLane));
             }
             cx.lane_frame
@@ -333,22 +329,34 @@ pub fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result
     }
 }
 
-/// A contract rank's launch rank: the link index the launch's arena is addressed by. The one
-/// place a contract rank becomes a launch rank here.
-fn launch_of(launched: &[Launch], contract: Rank) -> Result<Launch, Error> {
-    launched
-        .get(contract.get() as usize)
-        .copied()
-        .ok_or(Error::Invalid(Invalid::RankOutsideJob))
+/// Which of this deployment's workers `to` is: the one place an address is checked here, before
+/// `cx.launch` makes it a link index. A `Remote` naming a worker of another host is in range but
+/// has no nv link yet, so it is `Unimplemented`, as `attach` is. An address that names no worker,
+/// a `Remote` naming this host included, is `RankOutsideJob`.
+fn resolve(cx: &Context, to: Addr) -> Result<u32, Error> {
+    match to {
+        Addr::Local(rank) if rank < cx.size => Ok(rank),
+        Addr::Remote { host, rank }
+            if host != cx.here
+                && cx.rows[..cx.hosts as usize].get(usize::from(host)).is_some_and(|&n| rank < n) =>
+        {
+            Err(Error::Failed(Failure {
+                participant: Participant::Worker(cx.rank),
+                operation: named(b"send"),
+                kind: FailureKind::Backend(BackendFault::Unimplemented),
+            }))
+        }
+        Addr::Local(_) | Addr::Remote { .. } => Err(Error::Invalid(Invalid::RankOutsideJob)),
+    }
 }
 
 /// A launch rank's contract rank, the one place a link index becomes a participant again. This is
 /// where a frame's `src` is translated, so a link index is never mistaken for a contract rank.
-fn contract_of(launched: &[Launch], launch: Launch) -> Option<Rank> {
+fn contract_of(launched: &[Launch], launch: Launch) -> Option<u32> {
     launched
         .iter()
         .position(|&l| l == launch)
-        .map(|at| Rank::from_index(at as u32))
+        .map(|at| at as u32)
 }
 
 /// The receive room a link is told about: no frame exceeds `MAX_FRAME`, so a longer buffer is
@@ -385,10 +393,10 @@ fn take(cx: &mut Context, owner: Owner<'_>, out: &mut [u8]) -> Result<Option<Fra
                 // The tag word was written from a `u16` by the link's only producer. The source
                 // word is a launch rank, so it becomes a contract rank here and nowhere else.
                 return Ok(Some(Frame::new(
-                    Some(
+                    Some(Addr::Local(
                         contract_of(&cx.launch[..cx.size as usize], Launch::new(src))
                             .ok_or(Error::Invalid(Invalid::RankOutsideJob))?,
-                    ),
+                    )),
                     Tag::new(tag as u16),
                     len as usize,
                 )));
@@ -424,7 +432,7 @@ impl<'a> Io<'a> {
 }
 
 impl Io<'_> {
-    pub fn send(&mut self, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error> {
+    pub fn send(&mut self, to: Addr, channel: Channel, data: &[u8]) -> Result<(), Error> {
         send(self.cx, to, channel, data)
     }
 
@@ -441,7 +449,6 @@ impl Io<'_> {
         *self.leader_first = !first;
         for from_leader in [first, !first] {
             let frame = match from_leader {
-                true if self.cx.leader.is_none() => None,
                 true => leader::take(self.cx, self.owner, out)?,
                 false => take(self.cx, self.owner, out)?,
             };
@@ -475,12 +482,12 @@ pub fn flush(_cx: &mut Context) -> Result<(), Error> {
 ///
 /// Validation happens here and not at the first send: the arena's geometry is fixed at launch, so
 /// a declaration it cannot serve is refused while it is still a declaration. The checks are the
-/// contract's — ascending unique workers, edges ordered and duplicate-free, both endpoints
-/// workers — plus the two the launch adds: the frame fits a slot, and the widest pair's implied
-/// depth fits the arena.
+/// contract's — ascending unique workers, edges ordered and duplicate-free, at least one endpoint
+/// `Local` and every `Local` endpoint a worker — plus the two the launch adds: the frame fits a
+/// slot, and the widest pair's implied depth fits the arena.
 pub fn reshape(
     cx: &mut Context,
-    workers: &[Rank],
+    workers: &[u32],
     edges: &[Edge],
     bytes: usize,
     tag: Tag,
@@ -488,7 +495,7 @@ pub fn reshape(
     if workers.windows(2).any(|w| w[0] >= w[1]) {
         return Err(Error::Invalid(Invalid::UnorderedWorkers));
     }
-    if workers.iter().any(|&w| w.get() >= cx.size) {
+    if workers.iter().any(|&w| w >= cx.size) {
         return Err(Error::Invalid(Invalid::RankOutsideJob));
     }
     if edges.windows(2).any(|w| {
@@ -496,8 +503,15 @@ pub fn reshape(
     }) {
         return Err(Error::Invalid(Invalid::UnorderedEdges));
     }
+    // A `Remote` end is another host's worker and never in `workers`, as in `cpu::lanes`.
+    let among = |end: Addr| match end {
+        Addr::Local(rank) => workers.contains(&rank),
+        Addr::Remote { .. } => true,
+    };
     for edge in edges {
-        if !workers.contains(&edge.source()) || !workers.contains(&edge.destination()) {
+        let (source, destination) = (edge.source(), edge.destination());
+        let here = matches!(source, Addr::Local(_)) || matches!(destination, Addr::Local(_));
+        if !here || !among(source) || !among(destination) {
             return Err(Error::Invalid(Invalid::EdgeOutsideWorkers));
         }
     }
@@ -514,9 +528,13 @@ pub fn reshape(
     }
 
     cx.lanes.fill(0);
+    // Only a pair between two workers here is a link lane; a remote one has no nv link yet, and
+    // a send on it is refused by `resolve` before the lane table is read.
     for edge in edges {
-        if edge.source() == cx.rank {
-            cx.lanes[edge.destination().get() as usize] = 1;
+        if let (Addr::Local(source), Addr::Local(destination)) = (edge.source(), edge.destination()) {
+            if source == cx.rank {
+                cx.lanes[destination as usize] = 1;
+            }
         }
     }
     cx.lane_frame = bytes;

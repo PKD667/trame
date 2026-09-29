@@ -1,20 +1,19 @@
 //! The leader's route.
 //!
-//! §4 says what a leader is: a host process that holds no rank, is absent from `size`, `rank`,
-//! `hosts` and `cohort`, and reaches its workers over a route of its own. §4 also leaves the
+//! §4 says what a leader is: a host process that holds no rank, is absent from `size` and
+//! `rank`, and reaches its workers over a route of its own. §4 also leaves the
 //! realization to the backend. This is this backend's, and the shape of it is the shape of the
 //! statement: the leader is a **different kind of object** from a worker, not one more rank of the
 //! worker population with unused fields, and what connects them is a **route of its own** rather
 //! than the message route with a filter on it.
 //!
-//! Concretely, the job is split into the worker world and individual leader groups. Each worker
-//! subgroup builds a bridge to its leader. Three things follow:
+//! Concretely, the job is split into one group per host's workers and one group per leader. Each
+//! host's worker group builds a bridge to its one leader. Three things follow:
 //!
-//! - The worker group *is* the contract's participant set. A worker's rank in it is its contract
+//! - The worker group *is* the contract's participant set. A worker's rank in it is its local
 //!   rank, `size` is how many there are, and the leader is not in it — so the leader is absent from
-//!   `size`, `rank`, `hosts` and `cohort` by construction rather than by remembering to exclude it.
-//! - The bridge's remote ranks are subgroup positions, translated by `mine` to contract ranks
-//!   on the leader's receive.
+//!   `size` and `rank` by construction rather than by remembering to exclude it.
+//! - The bridge's remote ranks are the workers' local ranks, because `init` keyed the split by them.
 //! - Each end of the bridge has a known population and neither needs to name the other: a worker's
 //!   send has no destination because the leader end is one rank, and the leader's receive has no
 //!   source filter because every frame on it came from a worker. That is why §4 gives the worker no
@@ -33,28 +32,19 @@ use mpi::environment::Universe;
 use mpi::raw::traits::AsRaw;
 use mpi::topology::{Color, Communicator, InterCommunicator, SimpleCommunicator};
 
-use super::context::{Context, Environment, Io, enter, refused};
+use super::context::{Context, Environment, Io, admit, enter, leader_color, refused};
 use super::p2p::{self, send_on, take};
 use crate::contract::{
-    BackendFault, Deployment, Error, Failure, Frame, Handle, Invalid, Launch,
-    Participant, Rank, Tag,
+    Addr, BackendFault, Deployment, Error, Failure, Frame, Handle, Invalid, Launch,
+    Participant, Tag,
 };
 use crate::invoke::Owner;
 
 /// The tag that labels the bridge's creation. It names the collective that builds the
 /// inter-communicator and is consumed by MPI's context-id machinery, so it never reaches a message
-/// and cannot collide with a caller's tag.
-pub(crate) const BRIDGE_TAG: i32 = 42;
-
-/// The tag for one leader's bridge.
-///
-/// One tag per pair rather than one for all of them, because several bridges are built in the same
-/// collective and the tag is part of what MPI matches on. Two leaders sharing a tag would be two
-/// bridges that MPI is entitled to pair the other way round, and the symptom would be a leader
-/// bridged to another leader's workers.
-pub(crate) fn bridge_tag(index: usize) -> i32 {
-    BRIDGE_TAG + index as i32
-}
+/// and cannot collide with a caller's tag. One tag serves every host: each bridge's creation is
+/// matched between a distinct pair of processes.
+const BRIDGE_TAG: i32 = 42;
 
 /// Build the bridge between the calling rank's own group and the leader of the other.
 ///
@@ -67,7 +57,6 @@ pub(crate) fn bridge(
     local: &SimpleCommunicator,
     world: &SimpleCommunicator,
     remote_leader: Launch,
-    index: usize,
 ) -> Option<InterCommunicator> {
     let mut handle = unsafe { mpi::ffi::RSMPI_COMM_NULL };
     let code = unsafe {
@@ -76,7 +65,7 @@ pub(crate) fn bridge(
             0,
             world.as_raw(),
             remote_leader.get() as i32,
-            bridge_tag(index),
+            BRIDGE_TAG,
             &mut handle,
         )
     };
@@ -101,14 +90,9 @@ pub struct Leader {
     /// Who this leader's failures are observed by: its launch rank, since it has no contract rank.
     me: Participant,
     inter: InterCommunicator,
-    /// This leader's workers, as contract ranks, in the order the bridge addresses them.
-    ///
-    /// The remote group's ranks are *not* contract ranks once there is more than one leader: a
-    /// leader's remote group is only the workers it serves, so remote rank 0 is that leader's first
-    /// worker and not contract rank 0. This is the map, and it is the composition of the two lists
-    /// the deployment already carries rather than a second rule — computed here once, in the one
-    /// place that has both the declaration and the remote order.
-    mine: Box<[Rank]>,
+    /// How many workers this leader serves: its whole deployment, the bridge's remote group,
+    /// whose ranks are the workers' local ranks.
+    workers: u32,
     /// The leader group, kept alive for as long as the bridge is: dropping it would disconnect a
     /// communicator the bridge was built against.
     _group: SimpleCommunicator,
@@ -120,79 +104,75 @@ pub struct Leader {
 impl Leader {
     /// Open the route. This is the leader process's MPI entry.
     ///
-    /// A leader serves the workers the declaration assigns to it and no others, so it builds one
-    /// bridge to their worker subgroup. Both ends derive the subgroup from the declaration.
+    /// A leader serves its deployment's workers and no others, so it builds one bridge to their
+    /// group. Both ends derive the group from the declaration.
     pub fn open(env: Environment, deployment: Deployment<'_>) -> Result<Leader, Failure> {
         let (universe, job, me, _) = enter(&env, "leader::open")?;
         let unentered = Participant::Entering(Some(me));
         let wrong = |why| refused(unentered, "leader::open", BackendFault::Invalid(why));
-        if deployment.leaders().is_none() {
-            return Err(wrong(Invalid::NoLeader));
-        }
 
-        // The same job split as `init`: workers all use colour zero, each leader gets its own
-        // group. A process the declaration does not name still takes part in this split.
-        let index = deployment.leader_index(me);
-        let color = index.map_or(i32::MAX, |index| index as i32 + 1);
+        // One job-wide vote with the workers: `init` and this door agree before any split or
+        // bridge, so a malformed row given to another deployment refuses this leader too.
+        admit(&job, deployment, false).map_err(wrong)?;
+
+        // The link split `init` enters first. A leader is on no link, so it takes the undefined
+        // colour, for which MPI returns no communicator.
+        let None = job.split_by_color_with_key(Color::undefined(), 0) else {
+            unreachable!("MPI gives the undefined colour no communicator");
+        };
+        // Then the same deployment split as `init`: each host's workers take its host id, this
+        // leader a colour of its own. Admission has established that this caller is the
+        // deployment's named leader.
+        let color = leader_color(deployment);
         let group = job
             .split_by_color_with_key(Color::with_value(color), 0)
             .ok_or(refused(unentered, "leader::open", BackendFault::Transport))?;
-        let index = index.ok_or(wrong(Invalid::WrongLeader))?;
-
-        // This leader's workers, by contract rank and in the remote group's order. The workers'
-        // key was their contract rank, so the bridge addresses them in ascending contract rank and
-        // this list is the map between the two. Not empty: `leader_index` found `me` in the list.
         let workers = u32::try_from(deployment.workers().len())
             .map_err(|_| wrong(Invalid::Unrepresentable))?;
-        let mine: Box<[Rank]> = (0..workers)
-            .map(Rank::from_index)
-            .filter(|&contract| deployment.leader_of(contract) == Some(me))
-            .collect();
-        let remote_leader = deployment.workers()[mine[0].get() as usize];
-        let inter = bridge(&group, &job, remote_leader, index)
+        // Local rank 0 leads the workers' end of the bridge. Not empty: `Deployment::new` refuses
+        // an empty row.
+        let inter = bridge(&group, &job, deployment.workers()[0])
             .ok_or(refused(Participant::Leader(me), "leader::open", BackendFault::Transport))?;
 
         Ok(Leader {
             me: Participant::Leader(me),
             inter,
-            mine,
+            workers,
             _group: group,
             _universe: universe,
             _local: PhantomData,
         })
     }
 
-    /// Send one frame to one worker, named by contract rank.
+    /// Send one frame to one worker, named by local rank.
     ///
-    /// A worker this leader does not serve is refused rather than clamped: the bridge has no rank
+    /// A worker outside this deployment is refused rather than clamped: the bridge has no rank
     /// for it.
-    pub fn send(&self, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error> {
-        let remote = self
-            .mine
-            .iter()
-            .position(|&contract| contract == to)
-            .ok_or(Error::Invalid(Invalid::RankOutsideJob))?;
-        p2p::send_on(&self.inter, self.me, Rank::from_index(remote as u32), tag, data)
+    pub fn send(&self, to: u32, tag: Tag, data: &[u8]) -> Result<(), Error> {
+        if to >= self.workers {
+            return Err(Error::Invalid(Invalid::RankOutsideJob));
+        }
+        let to = i32::try_from(to).map_err(|_| Error::Invalid(Invalid::Unrepresentable))?;
+        p2p::send_on(&self.inter, self.me, to, tag, data)
     }
 
     /// Take the next frame from any worker.
     ///
     /// Every frame on this route came from a worker, so there is no source to filter and none is
-    /// taken. `Frame::source` is the sending worker's contract rank.
+    /// taken. `Frame::source` is the sending worker, always `Local`.
     pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
         let Some((remote, tag, len)) = take(&self.inter, self.me, Owner::ALL, &mut 0, out)? else {
             return Ok(None);
         };
-        // The remote rank is a position in this leader's group, not a contract rank: see `mine`.
-        let source = usize::try_from(remote)
+        let source = u32::try_from(remote)
             .ok()
-            .and_then(|at| self.mine.get(at).copied())
+            .filter(|&at| at < self.workers)
             .ok_or(Error::Invalid(Invalid::RankOutsideJob))?;
-        Ok(Some(Frame::new(Some(source), tag, len)))
+        Ok(Some(Frame::new(Some(Addr::Local(source)), tag, len)))
     }
 }
 
-/// A worker's send: one frame to this job's leader.
+/// A worker's send: one frame to this deployment's leader.
 ///
 /// The destination is not a parameter and is not the caller's to choose. A bridge has a known
 /// population at each end, so the leader end is one rank and this is the one place that rank is
@@ -200,7 +180,7 @@ impl Leader {
 /// use: nothing.
 pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
     let me = Participant::Worker(cx.rank());
-    let comm = cx.leader_route().ok_or(Error::Invalid(Invalid::NoLeader))?;
+    let comm = cx.leader_route();
     send_on(comm, me, LEADER, tag, data)
 }
 
@@ -208,14 +188,14 @@ pub fn send(cx: &mut Context, tag: Tag, data: &[u8]) -> Result<(), Error> {
 /// has no destination: every frame on this route came from the leader.
 pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     let me = Participant::Worker(cx.rank());
-    let comm = cx.leader_route().ok_or(Error::Invalid(Invalid::NoLeader))?;
+    let comm = cx.leader_route();
     Ok(take(comm, me, Owner::ALL, &mut 0, out)?.map(|(_, tag, len)| Frame::new(None, tag, len)))
 }
 
 impl Io<'_> {
     /// One frame to this worker's leader.
     pub fn lead(&mut self, tag: Tag, data: &[u8]) -> Result<(), Error> {
-        let comm = self.leader.ok_or(Error::Invalid(Invalid::NoLeader))?;
+        let comm = self.leader;
         send_on(comm, Participant::Worker(self.rank), LEADER, tag, data)
     }
 }
@@ -223,7 +203,7 @@ impl Io<'_> {
 /// The leader's rank *in the worker group's view of the bridge*: the leader end is one rank, and
 /// this is its number. Not a contract rank, and not the launch's numbering either — it is the
 /// remote rank on this communicator, which is why nothing outside this module names it.
-const LEADER: Rank = Rank::from_index(0);
+const LEADER: i32 = 0;
 
 /// The leader's published segment: it owns the mapping and the handle that names it.
 pub struct Published(
