@@ -136,8 +136,8 @@ pub struct Fun {
     pub name: Ident,
     pub receiver: Option<Vec<TokenTree>>,
     pub params: Vec<Param>,
-    /// `E` of the required `-> Result<(), E>`.
-    pub error: Vec<TokenTree>,
+    /// `E` of `-> Result<(), E>`, or `None` for a function that returns nothing and cannot fail.
+    pub error: Option<Vec<TokenTree>>,
     pub body: Group,
 }
 
@@ -213,12 +213,13 @@ pub fn function(item: TokenStream) -> Result<Fun, Wrong> {
     let Some((TokenTree::Group(body), signature)) = tokens[at..].split_last() else {
         return wrong(name.span(), "a function has a body");
     };
-    let error = result_error(signature).ok_or_else(|| Wrong {
-        at: name.span(),
-        says: format!(
-            "`#[parallel]` returns `Result<(), E>`: `invoke!` returns the first `Err` in list order"
-        ),
-    })?;
+    let error = match signature {
+        [] => None,
+        _ => Some(result_error(signature).ok_or_else(|| Wrong {
+            at: name.span(),
+            says: "`#[parallel]` returns `Result<(), E>` or nothing: `invoke!` returns the first `Err` in list order".to_string(),
+        })?),
+    };
     let mut receiver = None;
     let mut list = Vec::new();
     for one in commas(&params.stream().into_iter().collect::<Vec<_>>()) {
