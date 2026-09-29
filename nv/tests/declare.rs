@@ -1,60 +1,50 @@
-//! The warp lowering's answers on the host model: what the device example `nv-declared` runs on
-//! hardware, and what a lane returns when one of its items fails or names no slot.
+//! List-order effects and one owned outcome through the HEAD declaration surface.
 
-use core::cell::Cell;
-
-use crate::nv::warp::{self, LANES};
+use crate::sync::atomic::{AtomicU32, Ordering::Relaxed};
+use crate::sync::{Exclusive, with};
 use crate::{Invoked, Keyed};
 
 struct Grid {
-    visits: [Cell<u32>; 96],
+    visits: [AtomicU32; 96],
 }
 
 impl Grid {
     #[crate::parallel]
-    fn visit(&self, at: usize, lanes: &mut Vec<usize>) -> Result<(), usize> {
-        self.visits[at].set(self.visits[at].get() + 1);
-        lanes.push(at);
-        if at % 40 == 39 { Err(at) } else { Ok(()) }
+    fn visit(&self, at: usize, trail: &Exclusive<Vec<usize>>) -> Result<(), Box<usize>> {
+        self.visits[at].fetch_add(1, Relaxed);
+        with(trail, |trail| trail.push(at)).expect("one inline caller");
+        if at % 40 == 39 { Err(Box::new(at)) } else { Ok(()) }
     }
 
     #[crate::parallel]
     #[crate::ordered(key = at: usize)]
-    fn fill(&self, at: usize, slot: &mut u32, _: &mut ()) -> Result<(), ()> {
+    fn fill(&self, at: usize, slot: &mut u32, _: &()) {
         *slot += at as u32 + 1;
-        Ok(())
     }
 }
 
 #[test]
-fn ninety_six_indices_over_thirty_two_lanes_run_once_each() {
+fn ninety_six_indices_run_once_in_list_order_with_one_first_error() {
     let grid = Grid {
-        visits: core::array::from_fn(|_| Cell::new(0)),
+        visits: core::array::from_fn(|_| AtomicU32::new(0)),
     };
     let list: Vec<usize> = (0..96).collect();
-    let answers = warp::sim(|| {
-        let mut mine = Vec::new();
-        (crate::invoke!(grid.visit, &mut mine, &list), mine)
-    });
-    assert!(grid.visits.iter().all(|v| v.get() == 1));
-    for (lane, (answer, mine)) in answers.into_iter().enumerate() {
-        assert_eq!(mine, [lane, lane + 32, lane + 64]);
-        // Lane 7 carries 39 and 71; lane 15 carries 79. Each lane answers for its own items.
-        let failed = mine.iter().copied().find(|at| at % 40 == 39);
-        assert_eq!(answer, failed.map_or(Ok(()), Err));
-    }
+    let trail = Exclusive::new(Vec::new());
+    assert_eq!(crate::invoke!(grid.visit, &trail, &list), Err(Box::new(39)));
+    assert!(grid.visits.iter().all(|v| v.load(Relaxed) == 1));
+    assert_eq!(trail.into_inner(), list, "items after both errors also ran");
 }
 
 #[test]
-fn a_key_out_of_range_is_refused_on_its_own_lane() {
+fn an_out_of_range_key_is_refused_and_later_repeated_keys_still_run() {
     let grid = Grid {
-        visits: core::array::from_fn(|_| Cell::new(0)),
+        visits: core::array::from_fn(|_| AtomicU32::new(0)),
     };
-    let mut slots = [0u32; LANES as usize];
-    let answers = warp::sim(|| {
-        crate::invoke!(grid.fill, &mut (), &[40, 3], Keyed::new(&mut slots[..]))
-    });
-    assert_eq!(answers[8], Err(Invoked::OutOfRange { key: 40, len: 32 }));
-    assert!(answers.iter().enumerate().all(|(lane, a)| lane == 8 || a.is_ok()));
-    assert_eq!(slots[3], 4, "the item after the refused one ran");
+    let mut slots = [0u32; 32];
+    assert_eq!(
+        crate::invoke!(grid.fill, &(), &[40, 3, 3], Keyed::new(&mut slots[..])),
+        Err(Invoked::OutOfRange { key: 40, len: 32 }),
+    );
+    assert_eq!(slots[3], 8, "both items after the refused one ran");
+    assert!(slots.iter().enumerate().all(|(at, &value)| at == 3 || value == 0));
 }

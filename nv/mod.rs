@@ -27,8 +27,8 @@
 //!   differ in the tag they carry and in what the caller may assume, not in the memory they use.
 //!   Lanes are acknowledged writes into the receiver's own slot, so they do not lose, and the
 //!   `Message` route's reliability is therefore inherited rather than promised separately.
-//! * **`sync` is warp-wide.** `Exclusive` and `Handoff` keep `cpu::sync`'s signatures; under
-//!   `cuda` the whole warp calls each method and one lane acts for it (see `sync`).
+//! * **`sync` moves owned values.** Each call belongs to one execution owner in the worker's
+//!   valid address domain; results and handoff payloads are never broadcast (see `sync`).
 //! * **Collectives wait at a barrier in the arena.** Two words after the link rings, which the
 //!   launcher zeroes (`peers::BARRIER`), count arrivals at entry and at lane declaration/retirement
 //!   so no worker sees an unfinished cohort.

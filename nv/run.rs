@@ -1,62 +1,45 @@
-//! The warp lowering of `#[parallel]`. Every lane of the calling warp enters with its own locals,
-//! so `cx` is lane-private, and each lane returns the first `Err` of its own items in list order:
-//! the host model has no collective to bring another lane's answer across.
-//!
-//! `concurrent!` runs every arm on the calling warp, since a participant is one warp: round-robin
-//! in source order, one step per live arm per turn.
+//! Inline, list-order invocation and round-robin process steps on the logical caller.
+//! No value or outcome is broadcast to other physical lanes.
 
-use super::warp::{self, LANES, Split};
 use super::{Context, Io};
 use crate::invoke::{Owner, Receive};
 use crate::{Invoked, Keyed, Step};
 
-/// Lane `k` runs items `k`, `k + 32`, … of the list.
-pub fn parallel<I: Copy, C, E>(
-    cx: &mut C,
+pub fn parallel<I: Copy + Send, C: Sync, E: Send>(
+    cx: &C,
     items: &[I],
-    mut body: impl FnMut(I, &mut C) -> Result<(), E>,
+    body: impl Fn(I, &C) -> Result<(), E> + Sync,
 ) -> Result<(), E> {
-    warp::sync();
     let mut first = Ok(());
-    let mut share = Split::new(0, items.len());
-    while share.more() {
-        let at = share.at();
-        share.step();
-        let outcome = body(items[at], cx);
+    for &item in items {
+        let outcome = body(item, cx);
         if first.is_ok() {
             first = outcome;
         }
     }
-    warp::sync();
     first
 }
 
-/// Every lane walks the whole list and runs the items whose key is its own modulo [`LANES`], so
-/// one key stays on one lane in issue order.
-pub fn ordered<I: Copy, K: Copy + Into<usize>, T, C, E>(
-    cx: &mut C,
+pub fn ordered<I: Copy + Send, K: Copy + Into<usize>, T: Send, C: Sync, E: Send>(
+    cx: &C,
     items: &[I],
-    mut keyed: Keyed<'_, K, T>,
+    keyed: Keyed<'_, K, T>,
     key: impl Fn(I) -> K,
-    mut body: impl FnMut(I, &mut T, &mut C) -> Result<(), E>,
+    body: impl Fn(I, &mut T, &C) -> Result<(), E> + Sync,
 ) -> Result<(), Invoked<E>> {
-    warp::sync();
-    let lane = warp::lane() as usize;
+    let slots = keyed.into_slots();
+    let len = slots.len();
     let mut first = Ok(());
     for &item in items {
-        let key = key(item);
-        if key.into() % LANES as usize != lane {
-            continue;
-        }
-        let outcome = match keyed.slot(key) {
-            Ok(slot) => body(item, slot, cx).map_err(Invoked::Failed),
-            Err(out) => Err(out),
+        let key = key(item).into();
+        let outcome = match slots.get_mut(key) {
+            Some(slot) => body(item, slot, cx).map_err(Invoked::Failed),
+            None => Err(Invoked::OutOfRange { key, len }),
         };
         if first.is_ok() {
             first = outcome;
         }
     }
-    warp::sync();
     first
 }
 
@@ -86,7 +69,6 @@ impl<E, const N: usize> Arms<E, N> {
             return;
         }
         let step = arm();
-        uniform(&step);
         match step {
             Ok(Step::Progress | Step::Idle) => {}
             Ok(Step::Done) => self.done[at] = true,
@@ -139,7 +121,6 @@ impl<E, const N: usize> IoArms<'_, '_, E, N> {
         }
         let owner = Owner::new(self.receive, at);
         let step = arm(&mut Io::new(&mut *self.cx, owner, &mut self.leader_first[at]));
-        uniform(&step);
         match step {
             Ok(Step::Progress | Step::Idle) => {}
             Ok(Step::Done) => self.done[at] = true,
@@ -148,7 +129,7 @@ impl<E, const N: usize> IoArms<'_, '_, E, N> {
     }
 }
 
-/// `concurrent` given a context: the arms take turns on the warp, each lent `cx` for its step.
+/// The arms take turns on the caller, each lent `cx` for one bounded step.
 #[doc(hidden)]
 pub fn concurrent_io<'c, 'r, B, E: Send, const N: usize>(
     cx: &'c mut Context,
@@ -176,24 +157,4 @@ where
             return Ok(());
         }
     }
-}
-
-/// A step whose lanes disagree would send the warp down two paths of the runner; trap so the
-/// driver reports it instead.
-#[inline(always)]
-fn uniform<E>(step: &Result<Step, E>) {
-    #[cfg(feature = "cuda")]
-    {
-        let code = match step {
-            Ok(Step::Progress) => 0,
-            Ok(Step::Idle) => 1,
-            Ok(Step::Done) => 2,
-            Err(_) => 3,
-        };
-        if !warp::all(warp::shuffle(code, 0) == code) {
-            cuda_device::debug::trap();
-        }
-    }
-    #[cfg(not(feature = "cuda"))]
-    let _ = step;
 }

@@ -1,5 +1,5 @@
-//! Warp-level execution: lane identity, the lane collectives, and the index split `#[parallel]`
-//! lowers to.
+//! Physical warp identity, collectives and index splitting for cooperative transport/probes.
+//! Item invocation itself is inline and does not use this split.
 //!
 //! A rank here is one warp, so the warp is the unit of task parallelism and the lane is the unit
 //! of data parallelism. This module is the *device module* the backend in `trame/nv/` is built
@@ -12,7 +12,7 @@
 //!
 //! * without the `cuda` feature, the **host model**: a warp is 32 sequential passes of one body
 //!   over the same memory, driven by [`sim`]. It exercises the lane identity and the index split
-//!   — the two things a `#[parallel]` lowering's correctness rests on — and it *refuses* the four
+//!   independently of the inline invocation runner, and it *refuses* the four
 //!   collectives, because moving a value from lane 3 to lane 7 is not something a sequence of
 //!   whole-warp passes can model, and a model that returned an answer there would be a wrong
 //!   answer rather than a missing one.
@@ -44,8 +44,7 @@ pub use cuda::here_id;
 #[cfg(not(feature = "cuda"))]
 pub use sim::here_id;
 
-/// Lanes in a warp. `#[parallel]` splits over exactly this many, and a rank is one warp of
-/// them, so this is also the stride every split walk takes.
+/// Lanes in the current physical warp and the stride every split walk takes.
 pub const LANES: u32 = 32;
 
 /// An index type a [`Split`] may range over.
@@ -76,8 +75,7 @@ index_for!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 /// One lane's share of a declared index range.
 ///
 /// Lane `k` owns `lo + k`, `lo + k + 32`, `lo + k + 64`, … below `hi`. The parts are disjoint
-/// and their union is the whole range, which is the property `tests/warp.rs` checks and the
-/// property `#[parallel]` is a promise about.
+/// and their union is the whole range, which is the property `tests/warp.rs` checks.
 ///
 /// The cursor is deliberately not `Iterator`: the lowering drives it from a `while`, and an
 /// iterator would put a trait method and an `Option` between the index and the loop body on a
