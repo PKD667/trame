@@ -22,6 +22,7 @@ use std::env::{self, VarError};
 
 mod cases;
 mod pingpong;
+mod lowering;
 
 /// The measurement's arguments, as `env::args().skip(1)` gave them to it as an executable.
 fn arguments() -> std::vec::IntoIter<String> {
@@ -47,4 +48,10 @@ fn pingpong() {
 #[ignore = "needs a GPU and the cuda-oxide backend: run through `cargo nv test`"]
 fn cases() {
     cases::main();
+}
+
+#[test]
+#[ignore = "needs a GPU and the reviewed cuda-oxide overlay"]
+fn lowering() {
+    lowering::main();
 }
