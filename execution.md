@@ -266,19 +266,42 @@ promise that every other effect is independent.
 
 ### NV lowering
 
-On nv today all 32 lanes of a warp run the worker in lockstep, and values are copied to every lane
-(`NoUninit`, `Exclusive::with` on lane zero, the step vote). The target contract drops both
-obligations, so nv runs a worker's own code as one logical thread and uses the other lanes only
-inside `invoke!`. Copying every result across the warp was the cost; the lanes now earn their
-keep in keyed dispatch, so performance comes from issuing many `invoke!` passes over large lists.
-This is an nv redesign, not a patch to the current runner.
+The nv HEAD-surface port uses an inline list-order loop for both item declarations and a
+round-robin bounded-step scheduler for struct processes. The shared context is `&C: Sync`;
+items, slots and errors keep their documented Send bounds. Every item executes once per call,
+including items after a failure. The caller retains only the first list-position error; later
+errors are dropped rather than copied or replayed. Repeated keys borrow their one slot in list
+order. Infallible bodies use the same loop with `Infallible`.
+
+`sync::with` returns the callback's owned result directly. Handoff stores moved values in
+initialized ready/spare slots, returns the unaccepted value on refusal, and drops retained slots
+once. Partial construction records initialized spares so host unwind reclaims them. Neither
+primitive requires `NoUninit` or copies words between lanes. Their atomics still use nv's own
+implementation; no host backend mechanism is imported.
+
+This checkpoint targets the nv host model, not a CUDA certificate. Device entry still assigns a
+warp identity and enters a barrier before selecting one application owner; peer and leader
+transport still require full-warp convergence. Inline runners and owned primitives must be
+called once by the logical owner, not once per physical lane. W2 must establish that owner before
+entry and match transport, barrier and atomic address domains to it. The port does not establish
+that device prerequisite, resident launch admission, production W1 receive lowering, or W5 device
+ownership. Scalar execution is the primary lowering, not a fallback or an acceleration claim.
+
+Pinned nightly-2026-04-03 (`55e86c996`) host validation at this checkpoint: 53 unit tests passed,
+2 ignored; the exact ignored claims and pressure tests each passed separately. Evidence is
+`/home/pkd/code/agents/nerve-nv-20260929/port-{host,claims,pressure}.log`. A1/S1 still check named
+`Unimplemented` refusals, not Remote or segment transfer. The removed word-copy roundtrip test
+belonged to the deleted broadcast representation; the existing Busy, FIFO, close, resplit,
+abandonment, invocation and process falsifiers remain. The invocation tests now require one
+list-order outcome, owned non-Copy errors, infallible bodies and effects after failure, rather
+than the old contract-violating lane-local answers. No CUDA test ran. Non-Copy handoff/drop-count
+and device ownership/address-domain witnesses remain required for W5 certification.
 
 ### Required ownership changes
 
 Current slots are `Vec<Exclusive<Slot>>`, shared with intake queries. They cannot be borrowed as
-an exclusive `Keyed` slice through `&Bunch`. On nv, `Exclusive::with` is a warp-wide operation
-whose callback runs on one lane, so placing it inside divergent keyed work is not the solution.
-Establish target ownership before calling the kernel; do not manufacture `&mut Slot` from a
+an exclusive `Keyed` slice through `&Bunch`. Changing nv's runner and shared primitives does not
+create that exclusive borrow. Establish target ownership before calling the kernel; do not manufacture `&mut Slot` from a
 shared borrow. Queries must obey that ownership cut, rather than read a partially published
 parallel transition.
 

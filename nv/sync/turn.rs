@@ -1,11 +1,9 @@
-//! An exclusive value, reached only inside one call.
+// An exclusive value, reached only inside one call.
 
 use core::cell::UnsafeCell;
-
 use super::atomic::{
     AtomicU32, Ordering::Acquire, Ordering::Relaxed, Ordering::Release as ReleaseOrdering,
 };
-use super::{NoUninit, from_lane_zero, lane_zero, one_lane};
 
 /// Why `with` did not run its closure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,7 +25,7 @@ pub struct Exclusive<T> {
 }
 
 // SAFETY: `value` is reached only inside `with`, and `state` admits one `with` at a time, so
-// sharing moves `T` between warps and needs `T: Send`.
+// sharing moves `T` between execution owners and needs `T: Send`.
 unsafe impl<T: Send> Sync for Exclusive<T> {}
 
 impl<T> Exclusive<T> {
@@ -38,30 +36,6 @@ impl<T> Exclusive<T> {
         }
     }
 
-    /// One attempt; a held value is `Busy`, never waited for.
-    pub fn with<R: NoUninit>(&self, f: impl FnOnce(&mut T) -> R) -> Result<R, Locked> {
-        let old = one_lane(
-            || match self.state.compare_exchange(FREE, HELD, Acquire, Relaxed) {
-                Ok(old) | Err(old) => old,
-            },
-        );
-        match old {
-            FREE => {}
-            ABANDONED => return Err(Locked::Abandoned),
-            _ => return Err(Locked::Busy),
-        }
-        let result = if lane_zero() {
-            let release = Release(&self.state);
-            // SAFETY: HELD admits one caller.
-            let result = f(unsafe { &mut *self.value.get() });
-            drop(release);
-            Some(result)
-        } else {
-            None
-        };
-        Ok(from_lane_zero(result))
-    }
-
     pub fn get_mut(&mut self) -> &mut T {
         self.value.get_mut()
     }
@@ -69,6 +43,20 @@ impl<T> Exclusive<T> {
     pub fn into_inner(self) -> T {
         self.value.into_inner()
     }
+}
+
+/// One attempt; a held value is `Busy`, never waited for.
+pub fn with<T, R>(on: &Exclusive<T>, f: impl FnOnce(&mut T) -> R) -> Result<R, Locked> {
+    match on.state.compare_exchange(FREE, HELD, Acquire, Relaxed) {
+        Ok(_) => {}
+        Err(ABANDONED) => return Err(Locked::Abandoned),
+        Err(_) => return Err(Locked::Busy),
+    }
+    let release = Release(&on.state);
+    // SAFETY: HELD admits one caller.
+    let result = f(unsafe { &mut *on.value.get() });
+    drop(release);
+    Ok(result)
 }
 
 struct Release<'a>(&'a AtomicU32);
