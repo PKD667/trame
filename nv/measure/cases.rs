@@ -31,7 +31,7 @@ use crate::nv::layout::Layout;
 use crate::nv::peers::Arena;
 use crate::{Deployment, Environment, Launch};
 use cuda_core::{CudaContext, CudaModule, DeviceBuffer, LaunchConfig, launch_kernel_on_stream};
-use cuda_device::{DisjointSlice, kernel, thread, warp};
+use cuda_device::{DisjointSlice, kernel, thread};
 use cuda_host::{
     CudaKernel, load_embedded_module, push_kernel_device_slice, push_kernel_scalar,
     writable_device_buffer_arg,
@@ -66,10 +66,10 @@ mod kernels {
         case: u32,
         depth: u32,
     ) {
+        if !crate::nv::warp::is_owner() { return; }
         let index = thread::index_1d();
         let tid = index.get() as u32;
         let rank = tid / 32;
-        let lane = warp::lane_id();
         let arena_ptr = arena.as_mut_ptr();
         let scratch_ptr = scratch.as_mut_ptr();
         let stride = (BYTES as usize).div_ceil(4).max(1);
@@ -80,12 +80,11 @@ mod kernels {
         if case == 0 {
             if rank == 0 {
                 let mut tx = unsafe { device::Tx::new(arena_ptr, layout, 0) };
-                let mut i = lane;
+                let mut i = 0;
                 while i < BYTES {
                     unsafe { local.add(i as usize).write(pattern(i)) };
-                    i += 32;
+                    i += 1;
                 }
-                warp::sync_mask(u32::MAX);
                 let mut retries = 0;
                 loop {
                     match unsafe { tx.send(TAG, local, BYTES) } {
@@ -131,12 +130,12 @@ mod kernels {
                                 failures += 1;
                             }
                             let mut bad = false;
-                            let mut i = lane;
+                            let mut i = 0;
                             while i < BYTES {
                                 bad |= unsafe { local.add(i as usize).read() } != pattern(i);
-                                i += 32;
+                                i += 1;
                             }
-                            if warp::any(bad) {
+                            if bad {
                                 failures += 1;
                             }
                             got = true;

@@ -1,4 +1,4 @@
-//! The device backend: one CUDA warp per participant.
+//! The device backend: one scalar owner (lane zero) per CUDA warp.
 //!
 //! It uses none of the shared MPI environment, so it supplies the whole surface itself, as
 //! `none/` does. Everything that is a fact about the device lives in the submodules: the links,
@@ -161,15 +161,21 @@ pub fn init(env: Environment, deployment: Deployment<'_>) -> Result<Context, Fai
         kind: FailureKind::Backend(fault),
     };
     let outside = BackendFault::Invalid(Invalid::RankOutsideJob);
-    // A worker is its warp: the launch-wide description cannot say which one this is.
+    // Select the sole owner before reading endpoints or entering any collective.
     let here = Launch::new(warp::here_id());
     let unentered = Participant::Entering(Some(here));
+    if !warp::is_owner() {
+        return Err(refuse(unentered, BackendFault::Invalid(Invalid::InconsistentLaunch)));
+    }
     // A `match`, not `map_err`: a `Result<Launched, Failure>` lays a `Failure` over the fabric's
     // pointer, which cuda-oxide refuses to lower (see `Context`).
     let env = match env.description.check() {
         Ok(env) => env,
         Err(fault) => return Err(refuse(unentered, fault)),
     };
+    if !warp::cohort(env.size) {
+        return Err(refuse(unentered, BackendFault::Invalid(Invalid::InconsistentLaunch)));
+    }
     if here.get() >= env.size {
         return Err(refuse(unentered, outside));
     }
@@ -194,41 +200,43 @@ pub fn init(env: Environment, deployment: Deployment<'_>) -> Result<Context, Fai
         return Err(refuse(unentered, outside));
     }
     let count = launch.len();
+    if count as u32 != env.size {
+        return Err(refuse(unentered, BackendFault::Invalid(Invalid::InconsistentLaunch)));
+    }
     let mut launched = [Launch::new(0); MAX_RANKS];
     launched[..count].copy_from_slice(launch);
     // The rank the contract reports is the position in the declaration; the number the launch
     // knows this participant by is the one in the table. This is the launch-to-contract half of
     // the one conversion pair.
     let rank = contract_of(&launched[..count], here).ok_or(refuse(unentered, outside))?;
-    let me = Participant::Worker(rank);
     // Every peer-link slot must hold a `MAX_FRAME` frame, and the arena is fixed before entry, so
     // a launch that provisioned less is refused here rather than at its first long frame.
     if (env.fabric.layout().capacity() as usize) < MAX_FRAME {
-        return Err(refuse(me, BackendFault::Storage));
+        return Err(refuse(unentered, BackendFault::Storage));
     }
 
     // `Links::open` refuses only a rank outside the launch. A `match` for the reason `check`'s is.
     let mut links = match Links::open(&env.fabric, here.get(), env.size) {
         Ok(links) => links,
-        Err(_) => return Err(refuse(me, outside)),
+        Err(_) => return Err(refuse(unentered, outside)),
     };
     // The worker end of the leader route. The geometry comes from the declaration, not from the
     // environment: both ends must agree on it and the worker list is the one thing they both hold.
     // One device launch has one host leader. A deployment naming another process cannot use this
     // region: accepting it would silently connect a worker to the wrong leader.
     if env.leader != Some(deployment.leader()) {
-        return Err(refuse(me, outside));
+        return Err(refuse(unentered, outside));
     }
     if env.leader_region.is_null() {
-        return Err(refuse(me, BackendFault::Storage));
+        return Err(refuse(unentered, BackendFault::Storage));
     }
     // A `match`: a `Result<Route, Failure>` lays the name's pointer over the route's layout.
     let route = match Route::sized(count as u32) {
         Ok(route) => route,
-        Err(_) => return Err(refuse(me, BackendFault::Storage)),
+        Err(_) => return Err(refuse(unentered, BackendFault::Storage)),
     };
     if env.leader_words != route.words() {
-        return Err(refuse(me, BackendFault::Storage));
+        return Err(refuse(unentered, BackendFault::Storage));
     }
     // SAFETY: the launcher's write of the description vouched that this region is `leader_words`
     // words prepared for this route and owned for the life of the job, and that is the route's

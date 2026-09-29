@@ -1,7 +1,6 @@
 //! Device-side SPSC ring endpoints.
 
 use cuda_device::atomic::{AtomicOrdering, DeviceAtomicU32};
-use cuda_device::warp;
 
 use crate::nv::error::{RecvError, SendError};
 use crate::nv::layout::Layout;
@@ -13,38 +12,23 @@ pub mod send;
 pub use recv::Rx;
 pub use send::Tx;
 
-/// Wait until `members` participants have arrived at the barrier whose words are at `words`: an
-/// arrival count and a generation. The last to arrive resets the count and moves the generation,
-/// which releases the rest. Warp-uniform: lane 0 touches the words and shares what it read.
+/// One arrival per scalar owner, over two aligned global-memory words.
+/// The entire cohort must be resident; no lane rendezvous occurs here.
 #[inline(always)]
 pub unsafe fn barrier(words: *mut u32, members: u32) {
-    let lane = warp::lane_id();
     let count = unsafe { DeviceAtomicU32::from_ptr(words) };
     let generation = unsafe { DeviceAtomicU32::from_ptr(words.add(1)) };
-    let seen = warp::shuffle(if lane == 0 { generation.load(AtomicOrdering::Acquire) } else { 0 }, 0);
-    let arrived = warp::shuffle(if lane == 0 { count.fetch_add(1, AtomicOrdering::AcqRel) } else { 0 }, 0);
+    let seen = generation.load(AtomicOrdering::Acquire);
+    let arrived = count.fetch_add(1, AtomicOrdering::AcqRel);
     if arrived + 1 == members {
-        if lane == 0 {
-            count.store(0, AtomicOrdering::Relaxed);
-            generation.store(seen.wrapping_add(1), AtomicOrdering::Release);
-        }
-        warp::sync_mask(WARP);
+        count.store(0, AtomicOrdering::Relaxed);
+        generation.store(seen.wrapping_add(1), AtomicOrdering::Release);
         return;
     }
-    while warp::shuffle(if lane == 0 { generation.load(AtomicOrdering::Acquire) } else { 0 }, 0) == seen {}
+    while generation.load(AtomicOrdering::Acquire) == seen {}
 }
 
-const WARP: u32 = u32::MAX;
-
-// Payload movement is the one place this transport touches caller memory in bulk, and the kernel
-// is latency-bound on memory operations rather than bandwidth-bound: at 1 MiB the profiler puts L2
-// throughput at 0.14% and DRAM at 0.16%, while a warp issues an instruction only every ~11 cycles.
-// So the cost that matters here is the *number* of memory operations, not the bytes.
-//
-// Both helpers below therefore move a whole word in one access whenever a whole word is present,
-// and assemble from bytes only for the final partial word. Assembling every word from four bytes
-// was four loads and four stores per word — a four-fold amplification of exactly the resource the
-// kernel is short of.
+// The owner copies whole unaligned words and assembles only the final partial word.
 
 #[inline(always)]
 unsafe fn read_word(data: *const u8, len: u32, word: u32) -> u32 {

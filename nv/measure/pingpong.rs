@@ -40,6 +40,7 @@ mod kernels {
         rounds: u32,
         check: u32,
     ) {
+        if !crate::nv::warp::is_owner() { return; }
         let index = thread::index_1d();
         let tid = index.get() as u32;
         let rank = tid / 32;
@@ -65,12 +66,11 @@ mod kernels {
                     }
                 }
                 if check != 0 {
-                    let mut i = lane;
+                    let mut i = 0;
                     while i < bytes {
                         unsafe { local.add(i as usize).write(expected(round, i)) };
-                        i += 32;
+                        i += 1;
                     }
-                    warp::sync_mask(u32::MAX);
                 }
                 let mut retries = 0;
                 loop {
@@ -87,12 +87,11 @@ mod kernels {
                     break;
                 }
                 if check != 0 {
-                    let mut i = lane;
+                    let mut i = 0;
                     while i < bytes {
                         unsafe { local.add(i as usize).write(!expected(round, i)) };
-                        i += 32;
+                        i += 1;
                     }
-                    warp::sync_mask(u32::MAX);
                 }
                 retries = 0;
                 loop {
@@ -105,13 +104,13 @@ mod kernels {
                             }
                             if check != 0 {
                                 let mut bad = false;
-                                let mut i = lane;
+                                let mut i = 0;
                                 while i < bytes {
                                     bad |= unsafe { local.add(i as usize).read() }
                                         != expected(round, i);
-                                    i += 32;
+                                    i += 1;
                                 }
-                                if warp::any(bad) {
+                                if bad {
                                     failures += 1;
                                 }
                             }
@@ -145,13 +144,13 @@ mod kernels {
                             }
                             if check != 0 {
                                 let mut bad = false;
-                                let mut i = lane;
+                                let mut i = 0;
                                 while i < bytes {
                                     bad |= unsafe { local.add(i as usize).read() }
                                         != expected(round, i);
-                                    i += 32;
+                                    i += 1;
                                 }
-                                if warp::any(bad) {
+                                if bad {
                                     failures += 1;
                                 }
                             }
