@@ -158,6 +158,8 @@ fn driver(f: Fun) -> Result<TokenStream, Wrong> {
     let hidden = |name: &str| TokenTree::Ident(Ident::new(name, Span::mixed_site()));
     let (cx, items, keyed) = (hidden("cx"), hidden("items"), hidden("keyed"));
     let item_ty = &s.item.ty;
+    // A function that returns nothing cannot fail: its error is `Infallible`.
+    let error = f.error.clone().unwrap_or_else(|| code("::core::convert::Infallible"));
 
     let mut signature = code("_: ::trame::Invocation,");
     signature.extend([cx.clone(), punct(':')]);
@@ -182,7 +184,7 @@ fn driver(f: Fun) -> Result<TokenStream, Wrong> {
         signature.extend(pointee);
         signature.push(punct('>'));
         ret.extend(code("::trame::Invoked<"));
-        ret.extend(f.error.iter().cloned());
+        ret.extend(error.iter().cloned());
         ret.push(punct('>'));
         args.extend([keyed, punct(',')]);
         args.push(punct('|'));
@@ -194,16 +196,19 @@ fn driver(f: Fun) -> Result<TokenStream, Wrong> {
         closure.push(punct(','));
         closure.extend(param(slot));
     } else {
-        ret.extend(f.error.iter().cloned());
+        ret.extend(error.iter().cloned());
     }
     ret.push(punct('>'));
     closure.push(punct(','));
     closure.extend(param(s.cx));
     closure.extend([punct('|'), joint('-'), punct('>')]);
     closure.extend(code("::core::result::Result<(),"));
-    closure.extend(f.error.iter().cloned());
+    closure.extend(error.iter().cloned());
     closure.push(punct('>'));
-    closure.push(TokenTree::Group(f.body.clone()));
+    closure.push(match f.error {
+        Some(_) => TokenTree::Group(f.body.clone()),
+        None => finished(&f.body),
+    });
     args.extend(closure);
     call.push(group(Delimiter::Parenthesis, args));
 
@@ -221,6 +226,15 @@ fn driver(f: Fun) -> Result<TokenStream, Wrong> {
     out.extend(ret);
     out.push(group(Delimiter::Brace, call));
     Ok(out.into_iter().collect())
+}
+
+/// `{ (|| BODY)(); Ok(()) }`: the body may `return` early, and running it is all it does.
+fn finished(body: &Group) -> TokenTree {
+    let mut out = code("let () =");
+    out.push(group(Delimiter::Parenthesis, vec![punct('|'), punct('|'), TokenTree::Group(body.clone())]));
+    out.extend([group(Delimiter::Parenthesis, Vec::new()), punct(';')]);
+    out.extend(code("::core::result::Result::Ok(())"));
+    group(Delimiter::Brace, out)
 }
 
 fn param(p: &Param) -> Vec<TokenTree> {

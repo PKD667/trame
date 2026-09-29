@@ -458,7 +458,9 @@ distinguishes keyed views. Slots are `T: Send` and errors `E: Send`, for the sam
 cancel later items. A keyed item outside the slice records `Invoked::OutOfRange { key, len }`
 without entering its body; an in-range body's failure is `Invoked::Failed(E)`. The first failing
 item in original list order determines the returned error, including out-of-range failures.
-Empty input succeeds without calling a body. A panic is not an item `Err`: before unwinding,
+Empty input succeeds without calling a body. An item that returns nothing cannot fail: its `E` is
+`Infallible`, and only an out-of-range key can be the error of a keyed call. It is written that way
+so a body whose effect is all it does need not invent a `Result` to say so. A panic is not an item `Err`: before unwinding,
 a host lowering must join all work already admitted, but need not admit remaining items. A device
 trap is reported by the launcher, with no completion or destructor guarantee.
 

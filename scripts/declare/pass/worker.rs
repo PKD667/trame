@@ -59,10 +59,27 @@ impl Worker {
         Ok(())
     }
 
+    // Returning nothing is the same as returning `Ok(())`: the function cannot fail, and may return early.
+    #[parallel]
+    #[trame::ordered(key = hit.at.0: usize)]
+    fn add(&self, hit: Hit, cell: &mut u64, _: &()) {
+        if hit.amount == 0 {
+            return;
+        }
+        *cell += hit.amount;
+    }
+
+    #[parallel]
+    fn note(&self, _: Hit, _: &()) {}
+
     pub fn run(&self, hits: &[Hit], cells: &mut [u64]) -> Result<(), Invoked<()>> {
         let sum = AtomicU64::new(0);
         invoke!(self.total, &sum, hits).map_err(Invoked::Failed)?;
         invoke!(self.charge, &AtomicU32::new(0), hits, Keyed::new(cells))?;
+        let Ok(()) = invoke!(self.note, &(), hits);
+        if let Err(Invoked::OutOfRange { .. }) = invoke!(self.add, &(), hits, Keyed::new(cells)) {
+            return Err(Invoked::Failed(()));
+        }
         let total = Exclusive::new(sum.into_inner());
         let (zero, one) = (0u8, 1u8);
         let mut count = Count::<u8> { left: 0, at: &zero, other: &one };
