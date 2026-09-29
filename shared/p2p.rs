@@ -5,7 +5,7 @@
 // is reported instead of consuming the frame. Every call is one attempt: a buffered send copies or
 // is refused, a matched probe finds a frame or nothing.
 //
-// `Rank` is `u32` and `Tag` is `u16` in the contract, and both are `i32` in MPI. The conversion is
+// A rank is `u32` and `Tag` is `u16` in the contract, and both are `i32` in MPI. The conversion is
 // checked at every boundary and a value that does not fit is `Invalid`: a truncated rank delivers a
 // frame to the wrong participant.
 
@@ -17,17 +17,15 @@ use mpi::topology::Communicator;
 use super::context::{Context, MAX_FRAME};
 use crate::invoke::{Owner, Receive};
 use crate::contract::{
-    BackendFault, Error, Failure, FailureKind, Frame, Invalid, Participant, Rank, Tag,
+    Addr, BackendFault, Error, Failure, FailureKind, Frame, Invalid, Participant, Tag,
 };
 
 fn unrepresentable<T>(_: T) -> Error {
     Error::Invalid(Invalid::Unrepresentable)
 }
 
-fn contract_rank(rank: i32) -> Result<Rank, Error> {
-    u32::try_from(rank)
-        .map(Rank::from_index)
-        .map_err(unrepresentable)
+fn contract_rank(rank: i32) -> Result<u32, Error> {
+    u32::try_from(rank).map_err(unrepresentable)
 }
 
 fn contract_tag(tag: i32) -> Result<Tag, Error> {
@@ -40,12 +38,6 @@ fn counted(status: &Status) -> Result<usize, Error> {
     usize::try_from(count).map_err(unrepresentable)
 }
 
-/// Send one frame, copying it out of the caller's borrow before this returns.
-pub fn send(cx: &mut Context, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error> {
-    let me = Participant::Worker(cx.rank());
-    send_on(cx.world(), me, to, tag, data)
-}
-
 /// Send one frame on `comm`, in buffered mode: the copy happens inside the call, so the sender
 /// never waits on a receiver, and an attached buffer with no room is `Full`.
 ///
@@ -53,19 +45,16 @@ pub fn send(cx: &mut Context, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Err
 /// *kind* rather than a different protocol. `take` below is generic for the same reason. `me` is
 /// who a transport failure is reported as observed by.
 ///
-/// The bound is checked here rather than left to MPI: a rank outside the communicator is a
-/// caller's mistake that the contract has a value for.
+/// `to` is a rank on `comm` its caller already bounded: `link::route` for a peer, `Leader::send`
+/// for a worker, and the bridge's one leader. A rank outside the communicator is refused there, as
+/// the caller's mistake the contract has a value for, and not left to MPI.
 pub(crate) fn send_on<C: Communicator>(
     comm: &C,
     me: Participant,
-    to: Rank,
+    to: i32,
     tag: Tag,
     data: &[u8],
 ) -> Result<(), Error> {
-    if to.get() >= comm.target_size() as u32 {
-        return Err(Error::Invalid(Invalid::RankOutsideJob));
-    }
-    let to = i32::try_from(to.get()).map_err(unrepresentable)?;
     if data.len() > MAX_FRAME {
         return Err(Error::TooLarge { limit: MAX_FRAME });
     }
@@ -95,16 +84,28 @@ pub(crate) fn send_on<C: Communicator>(
     }
 }
 
-/// Take one frame from any source into the caller's buffer.
+/// Take one frame from any worker into the caller's buffer: this deployment's communicator and the
+/// link, each call starting with the one the last did not.
 pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     let me = Participant::Worker(cx.rank());
-    peer(take(cx.world(), me, Owner::ALL, &mut 0, out)?)
+    let link_first = cx.flip();
+    for link in [link_first, !link_first] {
+        let frame = if link {
+            super::link::take(cx.link(), cx.rank(), Owner::ALL, &mut 0, out)?
+        } else {
+            peer(take(cx.world(), me, Owner::ALL, &mut 0, out)?)?
+        };
+        if frame.is_some() {
+            return Ok(frame);
+        }
+    }
+    Ok(None)
 }
 
-/// A frame from a worker, named by its contract rank.
+/// A frame from a worker of this deployment, named by its local rank.
 pub(crate) fn peer(taken: Option<(i32, Tag, usize)>) -> Result<Option<Frame>, Error> {
     taken
-        .map(|(source, tag, len)| Ok(Frame::new(Some(contract_rank(source)?), tag, len)))
+        .map(|(source, tag, len)| Ok(Frame::new(Some(Addr::Local(contract_rank(source)?)), tag, len)))
         .transpose()
 }
 

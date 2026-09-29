@@ -22,7 +22,6 @@ cd "$root"
 # that timeout, which reports FAIL.
 LAUNCH=${LAUNCH:-150}
 WORKERS=4
-LEADERS=2
 
 # The MPI half, re-entered inside `nix develop`, where MPI is: build and run the example per
 # backend, then the backend's unit tests.
@@ -36,15 +35,23 @@ if [ "${1:-}" = mpi-stage ]; then
 			continue
 		fi
 		# shellcheck disable=SC2086
-		TRAME_WORKERS=$WORKERS TRAME_LEADERS=$LEADERS timeout "$LAUNCH" ${MPIRUN:-mpirun --oversubscribe} \
-			-n "$WORKERS" "$bin" worker : -n 1 "$bin" leader "$WORKERS" : -n 1 "$bin" leader $((WORKERS + 1)) \
+		TRAME_WORKERS=$WORKERS timeout "$LAUNCH" ${MPIRUN:-mpirun --oversubscribe} \
+			-n "$WORKERS" "$bin" worker : -n 1 "$bin" leader \
 			>"$out/$backend.main.jsonl" 2>"$out/$backend.main.log"
 		echo $? >"$out/$backend.main.status"
 		# shellcheck disable=SC2086
-		TRAME_WORKERS=$WORKERS TRAME_LEADERS=0 timeout "$LAUNCH" ${MPIRUN:-mpirun --oversubscribe} \
-			-n "$WORKERS" "$bin" pressure \
+		TRAME_WORKERS=$WORKERS timeout "$LAUNCH" ${MPIRUN:-mpirun --oversubscribe} \
+			-n "$WORKERS" "$bin" pressure : -n 1 "$bin" pressure-leader \
 			>"$out/$backend.pressure.jsonl" 2>"$out/$backend.pressure.log"
 		echo $? >"$out/$backend.pressure.status"
+		# F1: two hosts of WORKERS/2 workers under one launch, each host with its own leader. A
+		# process cannot discover its host, so argv states it; launch ranks follow the argv order.
+		# shellcheck disable=SC2086
+		TRAME_WORKERS=$WORKERS TRAME_HOSTS=2 timeout "$LAUNCH" ${MPIRUN:-mpirun --oversubscribe} \
+			-n $((WORKERS / 2)) "$bin" link 0 : -n $((WORKERS / 2)) "$bin" link 1 \
+			: -n 1 "$bin" link-leader 0 : -n 1 "$bin" link-leader 1 \
+			>"$out/$backend.link.jsonl" 2>"$out/$backend.link.log"
+		echo $? >"$out/$backend.link.status"
 		CARGO_TARGET_DIR=$dir timeout "$LAUNCH" cargo test -q -p trame --features "$backend" >"$out/$backend.x1.log" 2>&1
 		echo $? >"$out/$backend.x1.status"
 	done
@@ -96,7 +103,7 @@ claims=$(sed -n '/^pub const CLAIMS/,/^];/p' "$root/trame/conformance/claims.rs"
 	for backend in "${backends[@]}"; do
 		cat "$out/$backend".*.jsonl 2>/dev/null
 		# A participant that started a claim and has no verdict for it: its launch ended inside it.
-		for launch in claims pressure main; do
+		for launch in claims pressure main link; do
 			[ -e "$out/$backend.$launch.status" ] || continue
 			code=$(cat "$out/$backend.$launch.status")
 			why="launch exited $code"
@@ -150,6 +157,43 @@ for claim in $claims X1 X2 P1; do
 					       else (.detail | startswith("UNIMPLEMENTED: attach refused with BackendFault::Unimplemented")) end))
 				' "$out/all.jsonl" >/dev/null; then
 					cell=UNIMPLEMENTED
+				else
+					cell=FAIL
+				fi
+				;;
+			A1:nv)
+				# nv has no link: its launch has a second host so A1 meets a remote worker in
+				# range, and the claim is the exact refusal, counted apart from a pass.
+				if jq -e -s '
+					[.[] | select(.claim == "A1" and .backend == "nv" and .verdict)] as $s
+					| ($s | length) == 4
+					  and ($s | map(.participant) | sort) == ["worker 0", "worker 1", "worker 2", "worker 3"]
+					  and all($s[]; .verdict == "pass" and
+					      (.detail | startswith("UNIMPLEMENTED: send to a remote worker refused with BackendFault::Unimplemented")))
+				' "$out/all.jsonl" >/dev/null; then
+					cell=UNIMPLEMENTED
+				else
+					cell=FAIL
+				fi
+				;;
+			F1:nv)
+				# nv has no link, and its launch runs no link claim. Its in-range remote refusal is
+				# A1's UNIMPLEMENTED cell; F1 is not counted, as a pass or otherwise.
+				cell=n/a
+				;;
+			F1:mpi | F1:rma | F1:rma-lossy)
+				if jq -e -s '
+					[.[] | select(.claim == "F1" and .verdict)] as $s
+					| ($s | length) == 8
+					  and ([$s[] | select(.participant | startswith("worker entering,"))] | length) == 4
+					  and ([$s[] | select(.participant | startswith("host "))] | length) == 4
+					  and all($s[]; .verdict == "pass")
+					  and all($s[] | select(.participant | startswith("host "));
+					      (.detail | contains("0 skipped")) and
+					      (.detail | contains("Message: 64 frames on each of 2 outgoing and 2 incoming pairs")) and
+					      (.detail | contains("Lane: 64 frames on each of 2 outgoing and 2 incoming pairs")))
+				' "$out/$backend.link.jsonl" >/dev/null; then
+					cell=pass
 				else
 					cell=FAIL
 				fi

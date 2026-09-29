@@ -5,15 +5,21 @@ asynchronously with respect to other units. A sharing domain identifies units th
 same storage under the synchronization rules below. Neither a unit nor a domain names a physical
 thread, process, warp, block or machine.
 
-The public interface is functions over explicit handles, execution macros and declaration
-attributes. A build selects one implementation. There is no backend trait for applications to
-implement, scheduler object to manage, or run-time backend registry.
+This document describes one host: a leader, the workers it serves and the storage they share. One
+thing is wider. An address may name a worker on another host of the same launch, and a frame sent
+to it crosses on a link. Which workers exist and where each runs are the launch's decisions, not
+this contract's.
+
+The public interface is functions over explicit handles, the four endpoint methods of the
+per-step `Io` borrow, execution macros and declaration attributes. A build selects one
+implementation. There is no backend trait for applications to implement, scheduler object to
+manage, or run-time backend registry.
 
 **This is the target contract, not a certificate that every implementation satisfies it.**
-Struct-level `#[process]`, the function forms for endpoint operations, and ownership-based shared
-primitives below include proposed changes. The current source still has closure arms, endpoint
-methods and `NoUninit` bounds on shared primitives. [execution.md](execution.md) records the
-migration and existing failures; those failures remain failures of the version that was tested.
+Struct-level `#[process]` and ownership-based shared primitives below include proposed changes.
+The current source still has closure arms and `NoUninit` bounds on shared primitives.
+[execution.md](execution.md) records the migration and existing failures; those failures remain
+failures of the version that was tested.
 
 ## Definition and implementation
 
@@ -37,34 +43,35 @@ we can claim to support; it does not redefine logical execution.
 ## Identities and entry
 
 ```rust
-struct Rank(u32);   // Rank::from_index, get
 struct Launch(u32); // Launch::new, get
 struct Tag(u16);    // Tag::new, get
 
-fn Deployment::new(workers: &[Launch], leaders: Option<&[Launch]>)
+fn Deployment::new(hosts: &[&[Launch]], here: u16, leader: Launch)
     -> Result<Deployment, Invalid>;
 
 fn init(env: Environment, deployment: Deployment) -> Result<Context, Failure>;
-fn rank(cx: &Context) -> Rank;
+fn rank(cx: &Context) -> u32;
 fn size(cx: &Context) -> u32;
-fn hosts(cx: &Context) -> &[Rank];
 fn done<A>(cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>>;
 ```
 
-A `Rank` is a worker unit's dense index in `[0, size)`. A `Launch` identifies a participant in the
-launch description. They are distinct even when their integer values happen to agree. Every
-`u16` is a valid `Tag`. Constructors and inspectors on value types are ordinary Rust methods;
-they do not start work.
+A worker's rank is its dense index in `[0, size)` within its own deployment, a plain `u32`. A
+`Launch` identifies a participant in the launch description. They are distinct even when their
+integer values happen to agree. Every `u16` is a valid `Tag`. Constructors and inspectors on value
+types are ordinary Rust methods; they do not start work.
 
-`Deployment::new` rejects an empty worker list, duplicate workers, unequal worker/leader list
-lengths, and a participant that is both worker and leader. Position `i` assigns worker rank `i`
-and, when present, its leader. `init` additionally rejects a participant outside the launch,
-inconsistent entry information or insufficient storage. It must not silently narrow a deployment.
+`Deployment::new` takes the launch's table: `hosts[h][r]` is the `Launch` of host `h`'s worker `r`,
+and every process of a launch is given the same table. `here` is this process's host and `leader`
+is that host's one leader. Row `here`, position `r`, assigns local rank `r`. It rejects an empty
+table or an empty row, a table too large to number, a `here` outside the table, a `Launch` listed
+twice, and a leader listed in the table. `init` additionally rejects a participant outside the
+launch, inconsistent entry information or insufficient storage. It must not silently narrow a
+deployment.
+
+The MPI backends also require each deployment’s leader and workers to share one physical shared-memory domain; all launch participants agree on admission before any bridge is created.
 
 `Environment` is an opaque entry description with `Default`. `Context` owns the entered unit's
-backend resources. `rank`, `size` and `hosts` describe workers only. `hosts(cx)[r]` is the lowest
-worker rank in `r`'s sharing domain; equality of entries identifies a cohort, not necessarily a
-physical host. A domain may contain one worker.
+backend resources. `rank` and `size` describe this deployment's workers only.
 
 `Context` and `Io` are `Send`, not `Sync`: an owner may move them but cannot create concurrent
 shared access to one handle. `Shared`, `Published` and `Leader` are neither `Send` nor `Sync`; their views and
@@ -91,7 +98,7 @@ enum Error {
     Failed(Failure),
 }
 
-fn send(cx: &mut Context, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error>;
+fn send(cx: &mut Context, to: Addr, channel: Channel, data: &[u8]) -> Result<(), Error>;
 fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error>;
 fn flush(cx: &mut Context) -> Result<(), Error>;
 ```
@@ -124,12 +131,12 @@ latency bound or promise of delivery to an application that never receives.
 ### Leaders
 
 A leader is an external communication participant without a worker rank. It is an endpoint role,
-not a requirement for a dedicated operating-system process. Workers with no assigned leader get
-`Invalid(NoLeader)` on that route.
+not a requirement for a dedicated operating-system process. A deployment has exactly one leader,
+and every worker of it answers to that leader.
 
 ```rust
 fn leader::open(env: Environment, deployment: Deployment) -> Result<Leader, Failure>;
-fn leader::send_to(leader: &Leader, to: Rank, tag: Tag, data: &[u8]) -> Result<(), Error>;
+fn leader::send_to(leader: &Leader, to: u32, tag: Tag, data: &[u8]) -> Result<(), Error>;
 fn leader::recv_from(leader: &Leader, out: &mut [u8]) -> Result<Option<Frame>, Error>;
 fn leader::done<A>(leader: &mut Leader, outcome: Result<(), Failure<A>>)
     -> Result<(), Failure<A>>;
@@ -140,7 +147,7 @@ fn leader::recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error
 
 The send and receive functions have the same one-attempt and whole-frame rules. Each direction
 is FIFO per worker. A frame received by a worker from its leader has `source == None`; the leader
-receives the sending worker's rank. `open`, `send_to` and `recv_from` replace the currently
+receives `Some(Local(r))`, the sending worker's rank. `open`, `send_to` and `recv_from` replace the currently
 implemented `Leader::open`, `send` and `recv`; no second interface is intended.
 
 `leader::done` gives the leader the same explicit finalization boundary as a worker. It is a
@@ -151,13 +158,14 @@ implicit successful finalization or a new collective participation point.
 ### Declared lanes
 
 ```rust
-fn reshape(cx: &mut Context, workers: &[Rank], edges: &[Edge], frame: usize, tag: Tag)
+fn reshape(cx: &mut Context, workers: &[u32], edges: &[Edge], frame: usize, tag: Tag)
     -> Result<(), Error>;
 fn release(cx: &mut Context) -> Result<(), Error>;
 ```
 
-`reshape` declares a load's directed routes: ascending unique workers, edges ascending by
-`(source, destination)`, both endpoints among the workers, maximum frame length in bytes, and a
+`reshape` declares directed routes: ascending unique workers, edges ascending by
+`(source, destination)`, at least one endpoint `Local` and every `Local` endpoint among the
+workers, maximum frame length in bytes, and a
 tag. `Edge::new(source, destination, affected)` records a nonzero destination-element count used
 for capacity planning. Storage geometry is an implementation decision, not an application-visible
 ring formula. Unsupported geometry is refused before any lane send.
@@ -166,6 +174,33 @@ Traffic before configuration is `Invalid(LaneNotConfigured)`. An undeclared pair
 `Invalid(NoLane)`, and exceeding the declared length is `TooLarge { limit: frame }`. A lane frame
 uses the declared tag. `release` ends this participant's use of the lanes; it does not certify
 that peers consumed pending frames.
+
+### Addresses
+
+```rust
+enum Addr { Local(u32), Remote { host: u16, rank: u32 } }
+```
+
+A worker has to name its peers, and the name should tell trame how to reach them. On your host a
+worker is its rank, `Local(r)` with `r < size`. On another host of your launch it is
+`Remote { host, rank }`: the launch's number for that host and the worker's rank there. A worker
+on your own host is always `Local`, and a `Remote` naming your host is refused, so from where you
+stand a worker has exactly one address. The launch fixes both numberings at entry, and they do
+not change while the deployment lives. An address that names no worker of the launch, a `Remote`
+naming your own host included, is `Invalid(RankOutsideJob)`.
+
+Only peer routes use an address: `send`, `Io::send`, `Edge` and `Frame::source`. What concerns
+your host alone takes a plain `u32`: `rank`, `reshape`'s workers and `leader::send_to`. A remote
+worker cannot reach those, by type.
+
+### Links
+
+A frame to a `Remote` worker crosses hosts, and you do not choose how. The backend lowers it onto
+a link the launch established, beneath `Message` and `Lane`. You get the same channel, the same
+one-attempt outcomes and the same FIFO per directed pair. A link never loses a frame on any
+backend, even where `LOSSY` lets a local lane skip. `none` refuses a remote address by name, and
+`nv` reports `Unimplemented`. `reshape`, `release` and `barrier` never cross a host, and an
+accepted frame is not proof that the remote worker received it.
 
 ## Shared memory
 
@@ -205,15 +240,15 @@ Dropping a returned refusal without handling it reports the original error and a
 A leader may publish revision `n + 1` while `n` is attached, so a refused publication leaves the
 previous segment and its readers untouched. On named storage the MPI family refuses a revision the
 leader already holds live by name (`EEXIST`); `none` does not check it and relies on the leader
-never reusing a live revision, which NERVE's monotonic revision guarantees. Retiring is the
+never reusing a live revision. Retiring is the
 leader's decision alone, taken after every attached worker has told it, by an ordinary frame, that
 it has detached.
 
-Publish reserves the whole object before it copies, so an initial load needs one segment of
-`/dev/shm` capacity and a reload needs two at once. An exhausted `/dev/shm` is a refused
+Publish reserves the whole object before it copies, so one live segment needs its length in
+`/dev/shm`, and a successor published beside it needs both lengths at once. An exhausted `/dev/shm` is a refused
 publication carrying its errno, such as `ENOSPC`, not a `SIGBUS` during the copy.
 
-A process that dies without unloading, whether by a fatal exit, a signal or a launcher abort,
+A process that dies before retiring its segments, whether by a fatal exit, a signal or a launcher abort,
 leaves its `/dev/shm/trame-<pid>-<rev>` objects behind. Removing them after a crash is the launch
 operator's job; there is no automatic crash cleanup yet.
 
@@ -298,7 +333,7 @@ fn barrier(cx: &mut Context);
 
 | Boundary | Participants |
 |---|---|
-| Entry | Each declared worker calls `init`; each distinct declared leader calls `leader::open`. |
+| Entry | Each declared worker calls `init`; each deployment's leader calls `leader::open`. |
 | `reshape`, `release` | All entered workers, never leaders; `workers` in `reshape` describes the active route geometry, not a different collective membership. |
 | `barrier` | All entered workers, never leaders; it consumes no message or lane frame and does not finalize sends. |
 | `publish`, `retire` | The leader alone; `retire` only after each worker that attached has reported its `detach`. `attach` and `detach` are each one worker's own and coordinate with nobody. |
@@ -367,15 +402,18 @@ trame::concurrent!(cx;
     delivery,
 )?;
 
-fn io::send(io: &mut Io<'_>, to: Rank, channel: Channel, data: &[u8]) -> Result<(), Error>;
-fn io::lead(io: &mut Io<'_>, tag: Tag, data: &[u8]) -> Result<(), Error>;
-fn io::recv(io: &mut Io<'_>, out: &mut [u8]) -> Result<Option<Frame>, Error>;
-fn io::flush(io: &mut Io<'_>) -> Result<(), Error>;
+impl Io<'_> {
+    fn send(&mut self, to: Addr, channel: Channel, data: &[u8]) -> Result<(), Error>;
+    fn lead(&mut self, tag: Tag, data: &[u8]) -> Result<(), Error>;
+    fn recv(&mut self, out: &mut [u8]) -> Result<Option<Frame>, Error>;
+    fn flush(&mut self) -> Result<(), Error>;
+}
 ```
 
 In this form each step is callable as `step(&mut self, io: &mut Io<'_>)`. The endpoint borrow
-lasts one step. The functions above replace the current `Io` methods and retain the ordinary
-route guarantees; `lead` sends to the worker's assigned leader.
+lasts one step. `Io` is the one handle with methods: it exists only to carry these four
+operations for one step, and `io.send` against `trame::send(cx, ..)` already names the scope.
+They take the same routes as the worker operations; `lead` sends to the worker's assigned leader.
 
 `recv(A, B)` assigns those tags; `recv(..)` assigns every tag. A frame belongs to the first process
 in source order whose setting names its tag, whether it came from a peer, lane or leader. Frames
@@ -395,16 +433,16 @@ fn advance(item: Item, cx: &Pass) -> Result<(), WorkError> { /* bounded body */ 
 
 #[trame::parallel]
 #[trame::ordered(key = frame.target: Target)]
-fn integrate(frame: Frame, neuron: &mut Neuron, cx: &Pass) -> Result<(), WorkError> {
+fn integrate(frame: Frame, slot: &mut State, cx: &Pass) -> Result<(), WorkError> {
     /* target-owned transition */
 }
 
 trame::invoke!(advance, &pass, &items)?;
-trame::invoke!(integrate, &pass, &frames, trame::Keyed::new(&mut neurons[..]))?;
+trame::invoke!(integrate, &pass, &frames, trame::Keyed::new(&mut states[..]))?;
 ```
 
 `#[parallel]` dispatches a list. `#[ordered]` says which mutable state each item may touch: its
-key indexes one slot of a `Keyed` slice, so a frame reaches the neuron its target names and no
+key indexes one slot of a `Keyed` slice, so a frame reaches the slot its target names and no
 other. That slot is the only mutable borrow an item receives. The context is shared, `&C` with
 `C: Sync`, and carries read-only inputs and the shared primitives below. Mutation outside the
 keyed slot goes through those primitives, never through an aliased `&mut`. An optional `&self`
@@ -449,7 +487,7 @@ struct Failure<A = Infallible> {
     kind: FailureKind<A>,
 }
 enum FailureKind<A> { Backend(BackendFault), Application(A) }
-enum Participant { Worker(Rank), Leader(Launch), Entering(Option<Launch>) }
+enum Participant { Worker(u32), Leader(Launch), Entering(Option<Launch>) }
 
 fn clock::reading() -> Reading;
 ```

@@ -196,10 +196,10 @@ trame::concurrent!(cx;
 ```
 
 Here the selected method is `step(&mut self, io: &mut trame::Io<'_>)`. The macro creates the
-existing `arm_io` adapter. An `Io` borrow lasts one step and cannot be retained by safe code.
-The target contract exposes its operations as `trame::io` functions rather than endpoint methods.
-First-match tag routing, FIFO rules and `NotReceiving` stay unchanged. This form is not a reason
-to remove NERVE's separate transport arm during the mechanical migration.
+existing `arm_io` adapter. An `Io` borrow lasts one step and cannot be retained by safe code. Its
+scoped endpoints are the methods `io.{send, lead, recv, flush}`. First-match tag routing, FIFO rules and `NotReceiving` stay unchanged. These are distinct
+from worker `trame::{send, recv, flush}` and `leader::{send, recv}`. This form is not a reason to
+remove NERVE's separate transport arm during the mechanical migration.
 
 The proposed process-facing macro replaces raw closure arms; it does not guess whether an
 identifier holds a closure or a struct. Migrate existing call sites and verification fixtures in
@@ -342,3 +342,22 @@ The NERVE delivery and integration documents describe machinery absent from the 
 an invoked integration pass and old slot storage. Reconcile them with Gate 2 rather than silently
 restoring a former behavior. No new async runtime, backend-specific NERVE module tree, or
 performance-tuned constant is part of these first gates.
+
+### P1 surface verifier evidence — W4 Sheets 1–2
+
+`bash trame/scripts/surface.sh /home/pkd/code/agents/nerve-nv-20260929/target-W4/p1` ran with
+rustc/rustdoc 1.96.0-nightly (`55e86c996`) and isolated targets under that output. The five
+`all.html` inventories each contained 77 exported entries; nv, mpi, rma and rma-lossy each had an
+empty diff against none. The 45 expected-refusal fixtures passed, with structured rustc codes and
+primary spans at the marked obligation. The one comprehensive positive client fixture failed on
+all five selections; the verifier therefore exited 1 (five positive failures, 45 negative passes),
+not a portable-contract pass. Its diagnostics include absent `io::*`, `leader::{send_to,recv_from,done}`
+and free `sync::{with,handoff::*}` APIs, plus `#[parallel]` refusing the documented shared `&C`
+context. Full command records, compiler identity, per-feature inventories, diagnostics and statuses
+are in the supplied output directory; the final run log is `/home/pkd/code/agents/nerve-nv-20260929/W4-s12-final3.log`.
+
+The earlier A3 P1 Freeze-only display difference remains recorded above and in
+`/home/pkd/code/agents/nerve-addr-20260928/A3-conform.log`; this verifier does not compare rustdoc
+synthetic implementation lists. That difference is excluded because `backend.md` states incidental
+compiler-generated traits are not contract promises. Its exclusion is not a P1 pass: the client
+witness failures above remain red.

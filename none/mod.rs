@@ -1,6 +1,6 @@
 // The backend that does nothing, so a build can link the surface with no transport at all.
 //
-// One worker, Launch(0), and optionally a leader, Launch(1). Nothing moves: every send is refused
+// One worker, Launch(0), and its leader, Launch(1). Nothing moves: every send is refused
 // as `Closed`, because nothing is on the other end, and nothing ever arrives. The entry, the
 // clock, the shared-state families and a segment its leader publishes still work, because a
 // process alone answers them.
@@ -9,8 +9,8 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 
 use crate::contract::{
-    Backend, BackendFault, Channel, Deployment, Edge, Error, Failure, FailureKind, Frame, Handle,
-    Invalid, Launch, Participant, Rank, Tag,
+    Addr, Backend, BackendFault, Channel, Deployment, Edge, Error, Failure, FailureKind, Frame,
+    Handle, Invalid, Launch, Participant, Tag,
 };
 use crate::invoke::{Owner, Receive};
 
@@ -23,23 +23,20 @@ pub const ID: Backend = Backend::None;
 /// The contract's floor: a 64 KiB log block behind an eight-byte batch header.
 pub const MAX_FRAME: usize = 65_544;
 
-const ME: Rank = Rank::from_index(0);
+const ME: u32 = 0;
 
 /// The one process's worker launch rank.
 const LAUNCH: Launch = Launch::new(0);
 
-/// The optional leader's launch rank. Never a worker: a launch is one or the other.
+/// The leader's launch rank. Never a worker: a launch is one or the other.
 const LEADER: Launch = Launch::new(1);
 
 /// What the entry is given: nothing, since there is no transport to describe.
 #[derive(Clone, Default)]
 pub struct Environment;
 
-/// This participant's state: whether the deployment named it a leader, and itself as the whole of
-/// `hosts` and `cohort`.
+/// This participant's state: nothing, since it is the whole deployment.
 pub struct Context {
-    alone: [Rank; 1],
-    led: bool,
     // Auto traits match the nv backend's, so the public surface is the same on every backend.
     _unshared: PhantomData<*const ()>,
 }
@@ -47,41 +44,32 @@ pub struct Context {
 // SAFETY: every field is `Send`; the marker exists only to withdraw `Sync`, as nv's pointers do.
 unsafe impl Send for Context {}
 
-/// Whether `deployment` is this launch of one, and whether it names the leader.
-fn launch_of_one(deployment: Deployment<'_>, who: Launch, operation: &'static str) -> Result<bool, Failure> {
-    let refuse = |why| Failure {
-        participant: Participant::Entering(Some(who)),
-        operation,
-        kind: FailureKind::Backend(BackendFault::Invalid(why)),
-    };
-    let led = match deployment.leaders() {
-        None => false,
-        Some(leaders) if leaders == [LEADER] => true,
-        Some(_) => return Err(refuse(Invalid::RankOutsideJob)),
-    };
-    if deployment.workers() != [LAUNCH] {
-        return Err(refuse(Invalid::RankOutsideJob));
+/// Refuse any deployment but this launch of one: one host, the worker Launch(0), its leader
+/// Launch(1).
+fn launch_of_one(deployment: Deployment<'_>, who: Launch, operation: &'static str) -> Result<(), Failure> {
+    if deployment.hosts().len() != 1 || deployment.workers() != [LAUNCH] || deployment.leader() != LEADER {
+        return Err(Failure {
+            participant: Participant::Entering(Some(who)),
+            operation,
+            kind: FailureKind::Backend(BackendFault::Invalid(Invalid::RankOutsideJob)),
+        });
     }
-    Ok(led)
+    Ok(())
 }
 
-/// Enter as the worker of a deployment that names that one worker and at most its leader. Any
-/// other launch set is refused rather than narrowed.
+/// Enter as the worker of a deployment that names that one worker and its leader. Any other
+/// launch set is refused rather than narrowed.
 pub fn init(_env: Environment, deployment: Deployment<'_>) -> Result<Context, Failure> {
-    let led = launch_of_one(deployment, LAUNCH, "init")?;
-    Ok(Context { alone: [ME], led, _unshared: PhantomData })
+    launch_of_one(deployment, LAUNCH, "init")?;
+    Ok(Context { _unshared: PhantomData })
 }
 
-pub fn rank(_cx: &Context) -> Rank {
+pub fn rank(_cx: &Context) -> u32 {
     ME
 }
 
 pub fn size(_cx: &Context) -> u32 {
     1
-}
-
-pub fn hosts(cx: &Context) -> &[Rank] {
-    &cx.alone
 }
 
 /// One worker has no one to meet, so the phase boundary is already crossed.
@@ -92,23 +80,21 @@ pub fn done<A>(_cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(),
     outcome
 }
 
-/// Nothing is on the other end: another rank is outside the job, and this one has no route.
-fn nowhere(to: Rank) -> Result<(), Error> {
-    if to != ME {
+/// Nothing is on the other end: any other address, a `Remote` one included, is outside a launch of
+/// one host, and this worker has no route to itself.
+fn nowhere(to: Addr) -> Result<(), Error> {
+    if to != Addr::Local(ME) {
         return Err(Error::Invalid(Invalid::RankOutsideJob));
     }
     Err(Error::Closed)
 }
 
-/// A leader route that the deployment named, and that goes nowhere.
-fn nowhere_up(led: bool) -> Result<(), Error> {
-    if !led {
-        return Err(Error::Invalid(Invalid::NoLeader));
-    }
+/// The leader route goes nowhere: the leader is this same process, and nothing moves.
+fn nowhere_up() -> Result<(), Error> {
     Err(Error::Closed)
 }
 
-pub fn send(_cx: &mut Context, to: Rank, _channel: Channel, _data: &[u8]) -> Result<(), Error> {
+pub fn send(_cx: &mut Context, to: Addr, _channel: Channel, _data: &[u8]) -> Result<(), Error> {
     nowhere(to)
 }
 
@@ -123,7 +109,7 @@ pub fn flush(_cx: &mut Context) -> Result<(), Error> {
 /// A declaration is still checked by its names. It holds no lanes, since nothing is sent on them.
 pub fn reshape(
     cx: &mut Context,
-    workers: &[Rank],
+    workers: &[u32],
     edges: &[Edge],
     bytes: usize,
     _tag: Tag,
@@ -170,7 +156,6 @@ pub fn detach(_cx: &mut Context, _segment: Shared) -> Result<(), (Shared, Error)
 
 /// One `concurrent!` arm's end of routes that go nowhere.
 pub struct Io<'a> {
-    led: bool,
     receives: bool,
     // Auto traits match the nv backend's, so the public surface is the same on every backend.
     _unshared: PhantomData<&'a *const ()>,
@@ -182,16 +167,14 @@ unsafe impl Send for Io<'_> {}
 /// `concurrent!` given a context: the arms still run, each on its own host thread.
 #[doc(hidden)]
 pub fn concurrent_io<'env, B, E: Send, const N: usize>(
-    cx: &'env mut Context,
+    _cx: &'env mut Context,
     receive: &'env [Receive<'env>; N],
     body: B,
 ) -> Result<(), E>
 where
     B: for<'scope> FnOnce(&mut crate::cpu::run::IoArms<'scope, 'env, Io<'env>, E, N>),
 {
-    let led = cx.led;
     let ios = core::array::from_fn(|at| Io {
-        led,
         receives: Owner::new(receive, at).receives(),
         _unshared: PhantomData,
     });
@@ -199,12 +182,12 @@ where
 }
 
 impl Io<'_> {
-    pub fn send(&mut self, to: Rank, _channel: Channel, _data: &[u8]) -> Result<(), Error> {
+    pub fn send(&mut self, to: Addr, _channel: Channel, _data: &[u8]) -> Result<(), Error> {
         nowhere(to)
     }
 
     pub fn lead(&mut self, _tag: Tag, _data: &[u8]) -> Result<(), Error> {
-        nowhere_up(self.led)
+        nowhere_up()
     }
 
     pub fn recv(&mut self, _out: &mut [u8]) -> Result<Option<Frame>, Error> {
@@ -225,8 +208,7 @@ pub mod leader {
     use std::marker::PhantomData;
     use std::num::NonZeroU64;
     use crate::contract::{
-        BackendFault, Deployment, Error, Failure, FailureKind, Frame, Handle, Invalid, Participant,
-        Rank, Tag,
+        Addr, Deployment, Error, Failure, Frame, Handle, Invalid, Tag,
     };
 
     // No mutable contents: !Freeze, but shared unwind safety remains intact.
@@ -244,18 +226,12 @@ pub mod leader {
     impl Leader {
         /// Open the route of a deployment naming the worker Launch(0) and this leader Launch(1).
         pub fn open(_env: super::Environment, deployment: Deployment<'_>) -> Result<Leader, Failure> {
-            if !launch_of_one(deployment, LEADER, "leader::open")? {
-                return Err(Failure {
-                    participant: Participant::Entering(Some(LEADER)),
-                    operation: "leader::open",
-                    kind: FailureKind::Backend(BackendFault::Invalid(Invalid::NoLeader)),
-                });
-            }
+            launch_of_one(deployment, LEADER, "leader::open")?;
             Ok(Leader(PhantomData, Unfrozen(UnsafeCell::new(()))))
         }
 
-        pub fn send(&self, to: Rank, _tag: Tag, _data: &[u8]) -> Result<(), Error> {
-            nowhere(to)
+        pub fn send(&self, to: u32, _tag: Tag, _data: &[u8]) -> Result<(), Error> {
+            nowhere(Addr::Local(to))
         }
 
         pub fn recv(&self, _out: &mut [u8]) -> Result<Option<Frame>, Error> {
@@ -263,14 +239,11 @@ pub mod leader {
         }
     }
 
-    pub fn send(cx: &mut Context, _tag: Tag, _data: &[u8]) -> Result<(), Error> {
-        nowhere_up(cx.led)
+    pub fn send(_cx: &mut Context, _tag: Tag, _data: &[u8]) -> Result<(), Error> {
+        nowhere_up()
     }
 
-    pub fn recv(cx: &mut Context, _out: &mut [u8]) -> Result<Option<Frame>, Error> {
-        if !cx.led {
-            return Err(Error::Invalid(Invalid::NoLeader));
-        }
+    pub fn recv(_cx: &mut Context, _out: &mut [u8]) -> Result<Option<Frame>, Error> {
         Ok(None)
     }
 
@@ -304,5 +277,24 @@ pub mod leader {
     /// Retire `segment`.
     pub fn retire(_leader: &Leader, _segment: Published) -> Result<(), (Published, Error)> {
         Ok(())
+    }
+}
+
+// `backend.md`, Links: "`none` refuses a remote address by name."
+#[cfg(test)]
+mod tests {
+    use super::{Environment, init, send, LAUNCH, LEADER};
+    use crate::contract::{Addr, Channel, Deployment, Error, Invalid, Launch, Tag};
+
+    #[test]
+    fn a_remote_worker_is_outside_a_launch_of_one() {
+        let hosts: [&[Launch]; 1] = [&[LAUNCH]];
+        let deployment = Deployment::new(&hosts, 0, LEADER).expect("the launch of one");
+        let mut cx = init(Environment, deployment).expect("the one worker enters");
+        let to = Addr::Remote { host: 1, rank: 0 };
+        assert_eq!(
+            send(&mut cx, to, Channel::Message(Tag::new(1)), b"x"),
+            Err(Error::Invalid(Invalid::RankOutsideJob))
+        );
     }
 }

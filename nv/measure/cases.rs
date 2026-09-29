@@ -157,9 +157,9 @@ mod kernels {
             // Every warp is a worker of the two-warp launch; the note is its rank plus one, so a
             // zero is a warp that did not enter.
             let workers = [Launch::new(0), Launch::new(1)];
-            match Deployment::new(&workers, None) {
+            match Deployment::new(&[&workers[..]], 0, Launch::new(2)) {
                 Ok(deployment) => match crate::init(Environment::default(), deployment) {
-                    Ok(cx) => note = crate::rank(&cx).get() + 1,
+                    Ok(cx) => note = crate::rank(&cx) + 1,
                     Err(_) => failures += 1,
                 },
                 Err(_) => failures += 1,

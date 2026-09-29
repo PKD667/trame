@@ -12,6 +12,7 @@
 
 pub mod context;
 pub mod leader;
+pub(crate) mod link;
 pub mod p2p;
 
 use std::ffi::CString;
