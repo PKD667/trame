@@ -45,7 +45,7 @@ mod invoke;
 pub use invoke::{Invocation, Invoked, Keyed, Step};
 #[doc(hidden)]
 pub use invoke::{Receive, arm_io};
-pub use trame_macros::{ordered, parallel};
+pub use trame_macros::{ordered, parallel, process};
 
 // The MPI environment and point-to-point traffic, shared by the three lane transports that ride
 // on it. Not compiled without MPI: it names no model type, but it does name the wire.

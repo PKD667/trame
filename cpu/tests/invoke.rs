@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::SeqCst};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::sync::{Exclusive, Locked};
+use crate::sync::{Exclusive, Locked, with};
 use crate::{Invoked, Keyed, Step};
 
 #[derive(Clone, Copy)]
@@ -71,65 +71,155 @@ fn within(what: &str, ready: impl Fn() -> bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Waits inside one step for the fast arm's hundredth.
+#[crate::process]
+struct Slow<'a> {
+    fast: &'a AtomicU32,
+    steps: &'a mut u32,
+}
+
+impl Slow<'_> {
+    fn step(&mut self) -> Result<Step, String> {
+        *self.steps += 1;
+        within("100 fast steps", || self.fast.load(SeqCst) >= 100)?;
+        Ok(Step::Done)
+    }
+}
+
+#[crate::process]
+struct Fast<'a>(&'a AtomicU32);
+
+impl Fast<'_> {
+    fn step(&mut self) -> Result<Step, String> {
+        let n = self.0.fetch_add(1, SeqCst) + 1;
+        Ok(if n >= 100 { Step::Done } else { Step::Progress })
+    }
+}
+
 #[test]
 fn a_fast_arm_runs_many_steps_while_a_slow_arm_is_inside_one() {
     let fast = AtomicU32::new(0);
     let mut slow_steps = 0;
-    crate::concurrent! {
-        || {
-            slow_steps += 1;
-            within("100 fast steps", || fast.load(SeqCst) >= 100)?;
-            Ok::<_, String>(Step::Done)
-        },
-        || {
-            let n = fast.fetch_add(1, SeqCst) + 1;
-            Ok(if n >= 100 { Step::Done } else { Step::Progress })
-        },
-    }
-    .expect("a round barrier would have timed out here");
+    crate::concurrent!(Slow { fast: &fast, steps: &mut slow_steps }, Fast(&fast))
+        .expect("a round barrier would have timed out here");
     assert_eq!(slow_steps, 1);
+}
+
+/// Fails with `order` once both arms are inside a step; the first waits for the second's failure.
+#[crate::process]
+struct Fails<'a> {
+    both: &'a Barrier,
+    other_failed: &'a AtomicBool,
+    order: u32,
+}
+
+impl Fails<'_> {
+    fn step(&mut self) -> Result<Step, u32> {
+        self.both.wait();
+        if self.order == 0 {
+            within("the second arm's error", || self.other_failed.load(SeqCst)).expect("it fails");
+        } else {
+            self.other_failed.store(true, SeqCst);
+        }
+        Err(self.order)
+    }
 }
 
 #[test]
 fn competing_errors_answer_in_source_order_not_time_order() {
     let both = Barrier::new(2);
     let second_failed = AtomicBool::new(false);
-    let answer = crate::concurrent! {
-        || {
-            both.wait();
-            within("the second arm's error", || second_failed.load(SeqCst)).expect("it fails");
-            Err::<Step, u32>(0)
-        },
-        || {
-            both.wait();
-            second_failed.store(true, SeqCst);
-            Err(1)
-        },
-    };
+    let answer = crate::concurrent!(
+        Fails { both: &both, other_failed: &second_failed, order: 0 },
+        Fails { both: &both, other_failed: &second_failed, order: 1 },
+    );
     assert_eq!(answer, Err(0));
+}
+
+/// Fails once its sibling has stepped.
+#[crate::process]
+struct Blocked<'a>(&'a AtomicBool);
+
+impl Blocked<'_> {
+    fn step(&mut self) -> Result<Step, String> {
+        within("a sibling step", || self.0.load(SeqCst))?;
+        Err("failed".to_string())
+    }
+}
+
+/// Steps `Idle` until its tenth, slowly after the first.
+#[crate::process]
+struct Sibling<'a> {
+    stepped: &'a AtomicBool,
+    steps: &'a mut u32,
+}
+
+impl Sibling<'_> {
+    fn step(&mut self) -> Result<Step, String> {
+        *self.steps += 1;
+        if *self.steps > 1 {
+            // Long past the moment the runner publishes the sibling's error.
+            thread::sleep(Duration::from_millis(50));
+        }
+        self.stepped.store(true, SeqCst);
+        Ok(if *self.steps == 10 { Step::Done } else { Step::Idle })
+    }
 }
 
 #[test]
 fn no_step_starts_after_an_error_is_published() {
     let stepped = AtomicBool::new(false);
     let mut steps = 0;
-    let answer = crate::concurrent! {
-        || {
-            within("a sibling step", || stepped.load(SeqCst))?;
-            Err("failed".to_string())
-        },
-        || {
-            steps += 1;
-            if steps > 1 {
-                // Long past the moment the runner publishes the sibling's error.
-                thread::sleep(Duration::from_millis(50));
-            }
-            stepped.store(true, SeqCst);
-            Ok(if steps == 10 { Step::Done } else { Step::Idle })
-        },
-    };
+    let answer = crate::concurrent!(Blocked(&stepped), Sibling { stepped: &stepped, steps: &mut steps });
     assert_eq!(answer, Err("failed".to_string()));
     assert!(steps <= 2, "{steps} steps: only one may have been in flight when the error was published");
+}
+
+/// Panics inside `value` once its sibling has started.
+#[crate::process]
+struct Tears<'a> {
+    value: &'a Exclusive<u32>,
+    started: &'a AtomicBool,
+}
+
+impl Tears<'_> {
+    fn step(&mut self) -> Result<Step, ()> {
+        within("the sibling", || self.started.load(SeqCst)).expect("it starts");
+        with::<_, ()>(self.value, |v| {
+            *v = 1;
+            panic!("torn");
+        })
+        .expect("free");
+        Ok(Step::Done)
+    }
+}
+
+#[crate::process]
+struct Counts<'a> {
+    started: &'a AtomicBool,
+    steps: &'a AtomicU32,
+}
+
+impl Counts<'_> {
+    fn step(&mut self) -> Result<Step, ()> {
+        self.started.store(true, SeqCst);
+        self.steps.fetch_add(1, SeqCst);
+        Ok(Step::Idle)
+    }
+}
+
+/// Reads `value` once and is done.
+#[crate::process]
+struct Reads<'a> {
+    value: &'a Exclusive<u32>,
+    seen: Option<Locked>,
+}
+
+impl Reads<'_> {
+    fn step(&mut self) -> Result<Step, ()> {
+        self.seen = with(self.value, |v| *v).err();
+        Ok(Step::Done)
+    }
 }
 
 #[test]
@@ -138,33 +228,16 @@ fn a_panic_joins_its_sibling_then_resumes_and_abandons_its_value() {
     let started = AtomicBool::new(false);
     let sibling_steps = AtomicU32::new(0);
     let unwound = catch_unwind(AssertUnwindSafe(|| {
-        crate::concurrent! {
-            || {
-                within("the sibling", || started.load(SeqCst)).expect("it starts");
-                value
-                    .with::<()>(|v| {
-                        *v = 1;
-                        panic!("torn");
-                    })
-                    .expect("free");
-                Ok::<_, ()>(Step::Done)
-            },
-            || {
-                started.store(true, SeqCst);
-                sibling_steps.fetch_add(1, SeqCst);
-                Ok::<_, ()>(Step::Idle)
-            },
-        }
+        crate::concurrent!(Tears { value: &value, started: &started }, Counts { started: &started, steps: &sibling_steps })
     }));
     let payload = unwound.expect_err("the panic is resumed");
     assert_eq!(payload.downcast_ref::<&str>(), Some(&"torn"));
     let joined = sibling_steps.load(SeqCst);
     thread::sleep(Duration::from_millis(20));
     assert_eq!(sibling_steps.load(SeqCst), joined, "the sibling was joined, not left running");
-    let mut seen = None;
-    crate::concurrent! { || { seen = value.with(|v| *v).err(); Ok::<_, ()>(Step::Done) } }
-        .expect("no arm fails");
-    assert_eq!(seen, Some(Locked::Abandoned));
+    let mut reads = Reads { value: &value, seen: None };
+    crate::concurrent!(&mut reads).expect("no arm fails");
+    assert_eq!(reads.seen, Some(Locked::Abandoned));
     assert_eq!(*value.get_mut(), 1);
 }
 
@@ -185,33 +258,56 @@ impl Drop for Unwinding<'_> {
     }
 }
 
+/// Panics inside `value` with the unwinding frame held open.
+#[crate::process]
+struct Unwinds<'a> {
+    value: &'a Exclusive<(u32, u32)>,
+    started: &'a AtomicBool,
+    tries: &'a AtomicU32,
+    waited: &'a AtomicBool,
+}
+
+impl Unwinds<'_> {
+    fn step(&mut self) -> Result<Step, ()> {
+        with::<_, ()>(self.value, |v| {
+            v.0 = 1;
+            let _open = Unwinding { started: self.started, tries: self.tries, waited: self.waited };
+            panic!("torn");
+        })
+        .expect("free");
+        Ok(Step::Done)
+    }
+}
+
+/// Tries `value` once it has started to unwind, and notes what it met.
+#[crate::process]
+struct Tries<'a> {
+    value: &'a Exclusive<(u32, u32)>,
+    started: &'a AtomicBool,
+    tries: &'a AtomicU32,
+    seen: Vec<Result<bool, Locked>>,
+}
+
+impl Tries<'_> {
+    fn step(&mut self) -> Result<Step, ()> {
+        if self.started.load(SeqCst) {
+            self.seen.push(with(self.value, |v| v.0 == 1 && v.1 == 0));
+            self.tries.fetch_add(1, SeqCst);
+        }
+        Ok(Step::Idle)
+    }
+}
+
 #[test]
 fn a_sibling_sees_busy_or_abandoned_while_a_panic_unwinds_and_never_a_torn_value() {
     let mut value = Exclusive::new((0u32, 0u32));
     let (started, waited) = (AtomicBool::new(false), AtomicBool::new(false));
     let tries = AtomicU32::new(0);
-    let mut seen = Vec::new();
+    let mut tried = Tries { value: &value, started: &started, tries: &tries, seen: Vec::new() };
     let unwound = catch_unwind(AssertUnwindSafe(|| {
-        crate::concurrent! {
-            || {
-                value
-                    .with::<()>(|v| {
-                        v.0 = 1;
-                        let _open = Unwinding { started: &started, tries: &tries, waited: &waited };
-                        panic!("torn");
-                    })
-                    .expect("free");
-                Ok::<_, ()>(Step::Done)
-            },
-            || {
-                if started.load(SeqCst) {
-                    seen.push(value.with(|v| v.0 == 1 && v.1 == 0));
-                    tries.fetch_add(1, SeqCst);
-                }
-                Ok::<_, ()>(Step::Idle)
-            },
-        }
+        crate::concurrent!(Unwinds { value: &value, started: &started, tries: &tries, waited: &waited }, &mut tried)
     }));
+    let seen = tried.seen;
     assert_eq!(unwound.expect_err("the panic is resumed").downcast_ref::<&str>(), Some(&"torn"));
     assert!(waited.load(SeqCst), "the sibling tried while the panic unwound");
     let busy = seen.iter().filter(|&&s| s == Err(Locked::Busy)).count();

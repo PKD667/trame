@@ -5,8 +5,6 @@ use std::sync::atomic::{
     AtomicU32, Ordering::Acquire, Ordering::Relaxed, Ordering::Release as ReleaseOrdering,
 };
 
-use super::NoUninit;
-
 /// Why `with` did not run its closure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Locked {
@@ -38,20 +36,6 @@ impl<T> Exclusive<T> {
         }
     }
 
-    /// One attempt; a held value is `Busy`, never waited for.
-    pub fn with<R: NoUninit>(&self, f: impl FnOnce(&mut T) -> R) -> Result<R, Locked> {
-        match self.state.compare_exchange(FREE, HELD, Acquire, Relaxed) {
-            Ok(_) => {}
-            Err(ABANDONED) => return Err(Locked::Abandoned),
-            Err(_) => return Err(Locked::Busy),
-        }
-        let release = Release(&self.state);
-        // SAFETY: HELD admits one caller.
-        let result = f(unsafe { &mut *self.value.get() });
-        drop(release);
-        Ok(result)
-    }
-
     pub fn get_mut(&mut self) -> &mut T {
         self.value.get_mut()
     }
@@ -59,6 +43,20 @@ impl<T> Exclusive<T> {
     pub fn into_inner(self) -> T {
         self.value.into_inner()
     }
+}
+
+/// One attempt; a held value is `Busy`, never waited for.
+pub fn with<T, R>(on: &Exclusive<T>, f: impl FnOnce(&mut T) -> R) -> Result<R, Locked> {
+    match on.state.compare_exchange(FREE, HELD, Acquire, Relaxed) {
+        Ok(_) => {}
+        Err(ABANDONED) => return Err(Locked::Abandoned),
+        Err(_) => return Err(Locked::Busy),
+    }
+    let release = Release(&on.state);
+    // SAFETY: HELD admits one caller.
+    let result = f(unsafe { &mut *on.value.get() });
+    drop(release);
+    Ok(result)
 }
 
 struct Release<'a>(&'a AtomicU32);

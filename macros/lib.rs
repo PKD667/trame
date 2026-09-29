@@ -6,12 +6,25 @@
 
 mod parse;
 
-use parse::{Fun, Param, Wrong, function, is, refuse, text, word, wrong};
+use parse::{Fun, Param, Wrong, declared, function, is, refuse, text, word, wrong};
 use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
 
 #[proc_macro_attribute]
 pub fn parallel(attr: TokenStream, item: TokenStream) -> TokenStream {
     lower(attr, item)
+}
+
+/// Declares a persistent process: a hidden inherent method that an undeclared object lacks.
+#[proc_macro_attribute]
+pub fn process(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if let Some(t) = attr.into_iter().next() {
+        return refuse(Wrong { at: t.span(), says: "`#[process]` takes no arguments".into() });
+    }
+    let tokens: Vec<TokenTree> = item.into_iter().collect();
+    match declared(&tokens) {
+        Ok(witness) => tokens.into_iter().chain(code(&witness)).collect(),
+        Err(w) => refuse(w),
+    }
 }
 
 /// Reached only when no `#[parallel]` above it consumed it.

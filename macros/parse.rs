@@ -257,3 +257,48 @@ fn result_error(signature: &[TokenTree]) -> Option<Vec<TokenTree>> {
         _ => None,
     }
 }
+
+/// The header of an `impl` that names a struct again: its parameters without their defaults, the
+/// arguments that name them, and its `where` clause.
+pub fn declared(tokens: &[TokenTree]) -> Result<String, Wrong> {
+    let Some(at) = tokens.iter().position(|t| word(t, "struct")) else {
+        return wrong(Span::call_site(), "`#[process]` goes on a struct");
+    };
+    let Some(TokenTree::Ident(name)) = tokens.get(at + 1) else {
+        return wrong(tokens[at].span(), "a struct has a name");
+    };
+    let text = |t: &[TokenTree]| t.iter().cloned().collect::<TokenStream>().to_string();
+    let mut rest = &tokens[at + 2..];
+    let (mut params, mut args) = (Vec::new(), Vec::new());
+    if rest.first().is_some_and(|t| is(t, '<')) {
+        let mut depth = 0;
+        let close = (0..rest.len()).position(|i| {
+            depth += is(&rest[i], '<') as i32 - (is(&rest[i], '>') && !is(&rest[i - 1], '-')) as i32;
+            depth == 0
+        });
+        let Some(close) = close else { return wrong(name.span(), "unclosed generics") };
+        for one in commas(&rest[1..close]) {
+            // A parameter's name is its first token, after `const`, and with a lifetime's `'`.
+            let from = usize::from(word(&one[0], "const"));
+            args.push(text(&one[from..from + 1 + usize::from(is(&one[from], '\''))]));
+            let mut depth = 0;
+            let default = one.iter().position(|t| {
+                depth += is(t, '<') as i32 - is(t, '>') as i32;
+                depth == 0 && is(t, '=')
+            });
+            params.push(text(&one[..default.unwrap_or(one.len())]));
+        }
+        rest = &rest[close + 1..];
+    }
+    let stop = |t: &&TokenTree| matches!(t, TokenTree::Group(g) if g.delimiter() == Delimiter::Brace) || is(t, ';');
+    let predicates: Vec<TokenTree> = match rest.iter().position(|t| word(t, "where")) {
+        Some(w) => rest[w + 1..].iter().take_while(|t| !stop(t)).cloned().collect(),
+        None => Vec::new(),
+    };
+    Ok(format!(
+        "impl<{}> {name}<{}> where {} {{ #[doc(hidden)] pub const fn __declared(&self) {{}} }}",
+        params.join(", "),
+        args.join(", "),
+        text(&predicates)
+    ))
+}
