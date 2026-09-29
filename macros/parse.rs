@@ -103,6 +103,11 @@ impl Param {
         format!("{}: {}", text(&self.pattern), text(&self.ty))
     }
 
+    /// A `&C` or `&'a C`.
+    pub fn shared(&self) -> bool {
+        self.ty.first().is_some_and(|t| is(t, '&')) && !self.unique()
+    }
+
     pub fn unique(&self) -> bool {
         self.pointee().is_some()
     }

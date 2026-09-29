@@ -1,5 +1,7 @@
 // The accepted grammar, each form once, run through `invoke!`.
 
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::Relaxed};
+
 use trame::sync::{Exclusive, with};
 use trame::{Invoked, Keyed, Step, concurrent, invoke, parallel, process};
 
@@ -44,24 +46,24 @@ impl<T: Copy + Into<u32> + Send, const N: u32> Count<'_, '_, T, N> {
 
 impl Worker {
     #[parallel]
-    fn total(&self, hit: Hit, sum: &mut u64) -> Result<(), ()> {
-        *sum += hit.amount;
+    fn total(&self, hit: Hit, sum: &AtomicU64) -> Result<(), ()> {
+        sum.fetch_add(hit.amount, Relaxed);
         Ok(())
     }
 
     #[parallel]
     #[trame::ordered(key = hit.at.0: usize)]
-    fn charge(&self, hit: Hit, cell: &mut u64, charges: &mut u32) -> Result<(), ()> {
+    fn charge(&self, hit: Hit, cell: &mut u64, charges: &AtomicU32) -> Result<(), ()> {
         *cell += hit.amount;
-        *charges += 1;
+        charges.fetch_add(1, Relaxed);
         Ok(())
     }
 
     pub fn run(&self, hits: &[Hit], cells: &mut [u64]) -> Result<(), Invoked<()>> {
-        let mut sum = 0;
-        invoke!(self.total, &mut sum, hits).map_err(Invoked::Failed)?;
-        invoke!(self.charge, &mut 0, hits, Keyed::new(cells))?;
-        let total = Exclusive::new(sum);
+        let sum = AtomicU64::new(0);
+        invoke!(self.total, &sum, hits).map_err(Invoked::Failed)?;
+        invoke!(self.charge, &AtomicU32::new(0), hits, Keyed::new(cells))?;
+        let total = Exclusive::new(sum.into_inner());
         let (zero, one) = (0u8, 1u8);
         let mut count = Count::<u8> { left: 0, at: &zero, other: &one };
         concurrent!(Add(&total), &mut count).map_err(Invoked::Failed)

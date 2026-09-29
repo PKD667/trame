@@ -30,28 +30,27 @@ struct Hit {
     amount: f64,
 }
 
-/// The state the workload mutates, and the checksum of every write in order.
-struct Cells {
-    charge: Vec<f64>,
-    marks: u64,
-}
+/// The state the workload mutates: each cell's charge and the checksum of its writes in order.
+struct Cells(Vec<(f64, u64)>);
 
 impl Cells {
     fn new(n: usize) -> Self {
-        Cells {
-            charge: vec![0.0; n],
-            marks: 0,
-        }
+        Cells(vec![(0.0, 0); n])
+    }
+
+    /// Cells do not share a write order, so their checksums are summed.
+    fn marks(&self) -> u64 {
+        self.0.iter().fold(0, |sum, cell| sum.wrapping_add(cell.1))
     }
 }
 
 /// The update itself, shared by both paths so that a difference between them can only come from
 /// the lowering and never from the arithmetic.
 #[inline(always)]
-fn apply(cell: &mut f64, marks: &mut u64, hit: Hit) {
-    *cell = *cell * 0.97 + hit.amount;
-    if *cell > 1.0 {
-        *cell -= 1.0;
+fn apply((charge, marks): &mut (f64, u64), hit: Hit) {
+    *charge = *charge * 0.97 + hit.amount;
+    if *charge > 1.0 {
+        *charge -= 1.0;
         // An order-sensitive checksum: it folds the cell index and the running total, so two
         // schedules that touch one cell in different orders disagree here.
         *marks = marks
@@ -63,7 +62,7 @@ fn apply(cell: &mut f64, marks: &mut u64, hit: Hit) {
 
 fn reference(cells: &mut Cells, hits: &[Hit]) {
     for &hit in hits {
-        apply(&mut cells.charge[hit.cell], &mut cells.marks, hit);
+        apply(&mut cells.0[hit.cell], hit);
     }
 }
 
@@ -72,13 +71,13 @@ struct Pump;
 impl Pump {
     #[trame::parallel]
     #[trame::ordered(key = hit.cell: usize)]
-    fn charge(&self, hit: Hit, cell: &mut f64, marks: &mut u64) -> Result<(), Infallible> {
-        apply(cell, marks, hit);
+    fn charge(&self, hit: Hit, cell: &mut (f64, u64), _: &()) -> Result<(), Infallible> {
+        apply(cell, hit);
         Ok(())
     }
 
     fn invoked(&self, cells: &mut Cells, hits: &[Hit]) {
-        trame::invoke!(self.charge, &mut cells.marks, hits, Keyed::new(&mut cells.charge[..]))
+        trame::invoke!(self.charge, &(), hits, Keyed::new(&mut cells.0[..]))
             .expect("every hit names a cell");
     }
 }
@@ -131,8 +130,7 @@ fn main() {
     reference(&mut a, &hits);
     let mut b = Cells::new(cells);
     pump.invoked(&mut b, &hits);
-    assert_eq!(a.marks, b.marks, "the invoked path wrote in a different order");
-    assert_eq!(a.charge, b.charge, "the invoked path reached a different state");
+    assert_eq!(a.0, b.0, "the invoked path reached a different state or wrote in a different order");
 
     // And the timings, one line per round, in the order they ran.
     println!(
@@ -151,13 +149,13 @@ fn main() {
         let plain = timed(|| reference(&mut one, &hits));
         let mut two = Cells::new(cells);
         let invoked = timed(|| pump.invoked(&mut two, &hits));
-        assert_eq!(one.marks, two.marks);
+        assert_eq!(one.0, two.0);
         ratios.push(invoked / plain);
         println!(
             "{{\"what\":\"round\",\"round\":{round},\"reference_s\":{plain:.6},\
              \"invoked_s\":{invoked:.6},\"ratio\":{:.4},\"checksum\":{}}}",
             invoked / plain,
-            one.marks
+            one.marks()
         );
     }
     ratios.sort_by(f64::total_cmp);
