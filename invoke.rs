@@ -35,12 +35,8 @@ impl<'a, K: Copy + Into<usize>, T> Keyed<'a, K, T> {
         }
     }
 
-    pub(crate) fn slot<E>(&mut self, key: K) -> Result<&mut T, Invoked<E>> {
-        let len = self.state.len();
-        let key = key.into();
+    pub(crate) fn into_slots(self) -> &'a mut [T] {
         self.state
-            .get_mut(key)
-            .ok_or(Invoked::OutOfRange { key, len })
     }
 }
 
@@ -54,7 +50,7 @@ pub enum Invoked<E> {
 /// Run every item of `items` through `f`, join them all, and return the first `Err` in list order.
 ///
 /// ```ignore
-/// trame::invoke!(self.integrate, &mut pass, &frames, trame::Keyed::new(&mut slots[..]))?;
+/// trame::invoke!(integrate, &pass, &frames, trame::Keyed::new(&mut slots[..]))?;
 /// ```
 #[macro_export]
 macro_rules! invoke {

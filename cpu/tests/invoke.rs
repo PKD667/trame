@@ -2,8 +2,8 @@
 // the calling thread, and `concurrent!` is one scoped thread per arm with no round barrier.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::{Barrier, mpsc};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::SeqCst};
+use std::sync::{Barrier, Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering::SeqCst};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -20,43 +20,45 @@ struct Rig;
 
 impl Rig {
     #[crate::parallel]
-    fn note(&self, hit: Hit, seen: &mut Vec<i64>) -> Result<(), i64> {
-        seen.push(hit.amount);
+    fn note(&self, hit: Hit, seen: &Mutex<Vec<i64>>) -> Result<(), i64> {
+        seen.lock().unwrap().push(hit.amount);
         if hit.amount < 0 { Err(hit.amount) } else { Ok(()) }
     }
 
     #[crate::parallel]
     #[crate::ordered(key = hit.cell: usize)]
-    fn charge(&self, hit: Hit, cell: &mut i64, charges: &mut usize) -> Result<(), ()> {
+    fn charge(&self, hit: Hit, cell: &mut i64, charges: &AtomicUsize) -> Result<(), ()> {
         *cell += hit.amount;
-        *charges += 1;
+        charges.fetch_add(1, SeqCst);
         Ok(())
     }
 }
 
 #[test]
-fn parallel_runs_the_list_in_order_and_answers_with_its_first_err() {
+fn parallel_visits_every_item_once_and_answers_with_its_first_err_in_list_order() {
     let hits = [5, -1, 7, -2].map(|amount| Hit { cell: 0, amount });
-    let mut seen = Vec::new();
-    assert_eq!(crate::invoke!(Rig.note, &mut seen, &hits), Err(-1));
-    assert_eq!(seen, [5, -1, 7, -2], "an Err does not stop the items after it");
+    let seen = Mutex::new(Vec::new());
+    assert_eq!(crate::invoke!(Rig.note, &seen, &hits), Err(-1));
+    let mut seen = seen.into_inner().unwrap();
+    seen.sort();
+    assert_eq!(seen, [-2, -1, 5, 7], "an Err does not stop the items after it");
 }
 
 #[test]
 fn an_ordered_call_reaches_the_slot_its_key_names() {
     let hits = [(0, 3), (1, 5), (0, 7)].map(|(cell, amount)| Hit { cell, amount });
     let mut cells = [0i64; 2];
-    let mut charges = 0;
+    let charges = AtomicUsize::new(0);
     let rig = Rig;
-    crate::invoke!(rig.charge, &mut charges, &hits, Keyed::new(&mut cells[..])).expect("in range");
-    assert_eq!((cells, charges), ([10, 5], 3));
+    crate::invoke!(rig.charge, &charges, &hits, Keyed::new(&mut cells[..])).expect("in range");
+    assert_eq!((cells, charges.load(SeqCst)), ([10, 5], 3));
 
     let astray = [Hit { cell: 2, amount: 1 }, Hit { cell: 0, amount: 1 }];
     assert_eq!(
-        crate::invoke!(rig.charge, &mut charges, &astray, Keyed::new(&mut cells[..])),
+        crate::invoke!(rig.charge, &charges, &astray, Keyed::new(&mut cells[..])),
         Err(Invoked::OutOfRange { key: 2, len: 2 })
     );
-    assert_eq!((cells, charges), ([11, 5], 4), "the item after the refused one ran");
+    assert_eq!((cells, charges.load(SeqCst)), ([11, 5], 4), "the item after the refused one ran");
 }
 
 /// A bound on a wait another thread is about to end, so a failure is a failure and not a hang.
@@ -337,4 +339,76 @@ fn a_panic_in_setup_after_an_arm_spawned_stops_that_arm_before_the_join() {
         .expect("an arm Idle forever hung the join");
     assert!(resumed, "the setup panic is resumed");
     setup.join().expect("the setup thread ends");
+}
+
+/// One item per hit, keyed by cell: each slot collects its amounts in the order it was given them.
+fn histories(threads: usize, hits: &[Hit], cells: usize) -> (Vec<Vec<i64>>, Result<(), Invoked<i64>>) {
+    let mut slots = vec![Vec::new(); cells];
+    let answer = crate::run::ordered_on(
+        threads,
+        &(),
+        hits,
+        Keyed::new(&mut slots[..]),
+        |hit| hit.cell,
+        |hit, slot: &mut Vec<i64>, _: &()| {
+            slot.push(hit.amount);
+            if hit.amount < 0 { Err(hit.amount) } else { Ok(()) }
+        },
+    );
+    (slots, answer)
+}
+
+#[test]
+fn a_key_keeps_its_history_and_the_answer_is_the_same_at_any_thread_count() {
+    let hits: Vec<Hit> = (0..200).map(|i| Hit { cell: (i * 7) % 13, amount: if i == 32 || i == 150 { -(i as i64) } else { i as i64 } }).collect();
+    let (one, answer) = histories(1, &hits, 13);
+    assert_eq!(answer, Err(Invoked::Failed(-32)), "the first failure in list order");
+    for threads in [2, 5, 64] {
+        assert_eq!(histories(threads, &hits, 13), (one.clone(), answer), "{threads} threads");
+    }
+    let astray = [Hit { cell: 3, amount: 1 }, Hit { cell: 40, amount: 1 }, Hit { cell: 3, amount: -9 }];
+    assert_eq!(histories(4, &astray, 13).1, Err(Invoked::OutOfRange { key: 40, len: 13 }), "the astray key is item 1, before the failure at item 2");
+}
+
+#[test]
+fn distinct_keys_run_on_distinct_threads() {
+    let hits: Vec<Hit> = (0..8).map(|cell| Hit { cell, amount: 0 }).collect();
+    let mut slots = vec![None; 8];
+    crate::run::ordered_on(
+        4,
+        &(),
+        &hits,
+        Keyed::new(&mut slots[..]),
+        |hit| hit.cell,
+        |_, slot: &mut Option<thread::ThreadId>, _: &()| {
+            *slot = Some(thread::current().id());
+            Ok::<_, ()>(())
+        },
+    )
+    .expect("every key names a slot");
+    let threads: std::collections::HashSet<_> = slots.into_iter().collect();
+    assert_eq!(threads.len(), 4, "one thread per group");
+}
+
+#[test]
+fn a_panic_joins_the_other_keys_work_before_it_unwinds() {
+    let done = AtomicUsize::new(0);
+    let hits: Vec<Hit> = (0..8).map(|cell| Hit { cell, amount: 0 }).collect();
+    let mut slots = vec![(); 8];
+    let unwound = catch_unwind(AssertUnwindSafe(|| {
+        crate::run::ordered_on(
+            8,
+            &(),
+            &hits,
+            Keyed::new(&mut slots[..]),
+            |hit| hit.cell,
+            |hit, _: &mut (), _: &()| {
+                assert!(hit.cell != 3, "torn");
+                done.fetch_add(1, SeqCst);
+                Ok::<_, ()>(())
+            },
+        )
+    }));
+    assert!(unwound.is_err());
+    assert_eq!(done.load(SeqCst), 7, "every key but the one that panicked finished");
 }

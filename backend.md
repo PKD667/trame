@@ -16,8 +16,8 @@ implementation. There is no backend trait for applications to implement, schedul
 manage, or run-time backend registry.
 
 **This is the target contract, not a certificate that every implementation satisfies it.**
-Struct-level `#[process]` and ownership-based shared primitives below include proposed changes.
-The current source still has closure arms and `NoUninit` bounds on shared primitives.
+The CPU backends (none, mpi, rma, rma-lossy) implement `#[process]`, the owned shared primitives and
+shared-context threaded invocation; the leader endpoint functions and `nv` are not yet migrated.
 [execution.md](execution.md) records the migration and existing failures; those failures remain
 failures of the version that was tested.
 
@@ -448,13 +448,11 @@ other. That slot is the only mutable borrow an item receives. The context is sha
 keyed slot goes through those primitives, never through an aliased `&mut`. An optional `&self`
 receiver is shared in the same way.
 
-Items come from `&[I]` with `I: Copy`, because each body receives an item by value from that
-borrowed list. A key is `Copy + Into<usize>`; its type distinguishes keyed views. Slots are
-`T: Send` and errors `E: Send`, because a body may run on an execution thread other than the
-caller's. These bounds describe the Rust call, not a device transport representation.
-
-This signature is a proposed change: the current declarations take `&mut C`, which no lowering
-other than a sequential loop can honour.
+Items come from `&[I]` with `I: Copy + Send`: each body receives an item by value from that
+borrowed list, and a copied item may be handed to an execution thread other than the caller's.
+`Copy` alone does not allow that (a copied `&Cell<u32>` is `Copy` and not `Send`), and `Sync` is
+not needed, since an item is moved once and never shared. A key is `Copy + Into<usize>`; its type
+distinguishes keyed views. Slots are `T: Send` and errors `E: Send`, for the same reason. These bounds describe the Rust call, not a device transport representation.
 
 `invoke!` visits every item once and joins the work before returning. An item error does not
 cancel later items. A keyed item outside the slice records `Invoked::OutOfRange { key, len }`

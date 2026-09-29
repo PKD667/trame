@@ -76,10 +76,10 @@ fn shape(f: &Fun) -> Result<Shape<'_>, Wrong> {
     if item.unique() {
         return wrong(item.at(), extra(&item.written()));
     }
-    if !cx.unique() {
+    if !cx.shared() {
         return wrong(
             cx.at(),
-            format!("`#[parallel]` takes its context as `&mut C`: each call owns it; `{}` is not", cx.written()),
+            format!("`#[parallel]` takes its context as a shared `&C`: every item reads it at once; `{}` is not", cx.written()),
         );
     }
     for p in middle {
@@ -115,7 +115,7 @@ fn shape(f: &Fun) -> Result<Shape<'_>, Wrong> {
 
 fn extra(written: &str) -> String {
     format!(
-        "`{written}` is a second `&mut`: only a `#[parallel]` context and an `#[ordered]` slot are `&mut`"
+        "`{written}` is a second `&mut`: only an `#[ordered]` slot is `&mut`"
     )
 }
 

@@ -20,7 +20,7 @@ fn update(cell: &mut u64, charge: u64) {
 
 #[trame::parallel]
 #[trame::ordered(key = hit.target: usize)]
-fn charge(hit: Hit, cell: &mut u64, _: &mut ()) -> Result<(), Infallible> {
+fn charge(hit: Hit, cell: &mut u64, _: &()) -> Result<(), Infallible> {
     update(cell, hit.charge);
     Ok(())
 }
@@ -28,7 +28,7 @@ fn charge(hit: Hit, cell: &mut u64, _: &mut ()) -> Result<(), Infallible> {
 #[unsafe(no_mangle)]
 pub extern "C" fn declared_body(cells: *mut u64, n: usize, hits: *const Hit, m: usize) -> bool {
     let (cells, hits) = unsafe { (std::slice::from_raw_parts_mut(cells, n), std::slice::from_raw_parts(hits, m)) };
-    trame::invoke!(charge, &mut (), hits, Keyed::new(cells)).is_ok()
+    trame::invoke!(charge, &(), hits, Keyed::new(cells)).is_ok()
 }
 
 #[unsafe(no_mangle)]

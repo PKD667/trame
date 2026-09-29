@@ -9,7 +9,7 @@ struct W {
 impl W {
     #[trame::parallel]
     #[trame::ordered(key = self.cell: usize)]
-    fn charge(&self, hit: Hit, slot: &mut u64, cx: &mut ()) -> Result<(), ()> {
+    fn charge(&self, hit: Hit, slot: &mut u64, cx: &()) -> Result<(), ()> {
         *slot += hit.cell as u64;
         Ok(())
     }
