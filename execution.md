@@ -287,16 +287,6 @@ entry and match transport, barrier and atomic address domains to it. The port do
 that device prerequisite, resident launch admission, production W1 receive lowering, or W5 device
 ownership. Scalar execution is the primary lowering, not a fallback or an acceleration claim.
 
-Pinned nightly-2026-04-03 (`55e86c996`) host validation at this checkpoint: 53 unit tests passed,
-2 ignored; the exact ignored claims and pressure tests each passed separately. Evidence is
-`/home/pkd/code/agents/nerve-nv-20260929/port-{host,claims,pressure}.log`. A1/S1 still check named
-`Unimplemented` refusals, not Remote or segment transfer. The removed word-copy roundtrip test
-belonged to the deleted broadcast representation; the existing Busy, FIFO, close, resplit,
-abandonment, invocation and process falsifiers remain. The invocation tests now require one
-list-order outcome, owned non-Copy errors, infallible bodies and effects after failure, rather
-than the old contract-violating lane-local answers. No CUDA test ran. Non-Copy handoff/drop-count
-and device ownership/address-domain witnesses remain required for W5 certification.
-
 ### Required ownership changes
 
 Current slots are `Vec<Exclusive<Slot>>`, shared with intake queries. They cannot be borrowed as
