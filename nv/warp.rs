@@ -1,30 +1,10 @@
-//! Physical warp identity, collectives and index splitting for cooperative transport/probes.
-//! Item invocation itself is inline and does not use this split.
+//! Physical warp identity and the scalar worker owner.
 //!
-//! A rank here is one warp, so the warp is the unit of task parallelism and the lane is the unit
-//! of data parallelism. This module is the *device module* the backend in `trame/nv/` is built
-//! on: it answers "which lane am I", "how do the lanes of this warp rendezvous", "how does one
-//! lane see another's register", and "which indices of a range are mine". It names no model type
-//! and holds no application policy.
-//!
-//! Two implementations, one interface, chosen at compile time exactly as `transport` chooses
-//! between `sim` and `cuda`:
-//!
-//! * without the `cuda` feature, the **host model**: a warp is 32 sequential passes of one body
-//!   over the same memory, driven by [`sim`]. It exercises the lane identity and the index split
-//!   independently of the inline invocation runner, and it *refuses* the four
-//!   collectives, because moving a value from lane 3 to lane 7 is not something a sequence of
-//!   whole-warp passes can model, and a model that returned an answer there would be a wrong
-//!   answer rather than a missing one.
-//! * with the `cuda` feature, the device: `cuda_device::warp`, and the split is the same
-//!   arithmetic over the hardware's `%laneid`.
-//!
-//! # Why the split lives here and not in the macro
-//!
-//! The walk is a fact about this machine — 32 lanes, one stride — and not about the attribute, so
-//! it is a value here that a test can call directly ([`Split`]). That is what makes "the list was
-//! partitioned, and the union of the parts is the list" checkable without a GPU
-//! (see `tests/warp.rs`).
+//! Lane zero owns application state, invocation and endpoints. The remaining
+//! lanes leave device entry before `init`; scalar transport needs no lane vote.
+//! Split and collective helpers remain independent machine utilities, not the
+//! invocation lowering. The host model checks identity and splits but cannot
+//! establish CUDA scheduling or atomic address-space legality.
 
 #[cfg(feature = "cuda")]
 mod cuda;
@@ -41,8 +21,19 @@ pub use sim::{lane, sim, sim_lane, sim_warp, sync};
 
 #[cfg(feature = "cuda")]
 pub use cuda::here_id;
+#[cfg(feature = "cuda")]
+pub(crate) use cuda::cohort;
 #[cfg(not(feature = "cuda"))]
 pub use sim::here_id;
+#[cfg(not(feature = "cuda"))]
+pub(crate) use sim::cohort;
+
+/// The sole application owner of this physical warp. Check this at kernel entry,
+/// before constructing application state or calling `init`.
+#[inline(always)]
+pub fn is_owner() -> bool {
+    lane() == 0
+}
 
 /// Lanes in the current physical warp and the stride every split walk takes.
 pub const LANES: u32 = 32;

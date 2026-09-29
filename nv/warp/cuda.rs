@@ -1,11 +1,8 @@
 //! The device side of the warp surface: `cuda_device::warp`, with the participation mask named
 //! once.
 //!
-//! Every collective here is the full-warp form. A sub-warp mask is a real thing on this hardware
-//! and it is not something this backend uses: a rank is a whole warp and its lanes are all
-//! present at every rendezvous, so `u32::MAX` is not a default, it is the only mask that can
-//! arise. A backend that wanted partial warps would have to say where the mask comes from, and
-//! that is a second code path rather than an argument to this one.
+//! These full-warp helpers are not the worker route. Scalar owners never call
+//! them after the other lanes leave application entry.
 
 /// This warp's index in the launch.
 ///
@@ -51,4 +48,12 @@ pub fn ballot(pred: bool) -> u32 {
 #[inline(always)]
 pub fn shuffle(value: u32, src: u32) -> u32 {
     cuda_device::warp::shuffle(value, src)
+}
+
+/// A single resident block contains the entire scalar-owner cohort.
+#[inline(always)]
+pub(crate) fn cohort(size: u32) -> bool {
+    use cuda_device::thread::{blockDim_x, blockDim_y, blockDim_z, gridDim_x, gridDim_y, gridDim_z};
+    gridDim_x() == 1 && gridDim_y() == 1 && gridDim_z() == 1
+        && blockDim_y() == 1 && blockDim_z() == 1 && blockDim_x() == size * super::LANES
 }

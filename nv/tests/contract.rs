@@ -441,3 +441,43 @@ fn the_plan_is_the_topology_the_contract_asks_for() {
     declare(&mut cx, &workers, &edges(&[(0, 1)]), bytes, t(1));
     declare(&mut cx, &workers, &edges(&[(0, 1)]), bytes, t(1));
 }
+
+
+#[test]
+fn nonowners_are_refused_before_the_entry_barrier() {
+    let layout = Layout::new(2, MAX_FRAME as u32).expect("a valid layout");
+    let (region, words) = region(1);
+    launch::describe(Description::stated(1, Some(l(1)), Fabric::new(1, layout), region, words));
+    for lane in 1..warp::LANES {
+        let failure = warp::sim_lane(lane, || entry(&[l(0)]))
+            .err().expect("a nonowner must not enter or touch the barrier");
+        assert_eq!(failure.participant, crate::Participant::Entering(Some(l(0))));
+        assert_eq!(failure.kind, INCONSISTENT);
+    }
+    let cx = warp::sim_lane(0, || entry(&[l(0)])).expect("the one owner enters");
+    assert_eq!((nv::rank(&cx), nv::size(&cx)), (0, 1));
+}
+
+
+#[test]
+fn owner_entry_calls_inline_runners_and_owned_callbacks_once() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let calls = AtomicUsize::new(0);
+    let callbacks = AtomicUsize::new(0);
+    let exclusive = nv::sync::Exclusive::new(7u32);
+    let mut entered = 0;
+    warp::sim(|| {
+        if !warp::is_owner() { return; }
+        entered += 1;
+        nv::run::parallel(&calls, &[0u32, 1, 2], |_, count| {
+            count.fetch_add(1, Ordering::Relaxed);
+            Ok::<(), Box<u32>>(())
+        }).expect("inline list");
+        let result = nv::sync::with(&exclusive, |value| {
+            callbacks.fetch_add(1, Ordering::Relaxed);
+            Box::new(*value)
+        }).expect("one owned result");
+        assert_eq!(*result, 7);
+    });
+    assert_eq!((entered, calls.load(Ordering::Relaxed), callbacks.load(Ordering::Relaxed)), (1, 3, 1));
+}

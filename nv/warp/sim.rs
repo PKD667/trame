@@ -87,3 +87,6 @@ pub fn sim_lane<R>(k: u32, body: impl FnOnce() -> R) -> R {
     LANE.with(|l| l.set(previous));
     out
 }
+
+// The host launcher supplies one thread per owner; CUDA geometry is not simulated.
+pub(crate) fn cohort(_size: u32) -> bool { true }

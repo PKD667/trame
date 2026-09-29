@@ -383,3 +383,12 @@ The earlier A3 P1 Freeze-only display difference remains recorded above and in
 synthetic implementation lists. That difference is excluded because `backend.md` states incidental
 compiler-generated traits are not contract promises. Its exclusion is not a P1 pass: the client
 witness failures above remain red.
+
+
+nv selects lane zero before worker entry. Other lanes are not application callers;
+`init` refuses them before touching a barrier. The bounded cohort occupies one
+block, with one physical warp slot per owner. Rings and generation barriers are
+scalar acquire/release operations on launch-owned global memory, not full-mask
+collectives. Caller-local buffers and owned invocation outcomes stay with the
+owner. Cross-owner sync backing and CPU-mapped leader admission still need their
+own device evidence; host simulation does not establish address-space legality.

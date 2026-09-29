@@ -1,4 +1,4 @@
-//! Device transport: each rank is one warp over `device::{Tx, Rx}` rings.
+//! Device transport: each rank is one scalar owner over `device::{Tx, Rx}` rings.
 //!
 //! Mirrors the pingpong arena: `size × size` rings, link (src, dst) at
 //! `(src * size + dst) * layout.words()` words into `arena`.
@@ -34,8 +34,8 @@ impl CudaTransport {
     ///
     /// `arena` must cover `size * size * layout.words()` words of aligned
     /// global memory, each ring initialized by `Layout::init`, alive for the
-    /// endpoints' lifetime and not overlapping any concurrent access. Every
-    /// lane of rank `rank` must call this with the same pointer and layout.
+    /// endpoints' lifetime and not overlapping any concurrent access. Only the
+    /// scalar owner of rank `rank` may hold these endpoints.
     pub unsafe fn new(arena: *mut u32, layout: Layout, size: u32, rank: u32) -> Self {
         assert!(size as usize <= MAX_RANKS);
         Self {
