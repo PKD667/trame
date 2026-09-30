@@ -1178,11 +1178,10 @@ pub fn worker(env: Environment, hosts: &[&[Launch]], here: u16, leader: Launch) 
 pub fn leader(env: Environment, me: Launch, hosts: &[&[Launch]], here: u16) -> bool {
     let who = Who(format!("leader {}", me.get()));
     let deployment = Deployment::new(hosts, here, me).expect("the launcher states a valid deployment");
-    // The route outlives the verdict: on MPI dropping it is collective with the workers' `done`,
-    // and a wait there belongs to whatever the workers are still doing, not to R1.
+    // Explicit finalization follows the verdict: its worker agreement is not R1's wait.
     // Announced before `open`, which is collective with the workers' `init`.
     who.line("R1", "\"event\":\"start\"");
-    let route = match Leader::open(env, deployment) {
+    let mut route = match Leader::open(env, deployment) {
         Ok(route) => route,
         Err(f) => return who.verdict("R1", Err(format!("open: {f:?}"))),
     };
@@ -1190,8 +1189,7 @@ pub fn leader(env: Environment, me: Launch, hosts: &[&[Launch]], here: u16) -> b
     let ok = who.verdict("R1", r1_leader(&route, &mine).map(|detail| format!("workers {mine:?}; {detail}")));
     who.line("S1", "\"event\":\"start\"");
     let ok = ok & who.verdict("S1", s1_leader(&route, &mine, me));
-    drop(route);
-    ok
+    ok & route.done::<Infallible>(Ok(())).is_ok()
 }
 
 /// A worker of the link launch: F1 alone, then `done`. Two hosts each have a worker 0, so a worker
@@ -1260,17 +1258,14 @@ pub fn pressure(env: Environment, hosts: &[&[Launch]], here: u16, leader: Launch
 }
 
 /// The leader of a launch whose claim needs none, the pressure launch's or a host's in the link
-/// launch: it opens the route every deployment has and holds it until the workers' `done`, which
-/// on MPI is collective with its drop. It carries no frame and makes no claim; a failure to open
+/// launch: it opens the route every deployment has and calls `done` with its workers.
+/// It carries no frame and makes no claim; a failure to open
 /// is reported under `claim`, the one its workers are in.
 pub fn pressure_leader(env: Environment, me: Launch, hosts: &[&[Launch]], here: u16, claim: &str) -> bool {
     let who = Who(format!("leader {}", me.get()));
     let deployment = Deployment::new(hosts, here, me).expect("the launcher states a valid deployment");
     match Leader::open(env, deployment) {
-        Ok(route) => {
-            drop(route);
-            true
-        }
+        Ok(mut route) => route.done::<Infallible>(Ok(())).is_ok(),
         Err(f) => who.verdict(claim, Err(format!("open: {f:?}"))),
     }
 }

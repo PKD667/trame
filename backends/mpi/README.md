@@ -20,4 +20,11 @@ before copying, so an exhausted `/dev/shm` is a refusal carrying its errno (`ENO
 `SIGBUS`. Publishing a revision the leader holds live is refused (`EEXIST`). A process that dies
 before retiring leaves its objects behind for the operator to remove.
 
-`leader::done` is not implemented yet: `Leader`'s `Drop` coordinates shutdown instead.
+Workers call `done`; leaders call the method `Leader::done`. Dropping either handle is not a
+shutdown operation. Every application first agrees that it has finished, then each rank detaches
+its buffered-send storage on a helper thread while the calling thread drains and discards unread
+Message/link/leader frames. A second job agreement keeps all receivers draining until all buffers
+have detached. Only then are communicators/windows freed and MPI finalized. This uses the
+`MPI_THREAD_MULTIPLE` level entry already requires: no silent application receiver must receive,
+and no application frame is delivered by shutdown. The existing M5 pressure launch falsifies this
+contract if `done` waits for application receipt or traffic drains before the send buffer fills.

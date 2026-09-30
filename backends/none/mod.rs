@@ -239,6 +239,10 @@ pub mod leader {
         pub fn recv(&self, _out: &mut [u8]) -> Result<Option<Frame>, Error> {
             Ok(None)
         }
+
+        pub fn done<A>(&mut self, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>> {
+            outcome
+        }
     }
 
     pub fn send(_cx: &mut Context, _tag: Tag, _data: &[u8]) -> Result<(), Error> {
