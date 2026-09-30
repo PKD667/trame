@@ -36,7 +36,7 @@ records rustc 1.96.0, commit `ac68faa20`, and Open MPI 5.0.10 for the MPI builds
 **M5 refutes shutdown under pressure.** Each MPI-family pressure log says
 `Ok(2047) after 2047 accepted sends to 1; entering done`. In the claim's code, `Ok(2047)` means
 the next send answered `Full`. All four workers then failed to report an M5 verdict before the
-150-second launch timeout. `shared/context.rs::done` begins with buffer detachment, which its
+150-second launch timeout. `backends/mpi/context.rs::done` begins with buffer detachment, which its
 own comment says waits for buffered sends; this is the first implementation point to investigate.
 The logs do not provide a stack trace. Increasing the timeout, draining on the silent receiver,
 or dropping M5 would not verify the stated contract.
