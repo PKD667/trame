@@ -5,8 +5,8 @@
 # and nothing else. The runtime's numbers are scripts/analysis/, and they are a different question.
 #
 #     trame/bench.sh                       # the mpi build, 2 ranks
-#     trame/bench.sh rma 4                 # the acknowledged ring, 4 ranks
-#     trame/bench.sh rma-lossy 4
+#     trame/bench.sh mpi 4                 # RMA lanes and MPI batches, 4 ranks
+#     trame/bench.sh lossy 4
 #     trame/bench.sh mpi 4 particles       # one named experiment
 #
 # `pingpong` times a round trip across message sizes. `verifiable` relaxes a grid and checks the
@@ -23,14 +23,16 @@ RANKS=${2:-2}
 EXPERIMENTS=${3:-"pingpong verifiable traffic"}
 
 # The backend says how to build for it and what launches it, so this file knows no backend by name.
-ENV=$(grep -lx "NAME=$BACKEND" trame/*/build.env 2>/dev/null | head -1)
+ENV=$(grep -lx "NAME=$BACKEND" trame/backends/*/build.env 2>/dev/null | head -1)
 if [ -z "$ENV" ]; then
-	echo "unknown backend: $BACKEND (no trame/*/build.env declares it)" >&2
-	echo "known: $(grep -h '^NAME=' trame/*/build.env 2>/dev/null | sed 's/^NAME=//' | tr '\n' ' ')" >&2
+	echo "unknown backend: $BACKEND (no trame/backends/*/build.env declares it)" >&2
+	echo "known: $(grep -h '^NAME=' trame/backends/*/build.env 2>/dev/null | sed 's/^NAME=//' | tr '\n' ' ')" >&2
 	exit 2
 fi
 # shellcheck source=/dev/null
 . "./$ENV"
+[ "$BACKEND" != lossy ] || FEATURES=trame/lossy
+FEATURES=${FEATURES#trame/}
 
 CORES=$(nproc 2>/dev/null || echo 1)
 if [ $((RANKS + 1)) -gt "$CORES" ]; then

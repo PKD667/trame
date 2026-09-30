@@ -1,7 +1,7 @@
 //! The device module's tests: the partition `#[parallel]` is lowered to, the lane identity,
 //! and the launch fabric.
 //!
-//! These are tests of the machinery `trame/nv/` is built on. What a
+//! These are tests of the machinery `trame/backends/nv/` is built on. What a
 //! *declaration* promises is tested in `declare.rs`, where the attributes are exercised.
 
 use crate::nv::warp::{self, LANES, Split};
@@ -85,5 +85,5 @@ fn a_lane_outside_a_warp_is_zero_and_a_context_is_restored() {
 
 // The launch record used to be tested here, as a global. It is not one any more: identity and
 // endpoints are participant-local state the caller owns, so per-participant identity is checked
-// where the backend that owns the context is, in `trame/nv/tests/contract.rs`. A test of a global that
+// where the backend that owns the context is, in `trame/backends/nv/tests/contract.rs`. A test of a global that
 // no longer exists would be a test of nothing.

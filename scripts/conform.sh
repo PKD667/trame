@@ -16,6 +16,8 @@ set -uo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 here=$root/trame/scripts
 cd "$root"
+CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-target}
+export CARGO_TARGET_DIR
 
 # Seconds a launch may run. S1 waits without a spin bound; the launcher's `timeout "$LAUNCH"` is
 # its only liveness detector. A worker that fails before its DONE leaves the leader waiting until
@@ -27,8 +29,8 @@ WORKERS=4
 # backend, then the backend's unit tests.
 if [ "${1:-}" = mpi-stage ]; then
 	out=$2
-	for backend in mpi rma rma-lossy; do
-		dir=target-${backend#rma-}
+	for backend in mpi lossy; do
+		dir=$CARGO_TARGET_DIR/conform-$backend
 		bin=$dir/debug/examples/conformance
 		if ! CARGO_TARGET_DIR=$dir cargo build -q -p trame --features "$backend" --example conformance 2>"$out/$backend.build.log"; then
 			echo "{\"claim\":\"X1\",\"backend\":\"$backend\",\"participant\":\"cargo\",\"verdict\":\"fail\",\"detail\":\"the conformance example does not build\"}" >"$out/$backend.build.jsonl"
@@ -68,16 +70,24 @@ echo "conform: output in $out"
 for backend in none nv; do
 	features=()
 	[ "$backend" = none ] || features=(--features nv)
-	cargo test -q -p trame "${features[@]}" --lib --no-run 2>"$out/$backend.build.log"
+	if [ "$backend" = nv ]; then
+		RUSTUP_TOOLCHAIN=nightly-2026-04-03 cargo test -q -p trame "${features[@]}" --lib --no-run 2>"$out/$backend.build.log"
+	else
+		cargo test -q -p trame "${features[@]}" --lib --no-run 2>"$out/$backend.build.log"
+	fi
 	if [ "$backend" = nv ]; then
 		for launch in claims pressure; do
-			timeout "$LAUNCH" cargo test -q -p trame "${features[@]}" --lib "nv::tests::conformance::$launch" \
+			timeout "$LAUNCH" env RUSTUP_TOOLCHAIN=nightly-2026-04-03 cargo test -q -p trame "${features[@]}" --lib "nv::tests::conformance::$launch" \
 				-- --ignored --exact --nocapture >"$out/$backend.$launch.raw" 2>"$out/$backend.$launch.log"
 			echo $? >"$out/$backend.$launch.status"
 			grep '^{"claim"' "$out/$backend.$launch.raw" >"$out/$backend.$launch.jsonl"
 		done
 	fi
-	timeout "$LAUNCH" cargo test -q -p trame "${features[@]}" >"$out/$backend.x1.log" 2>&1
+	if [ "$backend" = nv ]; then
+		timeout "$LAUNCH" env RUSTUP_TOOLCHAIN=nightly-2026-04-03 cargo test -q -p trame "${features[@]}" >"$out/$backend.x1.log" 2>&1
+	else
+		timeout "$LAUNCH" cargo test -q -p trame "${features[@]}" >"$out/$backend.x1.log" 2>&1
+	fi
 	echo $? >"$out/$backend.x1.status"
 done
 
@@ -97,7 +107,7 @@ status_line() {
 		'{claim:$c,backend:$b,participant:"script",verdict:$v,detail:$d}'
 }
 
-backends=(none nv mpi rma rma-lossy)
+backends=(none nv mpi lossy)
 claims=$(sed -n '/^pub const CLAIMS/,/^];/p' "$root/trame/conformance/claims.rs" | grep -o '"[A-Z0-9]*"' | tr -d '"')
 {
 	for backend in "${backends[@]}"; do
@@ -181,7 +191,7 @@ for claim in $claims X1 X2 P1; do
 				# A1's UNIMPLEMENTED cell; F1 is not counted, as a pass or otherwise.
 				cell=n/a
 				;;
-			F1:mpi | F1:rma | F1:rma-lossy)
+			F1:mpi | F1:lossy)
 				if jq -e -s '
 					[.[] | select(.claim == "F1" and .verdict)] as $s
 					| ($s | length) == 8

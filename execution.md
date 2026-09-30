@@ -18,7 +18,7 @@ Local evidence is in `/tmp/trame-freeze-20260925T200027/`: `env.before`, `fp.bef
 `conform.stdout`, `conform.exit`, and `suite/`. The script's original output is
 `/tmp/tmp.ewOw01wGB2/`. This is correctness evidence, not a performance measurement.
 
-| Check | none | nv host model | mpi | rma | rma-lossy |
+| Check | none | nv host model | mpi | lossy |
 |---|---|---|---|---|---|
 | Main-body claims D1 through C3 | not applicable | pass | pass | pass | pass |
 | M5: full route, then shutdown without delivery | not applicable | pass | fail | fail | fail |
@@ -369,7 +369,7 @@ performance-tuned constant is part of these first gates.
 
 `bash trame/scripts/surface.sh /home/pkd/code/agents/nerve-nv-20260929/target-W4/p1` ran with
 rustc/rustdoc 1.96.0-nightly (`55e86c996`) and isolated targets under that output. The five
-`all.html` inventories each contained 77 exported entries; nv, mpi, rma and rma-lossy each had an
+`all.html` inventories each contained 77 exported entries; nv, mpi and lossy each had an
 empty diff against none. The 45 expected-refusal fixtures passed, with structured rustc codes and
 primary spans at the marked obligation. The one comprehensive positive client fixture failed on
 all five selections; the verifier therefore exited 1 (five positive failures, 45 negative passes),

@@ -5,7 +5,7 @@
 use crate::contract::Span;
 use std::time::Duration;
 
-use crate::cpu::clock;
+use crate::host::clock;
 
 #[test]
 fn readings_never_go_backwards() {
