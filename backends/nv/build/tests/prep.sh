@@ -34,7 +34,7 @@ status=$(git -C "$NVMPI_CUDA_OXIDE" status --porcelain) || { echo "[prep] cannot
 cd "$NVMPI_CUDA_OXIDE"
 echo "[prep] running pinned setup at $actual_rev with $RUSTUP_TOOLCHAIN"
 run cargo oxide setup
-cd "$NVMPI_PROJECT/trame/nv/cargo"
+cd "$NVMPI_PROJECT/trame/backends/nv/cargo"
 run cargo build --locked --release
 
 backend="$NVMPI_CARGO_HOME/cuda-oxide/librustc_codegen_cuda.so"

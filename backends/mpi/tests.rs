@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::num::NonZeroU32;
 
 use crate::contract::{Addr, Edge};
-use crate::shared::context::FACTOR;
+use crate::mpi::context::FACTOR;
 
 /// The declaration the tests work from: edges ordered by `(source, destination)`, workers ascending
 /// and unique, which is what the geometry rules require and therefore what a test may hand over.
@@ -25,7 +25,7 @@ fn edges(pairs: &[(u32, u32)]) -> Vec<Edge> {
 #[test]
 fn the_window_is_indexed_by_position_in_the_worker_list() {
     let workers = [3, 1, 2];
-    let got = crate::shared::context::window(&workers, &edges(&[(3, 2)]), 64)
+    let got = crate::mpi::context::window(&workers, &edges(&[(3, 2)]), 64)
         .expect("a table");
     assert_eq!(got.len(), 1);
     // Rank 3 is first in the worker list and rank 2 is last, and a window is indexed by place
@@ -37,7 +37,7 @@ fn the_window_is_indexed_by_position_in_the_worker_list() {
 fn the_window_is_sorted_so_every_member_opens_the_same_one() {
     let workers = [0, 1, 2];
     let table = edges(&[(2, 0), (0, 1), (1, 2)]);
-    let got = crate::shared::context::window(&workers, &table, 8)
+    let got = crate::mpi::context::window(&workers, &table, 8)
         .expect("a table");
     let mut sorted = got.clone();
     sorted.sort_unstable();
@@ -49,7 +49,7 @@ fn the_window_is_sorted_so_every_member_opens_the_same_one() {
 
 #[test]
 fn a_table_with_nothing_on_it_is_empty() {
-    let got = crate::shared::context::window(&[0, 1], &[], 64).expect("a table");
+    let got = crate::mpi::context::window(&[0, 1], &[], 64).expect("a table");
     assert!(got.is_empty());
 }
 
@@ -58,5 +58,5 @@ fn an_edge_whose_endpoint_is_not_a_worker_is_refused() {
     // Not a panic and not a silent skip: the endpoint has no place in the worker list, so the
     // table cannot name it and the declaration is refused.
     let _ = HashMap::<(), ()>::new();
-    assert!(crate::shared::context::window(&[0, 1], &edges(&[(0, 9)]), 64).is_err());
+    assert!(crate::mpi::context::window(&[0, 1], &edges(&[(0, 9)]), 64).is_err());
 }

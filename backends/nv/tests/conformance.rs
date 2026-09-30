@@ -6,7 +6,7 @@
 //
 //     cargo test -p trame --features nv --lib nv::tests::conformance::claims -- --ignored --exact --nocapture
 
-#[path = "../../conformance/claims.rs"]
+#[path = "../../../conformance/claims.rs"]
 mod claims;
 
 use crate::{Environment, Launch};

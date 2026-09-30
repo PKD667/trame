@@ -16,7 +16,7 @@ implementation. There is no backend trait for applications to implement, schedul
 manage, or run-time backend registry.
 
 **This is the target contract, not a certificate that every implementation satisfies it.**
-The CPU backends (none, mpi, rma, rma-lossy) implement `#[process]`, the owned shared primitives and
+The host backends (none and mpi) implement `#[process]`, the owned shared primitives and
 shared-context threaded invocation; the leader endpoint functions and `nv` are not yet migrated.
 [execution.md](execution.md) records the migration and existing failures; those failures remain
 failures of the version that was tested.
@@ -323,6 +323,13 @@ are one Boolean, `u32` and `u64`, not unspecified machine words. Operations are 
 semantics within the sharing domain. An implementation may serialize atomic operations; it may
 not omit the visibility an acquire/release pair promises.
 
+### Optimized arithmetic
+
+`trame::optim` exports `exp(f32) -> f32`, with a portable range-reduced arithmetic definition for
+inputs in `[-30, 0]` whose relative error is below `2e-6` against `f64::exp`. Every exported
+primitive has a portable definition; a selected backend may shadow it when its target has a better
+implementation. The portable source uses arithmetic so LLVM can vectorize callers.
+
 ## Coordination boundaries
 
 Participants enter matching coordination operations in matching order:
@@ -530,7 +537,7 @@ exact `Unimplemented` failure, and the cell is not evidence of segment transfer.
 
 Backend build tooling belongs to its implementation: `trame/<module>/cargo`, package
 `<module>-cargo`, with Cargo's `cargo-<module>` executable convention. NV therefore has
-`trame/nv/cargo`, package `nv-cargo`, invoked as `cargo nv`. A module with no build tool needs no
+`trame/backends/nv/cargo`, package `nv-cargo`, invoked as `cargo nv`. A module with no build tool needs no
 placeholder crate. Tooling is not part of the worker's execution interface.
 
 Conformance checks observable effects against this contract, not which hardware instruction,

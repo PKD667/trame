@@ -144,8 +144,6 @@ impl Handle {
 #[repr(u8)]
 pub enum Backend {
     Mpi = 0,
-    Rma = 1,
-    RmaLossy = 2,
     None = 3,
     Nv = 4,
 }
@@ -157,10 +155,8 @@ impl Backend {
 
     pub const fn name(self) -> &'static str {
         match self {
-            Backend::Mpi => "mpi",
-            Backend::Rma => "rma",
-            Backend::RmaLossy => "rma-lossy",
             Backend::None => "none",
+            Backend::Mpi => "mpi",
             Backend::Nv => "nv",
         }
     }
@@ -173,8 +169,6 @@ impl TryFrom<u8> for Backend {
     fn try_from(id: u8) -> Result<Self, Invalid> {
         match id {
             0 => Ok(Backend::Mpi),
-            1 => Ok(Backend::Rma),
-            2 => Ok(Backend::RmaLossy),
             3 => Ok(Backend::None),
             4 => Ok(Backend::Nv),
             _ => Err(Invalid::Unrepresentable),

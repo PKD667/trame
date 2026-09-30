@@ -5,6 +5,8 @@
 // clock, the shared-state families and a segment its leader publishes still work, because a
 // process alone answers them.
 
+pub mod optim;
+
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 
@@ -14,9 +16,9 @@ use crate::contract::{
 };
 use crate::invoke::{Owner, Receive};
 
-pub use crate::cpu::clock;
-pub use crate::cpu::run;
-pub use crate::cpu::sync;
+pub use crate::host::clock;
+pub use crate::host::run;
+pub use crate::host::sync;
 
 pub const ID: Backend = Backend::None;
 
@@ -114,7 +116,7 @@ pub fn reshape(
     bytes: usize,
     _tag: Tag,
 ) -> Result<(), Error> {
-    crate::cpu::lanes::validate(workers, edges, bytes, size(cx), MAX_FRAME)
+    crate::host::lanes::validate(workers, edges, bytes, size(cx), MAX_FRAME)
 }
 
 pub fn release(_cx: &mut Context) -> Result<(), Error> {
@@ -172,13 +174,13 @@ pub fn concurrent_io<'env, B, E: Send, const N: usize>(
     body: B,
 ) -> Result<(), E>
 where
-    B: for<'scope> FnOnce(&mut crate::cpu::run::IoArms<'scope, 'env, Io<'env>, E, N>),
+    B: for<'scope> FnOnce(&mut crate::host::run::IoArms<'scope, 'env, Io<'env>, E, N>),
 {
     let ios = core::array::from_fn(|at| Io {
         receives: Owner::new(receive, at).receives(),
         _unshared: PhantomData,
     });
-    crate::cpu::run::spawn(ios, body)
+    crate::host::run::spawn(ios, body)
 }
 
 impl Io<'_> {

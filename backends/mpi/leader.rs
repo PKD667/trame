@@ -224,8 +224,8 @@ pub fn publish(leader: &Leader, revision: NonZeroU64, bytes: &[u8]) -> Result<Pu
         .checked_add(64)
         .ok_or(Error::Invalid(Invalid::Unrepresentable))?;
     i64::try_from(size).map_err(|_| Error::Invalid(Invalid::Unrepresentable))?;
-    let segment = mpi_rma::Segment::create(&super::segment_name(token, revision), revision, bytes)
-        .map_err(|e| super::os_failure(leader.me, "publish", e))?;
+    let segment = mpi_rma::Segment::create(&super::segment::segment_name(token, revision), revision, bytes)
+        .map_err(|e| super::segment::os_failure(leader.me, "publish", e))?;
     Ok(Published(
         segment,
         Handle::new(revision, length, u64::from(token)),
@@ -241,7 +241,7 @@ pub fn handle(segment: &Published) -> Handle {
 /// Retire `segment`: unmap and unlink the publication.
 pub fn retire(leader: &Leader, mut segment: Published) -> Result<(), (Published, Error)> {
     if let Err(e) = segment.0.retire() {
-        return Err((segment, super::os_failure(leader.me, "retire", e)));
+        return Err((segment, super::segment::os_failure(leader.me, "retire", e)));
     }
     Ok(())
 }

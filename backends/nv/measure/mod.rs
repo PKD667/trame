@@ -7,7 +7,7 @@
 //! crate's own test executable and out of the library every `cuda` build links. Each is an ignored
 //! test so that an ordinary `cargo test` never asks for a GPU.
 //!
-//! Run, from the workspace root on a GPU host prepared by `trame/nv/build/tests/prep.sh`:
+//! Run, from the workspace root on a GPU host prepared by `trame/backends/nv/build/tests/prep.sh`:
 //!
 //! ```text
 //! TRAME_MEASURE='<arguments>' cargo nv test -p trame --features cuda --lib -- \

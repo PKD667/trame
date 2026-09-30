@@ -38,6 +38,7 @@ use crate::contract::{
     Handle, Invalid, Launch, Participant, Tag,
 };
 
+pub mod optim;
 pub mod clock;
 pub mod device;
 pub mod error;

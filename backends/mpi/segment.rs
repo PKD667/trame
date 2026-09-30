@@ -10,28 +10,24 @@
 // path that used to end the process now returns an `Error` and lets the caller decide what to do
 // about it.
 
-pub mod context;
-pub mod leader;
-pub(crate) mod link;
-pub mod p2p;
-
 use std::ffi::CString;
 use std::io;
 use std::marker::PhantomData;
 use std::num::NonZeroU64;
 
 use crate::contract::{BackendFault, Error, Failure, FailureKind, Handle, Invalid, Participant};
+use super::context;
 
 /// The node-wide name of a leader's publication: its process and the revision. The token is the
 /// leader's process id, so a worker can name the object without discovery.
-fn segment_name(token: u32, revision: NonZeroU64) -> CString {
+pub(super) fn segment_name(token: u32, revision: NonZeroU64) -> CString {
     CString::new(format!("/trame-{token}-{}", revision.get()))
         .expect("formatted name contains no NUL")
 }
 
 /// Translate a segment syscall's error into the contract's failure record. The `io::Error` comes
 /// from a real syscall, so it carries an errno. `leader.rs` reaches this as `super::os_failure`.
-fn os_failure(participant: Participant, operation: &'static str, e: io::Error) -> Error {
+pub(super) fn os_failure(participant: Participant, operation: &'static str, e: io::Error) -> Error {
     Error::Failed(Failure {
         participant,
         operation,

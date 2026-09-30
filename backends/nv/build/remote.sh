@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run a test on an explicitly approved campaign destination.
 # Usage: NVMPI_CAMPAIGN=<stamp> NVMPI_BASE='~/nv-campaigns/<stamp>' \
-#   trame/nv/build/remote.sh <test> <user@host>
+#   trame/backends/nv/build/remote.sh <test> <user@host>
 # One manifest-frozen workspace snapshot is synced, then prep + test run from that snapshot.
 # NVMPI_BASE relocates everything on the far side (quota-cramped homes),
 # e.g. NVMPI_BASE=/local/pkronlun on g5k. All NVMPI_* overrides and TRAME_MEASURE (the
@@ -18,10 +18,10 @@
 # Grid'5000 Nancy, a GPU node held by an OAR job (home is NFS-shared, so the frontend's
 # toolchain and cuda-oxide backend are the node's; the target dir goes to node-local /tmp):
 #   NVMPI_JUMP=nancy.g5k NVMPI_MODULES=cuda-toolkit/12.9.1 NVMPI_TARGET_DIR=/tmp/nvmpi-target \
-#     trame/nv/build/remote.sh cases pkronlun@graffiti-3.nancy.grid5000.fr
+#     trame/backends/nv/build/remote.sh cases pkronlun@graffiti-3.nancy.grid5000.fr
 # The same with one GPU of a shared node:
 #   NVMPI_JUMP=nancy.g5k NVMPI_OAR_JOB=6939656 NVMPI_MODULES=cuda-toolkit/12.9.1 \
-#     NVMPI_TARGET_DIR=/tmp/nvmpi-target trame/nv/build/remote.sh cases graffiti-3
+#     NVMPI_TARGET_DIR=/tmp/nvmpi-target trame/backends/nv/build/remote.sh cases graffiti-3
 set -eu
 
 TEST=${1:?usage: remote.sh <test> <user@host>}
@@ -38,7 +38,7 @@ MANIFEST_TOOL="$root/build/manifest.py"
 LOCAL_EVIDENCE=${NVMPI_MANIFEST_DIR:?NVMPI_MANIFEST_DIR must name the local campaign manifest directory}
 FROZEN="$LOCAL_EVIDENCE/source"
 [ -f "$LOCAL_EVIDENCE/manifest.json" ] || { echo "[remote] local source manifest missing: $LOCAL_EVIDENCE/manifest.json" >&2; exit 1; }
-[ -f "$FROZEN/trame/nv/build/tests/$TEST.sh" ] || { echo "[remote] no such test in frozen source: $TEST"; exit 1; }
+[ -f "$FROZEN/trame/backends/nv/build/tests/$TEST.sh" ] || { echo "[remote] no such test in frozen source: $TEST"; exit 1; }
 python3 "$MANIFEST_TOOL" verify "$LOCAL_EVIDENCE/manifest.json" "$FROZEN"
 SOURCE=$(sha256sum "$LOCAL_EVIDENCE/manifest.json" | awk '{print $1}')
 echo "[remote] frozen source S=$SOURCE"
@@ -95,8 +95,8 @@ run_phase() {
 	[ "$status" -eq 0 ] || exit "$status"
 }
 
-prep_cmd="RUSTUP_TOOLCHAIN=nightly-2026-04-03; export RUSTUP_TOOLCHAIN; NVMPI_BASE=\"$BASE\"; NVMPI_MANIFEST_DIR=\"$remote_dir\"; export NVMPI_BASE NVMPI_MANIFEST_DIR; cd \"$BASE/src\" && $fwd sh trame/nv/build/tests/prep.sh"
-test_cmd="RUSTUP_TOOLCHAIN=nightly-2026-04-03; export RUSTUP_TOOLCHAIN; NVMPI_BASE=\"$BASE\"; NVMPI_MANIFEST_DIR=\"$remote_dir\"; export NVMPI_BASE NVMPI_MANIFEST_DIR; cd \"$BASE/src\" && $fwd sh trame/nv/build/tests/$TEST.sh"
+prep_cmd="RUSTUP_TOOLCHAIN=nightly-2026-04-03; export RUSTUP_TOOLCHAIN; NVMPI_BASE=\"$BASE\"; NVMPI_MANIFEST_DIR=\"$remote_dir\"; export NVMPI_BASE NVMPI_MANIFEST_DIR; cd \"$BASE/src\" && $fwd sh trame/backends/nv/build/tests/prep.sh"
+test_cmd="RUSTUP_TOOLCHAIN=nightly-2026-04-03; export RUSTUP_TOOLCHAIN; NVMPI_BASE=\"$BASE\"; NVMPI_MANIFEST_DIR=\"$remote_dir\"; export NVMPI_BASE NVMPI_MANIFEST_DIR; cd \"$BASE/src\" && $fwd sh trame/backends/nv/build/tests/$TEST.sh"
 if [ -n "${NVMPI_MODULES:-}" ]; then
 	prep_cmd="bash -lc $(q "module load $NVMPI_MODULES && $prep_cmd")"
 	test_cmd="bash -lc $(q "module load $NVMPI_MODULES && $test_cmd")"

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run a test on a remote host. Usage:
-#   trame/nv/build/test.sh <test>                (remote only)
-#   trame/nv/build/test.sh remote <test>
+#   trame/backends/nv/build/test.sh <test>                (remote only)
+#   trame/backends/nv/build/test.sh remote <test>
 set -eu
 
 here=$(CDPATH= cd "$(dirname "$0")" && pwd -P)

@@ -7,8 +7,9 @@ here=$root/trame/scripts/surface
 out=${1:?usage: surface.sh OUT}
 mkdir -p "$out"
 cd "$root"
+CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-target}
 
-features=(none nv mpi rma rma-lossy)
+features=(none nv mpi lossy)
 failures=0
 compiler=$(command -v rustc)
 rustdoc=$(command -v rustdoc)
@@ -25,7 +26,7 @@ mpi_env() {
 run_cargo() {
 	local feature=$1; shift
 	local target=$1; shift
-	if [[ $feature == mpi || $feature == rma || $feature == rma-lossy ]]; then
+	if [[ $feature == mpi || $feature == lossy ]]; then
 		mpi_env "CARGO_TARGET_DIR=$target" "$@"
 	else
 		CARGO_TARGET_DIR="$target" "$@"
@@ -46,7 +47,7 @@ fi
 
 for feature in "${features[@]}"; do
 	if [[ $feature == none ]]; then args=(-p trame --no-default-features); else args=(-p trame --no-default-features --features "$feature"); fi
-	target=$out/target-$feature
+	target=$CARGO_TARGET_DIR/surface-$feature
 	mkdir -p "$target"
 	# Cargo's JSON compiler-artifact records are retained and select this build's rlib exactly.
 	if ! run_cargo "$feature" "$target" "$cargo" build "${args[@]}" --locked --message-format=json-render-diagnostics >"$out/build-$feature.jsonl" 2>"$out/build-$feature.log"; then
@@ -101,7 +102,7 @@ PY
 	printf '%s\n' "$rustdoc" >"$out/rustdoc-path-$feature.txt"
 	done
 
-for feature in nv mpi rma rma-lossy; do
+for feature in nv mpi lossy; do
 	if ! diff -u "$out/items-none.txt" "$out/items-$feature.txt" >"$out/items-$feature.diff"; then
 		echo "P1 exported-item mismatch: none vs $feature" >&2; cat "$out/items-$feature.diff" >&2; failures=$((failures+1))
 	else : >"$out/items-$feature.diff"; fi
@@ -111,14 +112,14 @@ compile_fixture() {
 	local feature=$1 fixture=$2 rlib deps status rl
 	rl=$(<"$out/artifact-$feature.txt"); rlib=$rl; deps=$(dirname "$rlib")/deps
 	local -a rustc_args=(--edition 2024 --crate-type lib --emit=metadata --error-format=json -L "dependency=$deps" --extern "trame=$rlib" -o "$out/$(basename "$fixture" .rs)-$feature.rmeta" "$fixture")
-	if [[ $feature == mpi || $feature == rma || $feature == rma-lossy ]]; then
+	if [[ $feature == mpi || $feature == lossy ]]; then
 		printf 'nix develop -c env RUSTC=%q RUSTDOC=%q %q' "$compiler" "$rustdoc" "$compiler" >"$out/$(basename "$fixture" .rs)-$feature.command"
 	else
 		printf '%q' "$compiler" >"$out/$(basename "$fixture" .rs)-$feature.command"
 	fi
 	printf ' %q' "${rustc_args[@]}" >>"$out/$(basename "$fixture" .rs)-$feature.command"
 	printf '\n' >>"$out/$(basename "$fixture" .rs)-$feature.command"
-	if [[ $feature == mpi || $feature == rma || $feature == rma-lossy ]]; then
+	if [[ $feature == mpi || $feature == lossy ]]; then
 		if mpi_env "$compiler" "${rustc_args[@]}" >"$out/$(basename "$fixture" .rs)-$feature.json" 2>&1; then return 0; else return $?; fi
 	else
 		if "$compiler" "${rustc_args[@]}" >"$out/$(basename "$fixture" .rs)-$feature.json" 2>&1; then return 0; else return $?; fi

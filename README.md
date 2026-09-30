@@ -2,8 +2,8 @@
 
 ## Conformance
 
-`bash trame/scripts/conform.sh local` runs `conformance/claims.rs` on `none`, nv's host model, mpi,
-rma and rma-lossy, adds X1 (`cargo test`), X2 (declaration fixtures) and P1 (public surface), and
+`bash trame/scripts/conform.sh local` runs `conformance/claims.rs` on `none`, nv's host model, mpi
+and lossy, adds X1 (`cargo test`), X2 (declaration fixtures) and P1 (public surface), and
 prints a table of claim × backend. A pass means every participant ran the claim and it held; a FAIL
 means one refuted it, never reported it, or was inside it when its launch timed out. It exits 0
 only when every cell passes, and writes one `<backend>.<launch>.jsonl`/`.log` pair per launch into
@@ -17,11 +17,11 @@ records its migration and implementation evidence. Proposed interfaces are marke
 suite does not yet check the entire target surface. No implementation is certified by definition.
 
 The 2026-09-25 run on MIST exited 1 against an unchanged dirty-tree source fingerprint. Main-body
-claims passed on nv's host model, mpi, rma and rma-lossy; unit tests passed on all five selections.
+claims passed on nv's host model, mpi and lossy; unit tests passed on the selections tested.
 The previously listed RMA L2/L3 and multi-leader D1/E1/R1 failures did not recur in this run.
 Evidence: `/tmp/trame-freeze-20260925T200027/`.
 
-- M5 still fails on mpi, rma and rma-lossy: after `Full` at 2,047 accepted frames, every worker
+- M5 still fails on mpi and lossy: after `Full` at 2,047 accepted frames, every worker
   timed out without a `done` verdict. Buffer detachment is the first implementation point to
   investigate; no stack trace was collected.
 - P1 fails. The none/nv `Io` unwind-safety reports differ; its `Send` difference is confounded by

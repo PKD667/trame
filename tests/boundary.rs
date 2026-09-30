@@ -105,7 +105,7 @@ fn the_two_checks_recognise_an_inversion_when_they_see_one() {
     assert_eq!(imported("use nerve::message::BACKENDS;"), Some("nerve"));
     assert_eq!(imported("pub use pn::watch::Probe;"), Some("pn"));
     assert_eq!(
-        imported("    use crate::cpu::sync::turn::Exclusive;"),
+        imported("    use crate::host::sync::turn::Exclusive;"),
         Some("crate")
     );
     assert_eq!(imported("use std::sync::Mutex;"), Some("std"));
@@ -138,7 +138,7 @@ fn the_device_backend_names_none_of_the_host_mechanisms() {
     // moment it names one of those mechanisms it has either grown a host dependency it cannot
     // honour or lost the isolation that makes it a separate backend at all. So the rule is a
     // check rather than a convention: nothing under `nv/` names `cpu`.
-    let dir = here().join("nv");
+    let dir = here().join("backends/nv");
     let mut files = Vec::new();
     sources(&dir, &mut files);
     assert!(
@@ -147,7 +147,7 @@ fn the_device_backend_names_none_of_the_host_mechanisms() {
     );
     for file in files {
         for (at, line) in code_of(&file) {
-            let names_cpu = line.contains("crate::cpu")
+            let names_cpu = line.contains("crate::host")
                 || line.contains("cpu::")
                 || imported(&line) == Some("cpu");
             assert!(

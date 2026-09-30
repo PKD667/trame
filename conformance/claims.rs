@@ -1,6 +1,6 @@
 // The conformance claims: one body, written against trame's public surface and nothing else, that
 // every backend's launcher runs. `trame/conformance/main.rs` runs it under mpirun for the MPI
-// family and `trame/nv/tests/conformance.rs` runs it on nv's host model, both by inclusion, so the
+// family and `trame/backends/nv/tests/conformance.rs` runs it on nv's host model, both by inclusion, so the
 // backends all answer the same text. `none` carries no frames and answers none of it. Each claim quotes the `backend.md`
 // sentence it checks, which is what makes a pass on every backend evidence for freezing that
 // sentence.
@@ -96,9 +96,9 @@ struct Who(String);
 
 impl Who {
     fn line(&self, claim: &str, tail: &str) {
+        let backend = if trame::LOSSY { "lossy" } else { trame::ID.name() };
         println!(
-            "{{\"claim\":\"{claim}\",\"backend\":\"{}\",\"participant\":\"{}\",{tail}}}",
-            trame::ID.name(),
+            "{{\"claim\":\"{claim}\",\"backend\":\"{backend}\",\"participant\":\"{}\",{tail}}}",
             self.0
         );
     }

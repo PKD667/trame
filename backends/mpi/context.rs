@@ -10,11 +10,11 @@
 // environment and the environment's lifetime is the participant's. What differs between them is
 // how `reshape` builds the lane window and how `lane` drives it, and that lives in each backend.
 
-#[cfg(feature = "ring")]
+#[cfg(feature = "mpi")]
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-#[cfg(feature = "ring")]
+#[cfg(feature = "mpi")]
 use std::sync::Arc;
 
 use mpi::collective::{CommunicatorCollectives, SystemOperation};
@@ -22,10 +22,10 @@ use mpi::environment::Universe;
 use mpi::raw::traits::AsRaw;
 use mpi::topology::{Color, Communicator, InterCommunicator, SimpleCommunicator};
 
-#[cfg(feature = "ring")]
+#[cfg(feature = "mpi")]
 use mpi_rma::Ring;
 
-#[cfg(feature = "ring")]
+#[cfg(feature = "mpi")]
 use crate::contract::{Addr, Edge};
 use crate::contract::Frame;
 use crate::invoke::{Owner, Receive};
@@ -77,11 +77,11 @@ pub(crate) struct Lane {
     workers: Vec<u32>,
     /// The lanes this worker's edges declare to other hosts. No window holds them.
     far: Far,
-    #[cfg(feature = "ring")]
+    #[cfg(feature = "mpi")]
     ring: Option<Arc<Ring>>,
     /// Frames a window poll took and no receive has handed over yet. A poll acknowledges every
     /// frame it returns, so these are accepted and owned here until a caller takes each one.
-    #[cfg(feature = "ring")]
+    #[cfg(feature = "mpi")]
     taken: VecDeque<(u32, Vec<u8>)>,
 }
 
@@ -91,9 +91,9 @@ impl Lane {
             tag: Tag::new(0),
             workers: Vec::new(),
             far: Far::default(),
-            #[cfg(feature = "ring")]
+            #[cfg(feature = "mpi")]
             ring: None,
-            #[cfg(feature = "ring")]
+            #[cfg(feature = "mpi")]
             taken: VecDeque::new(),
         }
     }
@@ -158,7 +158,7 @@ impl Context {
     /// Take the lane table. Only the tag and the worker list: a backend whose lanes are ordinary
     /// frames has nothing else, and one whose lanes are not calls [`set_window`](Self::set_window).
     // Only the lane transport that sends lanes as tagged frames reads these.
-    #[cfg_attr(feature = "ring", allow(dead_code))]
+    #[cfg_attr(feature = "mpi", allow(dead_code))]
     pub(crate) fn set_lane(&mut self, tag: Tag, workers: Vec<u32>, far: Far) {
         self.lane = Lane {
             tag,
@@ -170,7 +170,7 @@ impl Context {
 
     /// Take the lane table together with the window that carries it. Ring builds only, because a
     /// window is what `mpi-rma` supplies and it is not linked otherwise.
-    #[cfg(feature = "ring")]
+    #[cfg(feature = "mpi")]
     pub(crate) fn set_window(&mut self, tag: Tag, workers: Vec<u32>, far: Far, ring: Arc<Ring>) {
         self.lane = Lane {
             tag,
@@ -198,7 +198,7 @@ impl Context {
     }
 
     /// One attempt at the next lane frame. See [`lane_frame`].
-    #[cfg(feature = "ring")]
+    #[cfg(feature = "mpi")]
     pub(crate) fn next_lane_frame(&mut self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
         let Some(ring) = self.lane.ring.clone() else {
             return Ok(None);
@@ -241,7 +241,7 @@ pub(crate) fn lane_tag(workers: &[u32], tag: Tag) -> Result<Tag, Error> {
 ///
 /// `rank` is a rank on `world`, as `link::route` gives it, and a window is indexed by position
 /// among the workers, so the two are not the same number and the mapping is not the identity.
-#[cfg(feature = "ring")]
+#[cfg(feature = "mpi")]
 pub(crate) fn lane_index(workers: &[u32], rank: i32) -> Result<i32, Error> {
     let at = workers
         .iter()
@@ -252,7 +252,7 @@ pub(crate) fn lane_index(workers: &[u32], rank: i32) -> Result<i32, Error> {
 
 /// The oldest frame already taken from the window, or, when none is, one poll of it that
 /// acknowledges what it took. A frame that does not fit stays first in line.
-#[cfg(feature = "ring")]
+#[cfg(feature = "mpi")]
 fn lane_frame(
     ring: &Ring,
     taken: &mut VecDeque<(u32, Vec<u8>)>,
@@ -305,9 +305,9 @@ pub struct Io<'a> {
     pub(crate) lane: Tag,
     pub(crate) workers: &'a [u32],
     pub(crate) far: &'a Far,
-    #[cfg(feature = "ring")]
+    #[cfg(feature = "mpi")]
     pub(crate) ring: Option<&'a Ring>,
-    #[cfg(feature = "ring")]
+    #[cfg(feature = "mpi")]
     taken: Option<&'a mut VecDeque<(u32, Vec<u8>)>>,
     owner: Owner<'a>,
     /// Where the next receive starts: a route, and a tag within each probing route's list.
@@ -329,9 +329,9 @@ pub fn concurrent_io<'env, B, E: Send, const N: usize>(
     body: B,
 ) -> Result<(), E>
 where
-    B: for<'scope> FnOnce(&mut crate::cpu::run::IoArms<'scope, 'env, Io<'env>, E, N>),
+    B: for<'scope> FnOnce(&mut crate::host::run::IoArms<'scope, 'env, Io<'env>, E, N>),
 {
-    crate::cpu::run::spawn(lend(cx, receive), body)
+    crate::host::run::spawn(lend(cx, receive), body)
 }
 
 /// One endpoint per arm. The lane-tag owner gets the frames the window already gave up.
@@ -342,9 +342,9 @@ fn lend<'a, const N: usize>(cx: &'a mut Context, receive: &'a [Receive<'a>; N]) 
     let (rank, tag) = (cx.rank, cx.lane.tag);
     let workers: &'a [u32] = &cx.lane.workers;
     let far: &'a Far = &cx.lane.far;
-    #[cfg(feature = "ring")]
+    #[cfg(feature = "mpi")]
     let ring = cx.lane.ring.as_deref();
-    #[cfg(feature = "ring")]
+    #[cfg(feature = "mpi")]
     let mut taken = Some(&mut cx.lane.taken);
     core::array::from_fn(|at| {
         let owner = Owner::new(receive, at);
@@ -356,9 +356,9 @@ fn lend<'a, const N: usize>(cx: &'a mut Context, receive: &'a [Receive<'a>; N]) 
             lane: tag,
             workers,
             far,
-            #[cfg(feature = "ring")]
+            #[cfg(feature = "mpi")]
             ring,
-            #[cfg(feature = "ring")]
+            #[cfg(feature = "mpi")]
             taken: if owner.owns(tag) { taken.take() } else { None },
             owner,
             next: 0,
@@ -399,7 +399,7 @@ impl Io<'_> {
         Ok(())
     }
 
-    #[cfg(feature = "ring")]
+    #[cfg(feature = "mpi")]
     fn lane_frame(&mut self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
         match (self.ring, self.taken.as_deref_mut()) {
             (Some(ring), Some(taken)) => lane_frame(ring, taken, self.workers, self.lane, self.rank, out),
@@ -408,7 +408,7 @@ impl Io<'_> {
     }
 
     /// Lanes are ordinary frames here, which the peer route already receives.
-    #[cfg(not(feature = "ring"))]
+    #[cfg(not(feature = "mpi"))]
     fn lane_frame(&mut self, _out: &mut [u8]) -> Result<Option<Frame>, Error> {
         Ok(None)
     }
@@ -681,7 +681,7 @@ pub fn barrier(cx: &mut Context) {
 /// Ring slots per destination element. The declaration's `affected` is read against this to size
 /// a pair's depth, and it is the same factor in every ring transport because the declaration is
 /// the contract's rather than a transport's.
-#[cfg(feature = "ring")]
+#[cfg(feature = "mpi")]
 pub const FACTOR: usize = 4;
 
 /// The window's lane table: positions among the workers, the depth the declaration implies, and
@@ -691,7 +691,7 @@ pub const FACTOR: usize = 4;
 /// so every member opens the same window without depending on the order the declaration happened
 /// to arrive in. A pair with a `Remote` end is not the window's: it crosses hosts, and a window is
 /// this deployment's.
-#[cfg(feature = "ring")]
+#[cfg(feature = "mpi")]
 pub(crate) fn window(
     workers: &[u32],
     edges: &[Edge],

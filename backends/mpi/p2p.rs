@@ -258,7 +258,6 @@ pub fn flush(_cx: &mut Context) -> Result<(), Error> {
 ///
 /// The wire is checked first. Control, sink and log traffic ride it, and a rank behind on those
 /// cannot even be told to stop — so a lane may not starve them.
-#[cfg(feature = "ring")]
 pub(crate) fn recv_from_either(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     if let Some(frame) = recv(cx, out)? {
         return Ok(Some(frame));
