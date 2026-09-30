@@ -1140,7 +1140,7 @@ pub fn worker(env: Environment, hosts: &[&[Launch]], here: u16, leader: Launch) 
         Err(f) => return entering.verdict("D1", Err(format!("init: {f:?}"))),
     };
     entering.verdict("D1", Ok("init returned".into()));
-    let who = Who(format!("worker {}", rank(&cx)));
+    let who = Who(format!("host {here} worker {}", rank(&cx)));
     let mut ok = who.claim("D1", d1);
     ok &= who.claim("E1", || e1(&cx, hosts[usize::from(here)].len()));
     ok &= who.claim("K1", k1);
@@ -1222,7 +1222,7 @@ pub fn pressure(env: Environment, hosts: &[&[Launch]], here: u16, leader: Launch
     };
     entering.verdict("M5", Ok("init returned".into()));
     let (me, n) = (rank(&cx), size(&cx));
-    let who = Who(format!("worker {me}"));
+    let who = Who(format!("host {here} worker {me}"));
     who.line("M5", "\"event\":\"start\"");
     let to = 1 % n;
     let sent = if me == 0 {

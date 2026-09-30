@@ -25,39 +25,64 @@ export CARGO_TARGET_DIR
 LAUNCH=${LAUNCH:-150}
 WORKERS=4
 
+# TRAME_MACHINEFILE names the allocation: one deployment per unique physical host. WORKERS is
+# per deployment, preserving the local claims while F1 exercises every cross-host pair.
+mpi_launch() {
+	local role=$1 leader=$2 machines=(local) args=() h machine per=$WORKERS
+	if [ -n "${TRAME_MACHINEFILE:-}" ]; then
+		[ -s "$TRAME_MACHINEFILE" ] || { echo "empty allocation: $TRAME_MACHINEFILE" >&2; return 2; }
+		mapfile -t machines < <(awk '!seen[$0]++' "$TRAME_MACHINEFILE")
+	fi
+	if [ "$role" = link ] && [ "${#machines[@]}" -eq 1 ]; then
+		machines+=("${machines[0]}")
+		per=$((WORKERS / 2))
+	fi
+	local hosts=${#machines[@]}
+	for role in "$role" "$leader"; do
+		for h in "${!machines[@]}"; do
+			[ "${#args[@]}" -eq 0 ] || args+=(:)
+			args+=(-x TRAME_WORKERS=$((per * hosts)) -x TRAME_HOSTS=$hosts)
+			if [ "$role" = "$leader" ]; then args+=(-n 1); else args+=(-n "$per"); fi
+			machine=${machines[$h]}
+			[ "$machine" = local ] || args+=(-host "$machine:$((per + 1))")
+			args+=("$bin" "$role" "$h")
+		done
+	done
+	# shellcheck disable=SC2086
+	timeout "$LAUNCH" ${MPIRUN:-mpirun --oversubscribe} "${args[@]}"
+}
+
 # The MPI half, re-entered inside `nix develop`, where MPI is: build and run the example per
 # backend, then the backend's unit tests.
 if [ "${1:-}" = mpi-stage ]; then
 	out=$2
+	mkdir -p "$out"
+	stage_rc=0
 	for backend in mpi lossy; do
 		dir=$CARGO_TARGET_DIR/conform-$backend
 		bin=$dir/debug/examples/conformance
 		if ! CARGO_TARGET_DIR=$dir cargo build -q -p trame --features "$backend" --example conformance 2>"$out/$backend.build.log"; then
 			echo "{\"claim\":\"X1\",\"backend\":\"$backend\",\"participant\":\"cargo\",\"verdict\":\"fail\",\"detail\":\"the conformance example does not build\"}" >"$out/$backend.build.jsonl"
+			stage_rc=1
 			continue
 		fi
-		# shellcheck disable=SC2086
-		TRAME_WORKERS=$WORKERS timeout "$LAUNCH" ${MPIRUN:-mpirun --oversubscribe} \
-			-n "$WORKERS" "$bin" worker : -n 1 "$bin" leader \
-			>"$out/$backend.main.jsonl" 2>"$out/$backend.main.log"
-		echo $? >"$out/$backend.main.status"
-		# shellcheck disable=SC2086
-		TRAME_WORKERS=$WORKERS timeout "$LAUNCH" ${MPIRUN:-mpirun --oversubscribe} \
-			-n "$WORKERS" "$bin" pressure : -n 1 "$bin" pressure-leader \
-			>"$out/$backend.pressure.jsonl" 2>"$out/$backend.pressure.log"
-		echo $? >"$out/$backend.pressure.status"
-		# F1: two hosts of WORKERS/2 workers under one launch, each host with its own leader. A
-		# process cannot discover its host, so argv states it; launch ranks follow the argv order.
-		# shellcheck disable=SC2086
-		TRAME_WORKERS=$WORKERS TRAME_HOSTS=2 timeout "$LAUNCH" ${MPIRUN:-mpirun --oversubscribe} \
-			-n $((WORKERS / 2)) "$bin" link 0 : -n $((WORKERS / 2)) "$bin" link 1 \
-			: -n 1 "$bin" link-leader 0 : -n 1 "$bin" link-leader 1 \
-			>"$out/$backend.link.jsonl" 2>"$out/$backend.link.log"
-		echo $? >"$out/$backend.link.status"
+		for launch in main pressure link; do
+			case $launch in
+			main) worker=worker; leader=leader ;;
+			pressure) worker=pressure; leader=pressure-leader ;;
+			link) worker=link; leader=link-leader ;;
+			esac
+			mpi_launch "$worker" "$leader" >"$out/$backend.$launch.jsonl" 2>"$out/$backend.$launch.log"
+			rc=$?
+			echo "$rc" >"$out/$backend.$launch.status"
+			[ "$rc" -eq 0 ] || stage_rc=1
+		done
 		CARGO_TARGET_DIR=$dir timeout "$LAUNCH" cargo test -q -p trame --features "$backend" >"$out/$backend.x1.log" 2>&1
-		echo $? >"$out/$backend.x1.status"
+		rc=$?
+		echo "$rc" >"$out/$backend.x1.status"
+		[ "$rc" -eq 0 ] || stage_rc=1
 	done
-	exit 0
+	exit "$stage_rc"
 fi
 
 [ "${1:-}" = local ] || { echo "usage: conform.sh local" >&2; exit 2; }
@@ -159,7 +184,7 @@ for claim in $claims X1 X2 P1; do
 				if jq -e -s '
 					[.[] | select(.claim == "S1" and .backend == "nv" and .verdict)] as $s
 					| ($s | length) == 5
-					  and ($s | map(.participant) | sort) == ["leader 4", "worker 0", "worker 1", "worker 2", "worker 3"]
+					  and ($s | map(.participant) | sort) == ["host 0 worker 0", "host 0 worker 1", "host 0 worker 2", "host 0 worker 3", "leader 4"]
 					  and all($s[];
 					      .verdict == "pass" and
 					      (if .participant == "leader 4"
@@ -177,7 +202,7 @@ for claim in $claims X1 X2 P1; do
 				if jq -e -s '
 					[.[] | select(.claim == "A1" and .backend == "nv" and .verdict)] as $s
 					| ($s | length) == 4
-					  and ($s | map(.participant) | sort) == ["worker 0", "worker 1", "worker 2", "worker 3"]
+					  and ($s | map(.participant) | sort) == ["host 0 worker 0", "host 0 worker 1", "host 0 worker 2", "host 0 worker 3"]
 					  and all($s[]; .verdict == "pass" and
 					      (.detail | startswith("UNIMPLEMENTED: send to a remote worker refused with BackendFault::Unimplemented")))
 				' "$out/all.jsonl" >/dev/null; then
@@ -192,16 +217,23 @@ for claim in $claims X1 X2 P1; do
 				cell=n/a
 				;;
 			F1:mpi | F1:lossy)
-				if jq -e -s '
+				link_hosts=2; link_workers=$WORKERS; link_pairs=$((WORKERS / 2))
+				if [ -n "${TRAME_MACHINEFILE:-}" ]; then
+					link_hosts=$(awk '!seen[$0]++' "$TRAME_MACHINEFILE" | wc -l)
+					if [ "$link_hosts" -gt 1 ]; then
+						link_workers=$((WORKERS * link_hosts)); link_pairs=$((WORKERS * (link_hosts - 1)))
+					fi
+				fi
+				if jq -e --argjson workers "$link_workers" --arg pairs "$link_pairs" -s '
 					[.[] | select(.claim == "F1" and .verdict)] as $s
-					| ($s | length) == 8
-					  and ([$s[] | select(.participant | startswith("worker entering,"))] | length) == 4
-					  and ([$s[] | select(.participant | startswith("host "))] | length) == 4
+					| ($s | length) == 2 * $workers
+					  and ([$s[] | select(.participant | startswith("worker entering,"))] | length) == $workers
+					  and ([$s[] | select(.participant | startswith("host "))] | length) == $workers
 					  and all($s[]; .verdict == "pass")
 					  and all($s[] | select(.participant | startswith("host "));
 					      (.detail | contains("0 skipped")) and
-					      (.detail | contains("Message: 64 frames on each of 2 outgoing and 2 incoming pairs")) and
-					      (.detail | contains("Lane: 64 frames on each of 2 outgoing and 2 incoming pairs")))
+					      (.detail | contains("Message: 64 frames on each of \($pairs) outgoing and \($pairs) incoming pairs")) and
+					      (.detail | contains("Lane: 64 frames on each of \($pairs) outgoing and \($pairs) incoming pairs")))
 				' "$out/$backend.link.jsonl" >/dev/null; then
 					cell=pass
 				else

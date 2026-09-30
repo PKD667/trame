@@ -9,6 +9,12 @@ A deployment is one host. Its leader and workers must share one POSIX shared-mem
 all launch participants agree on admission before any bridge is created; a deployment spread over
 hosts is refused as `InconsistentLaunch`.
 
+`TRAME_MACHINEFILE=allocation.nodes bash trame/scripts/conform.sh mpi-stage OUT` derives one
+deployment per unique allocated host, with four workers and one leader each. `MPIRUN` supplies the
+site launcher and remote agent. Main and pressure preserve the host-local claims; F1 exchanges
+messages and lanes between every worker pair on different hosts. A successful admission alone is
+not evidence of cross-host delivery.
+
 Segments are named POSIX objects, `/dev/shm/trame-<pid>-<rev>`. Publish reserves the whole object
 before copying, so an exhausted `/dev/shm` is a refusal carrying its errno (`ENOSPC`), not a
 `SIGBUS`. Publishing a revision the leader holds live is refused (`EEXIST`). A process that dies

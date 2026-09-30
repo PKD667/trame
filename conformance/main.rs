@@ -1,15 +1,11 @@
 // The conformance claims under a process launcher: one process per participant.
 //
-//     TRAME_WORKERS=4 mpirun -n 4 conformance worker : -n 1 conformance leader
-//     TRAME_WORKERS=4 mpirun -n 4 conformance pressure : -n 1 conformance pressure-leader
-//     TRAME_WORKERS=4 TRAME_HOSTS=2 mpirun -n 2 conformance link 0 : -n 2 conformance link 1 \\
-//         : -n 1 conformance link-leader 0 : -n 1 conformance link-leader 1
+//     TRAME_WORKERS=4 TRAME_HOSTS=1 mpirun -x TRAME_WORKERS -x TRAME_HOSTS \
+//         -n 4 conformance worker 0 : -x TRAME_WORKERS -x TRAME_HOSTS -n 1 conformance leader 0
 //
-// The main and pressure launches are one host. Launch ranks `0..TRAME_WORKERS` are its workers, in
-// local-rank order, and its one leader is launch rank `TRAME_WORKERS`. The link launch is
-// `TRAME_HOSTS` hosts of `W / H` workers: launch rank `i` is host `i / (W / H)`'s worker
-// `i % (W / H)`, and host `h`'s leader is launch rank `W + h`. A process cannot discover whether it
-// is a leader, nor its host, so the launch says so in argv, in launch-rank order.
+// Each host has W / H workers and one colocated leader. Worker contexts come first in host
+// order, then leader contexts: host h's leader is launch rank W + h. The launcher states the
+// host in argv and the common table dimensions in the environment; MPI ranks do not imply roles.
 
 #[path = "claims.rs"]
 mod claims;
@@ -21,40 +17,26 @@ fn count(name: &str) -> u32 {
     stated.parse().unwrap_or_else(|_| panic!("{name}: `{stated}` is not a count"))
 }
 
-/// The link launch's table, and `host` from argv as this process's host.
-fn linked(workers: u32, host: &str) -> (Vec<Vec<Launch>>, u16) {
-    let hosts = count("TRAME_HOSTS");
-    assert!(hosts > 0 && workers % hosts == 0, "TRAME_HOSTS={hosts} does not divide TRAME_WORKERS={workers}");
-    let per = workers / hosts;
-    let rows = (0..hosts).map(|h| (0..per).map(|r| Launch::new(h * per + r)).collect()).collect();
-    let here = host.parse().unwrap_or_else(|_| panic!("`{host}` is not a host"));
-    (rows, here)
-}
-
 fn main() {
     let workers = count("TRAME_WORKERS");
-    let w: Vec<Launch> = (0..workers).map(Launch::new).collect();
-    let hosts: [&[Launch]; 1] = [&w];
-    let leader = Launch::new(workers);
+    let hosts = count("TRAME_HOSTS");
+    assert!(hosts > 0 && workers > 0 && workers % hosts == 0, "TRAME_HOSTS={hosts} does not divide TRAME_WORKERS={workers}");
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    assert!(args.len() == 2, "usage: conformance <worker|leader|pressure|pressure-leader|link|link-leader> <host>");
+    let here: u16 = args[1].parse().expect("host is a u16");
+    let per = workers / hosts;
+    let rows: Vec<Vec<Launch>> = (0..hosts).map(|h| (0..per).map(|r| Launch::new(h * per + r)).collect()).collect();
+    let table: Vec<&[Launch]> = rows.iter().map(Vec::as_slice).collect();
+    let leader = Launch::new(workers + u32::from(here));
     let env = Environment::default();
-    let passed = match args.as_slice() {
-        ["worker"] => claims::worker(env, &hosts, 0, leader),
-        ["leader"] => claims::leader(env, leader, &hosts, 0),
-        ["pressure"] => claims::pressure(env, &hosts, 0, leader),
-        ["pressure-leader"] => claims::pressure_leader(env, leader, &hosts, 0, "M5"),
-        ["link", host] => {
-            let (rows, here) = linked(workers, host);
-            let table: Vec<&[Launch]> = rows.iter().map(Vec::as_slice).collect();
-            claims::link(env, &table, here, Launch::new(workers + u32::from(here)))
-        }
-        ["link-leader", host] => {
-            let (rows, here) = linked(workers, host);
-            let table: Vec<&[Launch]> = rows.iter().map(Vec::as_slice).collect();
-            claims::pressure_leader(env, Launch::new(workers + u32::from(here)), &table, here, "F1")
-        }
-        _ => panic!("usage: conformance worker | leader | pressure | pressure-leader | link <host> | link-leader <host>"),
+    let passed = match args[0].as_str() {
+        "worker" => claims::worker(env, &table, here, leader),
+        "leader" => claims::leader(env, leader, &table, here),
+        "pressure" => claims::pressure(env, &table, here, leader),
+        "pressure-leader" => claims::pressure_leader(env, leader, &table, here, "M5"),
+        "link" => claims::link(env, &table, here, leader),
+        "link-leader" => claims::pressure_leader(env, leader, &table, here, "F1"),
+        role => panic!("unknown role `{role}`"),
     };
     std::process::exit(if passed { 0 } else { 1 });
 }
