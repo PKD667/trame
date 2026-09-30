@@ -26,6 +26,7 @@
 //! and for the same reason as `MPI_Bsend` in `p2p`.
 
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::num::NonZeroU64;
 
 use mpi::environment::Universe;
@@ -82,21 +83,18 @@ pub(crate) fn bridge(
 /// enters MPI on its own account — `init` is the worker's entry and a leader that called it would
 /// be claiming a rank it does not have.
 ///
-/// The fields are declared in the order they must be released, because that is the order Rust
-/// drops them: the bridge disconnects, the group frees, and MPI finalises last. `MPI_Comm_disconnect`
-/// is collective over both groups, so a leader that released its bridge at an arbitrary moment —
-/// whenever a value happened to die — would be choosing a moment its workers did not choose.
+/// Only `done` releases MPI resources: dropping this value is not a collective shutdown boundary.
 pub struct Leader {
     /// Who this leader's failures are observed by: its launch rank, since it has no contract rank.
     me: Participant,
-    inter: InterCommunicator,
+    inter: ManuallyDrop<InterCommunicator>,
     /// How many workers this leader serves: its whole deployment, the bridge's remote group,
     /// whose ranks are the workers' local ranks.
     workers: u32,
     /// The leader group, kept alive for as long as the bridge is: dropping it would disconnect a
     /// communicator the bridge was built against.
-    _group: SimpleCommunicator,
-    _universe: Universe,
+    _group: ManuallyDrop<SimpleCommunicator>,
+    _universe: ManuallyDrop<Universe>,
     // Auto traits match the nv backend's, so the public surface is the same on every backend.
     _local: PhantomData<*const ()>,
 }
@@ -136,10 +134,10 @@ impl Leader {
 
         Ok(Leader {
             me: Participant::Leader(me),
-            inter,
+            inter: ManuallyDrop::new(inter),
             workers,
-            _group: group,
-            _universe: universe,
+            _group: ManuallyDrop::new(group),
+            _universe: ManuallyDrop::new(universe),
             _local: PhantomData,
         })
     }
@@ -153,7 +151,7 @@ impl Leader {
             return Err(Error::Invalid(Invalid::RankOutsideJob));
         }
         let to = i32::try_from(to).map_err(|_| Error::Invalid(Invalid::Unrepresentable))?;
-        p2p::send_on(&self.inter, self.me, to, tag, data)
+        p2p::send_on(&*self.inter, self.me, to, tag, data)
     }
 
     /// Take the next frame from any worker.
@@ -161,7 +159,7 @@ impl Leader {
     /// Every frame on this route came from a worker, so there is no source to filter and none is
     /// taken. `Frame::source` is the sending worker, always `Local`.
     pub fn recv(&self, out: &mut [u8]) -> Result<Option<Frame>, Error> {
-        let Some((remote, tag, len)) = take(&self.inter, self.me, Owner::ALL, &mut 0, out)? else {
+        let Some((remote, tag, len)) = take(&*self.inter, self.me, Owner::ALL, &mut 0, out)? else {
             return Ok(None);
         };
         let source = u32::try_from(remote)
@@ -169,6 +167,21 @@ impl Leader {
             .filter(|&at| at < self.workers)
             .ok_or(Error::Invalid(Invalid::RankOutsideJob))?;
         Ok(Some(Frame::new(Some(Addr::Local(source)), tag, len)))
+    }
+
+    /// Finalize explicitly with the workers, discarding unread frames rather than delivering them.
+    pub fn done<A>(&mut self, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>> {
+        super::context::quiesce(&mut self._universe, |out| {
+            take(&*self.inter, self.me, Owner::ALL, &mut 0, out)?;
+            Ok(())
+        });
+        // SAFETY: the shutdown agreement completed and no application call is outstanding.
+        unsafe {
+            ManuallyDrop::drop(&mut self.inter);
+            ManuallyDrop::drop(&mut self._group);
+            ManuallyDrop::drop(&mut self._universe);
+        }
+        outcome
     }
 }
 

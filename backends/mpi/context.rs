@@ -640,14 +640,40 @@ pub fn init(env: Environment, deployment: Deployment<'_>) -> Result<Context, Fai
     })
 }
 
-/// Release this participant's MPI resources and report the outcome.
-///
-/// The order matters and is the whole of this function. The buffered-send storage is detached
-/// first: detachment waits for every accepted buffered send to leave it, and those sends still need
-/// their communicators while that happens. The communicators are then released while MPI is live,
-/// because freeing one after `MPI_Finalize` aborts the job instead of reporting a failure.
+/// Empty MPI's buffered sends while discarding traffic nobody will receive at application level.
+/// Every rank keeps draining until every rank has detached; otherwise an early finisher could
+/// strand another rank's buffer. MPI_THREAD_MULTIPLE permits detachment and receipt concurrently.
+pub(super) fn quiesce(
+    universe: &mut Universe,
+    mut drain: impl FnMut(&mut [u8]) -> Result<(), Error>,
+) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    // Nobody may discard until every application has finished sending/receiving.
+    universe.world().barrier();
+    let detached = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            universe.detach_buffer();
+            universe.world().barrier();
+            detached.store(true, Ordering::Release);
+        });
+        let mut out = vec![0; MAX_FRAME];
+        while !detached.load(Ordering::Acquire) {
+            drain(&mut out).expect("MPI shutdown drain");
+        }
+    });
+}
+
+/// Release this participant's MPI resources at the explicit shutdown boundary.
 pub fn done<A>(cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>> {
-    cx._universe.detach_buffer();
+    let me = Participant::Worker(cx.rank);
+    quiesce(&mut cx._universe, |out| {
+        super::p2p::take(cx.world.as_ref().expect("entered worker"), me, Owner::ALL, &mut 0, out)?;
+        super::link::take(cx.link.as_ref().expect("entered worker"), cx.rank, Owner::ALL, &mut 0, out)?;
+        super::p2p::take(cx.leader.as_ref().expect("entered worker"), me, Owner::ALL, &mut 0, out)?;
+        Ok(())
+    });
+    cx.clear_lane();
     // The bridge first, because disconnecting it is collective over both groups and the workers'
     // ends are released at this same point in their own `done`.
     drop(cx.leader.take());
@@ -656,8 +682,8 @@ pub fn done<A>(cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(), 
     drop(cx.world.take());
     let _ = std::io::Write::flush(&mut std::io::stdout());
     let _ = std::io::Write::flush(&mut std::io::stderr());
-    // SAFETY: every MPI call this process makes has returned, and the communicators are released.
-    unsafe { mpi::ffi::MPI_Finalize() };
+    // SAFETY: all MPI calls have returned and every owned communicator/window is released.
+    unsafe { ManuallyDrop::drop(&mut cx._universe) };
     outcome
 }
 

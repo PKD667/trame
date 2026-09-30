@@ -354,6 +354,10 @@ impl Leader {
         }
         Ok(None)
     }
+
+    pub fn done<A>(&mut self, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>> {
+        outcome
+    }
 }
 
 /// A worker's end.

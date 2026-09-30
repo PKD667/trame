@@ -74,9 +74,9 @@ impl Wire {
         let leader = trame::Launch::new(workers.len() as u32);
         let deployment = Deployment::new(&hosts, 0, leader).expect("a stated deployment");
         if std::env::args().any(|arg| arg == "--leader") {
-            let route = trame::leader::Leader::open(Environment::default(), deployment)
+            let mut route = trame::leader::Leader::open(Environment::default(), deployment)
                 .expect("this experiment needs MPI");
-            drop(route);
+            route.done::<core::convert::Infallible>(Ok(())).expect("finalize leader");
             std::process::exit(0);
         }
         Wire {
