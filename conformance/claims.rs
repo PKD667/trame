@@ -433,8 +433,8 @@ fn m1(cx: &mut trame::Context) -> Verdict {
 /// compare it to `Some(Local(from))`, and M4's exchange fails on any other. A local-only API cannot
 /// be handed a remote worker at all, because it takes a `u32`, so there is no runtime case for it.
 /// A worker of another host that is in range has no route on nv yet: its send must fail
-/// `Unimplemented`, and the verdict says so the way S1's does. The MPI family's main launch is one
-/// host, so no such worker is in range there; F1 is its link.
+/// `Unimplemented`, and the verdict says so the way S1's does. On MPI, F1 checks delivery to
+/// in-range remote workers; A1 checks that out-of-range addresses deliver nothing.
 fn a1(cx: &mut trame::Context, hosts: &[&[Launch]], here: u16) -> Verdict {
     let n = size(cx);
     let tag = Channel::Message(Tag::new(A1_TAG));
@@ -458,9 +458,11 @@ fn a1(cx: &mut trame::Context, hosts: &[&[Launch]], here: u16) -> Verdict {
         operation: "send",
         kind: FailureKind::Backend(BackendFault::Unimplemented),
     });
-    for &h in &others {
-        let got = send(cx, Addr::Remote { host: h, rank: 0 }, tag, b"a1");
-        ensure(got == Err(want), || format!("a worker of host {h}: {got:?}, not {want:?}"))?;
+    if trame::ID == trame::Backend::Nv {
+        for &h in &others {
+            let got = send(cx, Addr::Remote { host: h, rank: 0 }, tag, b"a1");
+            ensure(got == Err(want), || format!("a worker of host {h}: {got:?}, not {want:?}"))?;
+        }
     }
     let far = Addr::Remote { host: count, rank: 0 };
     let got = reshape(cx, &[], &[Edge::new(far, far, NonZeroU32::MIN)], LANE_FRAME, Tag::new(A1_TAG));
@@ -473,8 +475,10 @@ fn a1(cx: &mut trame::Context, hosts: &[&[Launch]], here: u16) -> Verdict {
     let refused = format!("{} refusals by name, nothing delivered", outside.len() + 1);
     Ok(if others.is_empty() {
         format!("{refused}; one host, so no remote worker is in range")
-    } else {
+    } else if trame::ID == trame::Backend::Nv {
         format!("UNIMPLEMENTED: send to a remote worker refused with BackendFault::Unimplemented; {refused}")
+    } else {
+        format!("{refused}; in-range remote delivery checked by F1")
     })
 }
 
