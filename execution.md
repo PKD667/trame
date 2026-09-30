@@ -394,25 +394,8 @@ owner. Cross-owner sync backing and CPU-mapped leader admission still need their
 own device evidence; host simulation does not establish address-space legality.
 
 
-Plain receive's private Owner state is `All`, not a static slice of receive
-settings: cuda-oxide cannot lower the latter aggregate fat-pointer constant.
-Scoped receive still borrows the ordered arms and retains first-match ownership.
-The production lowering witness calls the same public receive and Io paths.
-Fork `nerve/enum-pointer-overlay` commit `858238a32490fd81332f7256173b20c426b48d6d`
-preserves the integer niches of `Result<Context, Failure<Infallible>>` (u16 at
-byte 568) and `Result<Launched, BackendFault>` (u32 at byte 0). Pointer overlay
-words are byte-backed so inactive, partly initialized bytes remain independent;
-active generic pointers retain their full 64-bit address conversions.
-
-Both captured-layout compiler fixtures pass. The Nancy production W1 run at
-source checkpoint `3d3cc80` still exits 101 before execution: transmuting
-`[2 x i1]` to byte-backed aggregates is refused as non-byte-faithful. No GPU
-certificate follows. Raw log:
-`/home/pkd/code/agents/nerve-nv-20260929/campaigns/w1-niche-20260930/evidence/v5-resume/w1-device-v5-resume.log`.
-
-The private `Owner::All` change remains needed: the fork's importer still
-rejects provenance-bearing slice fields in aggregate constants
-(`crates/mir-importer/src/translator/rvalue.rs:9837–9848`). The former
-`Owner::ALL` embeds just such a borrowed slice. This is a source assessment,
-not an additional device comparator run; enum overlay lowering does not alter
-that constant importer. Public types and bounds remain unchanged.
+Plain receive's owner is `Owner::All`, not a static slice of receive settings: a device
+constant cannot hold a borrowed slice. Scoped receive still borrows the ordered arms and keeps
+first-match ownership. The production W1 witness (`nv/measure/lowering.rs`) calls the public
+receive and `Io` paths; it passes on an RTX 2080 Ti with cuda-oxide fork
+`nerve/enum-pointer-overlay` at `ff292052`. Evidence is in the nv lead report.
