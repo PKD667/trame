@@ -15,11 +15,9 @@ per-step `Io` borrow, execution macros and declaration attributes. A build selec
 implementation. There is no backend trait for applications to implement, scheduler object to
 manage, or run-time backend registry.
 
-**This is the target contract, not a certificate that every implementation satisfies it.**
-The host backends (none and mpi) implement `#[process]`, the owned shared primitives and
-shared-context threaded invocation; the leader endpoint functions and `nv` are not yet migrated.
-[execution.md](execution.md) records the migration and existing failures; those failures remain
-failures of the version that was tested.
+**This is the target contract, not a certificate that every implementation satisfies it.** Each
+backend's `README.md` under `backends/` states what it implements and where it departs;
+[execution.md](execution.md) records the evidence.
 
 ## Definition and implementation
 
@@ -68,7 +66,6 @@ twice, and a leader listed in the table. `init` additionally rejects a participa
 launch, inconsistent entry information or insufficient storage. It must not silently narrow a
 deployment.
 
-The MPI backends also require each deployment’s leader and workers to share one physical shared-memory domain; all launch participants agree on admission before any bridge is created.
 
 `Environment` is an opaque entry description with `Default`. `Context` owns the entered unit's
 backend resources. `rank` and `size` describe this deployment's workers only.
@@ -150,9 +147,7 @@ is FIFO per worker. A frame received by a worker from its leader has `source == 
 receives `Some(Local(r))`, the sending worker's rank. `open`, `send_to` and `recv_from` replace the currently
 implemented `Leader::open`, `send` and `recv`; no second interface is intended.
 
-`leader::done` gives the leader the same explicit finalization boundary as a worker. It is a
-proposed addition: the current MPI implementation instead coordinates shutdown in `Leader`'s
-Drop. Normal programs finalize entered participants explicitly; dropping a handle is not an
+`leader::done` gives the leader the same explicit finalization boundary as a worker. Normal programs finalize entered participants explicitly; dropping a handle is not an
 implicit successful finalization or a new collective participation point.
 
 ### Declared lanes
@@ -198,8 +193,8 @@ worker cannot reach those, by type.
 A frame to a `Remote` worker crosses hosts, and you do not choose how. The backend lowers it onto
 a link the launch established, beneath `Message` and `Lane`. You get the same channel, the same
 one-attempt outcomes and the same FIFO per directed pair. A link never loses a frame on any
-backend, even where `LOSSY` lets a local lane skip. `none` refuses a remote address by name, and
-`nv` reports `Unimplemented`. `reshape`, `release` and `barrier` never cross a host, and an
+backend, even where `LOSSY` lets a local lane skip. A backend with no link refuses every `Remote`
+address at the call, by name. `reshape`, `release` and `barrier` never cross a host, and an
 accepted frame is not proof that the remote worker received it.
 
 ## Shared memory
@@ -238,23 +233,20 @@ abnormal: an OS failure there is reported and aborts instead of panicking or dis
 Dropping a returned refusal without handling it reports the original error and aborts, never retries.
 
 A leader may publish revision `n + 1` while `n` is attached, so a refused publication leaves the
-previous segment and its readers untouched. On named storage the MPI family refuses a revision the
-leader already holds live by name (`EEXIST`); `none` does not check it and relies on the leader
-never reusing a live revision. Retiring is the
+previous segment and its readers untouched. Publishing a revision the leader already holds live is
+the leader's error; a backend may refuse it. Retiring is the
 leader's decision alone, taken after every attached worker has told it, by an ordinary frame, that
 it has detached.
 
-Publish reserves the whole object before it copies, so one live segment needs its length in
-`/dev/shm`, and a successor published beside it needs both lengths at once. An exhausted `/dev/shm` is a refused
-publication carrying its errno, such as `ENOSPC`, not a `SIGBUS` during the copy.
+Publish reserves the whole segment before it copies, so a successor published beside a live
+segment needs both lengths at once. Storage that cannot hold it is a refused publication carrying
+the cause, never a fault during the copy.
 
-A process that dies before retiring its segments, whether by a fatal exit, a signal or a launcher abort,
-leaves its `/dev/shm/trame-<pid>-<rev>` objects behind. Removing them after a crash is the launch
-operator's job; there is no automatic crash cleanup yet.
+A participant that dies before retiring its segments leaves them behind. Removing them after a
+crash is the launch operator's job; there is no automatic crash cleanup yet.
 
-**Colocation is a launch precondition.** A leader runs on its workers' machine, in their POSIX
-shared-memory namespace (host backends) or their CUDA context (device backend). Nothing discovers
-or repairs a violation; `attach` refuses by name.
+**Colocation is a launch precondition.** A deployment's leader and workers share one storage
+domain. Nothing discovers or repairs a violation; entry or `attach` refuses by name.
 
 Shared mutable state uses exclusive access, handoff or atomics, not an aliased `&mut` reference.
 Shared storage has no implicit global coherence outside its declared domain. Logical publication
@@ -517,27 +509,12 @@ else. `MAX_FRAME: usize` bounds every route, including the leader route. The pre
 profile requires at least 65,544 bytes and at most `u32::MAX`; a backend must provision that
 profile or refuse entry. This numerical profile is not a hardware definition.
 
-`none` is the degenerate deployment: one worker and no functioning transport peer. It refuses
-other worker geometries, sends answer `Closed`, and receives produce no frame. Local execution and
-shared-state primitives still work, and its leader's segment is a process-local copy that the
-worker, in the same process, attaches by address; `attach` there cannot validate the handle and
-relies on its `unsafe` promise. It does not simulate evidence for communicating deployments.
+A backend that does not implement part of this contract refuses it with
+`BackendFault::Unimplemented` and says so in its `README.md`. Conformance reports such a refusal as
+`UNIMPLEMENTED`, never as evidence.
 
-`nv` implements the segment surface as refusals: `leader::publish` and `attach` return `Failed`
-with `BackendFault::Unimplemented`, so no `Published` or `Shared` value exists on it and `bytes`,
-`detach` and `retire` cannot be reached. `Published` is `nv`'s own uninhabited type, distinct from
-the worker's `Shared`, not an alias of it. The intended implementation is a leader device
-allocation filled by host-to-device copy on a pre-created independent stream, with the handle's
-token the device pointer, valid in the launch's single CUDA context; one GPU per leader. cuda-core
-allocation and its freeing `Drop` are synchronous, so whether they make progress beside a
-persistent kernel is an open hardware question, not a settled lowering. In S1 conformance `nv`
-checks that `publish` and `attach` refuse with `Unimplemented`; the table reports `UNIMPLEMENTED`
-only when the leader's `publish` refusal and each of the four workers' `attach` refusals is the
-exact `Unimplemented` failure, and the cell is not evidence of segment transfer.
-
-Backend build tooling belongs to its implementation: `trame/<module>/cargo`, package
-`<module>-cargo`, with Cargo's `cargo-<module>` executable convention. NV therefore has
-`trame/backends/nv/cargo`, package `nv-cargo`, invoked as `cargo nv`. A module with no build tool needs no
+Backend build tooling belongs to its implementation: `trame/backends/<b>/cargo`, package
+`<b>-cargo`, with Cargo's `cargo-<b>` executable convention. A backend with no build tool needs no
 placeholder crate. Tooling is not part of the worker's execution interface.
 
 Conformance checks observable effects against this contract, not which hardware instruction,
