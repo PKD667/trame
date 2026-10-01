@@ -9,6 +9,7 @@ none of them. Each backend says what it does, and where it falls short, in its o
 | [mpi](backends/mpi/README.md) | MPI ranks: RMA-ring lanes, MPI-message batches | `mpi`, `lossy` |
 | [nv](backends/nv/README.md) | one CUDA warp per rank | `nv`, `cuda` |
 
+Backend implementations live in `backends/`; Cargo wrappers live in `cargo/<backend>/`.
 `backends/host/` is the host lowering none and mpi share. `optim/` holds portable primitives
 (`exp`); a backend's `optim` re-exports them and may shadow any with its own.
 
