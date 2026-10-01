@@ -55,6 +55,11 @@ case "$release" in 'release: 1.'*-nightly) ;; *) echo "[preflight] unexpected ru
 [ -e "$LIBCLANG_PATH/libclang-19.so" ] || { echo "[preflight] missing pinned libclang-19.so: $LIBCLANG_PATH/libclang-19.so" >&2; exit 1; }
 export CUDA_TOOLKIT_PATH="$CUDA_HOME"
 
+require_sm70() {
+	cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
+	[ "${cc%.*}" -ge 7 ] || { echo "[$1] device-scope acquire/release requires sm_70+"; exit 1; }
+}
+
 run() {
 	[ -z "${IN_NIX:-}" ] || { echo "[preflight] IN_NIX is set; refusing command" >&2; return 1; }
 	"$@"

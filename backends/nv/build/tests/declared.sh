@@ -5,8 +5,7 @@ set -eu
 
 export CUDA_OXIDE_BACKEND="$CARGO_HOME/cuda-oxide/librustc_codegen_cuda.so"
 
-cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
-[ "${cc%.*}" -ge 7 ] || { echo "[declared] device-scope acquire/release requires sm_70+"; exit 1; }
+require_sm70 declared
 
 cd "$NVMPI_PROJECT"
 run cargo nv run -p trame --example nv-declared --features cuda
