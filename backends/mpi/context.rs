@@ -116,6 +116,9 @@ pub struct Context {
     /// Whether `recv` probes the link before this deployment's communicator. Each call flips it,
     /// so neither route starves the other.
     link_first: bool,
+    pub(crate) world_deferred: Arc<super::p2p::Deferred>,
+    pub(crate) link_deferred: Arc<super::p2p::Deferred>,
+    pub(crate) leader_deferred: Arc<super::p2p::Deferred>,
     /// The worker's end of the bridge to its leader. Every deployment has one; an option only so
     /// `done` can release it before finalising, as `world` is.
     ///
@@ -301,6 +304,9 @@ pub struct Io<'a> {
     pub(crate) leader: &'a InterCommunicator,
     pub(crate) rank: u32,
     pub(crate) link: &'a Link,
+    world_deferred: Arc<super::p2p::Deferred>,
+    link_deferred: Arc<super::p2p::Deferred>,
+    leader_deferred: Arc<super::p2p::Deferred>,
     /// The lane table: the tag lane frames carry and the workers the window is indexed by.
     pub(crate) lane: Tag,
     pub(crate) workers: &'a [u32],
@@ -340,6 +346,11 @@ fn lend<'a, const N: usize>(cx: &'a mut Context, receive: &'a [Receive<'a>; N]) 
     let leader = cx.leader.as_ref().expect("the communicators were released by `done`");
     let link = cx.link.as_ref().expect("the communicators were released by `done`");
     let (rank, tag) = (cx.rank, cx.lane.tag);
+    let (world_deferred, link_deferred, leader_deferred) = (
+        Arc::clone(&cx.world_deferred),
+        Arc::clone(&cx.link_deferred),
+        Arc::clone(&cx.leader_deferred),
+    );
     let workers: &'a [u32] = &cx.lane.workers;
     let far: &'a Far = &cx.lane.far;
     #[cfg(feature = "mpi")]
@@ -353,6 +364,9 @@ fn lend<'a, const N: usize>(cx: &'a mut Context, receive: &'a [Receive<'a>; N]) 
             leader,
             rank,
             link,
+            world_deferred: Arc::clone(&world_deferred),
+            link_deferred: Arc::clone(&link_deferred),
+            leader_deferred: Arc::clone(&leader_deferred),
             lane: tag,
             workers,
             far,
@@ -380,9 +394,9 @@ impl Io<'_> {
         for k in 0..4 {
             let route = (self.next + k) % 4;
             let frame = match route {
-                0 => super::p2p::peer(super::p2p::take(self.world, me, self.owner, &mut self.turn[0], out)?)?,
-                1 => super::link::take(self.link, self.rank, self.owner, &mut self.turn[2], out)?,
-                2 => super::p2p::take(self.leader, me, self.owner, &mut self.turn[1], out)?
+                0 => super::p2p::peer(super::p2p::take_with_deferred(self.world, me, self.owner, &mut self.turn[0], out, &self.world_deferred)?)?,
+                1 => super::link::take(self.link, self.rank, self.owner, &mut self.turn[2], out, &self.link_deferred)?,
+                2 => super::p2p::take_with_deferred(self.leader, me, self.owner, &mut self.turn[1], out, &self.leader_deferred)?
                     .map(|(_, tag, len)| Frame::new(None, tag, len)),
                 _ => self.lane_frame(out)?,
             };
@@ -634,6 +648,9 @@ pub fn init(env: Environment, deployment: Deployment<'_>) -> Result<Context, Fai
         size,
         link: Some(link),
         link_first: false,
+        world_deferred: Arc::new(super::p2p::Deferred::new()),
+        link_deferred: Arc::new(super::p2p::Deferred::new()),
+        leader_deferred: Arc::new(super::p2p::Deferred::new()),
         leader: Some(leader),
         lane: Lane::none(),
         _unshared: PhantomData,
@@ -668,9 +685,9 @@ pub(super) fn quiesce(
 pub fn done<A>(cx: &mut Context, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>> {
     let me = Participant::Worker(cx.rank);
     quiesce(&mut cx._universe, |out| {
-        super::p2p::take(cx.world.as_ref().expect("entered worker"), me, Owner::ALL, &mut 0, out)?;
-        super::link::take(cx.link.as_ref().expect("entered worker"), cx.rank, Owner::ALL, &mut 0, out)?;
-        super::p2p::take(cx.leader.as_ref().expect("entered worker"), me, Owner::ALL, &mut 0, out)?;
+        super::p2p::take_with_deferred(cx.world.as_ref().expect("entered worker"), me, Owner::ALL, &mut 0, out, &cx.world_deferred)?;
+        super::link::take(cx.link.as_ref().expect("entered worker"), cx.rank, Owner::ALL, &mut 0, out, &cx.link_deferred)?;
+        super::p2p::take_with_deferred(cx.leader.as_ref().expect("entered worker"), me, Owner::ALL, &mut 0, out, &cx.leader_deferred)?;
         Ok(())
     });
     cx.clear_lane();

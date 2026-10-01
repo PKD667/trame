@@ -13,12 +13,28 @@ use mpi::datatype::Equivalence;
 use mpi::point_to_point::{Message, Source, Status};
 use mpi::raw::traits::AsRawMut;
 use mpi::topology::Communicator;
+use std::collections::VecDeque;
+use std::sync::Mutex;
 
 use super::context::{Context, MAX_FRAME};
 use crate::invoke::{Owner, Receive};
 use crate::contract::{
     Addr, BackendFault, Error, Failure, FailureKind, Frame, Invalid, Participant, Tag,
 };
+
+/// Frames removed from MPI while another arm owned the next queued tag.
+pub(crate) struct Deferred(Mutex<VecDeque<(i32, Tag, Vec<u8>)>>);
+
+impl Deferred {
+    pub(crate) fn new() -> Self {
+        Self(Mutex::new(VecDeque::new()))
+    }
+
+    pub(super) fn push(&self, frame: (i32, Tag, Vec<u8>), me: Participant) -> Result<(), Error> {
+        self.0.lock().map_err(|_| transport(me))?.push_back(frame);
+        Ok(())
+    }
+}
 
 fn unrepresentable<T>(_: T) -> Error {
     Error::Invalid(Invalid::Unrepresentable)
@@ -91,9 +107,9 @@ pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     let link_first = cx.flip();
     for link in [link_first, !link_first] {
         let frame = if link {
-            super::link::take(cx.link(), cx.rank(), Owner::ALL, &mut 0, out)?
+            super::link::take(cx.link(), cx.rank(), Owner::ALL, &mut 0, out, &cx.link_deferred)?
         } else {
-            peer(take(cx.world(), me, Owner::ALL, &mut 0, out)?)?
+            peer(take_with_deferred(cx.world(), me, Owner::ALL, &mut 0, out, &cx.world_deferred)?)?
         };
         if frame.is_some() {
             return Ok(frame);
@@ -111,9 +127,7 @@ pub(crate) fn peer(taken: Option<(i32, Tag, usize)>) -> Result<Option<Frame>, Er
 
 /// One attempt at the next frame `owner` receives on `comm`: its remote rank, tag and length.
 ///
-/// Only a tag's owner ever matches frames under it, so a size probe and the match after it find
-/// the same message. A short buffer therefore takes nothing, and nothing is ever held. `turn` is
-/// where an arm that lists its tags starts looking, so no tag starves the others.
+/// Unscoped receive, used where every tag is eligible and therefore no frame needs deferring.
 pub(crate) fn take<C: Communicator>(
     comm: &C,
     me: Participant,
@@ -121,19 +135,63 @@ pub(crate) fn take<C: Communicator>(
     turn: &mut usize,
     out: &mut [u8],
 ) -> Result<Option<(i32, Tag, usize)>, Error> {
+    take_pending(comm, me, owner, turn, out, &Deferred::new())
+}
+
+/// Only a tag's owner matches frames under it. Scoped `All` receives defer intervening unowned
+/// messages in communicator order; a short buffer therefore takes nothing. `turn` is where an arm
+/// that lists its tags starts looking, so no tag starves the others.
+pub(crate) fn take_with_deferred<C: Communicator>(
+    comm: &C,
+    me: Participant,
+    owner: Owner<'_>,
+    turn: &mut usize,
+    out: &mut [u8],
+    deferred: &Deferred,
+) -> Result<Option<(i32, Tag, usize)>, Error> {
+    match owner.mine() {
+        Receive::Nothing => Ok(None),
+        _ => {
+            if let Some(frame) = take_deferred(deferred, me, owner, out)? {
+                return Ok(Some(frame));
+            }
+            take_pending(comm, me, owner, turn, out, deferred)
+        }
+    }
+}
+
+fn take_pending<C: Communicator>(
+    comm: &C,
+    me: Participant,
+    owner: Owner<'_>,
+    turn: &mut usize,
+    out: &mut [u8],
+    deferred: &Deferred,
+) -> Result<Option<(i32, Tag, usize)>, Error> {
     match owner.mine() {
         Receive::Nothing => Ok(None),
         Receive::All if owner.every() => tagged(comm, me, None, out),
         // Every tag no earlier arm names: look at the next frame, and take it only if it is ours.
         Receive::All => {
-            let Some(status) = comm.any_process().immediate_probe() else {
-                return Ok(None);
-            };
-            let tag = contract_tag(status.tag())?;
-            if !owner.owns(tag) {
-                return Ok(None);
+            loop {
+                let Some(status) = comm.any_process().immediate_probe() else {
+                    return Ok(None);
+                };
+                let tag = contract_tag(status.tag())?;
+                if owner.owns(tag) {
+                    return matched(comm, me, status.source_rank(), tag, counted(&status)?, out);
+                }
+                let source = status.source_rank();
+                let size = counted(&status)?;
+                let mut data = vec![0; size];
+                let Some((message, found)) = comm.process_at_rank(source)
+                    .immediate_matched_probe_with_tag(status.tag()) else {
+                    return Err(transport(me));
+                };
+                let (source, tag, len) = receive(me, message, &found, &mut data)?;
+                data.truncate(len);
+                deferred.push((source, tag, data), me)?;
             }
-            matched(comm, me, status.source_rank(), tag, counted(&status)?, out)
         }
         Receive::Only(tags) => {
             for k in 0..tags.len() {
@@ -149,6 +207,26 @@ pub(crate) fn take<C: Communicator>(
             Ok(None)
         }
     }
+}
+
+pub(super) fn take_deferred(
+    deferred: &Deferred,
+    me: Participant,
+    owner: Owner<'_>,
+    out: &mut [u8],
+) -> Result<Option<(i32, Tag, usize)>, Error> {
+    let mut queue = deferred.0.lock().map_err(|_| transport(me))?;
+    let Some(at) = queue.iter().position(|(_, tag, _)| owner.owns(*tag)) else {
+        return Ok(None);
+    };
+    let (source, tag, data) = &queue[at];
+    if data.len() > out.len() {
+        return Err(Error::TooSmall { needed: data.len() });
+    }
+    let (source, tag, len) = (*source, *tag, data.len());
+    out[..len].copy_from_slice(data);
+    queue.remove(at);
+    Ok(Some((source, tag, len)))
 }
 
 /// The next frame under `tag`, or under any tag.

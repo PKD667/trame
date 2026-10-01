@@ -8,7 +8,8 @@ use std::collections::HashMap;
 
 use std::num::NonZeroU32;
 
-use crate::contract::{Addr, Edge};
+use crate::contract::{Addr, Edge, Participant, Tag};
+use crate::invoke::{Owner, Receive};
 use crate::mpi::context::FACTOR;
 
 /// The declaration the tests work from: edges ordered by `(source, destination)`, workers ascending
@@ -51,6 +52,64 @@ fn the_window_is_sorted_so_every_member_opens_the_same_one() {
 fn a_table_with_nothing_on_it_is_empty() {
     let got = crate::mpi::context::window(&[0, 1], &[], 64).expect("a table");
     assert!(got.is_empty());
+}
+
+#[test]
+fn scoped_all_progresses_past_a_queued_unowned_frame_and_preserves_it() {
+    let deferred = crate::mpi::p2p::Deferred::new();
+    let unowned = Tag::new(11);
+    let owned = Tag::new(12);
+    let me = Participant::Worker(0);
+    deferred.push((3, unowned, vec![1, 2]), me).expect("defer unowned");
+    deferred.push((3, unowned, vec![3]), me).expect("defer next unowned");
+    deferred.push((4, owned, vec![7, 8, 9]), me).expect("defer owned");
+    deferred.push((4, owned, vec![6]), me).expect("defer next owned");
+    let unowned_tags = [unowned];
+    let owned_tags = [owned];
+    let arms = [Receive::Only(&unowned_tags), Receive::Only(&owned_tags)];
+    let mut out = [0; 3];
+
+    let got = crate::mpi::p2p::take_deferred(
+        &deferred,
+        me,
+        Owner::new(&arms, 1),
+        &mut out,
+    )
+    .expect("owned frame");
+    assert_eq!(got, Some((4, owned, 3)));
+    assert_eq!(&out, &[7, 8, 9]);
+    let got = crate::mpi::p2p::take_deferred(
+        &deferred,
+        me,
+        Owner::new(&arms, 1),
+        &mut out,
+    )
+    .expect("next owned frame");
+    assert_eq!(got, Some((4, owned, 1)));
+    assert_eq!(out[0], 6);
+    let got = crate::mpi::p2p::take_deferred(
+        &deferred,
+        me,
+        Owner::new(&arms, 0),
+        &mut out,
+    )
+    .expect("previously unowned frame");
+    assert_eq!(got, Some((3, unowned, 2)));
+    assert_eq!(&out[..2], &[1, 2]);
+    let got = crate::mpi::p2p::take_deferred(
+        &deferred,
+        me,
+        Owner::new(&arms, 0),
+        &mut out,
+    )
+    .expect("next unowned frame");
+    assert_eq!(got, Some((3, unowned, 1)));
+    assert_eq!(out[0], 3);
+    assert_eq!(
+        crate::mpi::p2p::take_deferred(&deferred, me, Owner::ALL, &mut out)
+            .expect("no duplicate frame"),
+        None
+    );
 }
 
 #[test]
