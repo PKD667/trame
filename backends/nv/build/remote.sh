@@ -33,7 +33,7 @@ case "$BASE" in "~/nv-campaigns/$CAMPAIGN") ;; *) echo "[remote] NVMPI_BASE must
 BASE="\$HOME/nv-campaigns/$CAMPAIGN"
 
 here=$(CDPATH= cd "$(dirname "$0")" && pwd -P)
-root=$(CDPATH= cd "$here/../../.." && pwd -P)
+root=$(CDPATH= cd "$here/../../../.." && pwd -P)
 MANIFEST_TOOL="$root/build/manifest.py"
 LOCAL_EVIDENCE=${NVMPI_MANIFEST_DIR:?NVMPI_MANIFEST_DIR must name the local campaign manifest directory}
 FROZEN="$LOCAL_EVIDENCE/source"
