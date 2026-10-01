@@ -3,7 +3,7 @@
 One MPI world per launch. Batches travel as MPI messages; local lanes are RMA rings, acknowledged
 unless the `lossy` feature selects overwrite-on-full rings. The choice is a compile-time feature so
 every rank of a launch agrees on it by construction. A frame to another host crosses on an MPI link,
-which never loses a frame even under `lossy`.
+which never loses a frame even under `lossy`. Scoped receives defer unrelated probed frames in a private communicator queue until their tag owner asks; delivery searches for the earliest eligible queued frame and keeps source/tag FIFO. The queue retains payload bytes until delivered, so a long-lived unowned tag can consume memory; scoped receive traffic should be drained by its owning arm.
 
 A deployment is one host. Its leader and workers must share one POSIX shared-memory namespace, and
 all launch participants agree on admission before any bridge is created; a deployment spread over
