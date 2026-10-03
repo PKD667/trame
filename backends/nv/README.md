@@ -6,13 +6,13 @@ cuda-oxide fork. Its build tool is `cargo nv` (`cargo/`, package `nv-cargo`).
 
 Scheduling mirrors the host lowering: one lane-zero owner per worker runs invocations in list order.
 
-Not implemented, each refused with `BackendFault::Unimplemented`:
+The following operations refuse with `BackendFault::Unimplemented`:
 
 - **Links.** A `Remote` address naming a worker of another host. Multi-host GPU is deferred.
 - **Segments.** `leader::publish` and `attach` refuse, so no `Published` or `Shared` value exists
   and `bytes`, `detach` and `retire` cannot be reached. `Published` is nv's own uninhabited type.
   In S1 conformance the cell reads `UNIMPLEMENTED` only when the leader's publish and all four
-  workers' attach refuse exactly so; it is not evidence of segment transfer.
+  workers' attach refuse exactly so. This records refusal coverage; segment transfer remains unverified.
 
 The intended segment is a leader device allocation filled by host-to-device copy on a pre-created
 stream, its handle token the device pointer. cuda-core allocation and its freeing `Drop` are

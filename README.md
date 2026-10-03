@@ -1,7 +1,7 @@
 # trame
 
-One contract, several machines. [backend.md](backend.md) says what every backend must do and names
-none of them. Each backend says what it does, and where it falls short, in its own `README.md`:
+[backend.md](backend.md) defines the common contract. Each backend's `README.md` records its
+implementation and limitations:
 
 | backend | runs on | feature |
 |---|---|---|
