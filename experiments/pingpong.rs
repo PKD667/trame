@@ -63,5 +63,4 @@ fn main() {
         }
     }
     wire.done();
-    return;
 }

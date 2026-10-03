@@ -158,5 +158,4 @@ fn main() {
     );
     println!("exact: distributed and serial agree to the bit");
     wire.done();
-    return;
 }

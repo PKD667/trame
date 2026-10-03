@@ -331,7 +331,6 @@ fn main() {
         }
     }
     wire.done();
-    return;
 }
 
 /// Report one pattern summed across ranks. Rates use the slowest rank because quotas run

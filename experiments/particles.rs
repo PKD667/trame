@@ -193,7 +193,6 @@ fn main() {
     assert_eq!(kept, started, "particle count changed in transit");
     println!("total\tkept {kept}\tcrossed {crossed}\thits {hits}\tconserved of {started}");
     wire.done();
-    return;
 }
 
 /// Drain one waiting frame and report whether one was found.

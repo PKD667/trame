@@ -393,7 +393,7 @@ fn ordered_keys_run_inline_on_the_caller() {
 fn a_panic_propagates_from_inline_dispatch() {
     let done = AtomicUsize::new(0);
     let hits: Vec<Hit> = (0..8).map(|cell| Hit { cell, amount: 0 }).collect();
-    let mut slots = vec![(); 8];
+    let mut slots = [(); 8];
     let unwound = catch_unwind(AssertUnwindSafe(|| {
         crate::run::ordered(
             &(),
