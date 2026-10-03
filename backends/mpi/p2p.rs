@@ -334,7 +334,7 @@ pub fn flush(_cx: &mut Context) -> Result<(), Error> {
 
 /// The next frame from either route, for a backend whose lanes are not the wire.
 ///
-/// The wire is checked first. Control, sink and log traffic ride it, and a rank behind on those
+/// The wire is checked first. Control and log traffic ride it, and a rank behind on those
 /// cannot even be told to stop — so a lane may not starve them.
 pub(crate) fn recv_from_either(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
     if let Some(frame) = recv(cx, out)? {
