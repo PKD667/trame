@@ -1,8 +1,8 @@
 /// Portable primitives expressed as arithmetic so a backend can replace them at its boundary.
 /// The approximation is for single-precision inputs in `[-30, 0]` and has relative error < 2e-6.
 pub fn exp(x: f32) -> f32 {
-    let n = (x / 0.693_147_2_f32) as i32;
-    let r = x - (n as f32) * 0.693_147_2_f32;
+    let n = (x / core::f32::consts::LN_2) as i32;
+    let r = x - (n as f32) * core::f32::consts::LN_2;
     let p = 1.0_f32
         + r * (1.0_f32
             + r * (0.5_f32

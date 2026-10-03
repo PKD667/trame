@@ -20,7 +20,7 @@ fn count(name: &str) -> u32 {
 fn main() {
     let workers = count("TRAME_WORKERS");
     let hosts = count("TRAME_HOSTS");
-    assert!(hosts > 0 && workers > 0 && workers % hosts == 0, "TRAME_HOSTS={hosts} does not divide TRAME_WORKERS={workers}");
+    assert!(hosts > 0 && workers > 0 && workers.is_multiple_of(hosts), "TRAME_HOSTS={hosts} does not divide TRAME_WORKERS={workers}");
     let args: Vec<String> = std::env::args().skip(1).collect();
     assert!(args.len() == 2, "usage: conformance <worker|leader|pressure|pressure-leader|link|link-leader> <host>");
     let here: u16 = args[1].parse().expect("host is a u16");
