@@ -16,12 +16,10 @@ messages and lanes between every worker pair on different hosts. A successful ad
 not evidence of cross-host delivery.
 
 Segments are named POSIX objects, `/dev/shm/trame-<pid>-<rev>`. Publish reserves the whole object
-before copying, so an exhausted `/dev/shm` is a refusal carrying its errno (`ENOSPC`), not a
-`SIGBUS`. Publishing a revision the leader holds live is refused (`EEXIST`). A process that dies
+before copying. Exhausted `/dev/shm` refuses publication with `ENOSPC` before any copy can fault. Publishing a revision the leader holds live is refused (`EEXIST`). A process that dies
 before retiring leaves its objects behind for the operator to remove.
 
-Workers call `done`; leaders call the method `Leader::done`. Dropping either handle is not a
-shutdown operation. Every application first agrees that it has finished, then each rank detaches
+Workers finalize with `done`; leaders finalize with `Leader::done`. Both require an explicit call. Every application first agrees that it has finished, then each rank detaches
 its buffered-send storage on a helper thread while the calling thread drains and discards unread
 Message/link/leader frames. A second job agreement keeps all receivers draining until all buffers
 have detached. Only then are communicators/windows freed and MPI finalized. This uses the
