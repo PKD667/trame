@@ -19,10 +19,6 @@ Compiler and hardware limitations restrict implementation support. The contract 
 **Compatibility.** Documented functions, macros, attributes, fields and bounds are identical across
 selections. Private layouts, incidental traits and unstable compiler marker traits are excluded.
 
-**Status.** Target contract. Implementation conformance is recorded separately. Backend `README.md` files under `backends/` declare
-support/departures; [execution.md](execution.md) records evidence. Unsupported parts refuse with
-`BackendFault::Unimplemented`; conformance records these refusals as `UNIMPLEMENTED`.
-
 ## Entry and finalization
 
 | Interface | Result |
