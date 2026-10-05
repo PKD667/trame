@@ -240,6 +240,14 @@ pub mod leader {
             Ok(None)
         }
 
+        /// One host: the only leader to exchange with is this one.
+        pub fn exchange(&self, outgoing: &[Vec<u8>]) -> Result<Vec<Vec<u8>>, Error> {
+            match outgoing {
+                [own] => Ok(vec![own.clone()]),
+                _ => Err(Error::Invalid(Invalid::RankOutsideJob)),
+            }
+        }
+
         pub fn done<A>(&mut self, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>> {
             outcome
         }
@@ -255,6 +263,7 @@ pub mod leader {
 
     /// The leader's published segment: it owns the bytes its workers attach by address.
     pub struct Published(
+        #[allow(dead_code)]
         Vec<u8>,
         Handle,
         // Auto traits match the nv backend's, so the public surface is the same on every backend.

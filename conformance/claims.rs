@@ -301,8 +301,9 @@ fn d1() -> Verdict {
     let l = Launch::new;
     let (a, b, c) = ([l(0), l(1)], [l(2), l(3)], [l(1), l(4)]);
     let none: [Launch; 0] = [];
-    let (valid, empty_row, twice): ([&[Launch]; 2], [&[Launch]; 2], [&[Launch]; 2]) =
-        ([&a, &b], [&a, &none], [&a, &c]);
+    let valid: [&[Launch]; 2] = [&a, &b];
+    let empty_row: [&[Launch]; 2] = [&a, &none];
+    let twice: [&[Launch]; 2] = [&a, &c];
     let cases: [(&str, Result<Deployment<'_>, Invalid>, Invalid); 5] = [
         ("empty table", Deployment::new(&[], 0, l(9)), Invalid::EmptyDeployment),
         ("empty row", Deployment::new(&empty_row, 0, l(9)), Invalid::EmptyDeployment),
@@ -656,7 +657,7 @@ fn s1_leader(route: &Leader, mine: &[u32], me: Launch) -> Verdict {
                     Some(Addr::Local(source)) => source,
                     other => abort_s1(&format!("a S1_DONE from {other:?}, not a worker here")),
                 };
-                if frame.tag() != S1_DONE || frame.len() != 0 || !mine.contains(&source) || done.contains(&source) {
+                if frame.tag() != S1_DONE || !frame.is_empty() || !mine.contains(&source) || done.contains(&source) {
                     abort_s1(&format!(
                         "a S1_DONE with tag {}, {} bytes, from {source}",
                         frame.tag().get(),

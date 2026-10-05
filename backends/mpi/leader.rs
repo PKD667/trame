@@ -1,6 +1,6 @@
 //! The leader's route.
 //!
-//! §4 says what a leader is: a host process that holds no rank, is absent from `size` and
+//! §4 says what a leader is: an MPI rank with no trame worker rank, absent from worker `size` and
 //! `rank`, and reaches its workers over a route of its own. §4 also leaves the
 //! realization to the backend. This is this backend's, and the shape of it is the shape of the
 //! statement: the leader is a **different kind of object** from a worker, not one more rank of the
@@ -31,9 +31,11 @@ use std::num::NonZeroU64;
 
 use mpi::environment::Universe;
 use mpi::raw::traits::AsRaw;
+use mpi::collective::CommunicatorCollectives;
+use mpi::datatype::{Partition, PartitionMut};
 use mpi::topology::{Color, Communicator, InterCommunicator, SimpleCommunicator};
 
-use super::context::{Context, Environment, Io, admit, enter, leader_color, refused};
+use super::context::{Context, Environment, Io, admit, enter, leader_color, refused, return_errors};
 use super::p2p::{self, send_on, take};
 use crate::contract::{
     Addr, BackendFault, Deployment, Error, Failure, Frame, Handle, Invalid, Launch,
@@ -78,10 +80,10 @@ pub(crate) fn bridge(
 
 /// A leader. Owned by the host process, one per job, and not a participant.
 ///
-/// It has no `Context`, no rank and no cohort, and that is the point: there is nothing here for a
+/// It has no `Context` or worker rank, and that is the point: there is nothing here for a
 /// caller to mistake for a participant's state. It holds its own MPI lifetime, because a leader
 /// enters MPI on its own account — `init` is the worker's entry and a leader that called it would
-/// be claiming a rank it does not have.
+/// be claiming a worker rank it does not have.
 ///
 /// Only `done` releases MPI resources: dropping this value is not a collective shutdown boundary.
 pub struct Leader {
@@ -94,6 +96,8 @@ pub struct Leader {
     /// The leader group, kept alive for as long as the bridge is: dropping it would disconnect a
     /// communicator the bridge was built against.
     _group: ManuallyDrop<SimpleCommunicator>,
+    /// Every host's leader, ranked by host, and nobody else.
+    leaders: ManuallyDrop<SimpleCommunicator>,
     _universe: ManuallyDrop<Universe>,
     // Auto traits match the nv backend's, so the public surface is the same on every backend.
     _local: PhantomData<*const ()>,
@@ -113,11 +117,12 @@ impl Leader {
         // bridge, so a malformed row given to another deployment refuses this leader too.
         admit(&job, deployment, false).map_err(wrong)?;
 
-        // The link split `init` enters first. A leader is on no link, so it takes the undefined
-        // colour, for which MPI returns no communicator.
-        let None = job.split_by_color_with_key(Color::undefined(), 0) else {
-            unreachable!("MPI gives the undefined colour no communicator");
-        };
+        // The link split `init` enters first. A leader is on no link: the leaders take a colour
+        // of their own, keyed by host, so this split is also every host's leader in host order.
+        let leaders = job
+            .split_by_color_with_key(Color::with_value(1), i32::from(deployment.here()))
+            .ok_or(refused(unentered, "leader::open", BackendFault::Transport))?;
+        return_errors(&leaders);
         // Then the same deployment split as `init`: each host's workers take its host id, this
         // leader a colour of its own. Admission has established that this caller is the
         // deployment's named leader.
@@ -137,6 +142,7 @@ impl Leader {
             inter: ManuallyDrop::new(inter),
             workers,
             _group: ManuallyDrop::new(group),
+            leaders: ManuallyDrop::new(leaders),
             _universe: ManuallyDrop::new(universe),
             _local: PhantomData,
         })
@@ -169,6 +175,27 @@ impl Leader {
         Ok(Some(Frame::new(Some(Addr::Local(source)), tag, len)))
     }
 
+    /// Give `outgoing[h]` to host `h`'s leader and return what each host's leader gave this one,
+    /// indexed by host, this host's own entry included. Collective over every host's leader: each
+    /// enters once per exchange, in the same order, with one buffer per host.
+    pub fn exchange(&self, outgoing: &[Vec<u8>]) -> Result<Vec<Vec<u8>>, Error> {
+        if outgoing.len() != self.leaders.size() as usize {
+            return Err(Error::Invalid(Invalid::RankOutsideJob));
+        }
+        let sent = displaced(outgoing.iter().map(Vec::len))?;
+        let mut counts = vec![0i32; outgoing.len()];
+        self.leaders.all_to_all_into(&sent.0[..], &mut counts[..]);
+        let got = displaced(counts.iter().map(|&n| n as usize))?;
+        let flat = outgoing.concat();
+        let mut into = vec![0u8; got.2];
+        {
+            let send = Partition::new(&flat[..], &sent.0[..], &sent.1[..]);
+            let mut recv = PartitionMut::new(&mut into[..], &got.0[..], &got.1[..]);
+            self.leaders.all_to_all_varcount_into(&send, &mut recv);
+        }
+        Ok(got.0.iter().zip(&got.1).map(|(&n, &at)| into[at as usize..][..n as usize].to_vec()).collect())
+    }
+
     /// Finalize explicitly with the workers, discarding unread frames rather than delivering them.
     pub fn done<A>(&mut self, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>> {
         super::context::quiesce(&mut self._universe, |out| {
@@ -179,10 +206,25 @@ impl Leader {
         unsafe {
             ManuallyDrop::drop(&mut self.inter);
             ManuallyDrop::drop(&mut self._group);
+            ManuallyDrop::drop(&mut self.leaders);
             ManuallyDrop::drop(&mut self._universe);
         }
         outcome
     }
+}
+
+/// MPI counts and displacements of consecutive buffers of these lengths, and their total, all of
+/// which MPI carries as `i32`.
+fn displaced(lengths: impl Iterator<Item = usize>) -> Result<(Vec<i32>, Vec<i32>, usize), Error> {
+    let wide = |n: usize| i32::try_from(n).map_err(|_| Error::Invalid(Invalid::Unrepresentable));
+    let (mut counts, mut at, mut total) = (Vec::new(), Vec::new(), 0usize);
+    for n in lengths {
+        counts.push(wide(n)?);
+        at.push(wide(total)?);
+        total += n;
+    }
+    wide(total)?;
+    Ok((counts, at, total))
 }
 
 /// A worker's send: one frame to this deployment's leader.

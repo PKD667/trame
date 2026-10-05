@@ -57,10 +57,11 @@ collective participation. Traps/killed processes guarantee no destructors.
 |---|---|
 | `send(&mut Context, Addr, Channel, &[u8])`, `flush(&mut Context)` | `Result<(), Error>` |
 | `recv(&mut Context, &mut [u8])` | `Result<Option<Frame>, Error>` |
-| `leader::open(Environment, Deployment)` | `Result<Leader, Failure>` |
-| `leader::send_to(&Leader, u32, Tag, &[u8])`, `leader::send(&mut Context, Tag, &[u8])` | `Result<(), Error>` |
-| `leader::recv_from(&Leader, &mut [u8])`, `leader::recv(&mut Context, &mut [u8])` | `Result<Option<Frame>, Error>` |
-| `leader::done<A>(&mut Leader, Result<(), Failure<A>>)` | `Result<(), Failure<A>>` |
+| `Leader::open(Environment, Deployment)` | `Result<Leader, Failure>` |
+| `Leader::send(&self, to: u32, tag: Tag, data: &[u8])` | `Result<(), Error>` |
+| `Leader::recv(&self, out: &mut [u8])` | `Result<Option<Frame>, Error>` |
+| `Leader::done<A>(&mut self, Result<(), Failure<A>>)` | `Result<(), Failure<A>>` |
+| `leader::send(&mut Context, Tag, &[u8])`, `leader::recv(&mut Context, &mut [u8])` | Worker-to/from-leader operations |
 
 | Outcome | Condition/effect |
 |---|---|
@@ -83,8 +84,13 @@ Assumes live launch, execution opportunities and required receives. No latency b
 to a nonreceiving application.
 
 **Leader routes.** Same attempt/frame/finalization rules; FIFO per worker in each direction.
-Worker receives source `None`; leader receives `Some(Local(r))`. `leader::open`, `send_to`,
-`recv_from` replace current `Leader::open`, `send`, `recv`; no second interface.
+Worker receives source `None`; leader receives `Some(Local(r))`. The leader endpoint uses `Leader::open`, `Leader::send`, `Leader::recv` and `Leader::done`. Workers use the free functions `leader::send` and `leader::recv`.
+
+**Leader exchange.** `Leader::exchange(outgoing)` gives `outgoing[h]` to host `h`'s leader and
+returns every host's piece for this one, indexed by host. It is collective over the launch's
+leaders: each enters once per exchange, in the same order, with one buffer per host, else
+`Invalid(RankOutsideJob)`. Leaders reach each other only here; no worker carries leader traffic.
+MPI runs it among a leaders-only communicator; `none` and `nv` exchange within one host.
 
 ### Addresses and lanes
 
@@ -95,7 +101,7 @@ Worker receives source `None`; leader receives `Some(Local(r))`. `leader::open`,
 | Invalid address | Nonexistent worker or remote naming this host: `Invalid(RankOutsideJob)`. |
 
 **Use.** Numberings remain fixed. Addresses occur in `send`, `Io::send`, `Edge`, `Frame::source`;
-host-local rank operations, `reshape` workers and `leader::send_to` use `u32`.
+host-local rank operations, `reshape` workers and `Leader::send` use `u32`.
 
 **Links.** Preserve channel semantics, one-attempt outcomes and FIFO per directed pair. Never lose
 frames, including with local `LOSSY` lanes. Unsupported remote addresses refuse at the call, by
@@ -187,12 +193,12 @@ Matching participants enter matching boundaries in matching order. `barrier(&mut
 
 | Boundary | Participants/effect |
 |---|---|
-| Entry | Every declared worker: `init`; each deployment leader: `leader::open`. |
+| Entry | Every declared worker: `init`; each deployment leader: `Leader::open`. |
 | `reshape`, `release`, `barrier` | All entered workers, no leaders. `reshape` workers select active geometry; collective membership remains all entered workers. Declarations agree. |
 | Barrier | No frame consumption, send finalization or delivery certificate. Finish prior exchanges first. |
 | `publish`, `retire` | Leader alone; retirement follows attached-worker detach reports. |
 | `attach`, `detach` | One worker, no coordination; handles arrive in application frames. |
-| Finalization | Every entered worker: `done`; leader: `leader::done`. Joint resources may coordinate completion, never require delivery. |
+| Finalization | Every entered worker: `done`; leader: `Leader::done`. Joint resources may coordinate completion, never require delivery. |
 
 **Scheduling.** Schedule all admitted participants needed by a boundary; simultaneous residency
 not required. No boundaries inside bounded steps/items; bodies finish without waiting for another
@@ -203,13 +209,9 @@ resources refuse at entry/configuration, never wait for participants that cannot
 
 ### Processes
 
-**Declaration.** `#[trame::process]`: retained state, bounded `step(&mut self) -> Result<trame::Step, E>`.
-Fields/methods unchanged. `concurrent!` rejects unmarked objects; Rust checks step and infers error.
-Application declarations require only the struct and its step method.
+**Declaration.** `#[trame::process]` preserves the struct and generates an inherent `__declared` marker method. `concurrent!` calls that method, then Rust checks the inherent `step` call and infers its error type.
 
-**Invocation.** `trame::concurrent!(a, b, ...)?`: bind once in source order before stepping;
-move unless explicitly borrowed mutably. Processes: `Send`, scoped borrows allowed, compatible
-`E: Send`, retained state, no self-overlap. `Progress`: advance; `Idle`: no advance, permit others;
+**Invocation.** `trame::concurrent!(a, b, ...)?`: bind each declared object once in source order before stepping; move unless explicitly borrowed mutably. Objects require `Send`, allow scoped borrows and use a compatible `E: Send`; retained state cannot overlap itself. `Progress`: advance; `Idle`: no advance, permit others;
 `Done`: permanent completion. Live unfinished processes get repeated opportunities; interleaving,
 threads, polling rate and completion time unspecified. Repeated bounded sequential stepping valid;
 finishing a process before admitting its communicating peer invalid. No lane naming/warp votes.
