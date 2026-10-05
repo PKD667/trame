@@ -444,6 +444,10 @@ impl Frame {
     pub const fn len(&self) -> usize {
         self.len
     }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
 }
 
 /// One directed lane pair, as declared to `reshape`. At least one end is `Local`: a pair between

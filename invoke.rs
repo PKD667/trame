@@ -183,7 +183,7 @@ macro_rules! concurrent {
 macro_rules! __concurrent {
     (@arm $run:ident [$($made:tt)*] [$($steps:tt)*] [$($n:tt)*] $arm:expr, $($rest:tt)*) => {
         $crate::__concurrent!(@arm $run
-            [$($made)* let mut process = $arm; process.__declared(); let mut arm = $crate::run::arm(|| process.step());]
+            [$($made)* #[allow(unused_mut)] let mut process = $arm; process.__declared(); let mut arm = $crate::run::arm(|| process.step());]
             [$($steps)* $run.arm(&mut arm);]
             [$($n)* + 1]
             $($rest)*)

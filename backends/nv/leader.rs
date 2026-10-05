@@ -355,6 +355,15 @@ impl Leader {
         Ok(None)
     }
 
+    /// A device sees only its own host's launches, so its leader exchanges with itself alone.
+    /// Reaching other hosts' leaders is the relay this backend does not have yet.
+    pub fn exchange(&self, outgoing: &[Vec<u8>]) -> Result<Vec<Vec<u8>>, Error> {
+        match outgoing {
+            [own] => Ok(vec![own.clone()]),
+            _ => Err(Error::Invalid(Invalid::RankOutsideJob)),
+        }
+    }
+
     pub fn done<A>(&mut self, outcome: Result<(), Failure<A>>) -> Result<(), Failure<A>> {
         outcome
     }
