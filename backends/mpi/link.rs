@@ -162,9 +162,8 @@ pub(crate) fn take(
     owner: Owner<'_>,
     turn: &mut usize,
     out: &mut [u8],
-    deferred: &p2p::Deferred,
 ) -> Result<Option<Frame>, Error> {
-    let Some((source, tag, len)) = p2p::take_with_deferred(&link.comm, Participant::Worker(me), owner, turn, out, deferred)?
+    let Some((source, tag, len)) = p2p::take(&link.comm, Participant::Worker(me), owner, turn, out)?
     else {
         return Ok(None);
     };
