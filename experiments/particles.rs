@@ -1,4 +1,4 @@
-// Particle migration simulation independent of NERVE.
+// Particle migration simulation.
 // A square grid assigns one cell to each rank. Particles collide locally and migrate across cells.
 // `trame` is the only project dependency.
 //

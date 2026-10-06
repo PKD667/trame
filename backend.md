@@ -220,7 +220,7 @@ finishing a process before admitting its communicating peer invalid. No lane nam
 process by source order wins; error sets may vary. Host panic: join, resume; device trap: launcher
 reports. Owners/borrows survive admitted work.
 
-**Communication.** `trame::concurrent!(cx; recv(TAG_SYS) => control, recv(..) => intake, delivery)?`
+**Communication.** `trame::concurrent!(cx; recv(TAG_CONTROL) => control, recv(..) => producer, consumer)?`
 supplies `step(&mut self, &mut Io<'_>)`. One-step borrow; `Io` alone has endpoint methods, all
 `&mut self`: `send(Addr, Channel, &[u8])`, `lead(Tag, &[u8])`, `recv(&mut [u8])`, `flush()`.
 Worker routes/results apply; `lead` reaches assigned leader. `recv(A, B)` assigns tags, `recv(..)`
