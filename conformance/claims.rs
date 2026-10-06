@@ -29,11 +29,11 @@ use trame::{
 /// F1's because it needs two hosts. Read by `conform.sh` from this text, not by Rust.
 #[allow(dead_code)]
 pub const CLAIMS: &[&str] = &[
-    "D1", "E1", "K1", "R1", "M2", "M3", "M4", "M1", "A1", "S1", "L1", "L2", "L3", "C1", "C2", "C3",
+    "D1", "E1", "K1", "R1", "M2", "M3", "M4", "M1", "A1", "S1", "L1", "L2", "L3", "C1", "C3",
     "M5", "F1",
 ];
 
-/// Frames each directed pair carries in M4, L2, L3, R1, C1 and C2. Above the depth of every bounded
+/// Frames each directed pair carries in M4, L2, L3, R1 and C1. Above the depth of every bounded
 /// route a local launch has (4 per ring lane and 8 per nv link as launched by the test), so a
 /// sender meets `Full` and has to treat it as its own wait.
 const K: u32 = 64;
@@ -81,7 +81,6 @@ const UP_TAG: u16 = 60;
 const DOWN_TAG: u16 = 70;
 const M5_TAG: u16 = 80;
 const C1_TAG: u16 = 90;
-const C2_TAG: u16 = 92;
 const A1_TAG: u16 = 94;
 /// F1's `Message` tags are `F1_TAG..F1_TAG + 3`, then its lane, `DONE` and `TooSmall` tags.
 const F1_TAG: u16 = 100;
@@ -430,7 +429,7 @@ fn m1(cx: &mut trame::Context) -> Verdict {
 /// `backend.md`, Addresses: "An address that names no worker of the launch, a `Remote` naming your
 /// own host included, is `Invalid(RankOutsideJob)`", and Declared lanes: an edge has "at least one
 /// endpoint `Local`". A refused send delivers nothing, so after a barrier nothing is pending. That
-/// every source is `Local` inside the deployment is checked where frames arrive: M2, M3, C1 and C2
+/// every source is `Local` inside the deployment is checked where frames arrive: M2, M3 and C1
 /// compare it to `Some(Local(from))`, and M4's exchange fails on any other. A local-only API cannot
 /// be handed a remote worker at all, because it takes a `u32`, so there is no runtime case for it.
 /// A worker of another host that is in range has no route on nv yet: its send must fail
@@ -865,32 +864,6 @@ impl Gather {
     }
 }
 
-/// Sends `K` frames under each of two tags, alternating, each carrying its place in its own stream.
-#[trame::process]
-struct Interleave {
-    to: Addr,
-    tags: [Tag; 2],
-    sent: u32,
-    stalls: u64,
-}
-
-impl Interleave {
-    fn step(&mut self, io: &mut trame::Io<'_>) -> Result<trame::Step, String> {
-        while self.sent < 2 * K {
-            let tag = self.tags[(self.sent % 2) as usize];
-            match io.send(self.to, Channel::Message(tag), &(self.sent / 2).to_le_bytes()) {
-                Ok(()) => {
-                    self.sent += 1;
-                    self.stalls = 0;
-                }
-                Err(Error::Full | Error::Busy) => return idle(&mut self.stalls, "sender"),
-                Err(e) => return Err(format!("send: {e}")),
-            }
-        }
-        Ok(trame::Step::Done)
-    }
-}
-
 /// Asks for a frame from an arm that named no tag.
 #[trame::process]
 struct Unnamed {
@@ -925,29 +898,6 @@ fn c1(cx: &mut trame::Context) -> Verdict {
     }
     ensure(got.iter().all(|g| g.0 == Some(from)), || format!("a frame not from worker {from:?}"))?;
     Ok(format!("two arms, {K} frames each to worker {to:?}, each in order{}", solo(n)))
-}
-
-/// `backend.md`, Execution: "A frame goes to the first arm, in source order, whose `recv` setting
-/// names its tag." One arm names a tag, the next receives every other one, and a third sends
-/// both, interleaved, so each receiving arm meets frames the other owns.
-fn c2(cx: &mut trame::Context) -> Verdict {
-    let (me, n) = (rank(cx), size(cx));
-    let (to, from) = (r((me + 1) % n), r((me + n - 1) % n));
-    let (a, b) = (Tag::new(C2_TAG), Tag::new(C2_TAG + 1));
-    let (mut named, mut rest) = (Gather::new(K as usize), Gather::new(K as usize));
-    trame::concurrent!(cx;
-        recv(a) => &mut named,
-        recv(..) => &mut rest,
-        Interleave { to, tags: [a, b], sent: 0, stalls: 0 },
-    )?;
-    let (named, rest) = (named.got, rest.got);
-    let each: Vec<u32> = (0..K).collect();
-    let only = |got: &[(Option<Addr>, Tag, u32)], tag: Tag| {
-        got.iter().all(|g| g.0 == Some(from) && g.1 == tag) && got.iter().map(|g| g.2).collect::<Vec<_>>() == each
-    };
-    ensure(only(&named, a), || format!("the arm naming tag {} took {named:?}", a.get()))?;
-    ensure(only(&rest, b), || format!("the arm after it took {rest:?}"))?;
-    Ok(format!("tag {} to the arm naming it, tag {} to the one after{}", a.get(), b.get(), solo(n)))
 }
 
 /// `backend.md`, Execution: "`recv` on an arm with no setting returns `Invalid(NotReceiving)`."
@@ -1166,10 +1116,6 @@ pub fn worker(env: Environment, hosts: &[&[Launch]], here: u16, leader: Launch) 
     ok &= who.claim("C1", || {
         barrier(&mut cx)?;
         c1(&mut cx)
-    });
-    ok &= who.claim("C2", || {
-        barrier(&mut cx)?;
-        c2(&mut cx)
     });
     ok &= who.claim("C3", || c3(&mut cx));
     ok & done::<Infallible>(&mut cx, Ok(())).is_ok()

@@ -9,13 +9,21 @@
 # running when its launch hit `timeout`: the start line each participant prints before a claim is
 # what names it. `MPIRUN` replaces the launcher prefix (default `mpirun --oversubscribe`).
 #
-# Besides the body: X1 is `cargo test -p trame` per backend, X2 the declaration fixtures, P1 the
-# public surface (`surface.sh`). Exit 0 only when every cell passes.
+# Besides the body: X1 is `cargo test -p trame` per backend, X2 the declaration fixtures, X3 the
+# backend-independent Cargo preflight, and P1 the public surface (`surface.sh`). Exit 0 only when
+# every cell passes.
 set -uo pipefail
 
-root=$(cd "$(dirname "$0")/../.." && pwd)
-here=$root/trame/scripts
-cd "$root"
+here=$(cd "$(dirname "$0")" && pwd)
+trame_dir=$(cd "$here/.." && pwd)
+if [ -f "$trame_dir/Cargo.toml" ]; then
+	root=$trame_dir
+else
+	root=$(cd "$here/../.." && pwd)
+	trame_dir=$root/trame
+	here=$trame_dir/scripts
+fi
+cd "$trame_dir"
 CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-target}
 export CARGO_TARGET_DIR
 
@@ -90,6 +98,22 @@ started=$(date +%s)
 out=$(mktemp -d)
 echo "conform: output in $out"
 
+# Parser tests plus the pre-Cargo ownership check over every trame-using package in this workspace.
+cargo test -q --manifest-path "$trame_dir/verify/Cargo.toml" >"$out/x3.log" 2>&1
+unit_rc=$?
+if [ "$unit_rc" -eq 0 ]; then
+	cargo run -q --manifest-path "$trame_dir/verify/Cargo.toml" -- verify --manifest-path "$trame_dir/Cargo.toml" >>"$out/x3.log" 2>&1
+	verify_rc=$?
+else
+	verify_rc=1
+fi
+if [ "$unit_rc" -ne 0 ] || [ "$verify_rc" -ne 0 ]; then
+	echo 1 >"$out/x3.status"
+	cat "$out/x3.log" >&2
+	exit 1
+fi
+echo 0 >"$out/x3.status"
+
 # The in-process backends' own tests. On nv's host model, also the body as an ignored test, the
 # claims and M5 as separate invocations; `none` carries no frames, so it answers no claim.
 for backend in none nv; do
@@ -116,7 +140,7 @@ for backend in none nv; do
 	echo $? >"$out/$backend.x1.status"
 done
 
-nix develop -c bash "$here/conform.sh" mpi-stage "$out" >"$out/nix.log" 2>&1
+nix develop "$trame_dir#mpi" -c bash "$here/conform.sh" mpi-stage "$out" >"$out/nix.log" 2>&1
 
 timeout "$LAUNCH" bash "$here/declare/check.sh" --fixtures >"$out/x2.log" 2>&1
 echo $? >"$out/x2.status"
@@ -133,7 +157,7 @@ status_line() {
 }
 
 backends=(none nv mpi lossy)
-claims=$(sed -n '/^pub const CLAIMS/,/^];/p' "$root/trame/conformance/claims.rs" | grep -o '"[A-Z0-9]*"' | tr -d '"')
+claims=$(sed -n '/^pub const CLAIMS/,/^];/p' "$trame_dir/conformance/claims.rs" | grep -o '"[A-Z0-9]*"' | tr -d '"')
 {
 	for backend in "${backends[@]}"; do
 		cat "$out/$backend".*.jsonl 2>/dev/null
@@ -159,6 +183,7 @@ claims=$(sed -n '/^pub const CLAIMS/,/^];/p' "$root/trame/conformance/claims.rs"
 		status_line X1 "$backend" "$out/$backend.x1.status" "$out/$backend.x1.log"
 	done
 	status_line X2 none "$out/x2.status" "$out/x2.log"
+	status_line X3 none "$out/x3.status" "$out/x3.log"
 	for backend in none nv mpi; do
 		status_line P1 "$backend" "$out/p1.status" "$out/p1.log"
 	done
@@ -169,16 +194,16 @@ failed=0
 printf '%-4s' claim
 printf ' %-13s' "${backends[@]}"
 echo
-for claim in $claims X1 X2 P1; do
+for claim in $claims X1 X2 X3 P1; do
 	printf '%-4s' "$claim"
 	for backend in "${backends[@]}"; do
 		cell=$(jq -r -s --arg c "$claim" --arg b "$backend" '
 			map(select(.claim == $c and .backend == $b and .verdict))
 			| if length == 0 then "none" elif all(.verdict == "pass") then "pass" else "FAIL" end' "$out/all.jsonl")
-		# X2 is one run for all backends, and P1 compares the three it names.
+		# X2 and X3 are one backend-independent run; P1 compares the three it names.
 		case "$claim:$backend" in
-			X2:none | P1:none | P1:nv | P1:mpi) ;;
-			X2:* | P1:*) cell=n/a ;;
+			X2:none | X3:none | P1:none | P1:nv | P1:mpi) ;;
+			X2:* | X3:* | P1:*) cell=n/a ;;
 			X1:*) ;;
 			S1:nv)
 				if jq -e -s '

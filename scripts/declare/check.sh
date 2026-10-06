@@ -31,7 +31,10 @@ set -o pipefail
 set -u
 
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-root=$(cd -- "$here/../../.." && pwd)
+root=$(cd -- "$here/../.." && pwd)
+if [ ! -f "$root/Cargo.toml" ]; then
+    root=$(cd -- "$here/../../.." && pwd)
+fi
 out=${TMPDIR:-/tmp}/nerve-declare-check.$$
 mkdir -p "$out"
 trap 'rm -rf "$out"' EXIT

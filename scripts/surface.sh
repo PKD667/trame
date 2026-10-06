@@ -2,8 +2,24 @@
 # P1 compares the exported item inventory, then checks the documented Rust contract as a client.
 set -euo pipefail
 
-root=$(cd "$(dirname "$0")/../.." && pwd)
-here=$root/trame/scripts/surface
+script_dir=$(cd "$(dirname "$0")" && pwd)
+trame_dir=$(cd "$script_dir/.." && pwd)
+if [ ! -f "$trame_dir/Cargo.toml" ]; then
+	root=$(cd "$script_dir/../.." && pwd)
+	trame_dir=$root/trame
+fi
+root=$(cargo metadata --no-deps --format-version 1 --manifest-path "$trame_dir/Cargo.toml" \
+	| python3 -c 'import json, sys; print(json.load(sys.stdin)["workspace_root"])')
+remove_lock=0
+if [[ ! -f "$root/Cargo.lock" ]]; then
+	cargo generate-lockfile --manifest-path "$trame_dir/Cargo.toml"
+	remove_lock=1
+fi
+cleanup_lock() {
+	if [[ "$remove_lock" -eq 1 ]]; then rm "$root/Cargo.lock"; fi
+}
+trap cleanup_lock EXIT
+here=$trame_dir/scripts/surface
 out=${1:?usage: surface.sh OUT}
 mkdir -p "$out"
 cd "$root"
@@ -16,12 +32,12 @@ rustdoc=$(command -v rustdoc)
 cargo=$(command -v cargo)
 rustc -Vv >"$out/rustc.version"
 rustdoc --version >"$out/rustdoc.version"
-sha256sum Cargo.lock trame/Cargo.toml >"$out/manifest.sha256"
+sha256sum Cargo.lock "$trame_dir/Cargo.toml" >"$out/manifest.sha256"
 
 # Every selection, including MPI, must use these exact compiler executables. Nix supplies MPI
 # headers and libraries only; its compiler is never trusted by PATH or by assumption.
 mpi_env() {
-	nix develop -c env "RUSTC=$compiler" "RUSTDOC=$rustdoc" "$@"
+	nix develop "$trame_dir#mpi" -c env "RUSTC=$compiler" "RUSTDOC=$rustdoc" "$@"
 }
 run_cargo() {
 	local feature=$1; shift
@@ -113,7 +129,7 @@ compile_fixture() {
 	rl=$(<"$out/artifact-$feature.txt"); rlib=$rl; deps=$(dirname "$rlib")/deps
 	local -a rustc_args=(--edition 2024 --crate-type lib --emit=metadata --error-format=json -L "dependency=$deps" --extern "trame=$rlib" -o "$out/$(basename "$fixture" .rs)-$feature.rmeta" "$fixture")
 	if [[ $feature == mpi || $feature == lossy ]]; then
-		printf 'nix develop -c env RUSTC=%q RUSTDOC=%q %q' "$compiler" "$rustdoc" "$compiler" >"$out/$(basename "$fixture" .rs)-$feature.command"
+		printf 'nix develop %q -c env RUSTC=%q RUSTDOC=%q %q' "$trame_dir#mpi" "$compiler" "$rustdoc" "$compiler" >"$out/$(basename "$fixture" .rs)-$feature.command"
 	else
 		printf '%q' "$compiler" >"$out/$(basename "$fixture" .rs)-$feature.command"
 	fi

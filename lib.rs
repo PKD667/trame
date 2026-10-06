@@ -15,7 +15,7 @@ mod host;
 mod invoke;
 pub use invoke::{Invocation, Invoked, Keyed, Step};
 #[doc(hidden)]
-pub use invoke::{Receive, arm_io};
+pub use invoke::{Receive, arm_io, assert_receive_tags_disjoint};
 pub use trame_macros::{ordered, parallel, process};
 
 #[cfg(feature = "mpi")]

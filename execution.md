@@ -69,17 +69,22 @@ Borrowed resources remain the caller's responsibility.
 ### Scoped transport
 
 ```rust
+const TAG_SYS: trame::Tag = ::trame::Tag::new(7);
+const TAG_DATA: trame::Tag = ::trame::Tag::new(8);
 trame::concurrent!(cx;
-    recv(TAG_SYS) => control,
-    recv(..) => intake,
+    recv(self::TAG_SYS) => control,
+    recv(self::TAG_DATA) => intake,
     delivery,
 )?;
 ```
 
 This form calls `step(&mut self, io: &mut trame::Io<'_>)` through the existing `arm_io` adapter.
 The `Io` borrow lasts one step and cannot escape through safe code. Its endpoints are
-`io.{send, lead, recv, flush}`. First-match tag ownership, FIFO and `NotReceiving` remain unchanged.
-Worker `trame::{send, recv, flush}` and `leader::{send, recv}` remain separate endpoints.
+`io.{send, lead, recv, flush}`. Receiving arms may own only statically distinct tag sets; `recv(..)`
+must be the only receiving arm. The macro enforces this at expansion and `cargo trame` checks the
+source before Cargo runs. FIFO holds within a sender/receiving-arm pair; there is no relative order
+across different receiving arms. `NotReceiving` remains the result for an arm without a receive
+setting. Worker `trame::{send, recv, flush}` and `leader::{send, recv}` remain separate endpoints.
 NERVE retains its transport arm.
 
 The process-facing interface accepts process objects throughout callers and verification
@@ -361,3 +366,68 @@ positive-client failures unresolved. The failed P1 record remains evidence.
 Production W1, `nv/measure/lowering.rs`, exercises public receive and `Io` paths. It passes on
 an RTX 2080 Ti with cuda-oxide fork `nerve/enum-pointer-overlay` at `ff292052`.
 The nv lead report contains the evidence. This witness does not establish full CUDA conformance.
+
+### MPI refresh
+
+A feature-specific refresh used the MPI dependency shell and exercised MPI and lossy only; it did not
+run NV. The trame working tree was staged outside the checkout beside upstream `mpi-rma` revision
+`1fbea2d5bc0c643f8e3d764163035c830c6dd161`, whose API supplies the `Segment` and `Error::Full`
+items required by this trame snapshot. The old adjacent snapshot lacked those API items and its
+`.git` pointer did not resolve; it is preserved at `../mpi-rma.pre-upstream`. The adjacent path now
+contains the upstream checkout. No backend source was changed to get the staged build.
+
+The source manifest (excluding build output and generated `Cargo.lock`) was SHA-256
+`f3a60a337155966947aa289e91626f2b13600e1928564d6db462f1d95337f6e0`. The Nix shell used nixpkgs
+`494ce7fd23ff6a5dff39e1fb11e9b6f2ac74bf25`, rustc 1.98.1 (`48a229cea`), and Open MPI 5.0.11.
+
+`bash scripts/conform.sh mpi-stage OUT` exited **1**. In both `mpi` and `lossy`, pressure/M5, link/F1,
+and X1 passed; the main launch failed C2. C2 observed frames on tag 92 out of sequence, including
+`0,2,1` from one sender in an MPI worker and `5,7,6` in a lossy worker. This is an unresolved
+contract disagreement, not a passing verification or an attributed root cause. Artifacts are in
+`/tmp/trame-contract-mpi.hoQ6fA/`. The older conformance table above remains the record of its own
+source snapshot; these results supersede it only for the checks and snapshot stated here.
+
+A follow-up used the upstream `mpi-rma` checkout at the same revision, now installed at the expected
+sibling path; the old adjacent snapshot was preserved separately. Main C2 failed again for MPI:
+worker 0 observed all 64 tag-92 frames, but sequence 10 preceded 9. Lossy passed C2 this run; M5,
+F1, and X1 passed for both MPI selections. Artifacts: `/tmp/trame-c2-after-update.dlZO5C/`.
+
+Read-only inspection points to a scoped-receive race, not message-send order or the RMA dependency.
+C2 assigns tag 92 to its first receive arm; the later `recv(..)` arm excludes that tag. In
+`backends/mpi/p2p.rs`, the later arm can nevertheless probe, match, and defer a tag-92 frame. Its
+queue insertion occurs after the MPI receive; meanwhile, the owning arm can match a subsequent
+same-tag frame before the earlier frame is visible in the deferred queue. The queue mutex protects
+the queue operation, not the probe-to-defer interval. That interleaving can explain the observed
+10-before-9 result. This is a source-level diagnosis consistent with the trace, not an instrumented
+proof; backend changes remain outside this work.
+
+The receive-ownership contract was then tightened at trame's public layer: concurrent tagged
+receivers must claim statically disjoint tags, and `recv(..)` must be the only receiving arm. The
+old C2 program mixed a tagged receiver with a catch-all and is therefore now refused by the shared
+pre-Cargo verifier; it is no longer a runtime conformance claim. The earlier C2 runs remain evidence
+about the previous contract and are not results for this tightened one.
+
+The Cargo extension is `cargo-trame`, installed with `cargo install --path verify --locked` and
+available in each trame Nix shell. It reads Cargo workspace metadata, analyzes every Rust file under
+packages depending on trame (including target roots outside a package directory), then delegates
+`check`, `build`, `test`, `clippy`, `run`, or `doc` to Cargo. Raw Cargo commands bypass this gate.
+
+Verification: the parser suite passed 7 tests. `cargo trame verify --manifest-path Cargo.toml`
+checked 105 Rust files in trame, including all `experiments/`; the same command on
+`/workspace/nerve/Cargo.toml` checked 125 Rust files in its trame-importing package, including its
+out-of-tree experiment targets. NERVE received static verification only, not a build. A synthetic
+importer with `recv(Tag::new(92))` and `recv(..)` was rejected before Cargo with TR001 and
+source-labeled diagnostics. `nix flake check --no-build`, `bash -n scripts/conform.sh`, and `git diff --check`
+passed.
+
+The review follow-up added compiler-expansion checks as well as source preflight: the macro rejects a
+catch-all alongside another receiver and const-checks tags across explicit receiver arms. The
+verifier fails closed on visible receive syntax inside wrappers and nested arms, resolves scoped
+imports/constants conservatively, resolves `super::` macro aliases through the module tree, and
+refuses ambiguous constructors. Thirty-three verifier tests
+passed. X2 accepted disjoint receive sets (including a repeated tag within one arm) and refused
+cross-arm duplicate tags and mixed catch-all receivers. `cargo trame check
+--features mpi --example conformance` passed; the source preflight checked 90 Rust files. The
+standalone X2 helper passed its accepted and refusal fixtures. The same verifier checked 125 Rust
+files in the `/workspace/nerve` trame-importing package. P1 was not run because its matrix builds NV,
+outside this test scope.

@@ -153,12 +153,30 @@ where
     arm
 }
 
+/// The macro's const check compares resources owned by different receive arms.
+#[doc(hidden)]
+pub const fn assert_receive_tags_disjoint(left: &[crate::Tag], right: &[crate::Tag]) {
+    let mut i = 0;
+    while i < left.len() {
+        let mut j = 0;
+        while j < right.len() {
+            assert!(
+                left[i].get() != right[j].get(),
+                "receive tag has multiple arm owners"
+            );
+            j += 1;
+        }
+        i += 1;
+    }
+}
+
 /// Step every arm until all are `Done` or one fails; the answer is the first `Err` in source
 /// order among those recorded, and no step starts after one is.
 ///
-/// Given a context, each arm takes the `&mut Io` it is lent for one step. `recv(..)` receives
-/// every tag, `recv(A, B)` those tags, and a frame goes to the first arm in source order that
-/// names its tag.
+/// Given a context, each arm takes the `&mut Io` it is lent for one step. `recv(A, B)` assigns
+/// those tags to one arm. Concurrent receiving arms must have disjoint, statically checkable tag
+/// sets; `recv(..)` must be the only receiving arm. The macro enforces this during expansion;
+/// `cargo trame check` also reports it before Cargo compiles the workspace.
 ///
 /// Arms are `#[process]` objects, moved in or lent as `&mut`, stepped by their `step` method.
 ///
@@ -169,7 +187,7 @@ where
 #[macro_export]
 macro_rules! concurrent {
     ($cx:expr; $($arms:tt)+) => {
-        $crate::__concurrent!(@io $cx, __run [] [] [] [0] $($arms)+)
+        $crate::__concurrent!(@io $cx, __run [] [] [] [none] [] [0] $($arms)+)
     };
     ($($arm:expr),+ $(,)?) => {
         $crate::__concurrent!(@arm __run [] [] [0] $($arm,)+)
@@ -193,34 +211,69 @@ macro_rules! __concurrent {
         $crate::run::concurrent::<_, _, { $($n)* }>(|$run| { $($steps)* })
     }};
     // Arms given a context: each also adds its `Receive` to the list the runner reads.
-    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]
+    // `owner` statically partitions receiving resources; `tags` supports a const disjointness check.
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [none] [$($tags:expr,)*] [$($n:tt)*]
         recv(..) => $arm:expr $(, $($rest:tt)*)?) => {
         $crate::__concurrent!(@io $cx, $run
             [$($made)* let mut process = $arm; process.__declared(); let mut arm = $crate::arm_io(|io| process.step(io));]
             [$($steps)* $run.arm(&mut arm);]
             [$($recv)* $crate::Receive::All,]
-            [$($n)* + 1]
+            [all] [$($tags,)*] [$($n)* + 1]
             $($($rest)*)?)
     };
-    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [all] [$($tags:expr,)*] [$($n:tt)*]
+        recv(..) => $arm:expr $(, $($rest:tt)*)?) => {
+        compile_error!("recv(..) must be the only receiving arm in concurrent!");
+    };
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [one] [$($tags:expr,)*] [$($n:tt)*]
+        recv(..) => $arm:expr $(, $($rest:tt)*)?) => {
+        compile_error!("recv(..) must be the only receiving arm in concurrent!");
+    };
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [many] [$($tags:expr,)*] [$($n:tt)*]
+        recv(..) => $arm:expr $(, $($rest:tt)*)?) => {
+        compile_error!("recv(..) must be the only receiving arm in concurrent!");
+    };
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [none] [$($tags:expr,)*] [$($n:tt)*]
         recv($($tag:expr),+ $(,)?) => $arm:expr $(, $($rest:tt)*)?) => {
         $crate::__concurrent!(@io $cx, $run
             [$($made)* let tags = [$($tag),+]; let mut process = $arm; process.__declared(); let mut arm = $crate::arm_io(|io| process.step(io));]
             [$($steps)* $run.arm(&mut arm);]
             [$($recv)* $crate::Receive::Only(&tags),]
-            [$($n)* + 1]
+            [one] [$($tags,)* $($tag,)*] [$($n)* + 1]
             $($($rest)*)?)
     };
-    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [one] [$($tags:expr,)*] [$($n:tt)*]
+        recv($($tag:expr),+ $(,)?) => $arm:expr $(, $($rest:tt)*)?) => {
+        $crate::__concurrent!(@io $cx, $run
+            [$($made)* const _: () = $crate::assert_receive_tags_disjoint(&[$($tags),*], &[$($tag),+]); let tags = [$($tag),+]; let mut process = $arm; process.__declared(); let mut arm = $crate::arm_io(|io| process.step(io));]
+            [$($steps)* $run.arm(&mut arm);]
+            [$($recv)* $crate::Receive::Only(&tags),]
+            [many] [$($tags,)* $($tag,)*] [$($n)* + 1]
+            $($($rest)*)?)
+    };
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [many] [$($tags:expr,)*] [$($n:tt)*]
+        recv($($tag:expr),+ $(,)?) => $arm:expr $(, $($rest:tt)*)?) => {
+        $crate::__concurrent!(@io $cx, $run
+            [$($made)* const _: () = $crate::assert_receive_tags_disjoint(&[$($tags),*], &[$($tag),+]); let tags = [$($tag),+]; let mut process = $arm; process.__declared(); let mut arm = $crate::arm_io(|io| process.step(io));]
+            [$($steps)* $run.arm(&mut arm);]
+            [$($recv)* $crate::Receive::Only(&tags),]
+            [many] [$($tags,)* $($tag,)*] [$($n)* + 1]
+            $($($rest)*)?)
+    };
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [all] [$($tags:expr,)*] [$($n:tt)*]
+        recv($($tag:expr),+ $(,)?) => $arm:expr $(, $($rest:tt)*)?) => {
+        compile_error!("recv(..) must be the only receiving arm in concurrent!");
+    };
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$owner:ident] [$($tags:expr,)*] [$($n:tt)*]
         $arm:expr $(, $($rest:tt)*)?) => {
         $crate::__concurrent!(@io $cx, $run
             [$($made)* let mut process = $arm; process.__declared(); let mut arm = $crate::arm_io(|io| process.step(io));]
             [$($steps)* $run.arm(&mut arm);]
             [$($recv)* $crate::Receive::Nothing,]
-            [$($n)* + 1]
+            [$owner] [$($tags,)*] [$($n)* + 1]
             $($($rest)*)?)
     };
-    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$($n:tt)*]) => {{
+    (@io $cx:expr, $run:ident [$($made:tt)*] [$($steps:tt)*] [$($recv:tt)*] [$owner:ident] [$($tags:expr,)*] [$($n:tt)*]) => {{
         $($made)*
         let receive = [$($recv)*];
         $crate::concurrent_io::<_, _, { $($n)* }>($cx, &receive, |$run| { $($steps)* })

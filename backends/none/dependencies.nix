@@ -1,0 +1,5 @@
+{ pkgs }:
+{
+  packages = [ ];
+  env = { };
+}

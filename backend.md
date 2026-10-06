@@ -220,14 +220,16 @@ finishing a process before admitting its communicating peer invalid. No lane nam
 process by source order wins; error sets may vary. Host panic: join, resume; device trap: launcher
 reports. Owners/borrows survive admitted work.
 
-**Communication.** `trame::concurrent!(cx; recv(TAG_SYS) => control, recv(..) => intake, delivery)?`
+**Communication.** `trame::concurrent!(cx; recv(TAG_SYS) => control, recv(TAG_DATA) => intake, delivery)?`
 supplies `step(&mut self, &mut Io<'_>)`. One-step borrow; `Io` alone has endpoint methods, all
 `&mut self`: `send(Addr, Channel, &[u8])`, `lead(Tag, &[u8])`, `recv(&mut [u8])`, `flush()`.
-Worker routes/results apply; `lead` reaches assigned leader. `recv(A, B)` assigns tags, `recv(..)`
-all tags; first source-order match owns peer/lane/leader frames. Unassigned frames stay at backend;
-unassigned receiver: `Invalid(NotReceiving)`. Per-channel FIFO across tags between one sending and
-one receiving process; no order across receivers. Frames may wait behind same-sender frames owned
-by another process; no dispatch loss/reordering.
+Worker routes/results apply; `lead` reaches assigned leader. `recv(A, B)` assigns those tags to one
+arm. Concurrent receiving arms must have disjoint, statically checkable tag sets; `recv(..)` must be
+the only receiving arm. The macro rejects violations during expansion; `cargo trame` adds a
+source-level preflight over every workspace package that depends on trame. Unassigned frames stay at backend; an unassigned receiver
+gets `Invalid(NotReceiving)`. FIFO is per sending-arm/receiving-arm pair; different receiving arms
+have no relative order. Frames may wait behind same-sender frames owned by another arm; no dispatch
+loss or reordering within an owned stream.
 
 ### Items
 
