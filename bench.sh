@@ -1,5 +1,5 @@
 #!/bin/sh
-# Exercise and measure a backend, with no NERVE in the measurement.
+# Exercise and measure a backend, with no application in the measurement.
 #
 # Everything here runs the backend crate's own executables, so what comes out is the wire's cost
 # and nothing else. The runtime's numbers are scripts/analysis/, and they are a different question.

@@ -23,16 +23,15 @@
 #             instructions compared. A lowering that started costing something at run time
 #             would show up here as a difference.
 #
-# Nothing in this script mentions NERVE. The fixtures depend on the backend rlib and on nothing
-# else, which is the point: the execution surface is a backend surface, and this is the proof
-# it can be checked without an application.
+# The fixtures depend on the backend rlib and on nothing else, which is the point: the execution
+# surface is a backend surface, and this is the proof it can be checked without an application.
 
 set -o pipefail
 set -u
 
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd -- "$here/../../.." && pwd)
-out=${TMPDIR:-/tmp}/nerve-declare-check.$$
+out=${TMPDIR:-/tmp}/declare-check.$$
 mkdir -p "$out"
 trap 'rm -rf "$out"' EXIT
 

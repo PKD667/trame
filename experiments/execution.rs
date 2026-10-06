@@ -2,7 +2,7 @@
 //
 //   cargo run -p trame --example execution --release
 //
-// No MPI, no peers, no NERVE: the workload is a bag of cells and a stream of hits this file
+// No MPI, no peers: the workload is a bag of cells and a stream of hits this file
 // makes up, and the only thing under test is the claim — that an `#[ordered]` `#[parallel]`
 // function run through `invoke!` is the loop a hand-written scalar reference would have been,
 // with no added dispatch, no per-hit allocation and no queue.
@@ -23,7 +23,7 @@ use std::time::Instant;
 
 use trame::Keyed;
 
-/// One unit of work. A payload, not a spike: this crate has no idea what a spike is.
+/// One unit of work: an opaque payload.
 #[derive(Clone, Copy)]
 struct Hit {
     cell: usize,

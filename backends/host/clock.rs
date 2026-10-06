@@ -15,8 +15,7 @@
 // one clock read: there is no clocks object to look up, no allocation, and no lock.
 //
 // What is *not* here: model time. Anchors, scales, rescaling, retiming and the meaning of a
-// spike's due time belong to the application (`src/nerve/time.rs`) and this module imports none
-// of it. It also owns no schedule: a deadline is a comparison the caller makes.
+// due time belong to the application and this module imports none of it. It also owns no schedule: a deadline is a comparison the caller makes.
 //
 // A device backend supplies the same call: a GPU has no `SystemTime`, and
 // its monotonic counter is per-device. `backend.md` §7 states what that means for a caller that

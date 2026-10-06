@@ -15,9 +15,7 @@ fn cargo_nv_refuses_invalid_identity_before_spawning_cargo() {
     use std::process::Command;
 
     const UUID: &str = "GPU-01234567-89ab-cdef-0123-456789abcdef";
-    let scratch = std::path::PathBuf::from("/home/pkd/code/agents/nerve-nv-20260929/scratch");
-    fs::create_dir_all(&scratch).expect("create campaign scratch directory");
-    let root = scratch.join(format!("cargo-nv-preflight-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("cargo-nv-preflight-{}", std::process::id()));
     fs::create_dir(&root).expect("create private preflight harness");
     let bin = root.join("bin");
     fs::create_dir(&bin).expect("create stub command directory");

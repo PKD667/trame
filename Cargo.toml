@@ -5,7 +5,7 @@ edition = "2024"
 # `tests/` and `experiments/` are library modules, not Cargo integration tests or examples.
 autotests = false
 autoexamples = false
-description = "Every MPI call NERVE makes. Which transport is linked is a feature, not a run-time choice."
+description = "Every MPI call the application makes. Which transport is linked is a feature, not a run-time choice."
 
 [dependencies]
 bytemuck = { version = "1", default-features = false, features = ["derive", "min_const_generics"] }
@@ -38,7 +38,7 @@ cuda = ["nv", "dep:cuda-core", "dep:cuda-host"]
 name = "trame"
 path = "lib.rs"
 
-# Execution declarations against synthetic workloads. No transport, no peers, no NERVE.
+# Execution declarations against synthetic workloads. No transport, no peers.
 [[example]]
 name = "execution"
 path = "experiments/execution.rs"
