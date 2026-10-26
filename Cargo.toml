@@ -21,7 +21,7 @@ cuda-device = { git = "https://github.com/NVlabs/cuda-oxide", rev = "a105afd522b
 cuda-core = { git = "https://github.com/NVlabs/cuda-oxide", rev = "a105afd522b73a6712a802e30bd900cd04cc8019", optional = true }
 cuda-host = { git = "https://github.com/NVlabs/cuda-oxide", rev = "a105afd522b73a6712a802e30bd900cd04cc8019", optional = true }
 mpi = { version = "0.8", optional = true }
-mpi-rma = { path = "../mpi-rma", optional = true }
+mpi-rma = { path = "mpi-rma", optional = true }
 
 # No features selects the single-process backend.
 [features]

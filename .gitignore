@@ -1,0 +1,13 @@
+# Cargo build output, for the root crate and the verifier workspace
+/target/
+/verify/target/
+
+# Nix build result symlink
+/result
+
+# Generated LLVM IR and PTX from the device build and declare scripts
+*.ll
+*.ptx
+
+# cargo-oxide codegen scratch
+/.oxide-artifacts/
