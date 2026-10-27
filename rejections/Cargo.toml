@@ -264,6 +264,14 @@ name = "message__repr_packed"
 path = "cases/message/repr_packed.rs"
 
 [[example]]
+name = "message__zeroed_ok"
+path = "cases/message/zeroed_ok.rs"
+
+[[example]]
+name = "message__zeroed_user_impl"
+path = "cases/message/zeroed_user_impl.rs"
+
+[[example]]
 name = "process__array_receives_ok"
 path = "cases/process/array_receives_ok.rs"
 
@@ -390,6 +398,10 @@ path = "cases/unsafe/block_step.rs"
 [[example]]
 name = "unsafe__block_worker"
 path = "cases/unsafe/block_worker.rs"
+
+[[example]]
+name = "unsafe__direct_dependency"
+path = "cases/unsafe/direct_dependency.rs"
 
 [[example]]
 name = "unsafe__unsafe_fn_step"

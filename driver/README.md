@@ -32,13 +32,17 @@ The levels nest: an allow in a stricter level is allowed in every looser one (ch
 
 A closure or fn item passed as a generic argument to a trusted callee is called by that callee, so it is a root at the caller's level and its body is checked. The same goes for a user type's impls of core traits (its `Clone`, `Debug`, `Iterator`, ...): core code calls them, so they are read at the caller's level. A user `Iterator` passed to core code is refused below Worker, since core would drive it without a bound.
 
-## Trame is trusted (and what that costs)
+## Trust follows the call path (and what that costs)
 
-Functions defined in crate `trame` are trusted at every level, except the effects in lists/effects.txt, which keep their level rules. Their bodies are not checked for unsafe, std, loops or core calls, but their allocations are still refused in an item.
+Trust is a property of the call path, decided in `trust.rs`. Functions defined in crate `trame` are trusted at every level, except the effects in lists/effects.txt, which keep their level rules. A body that is reached only by edges out of trusted bodies is trusted too: trame is the runtime and its dependencies are its implementation. `Message::zeroed` (trame) calls bytemuck's `Zeroable::zeroed`, so bytemuck's body is trusted as trame's is. No crate is named in the rule.
 
-Why: trame is the runtime. Its internals use `unsafe` and `std` legitimately (the backends, the launch, the transport), and a program can only reach trame through its public API. Checking trame's body would fail on the runtime itself, and the rules are about what the program does.
+A trusted body is read only for its effects, its edges, its allocations (in an item), and its user iterators. Its unsafe code, std use, loops and core calls are not judged, as trame's own never were.
 
-What it costs: a non-effect trame function that does I/O, or unbounded work, will go unnoticed by the driver. The effect list is the only place a trame function's effect is named. So trame must keep such functions out of reach of the program: a new effect goes into effects.txt, and a host-only API (for example `Topology`) is harmless in a worker but useless there, so it should not be an effect. A review of trame's public API against effects.txt is the check that replaces the body reading.
+Trust stops at the program. A body is judged in full when a root reaches it, or when an `Own` edge reaches it (scan.rs): a closure or fn item passed in as a generic argument, a user type's impl of a core trait, an impl item whose self type is a user type, drop glue, and a shim. A dependency function called directly from a worker is judged in full too, since the worker is not trusted. Trust does not depend on the path's length: a body is judged if any path to it is untrusted.
+
+Why: the program can only reach trame and its dependencies through their public API, and the rules are about what the program does. Checking the runtime's body would fail on the runtime itself.
+
+What it costs: a non-effect trusted function that does I/O, or unbounded work, goes unnoticed by the driver. The effect list is the only place a trame function's effect is named, so trame must keep such functions out of reach of the program: a new effect goes into effects.txt, and a host-only API (for example `Topology`) is harmless in a worker but useless there, so it should not be an effect. A review of trame's public API against effects.txt is the check that replaces the body reading. A dependency's unsafe code reached through trame is also not read; the review must cover it too. And the `Own` test is by self type, not by crate: an impl item of a dependency type that the program does not own is judged in full (over-refusal, which fails closed).
 
 ## The test
 

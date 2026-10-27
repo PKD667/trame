@@ -49,7 +49,7 @@ Exit status is 0 when every case matches or is a known gap. It is 1 on any other
 
 As a verdict, `nix build .#validate.x86_64-linux.verdicts.rejections` runs the same script with the driver
 and the vendored crates from the flake (`experiments/validate.nix`). It holds when the run exits 0 and its
-summary counts every case file (95 at the time of writing; the scope records the count). Known gaps are
+summary counts every case file (98 at the time of writing; the scope records the count). Known gaps are
 reported in `outcome.json` as gaps. It does not show the rules sound: it judges the listed cases only.
 
 ## Catalogue
@@ -91,6 +91,9 @@ reported in `outcome.json` as gaps. It does not show the rules sound: it judges 
 | Abort via panic is not std | `std/abort_item` (a call to `process::abort`), `std/option_expect_step_ok` |
 | Drop glue counts as a call | `std/drop_glue_item`, `std/thread_spawn_step` |
 | Trame's own functions are trusted | `trusted/math_exp_item_ok` |
+| Trust follows the call path: a dependency called by trame is trusted | `message/zeroed_ok` |
+| Trust stops at the program: its impl called through trame is judged | `message/zeroed_user_impl` |
+| Trust stops at the program: a worker calling a dependency directly is judged | `unsafe/direct_dependency` |
 | Messages: padding* | `message/padding`, `message/padding_ok` |
 | Messages: reference field | `message/reference_field`, `message/reference_field_nested` |
 | Messages: raw pointer | `message/raw_pointer` |

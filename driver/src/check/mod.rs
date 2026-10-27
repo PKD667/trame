@@ -7,12 +7,13 @@
 
 mod lists;
 mod scan;
+mod trust;
 
 use std::collections::VecDeque;
 use std::env;
 use std::sync::OnceLock;
 
-use rustc_data_structures::fx::FxHashMap;
+use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mono::MonoItem;
 use rustc_middle::ty::{self, GenericArg, Instance, InstanceKind, TyCtxt, TypingEnv};
 use rustc_span::Span;
@@ -150,12 +151,16 @@ pub fn run(tcx: TyCtxt<'_>) -> usize {
         eprintln!("trame-driver: {} functions checked", order.len());
     }
 
+    // Trust: a body reached only by trusted edges is read for effects, edges and allocations (trust.rs).
+    let judged = trust::judged_in_full(tcx, &roots.iter().map(|(_, _, t)| *t).collect::<Vec<_>>(), &scans);
+
     // Per-site rules.
     for n in &order {
         let lv = level[n];
         let root = root_name(tcx, *n, &parent);
+        let trusted = !judged.contains(n);
         for site in &scans[n].sites {
-            if let Some((rule, msg)) = judge(lists, lv, site) {
+            if let Some((rule, msg)) = judge(lists, lv, site, trusted) {
                 let mut d = tcx.dcx().struct_span_err(site.span, format!("[{rule}] {msg}"));
                 d.note(format!("reached from root {root}: {}", path_to(tcx, *n, &parent)));
                 d.emit();
@@ -170,7 +175,7 @@ pub fn run(tcx: TyCtxt<'_>) -> usize {
     let mut stack: Vec<Instance<'_>> = Vec::new();
     for n in &order {
         if level[n] != Level::Worker && !state.contains_key(n) {
-            errors += recursion(tcx, *n, &level, &scans, &mut state, &mut stack);
+            errors += recursion(tcx, *n, &level, &scans, &judged, &mut state, &mut stack);
         }
     }
     errors
@@ -181,6 +186,7 @@ fn recursion<'tcx>(
     n: Instance<'tcx>,
     level: &FxHashMap<Instance<'tcx>, Level>,
     scans: &FxHashMap<Instance<'tcx>, Scan<'tcx>>,
+    judged: &FxHashSet<Instance<'tcx>>,
     state: &mut FxHashMap<Instance<'tcx>, u8>,
     stack: &mut Vec<Instance<'tcx>>,
 ) -> usize {
@@ -192,8 +198,8 @@ fn recursion<'tcx>(
             continue;
         }
         match state.get(&m).copied() {
-            // A cycle whose head is trame is trame's own (trusted); a cycle through the program is refused.
-            Some(1) if !scans[&m].trusted => {
+            // A cycle whose head is trusted is the runtime's own (trust.rs); a cycle through the program is refused.
+            Some(1) if judged.contains(&m) => {
                 let at = stack.iter().position(|x| *x == m).expect("on the stack");
                 let cycle: Vec<String> =
                     stack[at..].iter().chain(std::iter::once(&m)).map(|x| canon(tcx, x.def_id())).collect();
@@ -211,7 +217,7 @@ fn recursion<'tcx>(
                 errors += 1;
             }
             Some(_) => {}
-            None => errors += recursion(tcx, m, level, scans, state, stack),
+            None => errors += recursion(tcx, m, level, scans, judged, state, stack),
         }
     }
     stack.pop();
@@ -219,10 +225,22 @@ fn recursion<'tcx>(
     errors
 }
 
-/// The rule a site breaks at `level`, if any: (rule id, message).
-fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>) -> Option<(&'static str, String)> {
+/// The rule a site breaks at `level`, if any: (rule id, message). A trusted body (trust.rs) keeps its
+/// effects, its allocations and its user iterators; its other facts are not judged.
+fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> Option<(&'static str, String)> {
     let subj = level.noun();
     let lvl = level.name();
+    if trusted {
+        match &site.what {
+            What::Core { key, alloc: true, .. } => {
+                return (level == Level::Item).then(|| {
+                    ("allocation", format!("{subj} reaches {key} through trusted code, which allocates: items neither allocate nor call alloc (spec.md, Requirement (Item))"))
+                });
+            }
+            What::Effect(..) | What::Unbounded(_) => {}
+            _ => return None,
+        }
+    }
     match &site.what {
         What::Unsafe(d) => Some(("unsafe", format!("{subj} contains {d}: no unsafe code (spec.md, Requirement (All levels))"))),
         What::Ffi(p) => Some(("ffi", format!("{subj} calls {p}: no FFI (spec.md, Requirement (All levels))"))),
@@ -250,9 +268,6 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>) -> Option<(&'static
                 format!("{subj} calls {key}: not listed at this level (driver/lists/{}.txt) (spec.md, Requirement ({lvl}))", level.list_file()),
             )),
         },
-        What::TrustedAlloc(key) => (level == Level::Item).then(|| {
-            ("allocation", format!("{subj} reaches {key} through trame, which allocates: items neither allocate nor call alloc (spec.md, Requirement (Item))"))
-        }),
         What::Type(name) => lists.denied(level, name).map(|entry| {
             ("deny", format!("{subj} uses type {name}: denied by `{entry}` (driver/lists/deny.txt, {}.txt) (spec.md, Requirement ({lvl}))", level.list_file()))
         }),
@@ -266,7 +281,7 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>) -> Option<(&'static
                 Some(("counted-loop", format!("{subj} has a loop that is not counted: {reason} (spec.md, Definition (Counted loop))")))
             }
         }
-        What::Edge(_) => None,
+        What::Edge(_) | What::Own(_) => None,
     }
 }
 

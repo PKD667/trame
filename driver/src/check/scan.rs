@@ -34,15 +34,18 @@ pub enum What<'tcx> {
     /// A call into `core` or `alloc`, judged by the lists. `key` names it in messages; `names` are the
     /// paths the lists match (`Lists::verdict`). A core body is a leaf: it is never read.
     Core { key: String, names: Vec<String>, alloc: bool },
-    /// An allocation reached through trame, which is trusted: refused only in an item.
-    TrustedAlloc(String),
     /// A type reached by a core or trame call (in its generic arguments or a field): refused when the
     /// lists deny it at the level, as `Cell` anywhere.
     Type(String),
     /// A user type whose `Iterator` impl core code would drive without a bound.
     Unbounded(String),
-    /// A call that the driver checks by reading its body.
+    /// A call that the driver checks by reading its body. It carries trust: a trusted body's edge
+    /// makes its callee trusted (`trust.rs`).
     Edge(Instance<'tcx>),
+    /// An edge to the program's own code: a closure or fn item passed in as a generic argument, a user
+    /// type's impl of a core trait, a user impl item, drop glue or a shim. It does not carry trust, so
+    /// its body is judged in full whatever reaches it (`trust.rs`).
+    Own(Instance<'tcx>),
     /// A call the driver could not resolve or read.
     Unresolved(String),
     /// A loop: a back-edge `header <- body`. `counted` is the spec's Definition (Counted loop).
@@ -58,15 +61,21 @@ pub struct Site<'tcx> {
 #[derive(Debug, Default)]
 pub struct Scan<'tcx> {
     pub sites: Vec<Site<'tcx>>,
-    /// A trame body: only its effects, its edges and its allocations are kept (see `trusted_sites`).
-    pub trusted: bool,
 }
 
 impl<'tcx> Scan<'tcx> {
-    /// Callees the driver reads itself: the edges of the call graph.
+    /// Callees the driver reads itself: the edges of the call graph, trusting or not.
     pub fn edges(&self) -> impl Iterator<Item = (Instance<'tcx>, Span)> + '_ {
         self.sites.iter().filter_map(|s| match s.what {
-            What::Edge(inst) => Some((inst, s.span)),
+            What::Edge(inst) | What::Own(inst) => Some((inst, s.span)),
+            _ => None,
+        })
+    }
+
+    /// The edges to the program's own code (`What::Own`).
+    pub fn own_edges(&self) -> impl Iterator<Item = Instance<'tcx>> + '_ {
+        self.sites.iter().filter_map(|s| match s.what {
+            What::Own(inst) => Some(inst),
             _ => None,
         })
     }
@@ -105,6 +114,11 @@ fn is_trame(tcx: TyCtxt<'_>, def: DefId) -> bool {
     tcx.crate_name(def.krate).as_str() == "trame"
 }
 
+/// The body of `inst` is trame's own (an item defined in trame, closures included).
+pub fn is_trame_instance(tcx: TyCtxt<'_>, inst: Instance<'_>) -> bool {
+    matches!(inst.def, InstanceKind::Item(d) if is_trame(tcx, d))
+}
+
 /// Defined in the program: not core, alloc, std or trame.
 pub fn is_user(tcx: TyCtxt<'_>, def: DefId) -> bool {
     !is_std(tcx, def) && !is_trame(tcx, def)
@@ -112,23 +126,6 @@ pub fn is_user(tcx: TyCtxt<'_>, def: DefId) -> bool {
 
 fn is_user_ty(tcx: TyCtxt<'_>, t: Ty<'_>) -> bool {
     matches!(t.peel_refs().kind(), ty::Adt(adt, _) if is_user(tcx, adt.did()))
-}
-
-/// The sites a trame body keeps. Trame is trusted, so its unsafe, std, loops and core calls are not
-/// judged, with two exceptions: its effects keep their level rules, and its allocations are refused
-/// in an item (both are reached through trame's internals, so they cannot be hidden there).
-fn trusted_sites(sites: Vec<Site<'_>>) -> Vec<Site<'_>> {
-    sites
-        .into_iter()
-        .filter_map(|s| {
-            let what = match s.what {
-                What::Core { key, alloc: true, .. } => What::TrustedAlloc(key),
-                w @ (What::Effect(..) | What::Edge(_) | What::TrustedAlloc(_) | What::Unbounded(_)) => w,
-                _ => return None,
-            };
-            Some(Site { span: s.span, what })
-        })
-        .collect()
 }
 
 /// Unify the impl's self type `pat` (with parameters) with the type `t`, filling `out` by parameter.
@@ -233,7 +230,6 @@ pub struct Scanner<'a, 'tcx> {
 /// Scan `inst`'s body. Bodies of `core`/`alloc`/`std` are never scanned: they are leaves.
 pub fn scan<'tcx>(tcx: TyCtxt<'tcx>, inst: Instance<'tcx>, impls: &Impls) -> Scan<'tcx> {
     let mut out = Scan::default();
-    out.trusted = matches!(inst.def, InstanceKind::Item(d) if is_trame(tcx, d));
     if let InstanceKind::Item(def) = inst.def {
         if let Some(local) = def.as_local() {
             if matches!(tcx.def_kind(def), rustc_hir::def::DefKind::Fn | rustc_hir::def::DefKind::AssocFn | rustc_hir::def::DefKind::Closure) {
@@ -253,11 +249,7 @@ pub fn scan<'tcx>(tcx: TyCtxt<'tcx>, inst: Instance<'tcx>, impls: &Impls) -> Sca
     let mut s = Scanner { tcx, inst, body, scan: out, impls };
     s.visit_body(body);
     s.loops();
-    let mut scan = s.scan;
-    if scan.trusted {
-        scan.sites = trusted_sites(scan.sites);
-    }
-    scan
+    s.scan
 }
 
 /// `unsafe { }` blocks written in the body of `def` (not in nested closures, which are scanned as
@@ -288,6 +280,15 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
         self.scan.sites.push(Site { span, what });
     }
 
+    /// Every edge pushed since `mark` is an edge to the program's own code (`What::Own`).
+    fn own_since(&mut self, mark: usize) {
+        for s in &mut self.scan.sites[mark..] {
+            if let What::Edge(inst) = s.what {
+                s.what = What::Own(inst);
+            }
+        }
+    }
+
     /// The paths the lists match for a core or alloc callee: its shape key, and its definition path.
     /// A trait method on a user type is not matched by its trait path: if the user type did not define
     /// the method, core's default body would run user code (an `Iterator` default on a user iterator).
@@ -305,6 +306,12 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
     /// by them, so it is checked at this level. A user type's impls of core traits are called by core
     /// code too, and so are its fields' types. Types are followed through references and ADT arguments.
     fn reach(&mut self, start: Vec<Ty<'tcx>>, span: Span) {
+        let mark = self.scan.sites.len();
+        self.reach_types(start, span);
+        self.own_since(mark);
+    }
+
+    fn reach_types(&mut self, start: Vec<Ty<'tcx>>, span: Span) {
         let tcx = self.tcx;
         let mut work = start;
         let mut seen: FxHashSet<Ty<'tcx>> = FxHashSet::default();
@@ -371,6 +378,15 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
         }
     }
 
+    /// An impl item (an explicit `impl` method, not a trait's default body) whose self type is the
+    /// program's: the program wrote the code, whichever trait or crate called it.
+    fn is_user_impl_item(&self, callee: Instance<'tcx>) -> bool {
+        let tcx = self.tcx;
+        let Some(imp) = tcx.impl_of_assoc(callee.def_id()) else { return false };
+        let self_ty = tcx.type_of(imp).instantiate(tcx, callee.args).skip_normalization();
+        is_user_ty(tcx, self_ty)
+    }
+
     fn local_ty(&self, place: &Place<'tcx>) -> Ty<'tcx> {
         self.mono(place.ty(self.body, self.tcx).ty)
     }
@@ -424,19 +440,23 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
                     self.push(span, What::Core { key: names[0].clone(), names, alloc: krate == "alloc" })
                 } else if krate == "trame" {
                     // Trame is the runtime and trusted at every level (driver/README.md). Its body is read
-                    // for effects, edges and allocations only (`trusted_sites`).
+                    // for effects, edges and allocations only (`trust.rs`).
                     self.reach(args.types().collect(), span);
                     self.push(span, What::Edge(callee))
                 } else if !tcx.is_mir_available(d) {
                     // A user callee with no readable body fails closed: it is not listed, so it is refused.
                     let names = self.names_of(def, args);
                     self.push(span, What::Core { key: names[0].clone(), names, alloc: false })
+                } else if matches!(tcx.def_kind(d), rustc_hir::def::DefKind::Closure) || self.is_user_impl_item(callee) {
+                    // The program's own code, reached through a dependency or trame: judged in full.
+                    self.push(span, What::Own(callee))
                 } else {
                     self.push(span, What::Edge(callee))
                 }
             }
-            // Shims (drop glue, closure adapters, clone, fn-pointer shims) are generated bodies.
-            _ => self.push(span, What::Edge(callee)),
+            // Shims (drop glue, closure adapters, clone, fn-pointer shims) are generated from the types
+            // they are for: the program's own types and closures, so they are judged in full.
+            _ => self.push(span, What::Own(callee)),
         }
     }
 
@@ -601,7 +621,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
                         match inst.def {
                             InstanceKind::DropGlue(_, None) => {}
                             InstanceKind::Virtual(..) => self.push(span, What::Indirect("drop of a trait object".into())),
-                            _ => self.push(span, What::Edge(inst)),
+                            _ => self.push(span, What::Own(inst)),
                         }
                     }
                 }
@@ -618,7 +638,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
             Rvalue::Aggregate(kind, _) => {
                 if let AggregateKind::Closure(def, args) = **kind {
                     let args = self.mono(args);
-                    self.push(span, What::Edge(Instance::new_raw(def, args)));
+                    self.push(span, What::Own(Instance::new_raw(def, args)));
                 }
             }
             Rvalue::Cast(CastKind::PointerCoercion(PointerCoercion::ReifyFnPointer(_), _), op, _) => {
@@ -628,7 +648,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
             }
             Rvalue::Cast(CastKind::PointerCoercion(PointerCoercion::ClosureFnPointer(_), _), op, _) => {
                 if let ty::Closure(def, args) = *self.mono(op.ty(self.body, self.tcx)).kind() {
-                    self.push(span, What::Edge(Instance::new_raw(def, args)));
+                    self.push(span, What::Own(Instance::new_raw(def, args)));
                 }
             }
             Rvalue::Cast(CastKind::PointerCoercion(PointerCoercion::Unsize, _), op, target) => {
