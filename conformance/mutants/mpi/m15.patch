@@ -2,7 +2,7 @@
 # expect: killed
 --- a/backends/mpi/gate.rs
 +++ b/backends/mpi/gate.rs
-@@ -40,6 +40,7 @@
+@@ -31,6 +31,7 @@
      pub fn barrier(&mut self) -> Result<Arc<[u8]>, Error> {
          self.generation += 1;
          let g = self.generation;
@@ -10,8 +10,8 @@
          let n = u64::from(self.lay().workers);
          let arrive = self.lay().per_worker(K_ARRIVE, self.me());
          self.win().word(arrive).store(g, Release);
-@@ -52,7 +53,7 @@
-             }
+@@ -46,7 +47,7 @@
+             self.bump_relay();
          }
          self.wait_released(g)?;
 -        Ok(self.snapshot())

@@ -115,3 +115,7 @@ path = "scale/idle.rs"
 [[example]]
 name = "scale_fanin"
 path = "scale/fanin.rs"
+
+[[example]]
+name = "scale_graph"
+path = "scale/graph.rs"

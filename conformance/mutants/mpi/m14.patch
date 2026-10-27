@@ -1,14 +1,14 @@
 # violates: Publish
 # expect: killed
---- a/backends/mpi/gate.rs
-+++ b/backends/mpi/gate.rs
-@@ -110,6 +110,9 @@
-     fn install(&self) {
+--- a/backends/mpi/publish.rs
++++ b/backends/mpi/publish.rs
+@@ -33,6 +33,9 @@
+     pub(super) fn install(&self) {
          let win = self.win();
          let have = win.word(PUB_NO).load(Relaxed);
 +        if have < u64::MAX {
 +            return;
 +        }
-         loop {
-             let s = win.word32(PEND_SEQ).load(Acquire);
-             if s & 1 == 1 {
+         if let Some((no, bytes)) = deposit(win, Some(have)) {
+             set_publication(win, no, &bytes);
+         }

@@ -50,10 +50,11 @@
         ));
       };
       mpiDeps = import ./backends/mpi/dependencies.nix { inherit pkgs; };
-      trameMpiBins = pkgs.rustPlatform.buildRustPackage {
+      trameMpiBinsWith = patches: pkgs.rustPlatform.buildRustPackage {
         pname = "trame-mpi-bins";
         version = "0.1.0";
         src = trameMpiSrc;
+        patches = patches;
         cargoLock.lockFile = ./Cargo.lock;
         buildNoDefaultFeatures = true;
         buildFeatures = [ "mpi" ];
@@ -70,25 +71,28 @@
           runHook preInstall
           mkdir -p $out/bin $out/share/expected
           rel=target/${pkgs.stdenv.hostPlatform.rust.rustcTarget}/release
-          for p in $(awk '!/^#/ && NF { print $1 }' backends/mpi/deploy/ranks.txt) scale_barrier scale_ring scale_idle scale_fanin; do
+          for p in $(awk '!/^#/ && NF { print $1 }' backends/mpi/deploy/ranks.txt) scale_barrier scale_ring scale_idle scale_fanin scale_graph; do
             cp $rel/examples/$p $out/bin/
           done
           cp $rel/check $rel/latency $out/bin/
           mpicc -O2 -o $out/bin/mpi_barrier scale/baseline/barrier.c
           mpicc -O2 -o $out/bin/mpi_ring scale/baseline/ring.c
+          mpicc -O2 -o $out/bin/mpi_graph scale/baseline/graph.c
           cp programs/*.expected $out/share/expected/
           runHook postInstall
         '';
       };
+      trameMpiBins = trameMpiBinsWith [ ];
       # The program table (backends/mpi/deploy/ranks.txt, `<program> <ranks>` per line): the programs both backends run.
       programNames = map (l: builtins.head (pkgs.lib.splitString " " l))
         (builtins.filter (l: l != "" && !pkgs.lib.hasPrefix "#" l)
           (pkgs.lib.splitString "\n" (builtins.readFile ./backends/mpi/deploy/ranks.txt)));
       # The seq backend: the default build, one process per program (programs/run.sh, seq).
-      trameSeqBins = pkgs.rustPlatform.buildRustPackage {
+      trameSeqBinsWith = patches: pkgs.rustPlatform.buildRustPackage {
         pname = "trame-seq-bins";
         version = "0.1.0";
         src = trameMpiSrc;
+        patches = patches;
         cargoLock.lockFile = ./Cargo.lock;
         # Every program is built with the checked cfg (programs/run.sh).
         RUSTFLAGS = "--cfg trame_checked";
@@ -105,6 +109,7 @@
           runHook postInstall
         '';
       };
+      trameSeqBins = trameSeqBinsWith [ ];
       # The lab experiments (experiments/README.md). Runners are the .py files of experiments/ only.
       runners = pkgs.lib.fileset.toSource {
         root = ./experiments;
@@ -141,22 +146,26 @@
         key = [ "check" "workers" "seed" "repeat" ];
         noisy.seconds = 1.0;
       };
-      scaleCols = { bench = "str"; impl = "str"; nodes = "int"; workers = "int"; };
+      scaleCols = { bench = "str"; impl = "str"; nodes = "int"; workers = "int"; per_node = "int"; };
       scaleData = {
         barrier = { columns = scaleCols // { worker = "int"; rounds = "int"; ns = "int"; }; noisy.ns = 1.0; };
         ring = { columns = scaleCols // { worker = "int"; steps = "int"; size = "int"; cap = "int?"; ns = "int"; }; noisy.ns = 1.0; };
         idle = { columns = scaleCols // { worker = "int"; seconds = "int"; ns = "int"; }; noisy.ns = 1.0; };
         fanin = { columns = scaleCols // { worker = "int"; msgs = "int"; ns = "int"; }; noisy.ns = 1.0; };
+        graph = {
+          columns = scaleCols // { worker = "int"; steps = "int"; size = "int"; degree = "int"; iters = "int"; ns = "int"; compute_ns = "int"; checksum = "str"; };
+          noisy = { ns = 1.0; compute_ns = 1.0; };
+        };
         cpu = {
           columns = scaleCols // { rank = "int"; host = "str"; user_s = "float"; sys_s = "float"; wall_s = "float"; };
           noisy = { user_s = 1.0; sys_s = 1.0; wall_s = 1.0; };
         };
       };
-      scaleExperiment = { name, nodes, span, resources, perNode }: labLib.experiment {
+      scaleExperiment = { name, nodes, span, resources }: labLib.experiment {
         inherit name span resources;
         closures.${system} = scaleClosure;
-        params = { inherit nodes; rounds = 10000; steps = 10000; msgs = 10000; seconds = 3; cap = 8; };
-        sweep = { bench = [ "barrier" "ring64" "ring4096" "idle" "fanin" ]; impl = [ "trame" "mpi" ]; per_node = perNode; };
+        params = { inherit nodes; rounds = 10000; steps = 10000; msgs = 10000; seconds = 3; cap = 8; graph_iters = 100000; graph_steps = 2000; degree = 8; seed = 1; };
+        sweep = { bench = [ "barrier" "ring64" "ring4096" "idle" "fanin" "graph64" "graph1024" "graph1024s" ]; impl = [ "trame" "mpi" ]; fill = [ "half" "full" ]; };
         replicates = 3;
         data = scaleData // { mpi_config = mpiConfigData; };
       };
@@ -208,7 +217,6 @@
           nodes = 1;
           span = 1;
           resources = { provider = "local"; hosts = 1; };
-          perNode = [ 2 4 ];
         };
       } // builtins.listToAttrs (map (n: {
         name = "scale-n${toString n}";
@@ -217,9 +225,11 @@
           nodes = n;
           span = n;
           resources = { provider = "cluster"; hosts = n; walltime = 60; opts.stage = "fanout"; };
-          perNode = [ 16 32 ];
         };
-      }) [ 1 2 4 8 16 32 ]);
+      }) [ 1 2 4 8 16 32 ]) // import ./experiments/checks.nix {
+        inherit pkgs system labLib trameSeqBinsWith trameMpiBinsWith runners labRuntime nixsci;
+        lib = pkgs.lib;
+      };
       mkBackendShell = backend: extra:
         let
           dependencies = import (./backends + "/${backend}/dependencies.nix") { inherit pkgs; };

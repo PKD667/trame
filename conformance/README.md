@@ -23,11 +23,20 @@ its stdout differs from `P`'s `.expected`, it exits non-zero, or it times out (a
 
 ## Runner
 
-`mutate.sh [seq|mpi]` copies the repository into a fixed directory per backend (`/tmp/trame-mutate/<backend>`,
-so Cargo fingerprints match and builds are incremental; `target/` is kept there). For each patch it restores
-the copy from the repository, applies the patch, runs `programs/run.sh <backend>` and records the first failing
-program. It prints a table and exits non-zero when a `killed` mutant survives or an `equivalent` mutant is
-killed. Timeouts are those of `run.sh`.
+The record is the lab experiment `mutants-seq` or `mutants-mpi` (`experiments/checks.nix`, runner
+`experiments/mutants.py`; experiments/README.md, "mutants"). Nix builds each mutant with its patch applied,
+and a job runs the program set against one mutant. Its dataset `kill` holds one row per program, and the
+analysis `mutants` judges it. Run it with `nix run .#mutants-seq` (or `.#mutants-mpi`), and commit `lab.lock`.
+
+`mutate.sh [seq|mpi]` is the quick local loop. It copies the repository into a fixed directory per backend
+(`/tmp/trame-mutate/<backend>`, so Cargo fingerprints match and builds are incremental; `target/` is kept
+there). For each patch it restores the copy from the repository, applies the patch, runs
+`programs/run.sh <backend>` and records the first failing program. It prints a table and exits non-zero when
+a `killed` mutant survives or an `equivalent` mutant is killed. Timeouts are those of `run.sh`. It is not
+the record: its table is not locked, and it does not seal the tree it ran.
+
+A mutant with a `<id>.skip` file instead of a patch cannot be written as one (its body gives the reason).
+The file has the same `# violates:` and `# expect:` headers, so the lab experiment records it as `skipped`.
 
 ## Efficiency (not conformance)
 
@@ -61,7 +70,6 @@ table and never changes the conformance verdict.
 | m18 | a panic does not abort the other workers | Abort |
 | m19 | a duplicate route is accepted | Launch checks |
 | m20 | a route of capacity 0 is accepted | Launch checks |
-| m21 | a frame larger than `MAX_FRAME` is accepted | Launch checks |
 | m22 | the leader's `recv` drops every other frame | Take |
 | m23 | frames queued when `concurrent!` answers are dropped | Ownership (after concurrent) |
 | m24 | `recv` never rotates its route scan | Progress (fairness, section 6) |

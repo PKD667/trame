@@ -1,6 +1,65 @@
 {
   "format": "2.0",
   "runs": {
+    "programs-mpi": [
+      {
+        "facts": {
+          "closure": "/nix/store/npz7vfzi6pyqiri53xp0bxlik1s70r85-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "49a57d722c1a674832da4a79efdbeb2b186407adb42c7555486e3d07d6f89815",
+          "params": {
+            "backend": "mpi",
+            "node_ranks": 2,
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-mpi-49a57d722c1a-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-mpi-49a57d722c1a-r1",
+        "path": "/nix/store/r30rydmmhf1lcw8c71sabpir53rf9f92-programs-mpi-49a57d722c1a-r1",
+        "sha256": "sha256-cpq7OfhL8664jONg2EfMX9wU5WjWhSnQE94JYiH0YMs="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/npz7vfzi6pyqiri53xp0bxlik1s70r85-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "94e63fdf1766198c2f58aefba73bf95b4d9f5cd33b449b947924905d41f39afa",
+          "params": {
+            "backend": "mpi",
+            "node_ranks": 0,
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-mpi-94e63fdf1766-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-mpi-94e63fdf1766-r1",
+        "path": "/nix/store/ykhrpmlafka9mcs7hys911p27k2pl838-programs-mpi-94e63fdf1766-r1",
+        "sha256": "sha256-AbR40ku23yoz3eeBLXCj7s35VjFrCN1pA0bMfiiGsKE="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/npz7vfzi6pyqiri53xp0bxlik1s70r85-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "d4ef6c9a8ea69dabddb38a690ce593538264fa9debded6b5d5eabe31dc195ec3",
+          "params": {
+            "backend": "mpi",
+            "node_ranks": 1,
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-mpi-d4ef6c9a8ea6-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-mpi-d4ef6c9a8ea6-r1",
+        "path": "/nix/store/mly13lxn6lnb4k4isqajqfqqz9m7chh2-programs-mpi-d4ef6c9a8ea6-r1",
+        "sha256": "sha256-cIGXQa4XEcYEB4YfXv5KWBLd8FhdvSVQ+4I3Do3XGWo="
+      }
+    ],
     "programs-seq": [
       {
         "facts": {

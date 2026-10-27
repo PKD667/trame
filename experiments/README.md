@@ -37,20 +37,36 @@ Dataset `run`: `program` str, `repeat` int, `ok` bool, `verdict` str (`ok`, `dif
 
 **scale** (`scale-local`; `scale-n<N>` with `span = N` for N in 1, 2, 4, 8, 16, 32): the
 programs of `scale/` and their plain-MPI baselines. One job runs one benchmark with one
-implementation at one size. Parameters: `bench`, `impl` (`trame` or `mpi`), `nodes`,
-`per_node` (workers per node), and the bench's sizes. Every dataset repeats `bench`, `impl`,
-`nodes` and `workers` as columns, so claims can select on them.
+implementation at one size. Parameters: `bench`, `impl` (`trame` or `mpi`), `nodes`, `fill`, and the
+bench's sizes. `fill` is `half` or `full`: workers per node are half the physical cores (at least 3)
+or the physical cores less two, where the physical cores are the unique (SOCKET, CORE) pairs of
+`lscpu`. Every dataset repeats `bench`, `impl`, `nodes`, `workers` and `per_node` as columns, so claims
+can select on them.
 - `barrier`: `worker`, `rounds`, `ns`
 - `ring`: `worker`, `steps`, `size`, `cap`, `ns`
 - `idle`: `worker`, `seconds`, `ns`
 - `fanin`: `worker` (-1 for the leader's total), `msgs`, `ns`
+- `graph`: `worker`, `steps`, `size`, `degree`, `iters`, `ns`, `compute_ns`, `checksum` (text: a u64).
+  Benches `graph64` (weak, SIZE 64), `graph1024` (weak, SIZE 1024) and `graph1024s` (strong, SIZE 1024:
+  ITERS = graph_iters // nodes, so ITERS x workers is fixed per fill). The dataset's `bench` column is
+  `graph` for all three; select on `size` and `iters`. Parameters `graph_iters` (100000), `graph_steps`
+  (2000), `degree` (8), `seed` (1). A job with workers <= degree records nothing.
 - `cpu`: `rank`, `host`, `user_s`, `sys_s`, `wall_s`, from GNU time around each rank
+
+Each job also writes `mpi_config` rows (`mpirun.py`): the job's full mpirun command line (`argv`,
+scale only), the load average at its start (`loadavg`), and the MCA settings of the account.
 
 Timing columns are `noisy`; `replicates = 3`.
 
-**mutants** (`mutants-seq`, `mutants-mpi`): conformance by mutation (`conformance/`). Nix
-builds one closure per mutant with its patch applied; a job runs the program set against one
-mutant. Dataset `kill`: `mutant`, `rule`, `program`, `killed` bool, `how` str.
+**mutants** (`mutants-seq`, `mutants-mpi`; `checks.nix`, runner `mutants.py`): conformance by mutation
+(`conformance/`). Nix builds one backend build per mutant, its patch applied, and one closure holds them
+all with the runner. Parameters: `backend`, `mutant` (a patch id, `none` for the unpatched control),
+`timeout` (120). The sweep is every id with a `.patch` or a `.skip` file of `conformance/mutants/<backend>`,
+so a mutant that cannot apply (`m23`; `m17` on mpi) is one job that records `how` `skipped`.
+Dataset `kill`, one row per program: `mutant`, `rule`, `expect`, `program` (`-` when skipped), `killed`
+bool (true for `diff`, `exit` or `timeout`), `how` (`ok`, `diff`, `exit`, `timeout`, `skipped`).
+Key: `mutant`, `program`. Mpi also records `mpi_config`, as `programs-mpi` does.
+`conformance/mutate.sh` remains the quick local loop; the lab run is the record.
 
 The rejection suite and the driver fuzzer are deterministic compilations, not measurements:
 they are Nix checks (`nix flake check`), not experiments.
@@ -58,7 +74,9 @@ they are Nix checks (`nix flake check`), not experiments.
 ## Claims, stated before measuring
 
 Analysis `conformance`: every row of `programs-*` and `transport-*` has `ok = true` (exact).
-Analysis `mutants`: every mutant whose catalogue entry says `killed` is killed (exact).
+Analysis `mutants`: every mutant whose catalogue entry says `killed` and that applies is killed
+(exact). A mutant recorded `skipped` (no place to apply it in that backend) is listed as a gap in
+the program set, never counted as a kill.
 Analysis `scale`, each judged at 0.99 and reported as supported, contradicted or inconclusive:
 - **Idle workers sleep.** In `idle`, a rank that hosts no relay uses below 2% of its wall time
   in user plus system time.

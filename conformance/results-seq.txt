@@ -1,3 +1,4 @@
+# superseded: the lab experiment mutants-seq (experiments/README.md) is the record; this table is kept as it was run.
 mutant   rule         expect    verdict   program
 m01      Full         killed    killed    full
 m02      Full         killed    killed    ping_pong

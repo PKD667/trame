@@ -2,7 +2,7 @@
 # expect: killed
 --- a/launch.rs
 +++ b/launch.rs
-@@ -57,7 +57,7 @@
+@@ -52,7 +52,7 @@
                  return Err(Refused::UnknownWorker(end));
              }
          }
@@ -10,4 +10,4 @@
 +        if r.cap == 0 && false {
              return Err(Refused::ZeroCapacity { name: r.name });
          }
-         if r.size > MAX_FRAME {
+         let dup = plan.routes[..i]

@@ -1,1 +1,3 @@
+# violates: Ownership (after concurrent)
+# expect: killed
 # skip: no drain in the Backend trait. Dropping the frames queued to a worker when concurrent! answers needs a per-route drop; concurrent.rs only has worker_recv(ty, out), which needs the frame size, and the seq backend's route sizes are not reachable from concurrent.rs. Revisit if Backend gains a drain call.
