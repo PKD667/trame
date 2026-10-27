@@ -1,61 +1,177 @@
-// Backend-neutral contract with one compile-time-selected implementation.
-mod contract;
-pub use contract::{
-    Addr, Backend, BackendFault, Channel, ClockId, ClockMismatch, Deployment, Edge, Error, Failure,
-    FailureKind, Frame, Handle, Invalid, Launch, Participant, Reading, Span, Tag,
-};
+//! Trame: one meaning for a program on every machine it runs on. `spec.md` is the contract for
+//! humans; this crate is the same contract in Rust. A change to one is a change to the other.
+#![no_std]
+
+extern crate alloc;
+
+// The macros expand to `::trame::...`, so the crate's own tests need the same name.
 extern crate self as trame;
 
-#[path = "optim/mod.rs"]
-mod portable_optim;
-
-#[cfg(not(feature = "nv"))]
-#[path = "backends/host/mod.rs"]
-mod host;
-mod invoke;
-pub use invoke::{Invocation, Invoked, Keyed, Step};
+/// Re-exported so a message's derives name `::trame::__bytemuck`: users need no bytemuck of their own.
 #[doc(hidden)]
-pub use invoke::{Receive, arm_io, assert_receive_tags_disjoint};
-pub use trame_macros::{ordered, parallel, process};
+pub use bytemuck as __bytemuck;
 
+/// Marks a struct as a message type: `#[trame::message]`. The struct must be plain data, with no
+/// padding and no bit pattern that is invalid. A struct with padding is refused at compile time:
+///
+/// ```compile_fail
+/// #[trame::message]
+/// struct Padded {
+///     a: u8,
+///     b: u32,
+/// }
+/// ```
+///
+/// A struct with a reference is refused too (the macro reads the field types, since bytemuck
+/// would accept a raw pointer):
+///
+/// ```compile_fail
+/// #[trame::message]
+/// struct Borrowed {
+///     r: &'static u32,
+/// }
+/// ```
+///
+/// A plain struct is accepted:
+///
+/// ```
+/// #[trame::message]
+/// struct Plain {
+///     a: u32,
+///     b: u32,
+/// }
+/// ```
+pub use trame_macros::message;
+
+/// Marks `fn f(x: &I, slot: &mut S, cx: &C)` as a `parallel!` item, with its key:
+/// `#[trame::item(key = x.index as usize)]` (spec.md 5.4).
+pub use trame_macros::item;
+
+/// `parallel!(f, &cx, &items, &mut slots)`: apply item `f` to `items` (spec.md 5.4). Without
+/// `--cfg trame_checked` it is a compile error. Doc tests run without that flag, so the example
+/// below is refused, and it fails only for that reason:
+///
+/// ```compile_fail
+/// #[trame::item(key = x.index as usize)]
+/// fn bump(x: &Work, slot: &mut u32, _cx: &()) {
+///     *slot += x.by;
+/// }
+/// struct Work { index: u32, by: u32 }
+/// let items = [Work { index: 0, by: 1 }];
+/// let mut slots = [0_u32];
+/// let _ = trame::parallel!(bump, &(), &items, &mut slots);
+/// ```
+pub use trame_macros::parallel;
+
+/// `#[trame::process(receives = Job, ...)]` on `impl P { fn step(&mut self, a: &mut A, ...) -> Status }`
+/// (spec.md 5.2, 5.3). The parameters after `self` are the cells; each is `&mut T` for the program's
+/// own type `T`. A primitive or core/alloc type is refused, since it is not a type of the program:
+///
+/// ```compile_fail
+/// #[trame::message]
+/// struct Job { id: u32 }
+/// struct P;
+/// #[trame::process(receives = Job)]
+/// impl P {
+///     fn step(&mut self, n: &mut u32) -> trame::Status {
+///         trame::Status::Done
+///     }
+/// }
+/// ```
+///
+/// A cell of the program's own type is accepted:
+///
+/// ```
+/// #[trame::message]
+/// struct Job { id: u32 }
+/// struct Queue { jobs: u32 }
+/// struct P;
+/// #[trame::process(receives = Job)]
+/// impl P {
+///     fn step(&mut self, q: &mut Queue) -> trame::Status {
+///         let _ = q.jobs;
+///         trame::Status::Done
+///     }
+/// }
+/// ```
+pub use trame_macros::process;
+
+/// `concurrent!(p0, p1; c0, c1)`: run the processes over the cells (spec.md 5.3). Answers `Result<(), E>`.
+/// Without `--cfg trame_checked` it is a compile error, so it has no doc test here.
+pub use trame_macros::concurrent;
+
+/// The runtime the macros call (spec.md 5.3, 5.4). Not for direct use.
+#[doc(hidden)]
+#[path = "parallel.rs"]
+pub mod __rt;
+
+/// Level markers the macros emit and the driver reads. Not for direct use.
+#[doc(hidden)]
+#[path = "check.rs"]
+pub mod __check;
+
+/// Numeric functions, grouped apart from the effects: `trame::math::exp` (spec.md 7).
+pub mod math;
+
+// The modules are private: the surface is the root re-exports below (spec.md 7). Their definition
+// paths (`trame::io::send`, `trame::time::now`, ...) are what the driver's effects.txt names.
+mod io;
+mod launch;
+mod run;
+mod time;
+mod topology;
+
+/// The surface of spec.md 7: every public name of the crate, at the root and nowhere else.
+pub use io::{barrier, recv, send, Full, Message};
+pub use launch::{Refused, MAX_FRAME};
+pub use run::{Outcome, Run};
+pub use status::Status;
+pub use time::{now, Reading};
+pub use topology::{Context, Topology, WorkerId, LEADER};
+
+#[cfg(all(feature = "seq", feature = "mpi"))]
+compile_error!("features `seq` and `mpi` are exclusive: one backend per build");
+
+#[cfg(feature = "seq")]
+#[path = "backends/seq/mod.rs"]
+mod seq;
+
+/// The MPI backend: one rank per worker, the leader on the last rank (backends/mpi/README.md).
 #[cfg(feature = "mpi")]
 #[path = "backends/mpi/mod.rs"]
 mod mpi;
-#[cfg(not(any(feature = "mpi", feature = "nv")))]
-#[path = "backends/none/mod.rs"]
-mod none;
-#[cfg(feature = "nv")]
-#[allow(dead_code, unused_imports)]
-#[path = "backends/nv/mod.rs"]
-mod nv;
 
-#[cfg(test)]
-mod tests;
-
+/// The MPI backend's transport, for the test binaries under backends/mpi/tests. Not API.
 #[cfg(feature = "mpi")]
-use mpi as selected;
-#[cfg(not(any(feature = "mpi", feature = "nv")))]
-use none as selected;
-#[cfg(feature = "nv")]
-use nv as selected;
-
-pub use selected::optim;
-pub use selected::{
-    Context, Environment, Io, Shared, attach, barrier, bytes, clock, detach, done, flush, init,
-    leader, rank, recv, release, reshape, send, size, sync,
-};
 #[doc(hidden)]
-pub use selected::{concurrent_io, run};
+pub mod __mpi {
+    pub use crate::mpi::*;
+}
 
-/// Which backend this build selected.
-pub const ID: Backend = selected::ID;
+/// Internal: the seam between the surface and the selected backend (see backend.rs).
+mod backend;
 
-/// Whether this backend's lanes may lose a frame. The `Message` route remains reliable.
-pub const LOSSY: bool = cfg!(feature = "lossy");
+/// Scheduling core, shared by every backend: spec.md 5.3 (sched.rs).
+mod sched;
 
-/// The longest frame every route of this backend carries, leader route included.
-pub const MAX_FRAME: usize = selected::MAX_FRAME;
+/// The cells a step borrows, and the types a process owns (spec.md 5.2, 5.3). Re-exported by __rt.
+mod cells;
 
-const _: () = assert!(MAX_FRAME >= 65_544 && MAX_FRAME <= u32::MAX as usize);
-const _: () = assert!(!cfg!(feature = "nv") || !cfg!(feature = "mpi"));
-const _: () = assert!(!cfg!(feature = "lossy") || cfg!(feature = "mpi"));
+/// The runtime of `concurrent!` (spec.md 5.3). Re-exported by __rt.
+mod concurrent;
+
+/// What a step returns, and the condition it waits for (spec.md 5.3).
+mod status;
+
+#[cfg(all(feature = "seq", not(feature = "mpi")))]
+use seq as selected;
+
+// `self::`: the crate also depends on an external crate named `mpi`, and a bare `mpi` is ambiguous.
+#[cfg(all(feature = "mpi", not(feature = "seq")))]
+use self::mpi as selected;
+
+/// Without a backend module, every launch is refused (see unselected.rs).
+#[cfg(not(any(feature = "seq", feature = "mpi")))]
+mod unselected;
+#[cfg(not(any(feature = "seq", feature = "mpi")))]
+use unselected as selected;

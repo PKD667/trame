@@ -1,0 +1,11 @@
+# deny.txt: refused at every level, and it overrides any allow. Format: a path, or `P::*` for every
+# item under P (the type `P` itself included). The most specific match decides: an exact entry beats
+# a prefix, and a deny beats an allow of equal specificity. Denied types are also refused when they
+# appear in the generic arguments of a trusted call (`Option<Cell<u32>>` is refused at `Option::map`).
+core::cell::*            # interior mutability: UnsafeCell is in no level (spec.md, Requirement (All levels))
+core::sync::*            # locks and atomics: shared state goes through effects, not through memory
+alloc::rc::*             # Rc: non-atomic counts, so not safe to publish; Arc is the worker's snapshot type
+core::ptr::*             # raw pointers; the one exception, drop_in_place, is allowed in A_I.txt
+core::hint::*            # unreachable_unchecked and assert_unchecked are undefined behaviour when wrong
+core::intrinsics::*      # compiler intrinsics: unchecked by design
+core::arch::*            # target intrinsics: unsafe and target-specific

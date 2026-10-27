@@ -1,0 +1,24 @@
+[package]
+name = "trame-driver"
+version = "0.1.0"
+edition = "2024"
+description = "rustc driver and `cargo trame` for trame's compile-time checks (spec.md, Compile time)"
+publish = false
+# Fixture crates under tests/ are separate packages, not Cargo targets.
+autotests = false
+# Own workspace, like verify/: the driver is built by its own toolchain, not by the trame root.
+[workspace]
+
+[[bin]]
+name = "trame-driver"
+path = "src/main.rs"
+
+[[bin]]
+name = "cargo-trame"
+path = "src/cargo_trame.rs"
+
+[[test]]
+name = "fixtures"
+path = "tests/fixtures.rs"
+
+[dependencies]

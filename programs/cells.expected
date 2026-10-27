@@ -1,0 +1,5 @@
+writer 1
+writer 2
+writer 3
+reader 3
+outcomes: [Returned]

@@ -2,15 +2,15 @@
 name = "trame-macros"
 version = "0.1.0"
 edition = "2024"
-description = "#[parallel] and #[ordered]: a function rewritten into the driver trame::invoke! calls."
+description = "#[message], #[item] and parallel!: the attributes and macro that write trame's surface code."
 
-# A compiler plugin, not a library: nothing links this at run time, and the only crate that
-# re-exports it is the backend. It depends on nothing, not even `syn`: the supported grammar is
-# small enough to scan directly, which keeps the accepted language honest — what this file can
-# parse is exactly what the surface promises.
+# A proc-macro crate. Its accepted grammar is the surface in lib.rs and spec.md 5.4.
 [lib]
 name = "trame_macros"
 path = "lib.rs"
 proc-macro = true
 
 [dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }

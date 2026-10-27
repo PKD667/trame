@@ -1,0 +1,7 @@
+/target/
+/tests/pass/*/target/
+/tests/fail/*/target/
+/tests/pass/*/Cargo.lock
+/tests/fail/*/Cargo.lock
+/tests/support/trame/Cargo.lock
+/tests/support/trame/target/

@@ -2,79 +2,99 @@
 name = "trame"
 version = "0.1.0"
 edition = "2024"
-# `tests/` and `experiments/` are library modules, not Cargo integration tests or examples.
-autotests = false
-autoexamples = false
-description = "Every MPI call NERVE makes. Which transport is linked is a feature, not a run-time choice."
+description = "One meaning for a program on every machine it runs on; spec.md is the contract."
 
-[dependencies]
-bytemuck = { version = "1", default-features = false, features = ["derive", "min_const_generics"] }
-libc = "0.2"
-# The execution declarations. A compiler plugin with no dependencies of
-# its own, built for the host and linked into no binary: `declare` re-exports its attributes so
-# an application declares against the backend API and never depends on a macro crate directly.
-trame-macros = { path = "macros" }
-# The device backend: warp-per-rank CUDA. Opt-in, so an ordinary build links no CUDA stack.
-# `cuda-device` is the device intrinsics `nv/` is written against, and it builds for the host
-# too; the host crates are for the device experiments, which launch kernels.
-cuda-device = { git = "https://github.com/NVlabs/cuda-oxide", rev = "a105afd522b73a6712a802e30bd900cd04cc8019", optional = true }
-cuda-core = { git = "https://github.com/NVlabs/cuda-oxide", rev = "a105afd522b73a6712a802e30bd900cd04cc8019", optional = true }
-cuda-host = { git = "https://github.com/NVlabs/cuda-oxide", rev = "a105afd522b73a6712a802e30bd900cd04cc8019", optional = true }
-mpi = { version = "0.8", optional = true }
-mpi-rma = { path = "../mpi-rma", optional = true }
-
-# No features selects the single-process backend.
-[features]
-default = []
-mpi = ["dep:mpi", "dep:mpi-rma"]
-lossy = ["mpi"]
-# The device backend of `trame/backends/nv/`: one CUDA warp per rank.
-nv = ["dep:cuda-device"]
-# The device half of `nv/` rather than its host model: the same backend source, built for a GPU.
-cuda = ["nv", "dep:cuda-core", "dep:cuda-host"]
-
-# Library name used by callers: `trame::post`, `trame::lane`.
 [lib]
-name = "trame"
 path = "lib.rs"
 
-# Execution declarations against synthetic workloads. No transport, no peers, no NERVE.
-[[example]]
-name = "execution"
-path = "experiments/execution.rs"
+[dependencies]
+bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
+trame-macros = { path = "macros" }
+mpi = { version = "=0.8.2", optional = true }
+libc = { version = "=0.2.191", optional = true }
 
-# Backend measurements. Each example needs peers and an MPI transport.
-[[example]]
-name = "pingpong"
-path = "experiments/pingpong.rs"
+# A backend is chosen at compile time, one per build, so every participant agrees by construction.
+# `seq` and `mpi` are exclusive: lib.rs refuses a build that enables both.
+[features]
+default = ["seq"]
+seq = []
+mpi = ["dep:mpi", "dep:libc"]
+
+# The MPI transport's checks and latency run (backends/mpi/tests/run.sh, backends/mpi/README.md).
+[[bin]]
+name = "check"
+path = "backends/mpi/tests/check.rs"
 required-features = ["mpi"]
 
-# The conformance claims of `backend.md`, one process per participant; `scripts/conform.sh`
-# launches it. nv's host model runs the same body from `nv/tests/conformance.rs`.
-[[example]]
-name = "conformance"
-path = "conformance/main.rs"
+[[bin]]
+name = "latency"
+path = "backends/mpi/tests/latency.rs"
 required-features = ["mpi"]
 
+# Programs that run on every backend, with their expected stdout (programs/run.sh).
 [[example]]
-name = "particles"
-path = "experiments/particles.rs"
-required-features = ["mpi"]
+name = "ping_pong"
+path = "programs/ping_pong.rs"
 
 [[example]]
-name = "verifiable"
-path = "experiments/verifiable.rs"
-required-features = ["mpi"]
+name = "leader_io"
+path = "programs/leader_io.rs"
 
 [[example]]
-name = "traffic"
-path = "experiments/traffic.rs"
-required-features = ["mpi"]
+name = "full"
+path = "programs/full.rs"
 
-# The resident-device evidence (`backend.md` §10), on a real GPU through `cargo-nv`: a
-# partitioned dispatch region. The ring measurements name machinery below the surface, so they are
-# ignored tests in `nv/measure/`.
 [[example]]
-name = "nv-declared"
-path = "experiments/nv/declared.rs"
-required-features = ["cuda"]
+name = "lossy"
+path = "programs/lossy.rs"
+
+[[example]]
+name = "abort"
+path = "programs/abort.rs"
+
+[[example]]
+name = "refuse"
+path = "programs/refuse.rs"
+
+[[example]]
+name = "barrier_publish"
+path = "programs/barrier_publish.rs"
+
+[[example]]
+name = "barrier_deadlock"
+path = "programs/barrier_deadlock.rs"
+
+[[example]]
+name = "cells"
+path = "programs/cells.rs"
+
+# `trame_checked` is set by the driver (spec.md, Checked builds); it is not a feature.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trame_checked)'] }
+
+# The spec aborts on overflow in every build, and the MPI transport was measured with it on.
+[profile.release]
+overflow-checks = true
+
+[workspace]
+members = ["macros"]
+
+[[example]]
+name = "wait_until"
+path = "programs/wait_until.rs"
+
+[[example]]
+name = "join_deadline"
+path = "programs/join_deadline.rs"
+
+[[example]]
+name = "wait_frame"
+path = "programs/wait_frame.rs"
+
+[[example]]
+name = "wait_room"
+path = "programs/wait_room.rs"
+
+[[example]]
+name = "err"
+path = "programs/err.rs"

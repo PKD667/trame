@@ -1,0 +1,12 @@
+round 1: worker 0 saw 1, worker 1 saw 1, worker 2 saw 1
+round 2: worker 0 saw 2, worker 1 saw 2, worker 2 saw 2
+round 3: worker 0 saw 3, worker 1 saw 3, worker 2 saw 3
+round 4: worker 0 saw 4, worker 1 saw 4, worker 2 saw 4
+round 5: worker 0 saw 5, worker 1 saw 5, worker 2 saw 5
+round 6: worker 0 saw 6, worker 1 saw 6, worker 2 saw 6
+round 7: worker 0 saw 7, worker 1 saw 7, worker 2 saw 7
+round 8: worker 0 saw 8, worker 1 saw 8, worker 2 saw 8
+round 9: worker 0 saw 9, worker 1 saw 9, worker 2 saw 9
+round 10: worker 0 saw 10, worker 1 saw 10, worker 2 saw 10
+published 10 rounds
+outcomes: [Returned, Returned, Returned]

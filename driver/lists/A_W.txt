@@ -1,0 +1,36 @@
+# A_W: what a worker may call. Every line of A_C.txt is repeated here (checked at start-up). A worker
+# may loop without bound (spec.md, Requirement (Worker)), so the infinite constructors are not denied
+# here, and it may allocate, as a step may.
+
+core::option::*            # Option combinators: data only; closures they take are walked and checked here
+core::result::*            # Result combinators: data only, as Option
+core::cmp::*               # comparisons, min, max: data only; user impls are walked
+core::ops::*               # operators and indexing; overflow and bounds failures abort (spec.md, Run-time aborts)
+core::num::*               # integer methods (checked_*, wrapping_*, pow); floats are not listed (libm is not portable)
+core::slice::*             # slice methods, bounded by the data; closures and element types are walked
+core::array::*             # array methods and IntoIter: counted loops over arrays
+core::iter::*              # iterator adapters and consumers; a worker may loop without bound
+core::str::*               # string slices: pure, bounded by their length
+core::char::*              # chars: pure
+core::time::*              # Duration: pure data; spans and timeouts are Durations (spec.md lines 298 and 664)
+core::mem::swap            # moves two places: no allocation
+core::mem::replace         # moves a value in and out: no allocation
+core::mem::take            # moves a default in: no allocation
+core::ptr::drop_in_place   # drop glue entry point (spec.md: drop glue counts as a call; glue is read)
+core::any::TypeId::*       # type ids, compared within one binary only
+core::fmt::*               # formatting machinery; a user Display or Debug impl reached through it is walked
+core::panicking::*         # panics abort the launch (spec.md, Definition (Abort)); they are not effects
+core::clone::*             # Clone: user impls are walked
+core::default::*           # Default: user impls are walked
+core::convert::*           # From, Into, AsRef: user impls are walked
+core::hash::*              # Hash: user impls are walked; no hashers are listed, so no HashMap
+core::marker::*            # PhantomData and marker traits: no code
+alloc::vec::*              # Vec: growth allocates; a worker may allocate (spec.md, Requirement (Worker))
+alloc::boxed::*            # Box: one allocation per box
+alloc::collections::*      # VecDeque, BTreeMap and friends: allocation as Vec
+alloc::string::*           # String: allocation as Vec
+alloc::slice::*            # slice::sort and friends in alloc: allocation as Vec
+alloc::fmt::*              # format!: allocation as Vec
+alloc::alloc::*            # global allocator entry points; the item rule refuses them from an item
+alloc::sync::Arc::clone    # publication snapshots: a shared read-only handle
+alloc::sync::Arc::drop     # publication snapshots: releasing the handle

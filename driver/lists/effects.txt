@@ -1,0 +1,11 @@
+# Trame effects, by the canonical definition path the driver sees (one per line: `<effect> <path>`).
+# Sigma_I = {} ; Sigma_C = {send, recv, now, parallel} ; Sigma_W = Sigma_C + {concurrent, barrier}.
+# Paths of the surface in lib.rs (io.rs, time.rs, parallel.rs). An effect whose path changes is not
+# matched here; its body is then read like any other function, so a body without effects passes
+# silently. Renames must be made in this file in the same change as the surface.
+send trame::io::send
+recv trame::io::recv
+now trame::time::now
+parallel trame::__rt::parallel
+concurrent trame::concurrent::concurrent
+barrier trame::io::barrier

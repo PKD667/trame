@@ -1,0 +1,37 @@
+# A_I: core and alloc paths an item may call. Read with deny.txt (all levels) and the `-` lines here
+# (this level only). Format: a path or `P::*`, then `# reason`. A_C.txt and A_W.txt repeat every
+# line here (checked at start-up: A_I <= A_C <= A_W as entries, and the denies nest the other way).
+#
+# A callee is matched by its trait-qualified or inherent path (e.g. `core::option::Option::expect`),
+# its self-type shape (`[_]::iter`, `u32::add`), and the path of its definition. Trait methods of a
+# user type are not matched by the trait path: a default method of core on user code is refused.
+
+core::option::*            # Option combinators: data only; closures they take are walked and checked here
+core::result::*            # Result combinators: data only, as Option
+core::cmp::*               # comparisons, min, max: data only; user impls are walked
+core::ops::*               # operators and indexing; overflow and bounds failures abort (spec.md, Run-time aborts)
+core::num::*               # integer methods (checked_*, wrapping_*, pow); floats are not listed (libm is not portable)
+core::slice::*             # slice methods, bounded by the data; closures and element types are walked
+core::array::*             # array methods and IntoIter: counted loops over arrays
+core::iter::*              # iterator adapters and consumers over finite iterators; the walk refuses user iterators
+core::str::*               # string slices: pure, bounded by their length
+core::char::*              # chars: pure
+core::time::*              # Duration: pure data; spans and timeouts are Durations (spec.md lines 298 and 664)
+core::mem::swap            # moves two places: no allocation
+core::mem::replace         # moves a value in and out: no allocation
+core::mem::take            # moves a default in: no allocation
+core::ptr::drop_in_place   # drop glue entry point (spec.md: drop glue counts as a call; glue is read)
+core::any::TypeId::*       # type ids, compared within one binary only
+core::fmt::*               # formatting machinery; a user Display or Debug impl reached through it is walked
+core::panicking::*         # panics abort the launch (spec.md, Definition (Abort)); they are not effects
+core::clone::*             # Clone: user impls are walked
+core::default::*           # Default: user impls are walked
+core::convert::*           # From, Into, AsRef: user impls are walked
+core::hash::*              # Hash: user impls are walked; no hashers are listed, so no HashMap
+core::marker::*            # PhantomData and marker traits: no code
+-core::iter::sources::repeat::*       # infinite source: its loop is not in the caller's MIR, so no counted loop bounds it
+-core::iter::sources::repeat_with::*  # infinite source (as repeat)
+-core::iter::sources::from_fn::*      # infinite source when the closure never returns None
+-core::iter::sources::successors::*   # infinite source when the function never returns None
+-core::iter::traits::iterator::Iterator::cycle  # infinite adapter over a finite iterator
+-core::ops::range::RangeFrom::*       # infinite range: its Iterator impl and every method on it

@@ -1,108 +1,128 @@
-// MPI messages carry batches; local lanes use acknowledged RMA rings unless `lossy` selects
-// overwrite-on-full rings. The compile-time feature makes that delivery contract rank-uniform.
+//! The MPI backend of trame, on one node (spec.md 6). `Selected` (imp.rs) is the backend the surface
+//! calls; the transport below it is what the test binaries use.
+//!
+//! `open` (open.rs) gives this rank a `Role` (spec.md 4): ranks `0..workers` get a worker endpoint,
+//! and the last rank, `workers`, gets the leader endpoint. Both are `Transport`s: the leader is an
+//! endpoint like any other, with its own routes. `agree` checks that every rank built the same
+//! topology, and it runs before `open`, so a refusal is decided on every rank together.
+//!
+//! Mechanism, in short (the reasoning is in README.md and the files named in it):
+//! - Every route is a ring of `cap` slots in one `MPI_Win_allocate_shared` window. The sender
+//!   owns the counter P and the receiver owns C, and each is published with a release store.
+//! - A lossless send answers `Full` only when an acquire load of C shows `P - C == cap`. That load
+//!   is the linearization point of the answer.
+//! - A lossy send never reads C. A slot is a seqlock, so a receiver that reads a slot the sender
+//!   is overwriting detects it and skips the frame.
+//! - Results and aborts are futex words (results.rs). The barrier is rootless (gate.rs): workers
+//!   sleep on their epochs (epoch.rs), a releaser bumps every epoch, and a deposit from the leader is
+//!   installed by the releaser under a seqlock. Every epoch and futex word is 32 bits. No MPI call after
+//!   launch.
 
-use std::sync::Arc;
+mod epoch;
+mod futex;
+mod gate;
+mod imp;
+mod layout;
+mod leader;
+mod open;
+mod plan;
+mod poll;
+mod recv;
+mod refusal;
+mod results;
+mod ring;
+mod shape;
+mod shm;
+mod state;
+mod types;
+mod worker;
 
-pub mod optim;
-pub mod context;
-pub mod leader;
-pub(crate) mod link;
-pub mod p2p;
-mod segment;
+/// The backend the surface calls: `impl Backend for Selected` lives in imp.rs.
+pub struct Selected;
 
-use mpi_rma::Ring;
+extern crate std;
 
-use crate::contract::{Addr, Backend, Channel, Invalid, Edge, Error, Frame, Tag};
-use crate::mpi::context::{failure, lane_index, lane_tag};
-use crate::mpi::link::Peer;
+use std::vec;
+use std::vec::Vec;
 
-pub use crate::mpi::context::{
-    Context, Environment, Io, MAX_FRAME, barrier, concurrent_io, done, init, rank, size,
-};
+pub use layout::{Route, Topology, LIMIT, MAX, PUB_MAX};
+pub use open::{agree, launch, open};
+pub use refusal::Refusal;
+pub use shape::encode;
+pub use types::{clock, Answer, Error, Event, Received, Role, RouteId};
 
-pub use segment::{Shared, attach, bytes, detach};
+use layout::{Layout, RouteLayout};
+use shm::Window;
 
-/// The host answers these by being a host: OS threads for execution, and the primitives built on
-/// `std::sync`. A backend whose participants are not host threads answers none of these names.
-pub use crate::host::clock;
-pub use crate::host::run;
-pub use crate::host::sync;
-
-pub const ID: Backend = Backend::Mpi;
-
-// The window's lane table, which needs no communicator.
-#[cfg(test)]
-mod tests;
-
-/// Send one frame: `Message` on the wire, `Lane` into the receiver's window when it is here, and
-/// on the link when it is on another host, where no window reaches.
-pub fn send(cx: &mut Context, to: Addr, channel: Channel, data: &[u8]) -> Result<(), Error> {
-    cx.io().send(to, channel, data)
+/// One endpoint's transport: a worker's, or the leader's. Not `Send`: it holds a pointer into the
+/// window, and it belongs to the rank's thread.
+pub struct Transport {
+    me: u32,
+    win: Window,
+    lay: Layout,
+    /// The number of barrier calls this endpoint has made.
+    generation: u64,
+    /// Lossy routes: the next index this endpoint will read. Local, because the receiver of a
+    /// lossy route never publishes progress.
+    cursor: Vec<u64>,
+    /// Per owned route set, where `recv` starts its scan (recv.rs). Indexed by the set's first route.
+    rr: Vec<usize>,
+    trace: Option<Vec<Event>>,
+    /// A worker's last publication: its number and the snapshot (gate.rs `snapshot`).
+    publication: Option<(u64, std::sync::Arc<[u8]>)>,
 }
 
-impl Io<'_> {
-    pub fn send(&mut self, to: Addr, channel: Channel, data: &[u8]) -> Result<(), Error> {
-        match channel {
-            Channel::Message(tag) => crate::mpi::link::send(self.world, self.link, self.rank, to, tag, data),
-            Channel::Lane => match crate::mpi::link::route(self.link, to)? {
-                Peer::Here(at) => {
-                    let index = lane_index(self.workers, at)?;
-                    let ring = self.ring.ok_or(Error::Invalid(Invalid::LaneNotConfigured))?;
-                    #[cfg(not(feature = "lossy"))]
-                    return refused(ring.send(index, data), self.rank);
-                    #[cfg(feature = "lossy")]
-                    return ring.send(index, data).map(|_| ()).map_err(|_| failure(self.rank, "lane"));
-                }
-                Peer::There(at) => {
-                    let tag = lane_tag(self.workers, self.lane)?;
-                    crate::mpi::link::lane(self.link, self.far, self.rank, to, at, tag, data)
-                }
-            },
+impl Drop for Transport {
+    /// A worker endpoint dropped without a result is an exit: signal it, without waiting for anyone
+    /// (gate.rs). A result already recorded makes this a repeat, which is harmless.
+    fn drop(&mut self) {
+        if self.me < self.lay.workers {
+            self.exit();
         }
     }
 }
 
-/// A full reliable lane is `Full`; a transport refusal is a backend failure.
-#[cfg(not(feature = "lossy"))]
-fn refused(sent: Result<u64, mpi_rma::Error>, rank: u32) -> Result<(), Error> {
-    sent.map(|_| ()).map_err(|e| match e {
-        mpi_rma::Error::Full => Error::Full,
-        _ => failure(rank, "lane"),
-    })
-}
+impl Transport {
+    pub(crate) fn new(me: u32, win: Window, lay: Layout) -> Transport {
+        let routes = lay.routes.len();
+        Transport { me, win, lay, generation: 0, cursor: vec![0; routes], rr: vec![0; routes], trace: None, publication: None }
+    }
 
-/// The next frame from either route. One implementation, in `shared`, because the two ring
-/// transports differ in what they overwrite and not in how they receive — and the copy that was
-/// here had drifted out of step with the contract while the other one had too.
-pub fn recv(cx: &mut Context, out: &mut [u8]) -> Result<Option<Frame>, Error> {
-    crate::mpi::p2p::recv_from_either(cx, out)
-}
+    /// This endpoint's rank: a worker's index, or `workers` for the leader.
+    pub fn me(&self) -> u32 {
+        self.me
+    }
 
-pub fn flush(cx: &mut Context) -> Result<(), Error> {
-    crate::mpi::p2p::flush(cx)
-}
+    /// Start recording every send and consume. Costs two clock reads per send.
+    pub fn trace_on(&mut self) {
+        self.trace = Some(Vec::new());
+    }
 
-/// Open the window the declaration asks for. Collective, and only at a load.
-pub fn reshape(
-    cx: &mut Context,
-    workers: &[u32],
-    edges: &[Edge],
-    bytes: usize,
-    tag: Tag,
-) -> Result<(), Error> {
-    crate::host::lanes::validate(workers, edges, bytes, size(cx), MAX_FRAME)?;
-    let far = crate::mpi::link::far(cx.link(), rank(cx), edges, bytes)?;
-    let lanes = crate::mpi::context::window(workers, edges, bytes)?;
-    #[cfg(not(feature = "lossy"))]
-    let ring = Ring::safe(cx.together(), &lanes).map_err(|_| failure(rank(cx), "reshape"))?;
-    #[cfg(feature = "lossy")]
-    let ring = Ring::raw(cx.together(), &lanes).map_err(|_| failure(rank(cx), "reshape"))?;
-    cx.set_window(tag, workers.to_vec(), far, Arc::new(ring));
-    Ok(())
-}
+    /// Take the recorded events. Empty if tracing is off.
+    pub fn take_trace(&mut self) -> Vec<Event> {
+        self.trace.as_mut().map(std::mem::take).unwrap_or_default()
+    }
 
-/// Drop the window. Its drop is the collective free, and the barrier that follows it.
-pub fn release(cx: &mut Context) -> Result<(), Error> {
-    cx.clear_lane();
-    Ok(())
+    pub(crate) fn route(&self, id: RouteId) -> Result<&RouteLayout, Error> {
+        self.lay.routes.get(id.0 as usize).ok_or(Error::NoSuchRoute(id))
+    }
+
+    pub(crate) fn push(&mut self, e: Event) {
+        if let Some(t) = self.trace.as_mut() {
+            t.push(e);
+        }
+    }
+
+    pub(crate) fn lay(&self) -> &Layout {
+        &self.lay
+    }
+
+    pub(crate) fn win(&self) -> &Window {
+        &self.win
+    }
+
+    pub(crate) fn cursor_mut(&mut self) -> &mut Vec<u64> {
+        &mut self.cursor
+    }
+
 }

@@ -1,0 +1,10 @@
+# Cargo build output
+/target/
+/driver/target/
+
+# Nix build result symlinks
+result
+result-*
+
+# Output of backends/mpi/tests/progress/run.sh
+/backends/mpi/tests/progress/out/
