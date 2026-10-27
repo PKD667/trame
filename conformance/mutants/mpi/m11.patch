@@ -1,0 +1,13 @@
+# violates: Start
+# expect: killed
+--- a/sched.rs
++++ b/sched.rs
+@@ -66,7 +66,7 @@
+     if ps.iter().any(|p| p.st == St::Err) {
+         return None;
+     }
+-    (0..ps.len()).find(|&i| ready(ps, i, held, now))
++    (0..ps.len()).rev().find(|&i| ready(ps, i, held, now))
+ }
+ 
+ /// End: the step of process i returned s. Releases its cells, records s, and marks every other

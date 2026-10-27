@@ -1,0 +1,14 @@
+# violates: efficiency only (m25)
+# expect: equivalent: wait only returns early. run.rs documents that a caller re-checks recv after wait, so a leader written to that contract sees the same frames in the same order; only its CPU use changes (conformance/README.md, Efficiency).
+--- a/run.rs
++++ b/run.rs
+@@ -25,6 +25,9 @@
+     /// leader that checks `recv` and then waits does not poll. Pass it the result of a recv that found
+     /// nothing, and check again after it returns.
+     pub fn wait(&self) {
++        if self.seen.get() != u64::MAX {
++            return;
++        }
+         self.seen.set(Selected::leader_wait(&self.inner, self.seen.get()));
+     }
+ 

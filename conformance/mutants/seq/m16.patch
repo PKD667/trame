@@ -1,0 +1,13 @@
+# violates: Deadlock, Join
+# expect: killed
+--- a/backends/seq/state.rs
++++ b/backends/seq/state.rs
+@@ -104,7 +104,7 @@
+     pub fn advance(&mut self, from: usize) {
+         // An idle worker can still be woken by the leader, so the run is not stuck while one exists.
+         if !self.phase.iter().any(|p| matches!(p, Phase::Ready | Phase::Idle(..))) {
+-            for p in self.phase.iter_mut().filter(|p| **p == Phase::Blocked) {
++            for p in self.phase.iter_mut().filter(|_| false) {
+                 *p = Phase::Done(Outcome::Deadlock);
+             }
+         }

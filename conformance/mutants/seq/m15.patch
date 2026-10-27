@@ -1,0 +1,21 @@
+# violates: Barrier (one Pub for all)
+# expect: killed
+--- a/backends/seq/ops.rs
++++ b/backends/seq/ops.rs
+@@ -222,6 +222,7 @@
+     }
+ 
+     fn worker_barrier() -> Arc<[u8]> {
++        let early = current().0.lock().publication.clone();
+         effect(|st, me| {
+             st.phase[me] = Phase::Blocked;
+             if st.phase.iter().all(|p| *p == Phase::Blocked) {
+@@ -230,7 +231,7 @@
+         });
+         // Read after the wait: the publication changes only when the barrier fires, and no worker
+         // can reach the next barrier before this one has read it. The clone shares the bytes.
+-        current().0.lock().publication.clone()
++        if current().1 == 0 { early } else { current().0.lock().publication.clone() }
+     }
+ 
+     fn leader_send(run: &Run, to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {

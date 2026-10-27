@@ -1,0 +1,13 @@
+# violates: Deadlock
+# expect: killed
+--- a/backends/seq/ops.rs
++++ b/backends/seq/ops.rs
+@@ -289,7 +289,7 @@
+                 Phase::Idle(_, Some(t)) => Some(*t),
+                 _ => None,
+             }).min();
+-            if let Some(t) = deadline {
++            if let Some(t) = deadline.filter(|_| false) {
+                 let elapsed = u64::try_from(st.epoch.elapsed().as_nanos()).unwrap_or(u64::MAX);
+                 // Past the deadline, the worker wakes itself and notifies: a plain wait is enough.
+                 st = match t.checked_sub(elapsed) {

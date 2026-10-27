@@ -1,0 +1,13 @@
+# violates: Offers, Recv
+# expect: killed
+--- a/backends/mpi/recv.rs
++++ b/backends/mpi/recv.rs
+@@ -71,7 +71,7 @@
+                 if !self.read_slot(&r, c, None)? {
+                     return Err(Error::Broken("published frame has no valid sequence"));
+                 }
+-                Ok(Some(c))
++                Ok(Some(p - 1))
+             } else {
+                 Ok(None)
+             }

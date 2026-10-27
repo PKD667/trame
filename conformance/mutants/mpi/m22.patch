@@ -1,0 +1,17 @@
+# violates: Take
+# expect: killed
+--- a/backends/mpi/leader.rs
++++ b/backends/mpi/leader.rs
+@@ -57,7 +57,11 @@
+     let t = run.get();
+     let owned = plan::owned(&local().inbox, ty);
+     match t.recv(owned, out) {
+-        Ok(Received::Message(_)) => true,
++        Ok(Received::Message(_)) => {
++            let mut scratch = std::vec![0u8; out.len()];
++            let _ = t.recv(owned, &mut scratch);
++            true
++        }
+         Ok(Received::Empty) => false,
+         Err(e) => panic!("trame: leader recv: {e}"),
+     }

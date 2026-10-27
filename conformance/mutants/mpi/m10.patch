@@ -1,0 +1,13 @@
+# violates: End
+# expect: killed
+--- a/sched.rs
++++ b/sched.rs
+@@ -76,7 +76,7 @@
+     let cells = ps[i].cells;
+     *held &= !cells;
+     for (q, other) in ps.iter_mut().enumerate() {
+-        if q != i && other.cells & cells != 0 {
++        if q != i && other.cells & cells != 0 && false {
+             other.d = true;
+         }
+     }

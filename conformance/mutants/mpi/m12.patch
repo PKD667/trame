@@ -1,0 +1,13 @@
+# violates: Fail
+# expect: killed
+--- a/sched.rs
++++ b/sched.rs
+@@ -89,7 +89,7 @@
+ /// Done: every process is done, answer Ok. Fail: some process is err and none is running, answer
+ /// Err with the lowest such index. Otherwise the concurrent! has not answered yet: None.
+ pub fn answer(ps: &[Proc]) -> Option<Result<(), usize>> {
+-    if ps.iter().all(|p| p.st == St::Done) {
++    if ps.iter().all(|p| p.st == St::Done || p.st == St::Err) {
+         return Some(Ok(()));
+     }
+     if ps.iter().any(|p| p.running) {

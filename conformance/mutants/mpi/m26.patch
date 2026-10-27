@@ -1,0 +1,13 @@
+# violates: efficiency only (m26)
+# expect: equivalent: worker_idle returns at once, so the worker re-checks its conditions in a busy loop. Only CPU use should change (conformance/README.md, Efficiency). Expected to be contradicted in a deadlocked run, see survivors.md.
+--- a/backends/mpi/worker.rs
++++ b/backends/mpi/worker.rs
+@@ -107,7 +107,7 @@
+ 
+ /// Sleep on the epoch `epoch` came from (see `epoch`). The narrowing is exact: the value was a u32.
+ pub(super) fn idle(until: Option<u64>, epoch: u64) {
+-    parts().0.sleep(epoch as u32, until);
++    let _ = (epoch, until);
+ }
+ 
+ /// Wait at the barrier, then return the host's publication. A worker stuck at it unwinds as `Stuck`,

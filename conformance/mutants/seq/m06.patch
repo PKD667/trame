@@ -1,0 +1,20 @@
+# violates: Progress
+# expect: killed
+--- a/backends/seq/ops.rs
++++ b/backends/seq/ops.rs
+@@ -146,13 +146,13 @@
+     }
+ 
+     fn worker_send(to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
+-        effect(|st, me| {
++        turn_effect(|st, me| {
+             let from = WorkerId(me as u32);
+             match st.route(from, to, ty) {
+                 Some(i) => st.push(i, bytes),
+                 None => panic!("trame: worker {from:?} has no route to {to:?} for {name}"),
+             }
+-        })
++        }, false)
+     }
+ 
+     fn worker_recv(ty: core::any::TypeId, out: &mut [u8]) -> bool {

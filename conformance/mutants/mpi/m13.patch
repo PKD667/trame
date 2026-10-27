@@ -1,0 +1,16 @@
+# violates: Barrier
+# expect: killed
+--- a/backends/mpi/gate.rs
++++ b/backends/mpi/gate.rs
+@@ -44,9 +44,9 @@
+         let arrive = self.lay().per_worker(K_ARRIVE, self.me());
+         self.win().word(arrive).store(g, Release);
+         let c = self.win().word(COUNT).fetch_add(1, AcqRel) + 1;
+-        if c % n == 0 {
++        if (c + 1) % n == 0 {
+             self.install();
+-            self.win().word(GEN).store(c / n, SeqCst);
++            self.win().word(GEN).store((c + 1) / n, SeqCst);
+             for w in 0..self.lay().workers {
+                 self.bump(w);
+             }

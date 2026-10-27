@@ -1,0 +1,13 @@
+# violates: Ownership
+# expect: killed
+--- a/backends/seq/state.rs
++++ b/backends/seq/state.rs
+@@ -166,7 +166,7 @@
+         for k in 0..n {
+             let i = (self.cursor + k) % n;
+             let r = &mut self.routes[i];
+-            if r.to == to && r.ty == ty && r.len > 0 {
++            if r.to == to && r.len > 0 {
+                 let range = r.slot(r.head);
+                 out.copy_from_slice(&r.buf[range]);
+                 r.head = (r.head + 1) % r.cap;

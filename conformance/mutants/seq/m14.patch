@@ -1,0 +1,13 @@
+# violates: Publish
+# expect: killed
+--- a/backends/seq/state.rs
++++ b/backends/seq/state.rs
+@@ -114,7 +114,7 @@
+     /// Every worker is at the barrier: install the pending publication, release everyone.
+     pub fn fire(&mut self) {
+         if let Some(bytes) = self.pending.take() {
+-            self.publication = bytes;
++            let _ = bytes;
+         }
+         for p in self.phase.iter_mut() {
+             *p = Phase::Ready;

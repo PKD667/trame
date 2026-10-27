@@ -1,0 +1,13 @@
+# violates: Ownership (Recv)
+# expect: killed
+--- a/backends/mpi/leader.rs
++++ b/backends/mpi/leader.rs
+@@ -55,7 +55,7 @@
+ 
+ pub(super) fn recv(run: &Leader, ty: TypeId, out: &mut [u8]) -> bool {
+     let t = run.get();
+-    let owned = plan::owned(&local().inbox, ty);
++    let owned = plan::owned(&local().inbox, local().inbox.first().map_or(ty, |(t, _)| *t));
+     match t.recv(owned, out) {
+         Ok(Received::Message(_)) => true,
+         Ok(Received::Empty) => false,

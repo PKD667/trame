@@ -1,0 +1,13 @@
+# violates: Overwrite
+# expect: killed
+--- a/backends/mpi/ring.rs
++++ b/backends/mpi/ring.rs
+@@ -57,7 +57,7 @@
+         } else {
+             Answer::Full
+         };
+-        if answer == Answer::Ok {
++        if answer == Answer::Ok && !(r.lossy && p >= r.cap) {
+             self.put(&r, p, msg)?;
+             // Release: the frame's words are visible before P moves.
+             self.win().word(p_at).store(p + 1, Release);

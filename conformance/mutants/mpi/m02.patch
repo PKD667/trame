@@ -1,0 +1,13 @@
+# violates: Full
+# expect: killed
+--- a/backends/mpi/ring.rs
++++ b/backends/mpi/ring.rs
+@@ -52,7 +52,7 @@
+             fence(SeqCst);
+         }
+         let after = if tracing { clock() } else { 0 };
+-        let answer = if r.lossy || p.checked_sub(c).is_some_and(|used| used < r.cap) {
++        let answer = if r.lossy || p.checked_sub(c).is_some_and(|used| used + 1 < r.cap) {
+             Answer::Ok
+         } else {
+             Answer::Full

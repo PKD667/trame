@@ -1,0 +1,14 @@
+# violates: Full
+# expect: killed
+# The route is full and the frame is dropped, but the send answers Ok: the sender never learns.
+--- a/backends/seq/state.rs
++++ b/backends/seq/state.rs
+@@ -152,7 +152,7 @@
+             r.head = (r.head + 1) % r.cap;
+             at
+         } else {
+-            return Err(Full);
++            return Ok(());
+         };
+         let range = r.slot(at);
+         r.buf[range].copy_from_slice(bytes);

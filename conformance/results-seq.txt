@@ -1,0 +1,29 @@
+mutant   rule         expect    verdict   program
+m01      Full         killed    killed    full
+m02      Full         killed    killed    ping_pong
+m03      Overwrite    killed    killed    lossy
+m04      Take         killed    killed    leader_io
+m05      Ownership    killed    killed    leader_io
+m06      Progress     killed    killed    wait_frame
+m07      Enabled      killed    survived  -
+m08      Status       killed    survived  -
+m09      Status       killed    survived  -
+m10      End          killed    killed    cells
+m11      Start        killed    survived  -
+m12      Fail         killed    survived  -
+m24      Progress     killed    survived  -
+
+# runner: nix develop .#mpi --command conformance/mutate.sh seq (host MIST, Linux x86_64; wall 16m14s, first pass)
+m13      Barrier      killed    killed    barrier_publish
+m14      Publish      killed    killed    barrier_publish
+m15      Barrier (one Pub for all) killed    killed    barrier_publish
+m16      Deadlock, Join killed    survived  -
+m17      Deadlock     killed    killed    join_deadline
+m18      Abort        killed    killed    abort
+m19      Launch checks killed    survived  -
+m20      Launch checks killed    killed    refuse
+m21      Launch checks killed    survived  -
+m22      Take         killed    killed    ping_pong
+m25      efficiency only (m25) equivalent survived  -
+m26      efficiency only (m26) equivalent survived  -
+m23      Ownership (after concurrent) skip      -         -        (no patch: see conformance/mutants/seq/m23.skip)

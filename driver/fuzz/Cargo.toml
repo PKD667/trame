@@ -1,0 +1,17 @@
+[package]
+name = "trame-fuzz"
+version = "0.1.0"
+edition = "2024"
+description = "Fuzzer for trame's compile-time analysis (driver/fuzz/README.md)"
+publish = false
+
+# No dependencies: the generator, the oracle, the JSON and the comparator are all in this package,
+# so nothing needs vendoring. Own workspace, like driver/.
+[workspace]
+
+[[bin]]
+name = "trame-fuzz"
+path = "src/main.rs"
+
+[profile.release]
+debug = false

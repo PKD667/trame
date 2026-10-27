@@ -1,0 +1,13 @@
+# violates: Abort
+# expect: killed
+--- a/backends/mpi/results.rs
++++ b/backends/mpi/results.rs
+@@ -42,7 +42,7 @@
+ 
+     /// A worker panicked: the run is aborted, and this worker's own result is Abort.
+     pub fn abort(&self) {
+-        self.win().word32(DONE).fetch_or(ABORT_BIT, AcqRel);
++        let _ = ABORT_BIT;
+         self.win().wake(DONE);
+         self.bump_all();
+         self.finish(OUT_ABORT);

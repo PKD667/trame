@@ -1,0 +1,12 @@
+# violates: Progress
+# expect: killed
+--- a/backends/mpi/ring.rs
++++ b/backends/mpi/ring.rs
+@@ -61,7 +61,6 @@
+             self.put(&r, p, msg)?;
+             // Release: the frame's words are visible before P moves.
+             self.win().word(p_at).store(p + 1, Release);
+-            self.bump(r.to);
+         }
+         self.push(Event::Send { route: id.0, index: p, read: c, before, after, answer });
+         Ok(answer)

@@ -1,0 +1,15 @@
+# violates: Overwrite
+# expect: killed
+--- a/backends/seq/state.rs
++++ b/backends/seq/state.rs
+@@ -148,9 +148,7 @@
+             r.len += 1;
+             (r.head + r.len - 1) % r.cap
+         } else if r.lossy {
+-            let at = r.head;
+-            r.head = (r.head + 1) % r.cap;
+-            at
++            (r.head + r.len - 1) % r.cap
+         } else {
+             return Err(Full);
+         };

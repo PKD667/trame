@@ -1,0 +1,1 @@
+# skip: the MPI backend reports Deadlock only at a barrier (gate.rs, stuck). It never reports Deadlock for an idle worker, so a join that reports Deadlock for a worker waiting on a deadline has no code to mutate. spec.md (Definition Deadlock) says a backend may report it, not must; mpi hangs such a worker instead (see conformance/survivors.md).

@@ -1,0 +1,9 @@
+[package]
+name = "trame"
+version = "0.0.0"
+edition = "2024"
+publish = false
+# Stand-in for the trame surface, owned by driver/fuzz (not the real crate). It includes the real
+# check.rs by path, so the driver sees the same markers as the real crate. The effect paths match
+# driver/lists/effects.txt; a rename there must be made here too.
+[workspace]

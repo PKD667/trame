@@ -1,0 +1,17 @@
+# violates: efficiency only (m26)
+# expect: equivalent: worker_idle returns at once, so the worker re-checks its conditions in a busy loop. Only CPU use should change; a worker that re-checks is still a worker that moves when a condition holds (conformance/README.md, Efficiency). Expected to be contradicted in a deadlocked run, see survivors.md.
+--- a/backends/seq/ops.rs
++++ b/backends/seq/ops.rs
+@@ -191,9 +191,11 @@
+         let mut st = shared.lock();
+         assert_eq!(st.turn, Some(me), "trame: an idle worker ran without the baton");
+         // Idle: give the baton up. Nothing runs until a leader acts, or the deadline comes.
+-        st.phase[me] = Phase::Idle(seen, until);
++        st.phase[me] = Phase::Ready;
+         st.advance(me);
+         shared.changed.notify_all();
++        st = wait_turn(&shared, st, me);
++        return;
+         loop {
+             if st.must_stop(me) {
+                 drop(st);

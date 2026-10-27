@@ -7,3 +7,6 @@ result-*
 
 # Output of backends/mpi/tests/progress/run.sh
 /backends/mpi/tests/progress/out/
+
+# Scratch crates of driver/fuzz/run.sh
+/driver/fuzz/work/

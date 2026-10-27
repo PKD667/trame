@@ -1,0 +1,13 @@
+# violates: Status
+# expect: killed
+--- a/sched.rs
++++ b/sched.rs
+@@ -48,7 +48,7 @@
+         St::Fresh | St::Progress => true,
+         St::Done | St::Err => false,
+         St::Wait { frame, room, until, cells: _ } => {
+-            p.d || (frame && bit(now.frame, i)) || (room && bit(now.room, i)) || (until && bit(now.until, i))
++            p.d || (frame && bit(now.frame, i)) || room || (until && bit(now.until, i))
+         }
+     }
+ }

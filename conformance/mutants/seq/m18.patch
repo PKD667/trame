@@ -1,0 +1,14 @@
+# violates: Abort
+# expect: killed
+--- a/backends/seq/ops.rs
++++ b/backends/seq/ops.rs
+@@ -87,7 +87,8 @@
+         }
+         Err(payload) if payload.is::<Abandoned>() => {}
+         Err(_) => {
+-            st.abort_all();
++            st.phase[me] = Phase::Done(Outcome::Abort);
++            st.advance(me);
+             st.acts += 1;
+         }
+     }

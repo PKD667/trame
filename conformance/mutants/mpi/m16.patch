@@ -1,0 +1,12 @@
+# violates: Deadlock, Join
+# expect: killed
+--- a/backends/mpi/gate.rs
++++ b/backends/mpi/gate.rs
+@@ -139,7 +139,6 @@
+     /// `stuck`. Called when the worker's result is recorded, before the process ends.
+     pub(super) fn exit(&self) {
+         self.win().word(self.lay().per_worker(K_EXITED, self.me())).store(1, Release);
+-        self.bump_all();
+     }
+ 
+     /// Leader only. Deposit `bytes` as the publication the next barrier that fires installs. Never waits:

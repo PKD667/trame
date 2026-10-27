@@ -1,0 +1,13 @@
+# violates: Full
+# expect: killed
+--- a/backends/seq/state.rs
++++ b/backends/seq/state.rs
+@@ -144,7 +144,7 @@
+     /// overwrites its oldest frame; any other route at capacity answers `Full`.
+     pub fn push(&mut self, i: usize, bytes: &[u8]) -> Result<(), Full> {
+         let r = &mut self.routes[i];
+-        let at = if r.len < r.cap {
++        let at = if (r.len < r.cap && (r.lossy || r.len + 1 < r.cap)) {
+             r.len += 1;
+             (r.head + r.len - 1) % r.cap
+         } else if r.lossy {

@@ -1,0 +1,13 @@
+# violates: Barrier
+# expect: killed
+--- a/backends/seq/ops.rs
++++ b/backends/seq/ops.rs
+@@ -224,7 +224,7 @@
+     fn worker_barrier() -> Arc<[u8]> {
+         effect(|st, me| {
+             st.phase[me] = Phase::Blocked;
+-            if st.phase.iter().all(|p| *p == Phase::Blocked) {
++            if st.phase.iter().filter(|p| **p == Phase::Blocked).count() + 1 >= st.phase.len() {
+                 st.fire();
+             }
+         });
