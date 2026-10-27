@@ -1,0 +1,25 @@
+{
+  "format": "2.0",
+  "runs": {
+    "programs-seq": [
+      {
+        "facts": {
+          "closure": "/nix/store/panj1006li3d5i39887qd3dsd51z2jm2-experiment-programs-seq",
+          "format": "2.0",
+          "input_id": "f542c14eaa05334e070d943498f3f6d6e361aecc2001e9d62872b5e75d1971e6",
+          "params": {
+            "backend": "seq",
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-seq-f542c14eaa05-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-seq-f542c14eaa05-r1",
+        "path": "/nix/store/zcb0g4cmxss8vdksy9fbr8b3f68zipr6-programs-seq-f542c14eaa05-r1",
+        "sha256": "sha256-mgu0gpUshdK4SkalR+dyayySgOpg38+YOjkjzIO2KZE="
+      }
+    ]
+  }
+}
