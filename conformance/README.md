@@ -28,6 +28,13 @@ The record is the lab experiment `mutants-seq` or `mutants-mpi` (`experiments/ch
 and a job runs the program set against one mutant. Its dataset `kill` holds one row per program, and the
 analysis `mutants` judges it. Run it with `nix run .#mutants-seq` (or `.#mutants-mpi`), and commit `lab.lock`.
 
+The deterministic seq record is the validate check `mutants-seq` (`experiments/validate-mutants.nix`):
+`nix build .#validate.x86_64-linux.verdicts.mutants-seq`. It applies each patch alone, builds the seq
+examples, and runs every program with `TRAME_SEQ_STEP_LIMIT=1000000` (a count of steps, so a looping
+mutant is killed by its count; the run also has a 60 s guard). It holds when every `killed` mutant fails a
+program and every `equivalent` one passes all. A patch that does not apply is a counterexample, not a skip.
+Its verdict lists the mutants that contradict their headers in `outcome.json`; read it there, not here.
+
 `mutate.sh [seq|mpi]` is the quick local loop. It copies the repository into a fixed directory per backend
 (`/tmp/trame-mutate/<backend>`, so Cargo fingerprints match and builds are incremental; `target/` is kept
 there). For each patch it restores the copy from the repository, applies the patch, runs

@@ -3,6 +3,7 @@ pub struct Selected;
 
 mod state;
 mod ops;
+mod limit;
 
 #[cfg(test)]
 mod tests;
@@ -14,6 +15,8 @@ mod tests_stuck;
 mod tests_launch;
 #[cfg(test)]
 mod tests_array;
+#[cfg(test)]
+mod tests_limit;
 // `concurrent!` expands to compile_error! unless the build is checked, so its tests need that flag.
 #[cfg(all(test, trame_checked))]
 mod tests_concurrent;

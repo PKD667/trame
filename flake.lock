@@ -23,18 +23,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1793102599,
-        "narHash": "sha256-CBuAMnIX8go16qEr9HUsdTPBdHwD9Y77LVlECjkl0NA=",
-        "owner": "PKD667",
-        "repo": "nixsci",
-        "rev": "a1eafa231301d38a8db88dc4238d0d2e6e7bea70",
-        "type": "github"
+        "lastModified": 1793122347,
+        "narHash": "sha256-0RKAX2rt0hfKiMt7YPv2l4WuXR/CLH+VosyZaO1fy7E=",
+        "ref": "validate",
+        "rev": "eacbedb57226f821dc4ca42338f6924759b06e18",
+        "revCount": 151,
+        "type": "git",
+        "url": "file:///home/pkd/code/nixsci"
       },
       "original": {
-        "owner": "PKD667",
-        "repo": "nixsci",
-        "rev": "a1eafa231301d38a8db88dc4238d0d2e6e7bea70",
-        "type": "github"
+        "ref": "validate",
+        "type": "git",
+        "url": "file:///home/pkd/code/nixsci"
       }
     },
     "root": {

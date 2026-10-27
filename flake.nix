@@ -8,8 +8,9 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
   # The lab experiments (experiments/README.md) and their deployment to hosts. Pinned; nixsci's only input is nixpkgs.
+  # TEMPORARY: the validate branch of the local nixsci checkout (validate/README.md). Repinned to GitHub after the push.
   inputs.nixsci = {
-    url = "github:PKD667/nixsci/a1eafa231301d38a8db88dc4238d0d2e6e7bea70";
+    url = "git+file:///home/pkd/code/nixsci?ref=validate";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
@@ -34,9 +35,7 @@
       };
       # The root crate with the MPI backend, its examples and the check and latency bins. Only the
       # files the build reads: never driver/ or target/, and not the mpi-rma submodule.
-      trameMpiSrc = pkgs.lib.fileset.toSource {
-        root = ./.;
-        fileset = pkgs.lib.fileset.unions ([
+      trameFiles = pkgs.lib.fileset.unions ([
           ./Cargo.toml
           ./Cargo.lock
           ./macros
@@ -44,10 +43,16 @@
           ./programs
           ./tests
           ./scale
+          ./examples
           (pkgs.lib.fileset.difference ./backends/mpi (pkgs.lib.fileset.maybeMissing ./backends/mpi/mpi-rma))
         ] ++ map (n: ./. + "/${n}") (
           builtins.filter (n: pkgs.lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ./.))
         ));
+      trameMpiSrc = pkgs.lib.fileset.toSource { root = ./.; fileset = trameFiles; };
+      # The rejection suite (rejections/README.md) is a separate package that depends on the root crate by path.
+      rejectionsSrc = pkgs.lib.fileset.toSource {
+        root = ./.;
+        fileset = pkgs.lib.fileset.unions [ trameFiles (pkgs.lib.fileset.difference ./rejections (pkgs.lib.fileset.maybeMissing ./rejections/target)) ];
       };
       mpiDeps = import ./backends/mpi/dependencies.nix { inherit pkgs; };
       trameMpiBinsWith = patches: pkgs.rustPlatform.buildRustPackage {
@@ -129,7 +134,6 @@
         };
         runtime = labRuntime;
       };
-      programsSeqClosure = runnerClosure "programs-seq" "programs.py" trameSeqBins;
       programsMpiClosure = runnerClosure "programs-mpi" "programs.py" trameMpiBins;
       transportClosure = runnerClosure "transport-mpi" "transport.py" trameMpiBins;
       scaleClosure = runnerClosure "scale-local" "scale.py" trameMpiBins;
@@ -170,13 +174,6 @@
         data = scaleData // { mpi_config = mpiConfigData; };
       };
       experiments = {
-        programs-seq = labLib.experiment {
-          name = "programs-seq";
-          closures.${system} = programsSeqClosure;
-          params = { backend = "seq"; repeats = 3; };
-          resources = { provider = "local"; hosts = 1; };
-          data.run = runData;
-        };
         programs-mpi = labLib.experiment {
           name = "programs-mpi";
           closures.${system} = programsMpiClosure;
@@ -230,6 +227,13 @@
         inherit pkgs system labLib trameSeqBinsWith trameMpiBinsWith runners labRuntime nixsci;
         lib = pkgs.lib;
       };
+      # The deterministic checks: nixsci validate verdicts (experiments/validate.nix).
+      v = nixsci.lib.validate { inherit pkgs; };
+      suite = v.suite (import ./experiments/validate.nix {
+        inherit pkgs v trameSeqBins programNames driverToolchain trameDriver;
+        trameSrc = trameMpiSrc;
+        rejectionsSrc = rejectionsSrc;
+      });
       mkBackendShell = backend: extra:
         let
           dependencies = import (./backends + "/${backend}/dependencies.nix") { inherit pkgs; };
@@ -241,6 +245,10 @@
           );
         };
     in {
+      validate.${system} = suite;
+      # mutants-seq is a verdict but not yet a gate: seven catalogue mutants survive every program
+      # (conformance/README.md). It stays in the table, where it reads `no`, until programs observe them.
+      checks.${system} = builtins.removeAttrs suite.checks [ "mutants-seq" ];
       packages.${system} = {
         trame-driver = trameDriver;
         trame-mpi-bins = trameMpiBins;

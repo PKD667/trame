@@ -6,6 +6,7 @@ extern crate std;
 use crate::io::Full;
 use crate::run::Outcome;
 use crate::topology::WorkerId;
+use super::limit;
 use std::any::TypeId;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -61,6 +62,10 @@ pub(super) struct State {
     /// Counts every effect a worker finished and every leader send or publication. An idle worker
     /// waits for this to change (see `worker_idle` in ops.rs).
     pub acts: u64,
+    /// Scheduler steps taken: one per hand-off of the baton (`advance`).
+    pub steps: u64,
+    /// TRAME_SEQ_STEP_LIMIT, read at launch (limit.rs).
+    pub limit: Option<u64>,
 }
 
 pub(super) struct Shared {
@@ -102,6 +107,10 @@ impl State {
     /// as soon as every worker is at it, so a stuck run has a worker that returned, and the workers
     /// at the barrier can never be released: they get `Deadlock`.
     pub fn advance(&mut self, from: usize) {
+        self.steps += 1;
+        if let Some(n) = self.limit.filter(|&n| self.steps > n) {
+            limit::exceeded(n);
+        }
         // An idle worker can still be woken by the leader, so the run is not stuck while one exists.
         if !self.phase.iter().any(|p| matches!(p, Phase::Ready | Phase::Idle(..))) {
             for p in self.phase.iter_mut().filter(|p| **p == Phase::Blocked) {

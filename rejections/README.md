@@ -47,6 +47,11 @@ Rule names are the driver's (`driver/src/check/`): `unsafe`, `ffi`, `indirect`, 
 
 Exit status is 0 when every case matches or is a known gap. It is 1 on any other mismatch, and on a known gap that now matches.
 
+As a verdict, `nix build .#validate.x86_64-linux.verdicts.rejections` runs the same script with the driver
+and the vendored crates from the flake (`experiments/validate.nix`). It holds when the run exits 0 and its
+summary counts every case file (95 at the time of writing; the scope records the count). Known gaps are
+reported in `outcome.json` as gaps. It does not show the rules sound: it judges the listed cases only.
+
 ## Catalogue
 
 `*` marks a boundary with a matched pair.

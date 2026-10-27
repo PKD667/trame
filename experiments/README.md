@@ -23,10 +23,36 @@ One Python runner per experiment, in this directory. It reads its parameters wit
 typed rows with `lab.record`. Programs never know they are measured: they print, and the runner
 records.
 
+## Verdicts (deterministic checks)
+
+A check that depends only on the code, not on threads, the network or hardware, is a validate verdict,
+not a lab experiment: `experiments/validate.nix`, built by `nixsci.lib.validate` (validate/README.md in the
+nixsci repository). Each check states its property (spec.md section), model, subject, checker and scope,
+and writes `$out/outcome.json`. A verdict is a derivation; the flake exposes them as
+`validate.<system>.verdicts.<name>`, the table as `validate.<system>.table`, and `checks` as the holds.
+
+| check | property | what it runs |
+|---|---|---|
+| `programs-seq` | every program prints its `.expected` and exits 0 on seq | the seq binaries, with a 120 s crash guard |
+| `seq-tests` | the root crate's seq tests pass in the checked build | `cargo test`, the exhaustive test excluded |
+| `scheduler-exhaustive` | start and end agree with the spec rule on all states up to 2 processes, 3 cells | `cargo test --release` of that one test |
+| `rejections` | every rejection case is judged as its expectation says | `rejections/run.sh` (driver pinned) |
+| `mutants-seq` | each seq mutant is killed or spared as its header says | one patch at a time, step limit (`conformance/README.md`) |
+
+`TRAME_SEQ_STEP_LIMIT` (`backends/seq/limit.rs`) bounds the seq scheduler's steps; a run over the limit
+exits 3. It counts steps, not seconds, so a looping mutant is a count and not a timing.
+
+Lab experiments remain for what needs threads, a network or hardware: `programs-mpi` and `mutants-mpi`.
+The lab `mutants-seq` still exists as a sealed record of a run; the verdict above is the deterministic check.
+Both are open: whether the lab `mutants-seq` should be retired is a decision for the owner.
+
+Scope numbers are measured, not guessed: `scheduler-exhaustive` states and end checks, `seq-tests`
+count. A change to either fails the check until its scope is updated.
+
 ## Experiments and datasets
 
-**programs** (`programs-seq`, `programs-mpi`; `programs-cluster` with `span = 2`): every
-program of `programs/` against its `.expected` output. Parameters: `backend`, `node_ranks` (0 is
+**programs** (`programs-mpi`; `programs-cluster` with `span = 2`): every
+program of `programs/` against its `.expected` output on mpi. The seq run is a verdict (below). Parameters: `backend`, `node_ranks` (0 is
 the real node layout; k splits one machine into nodes of k ranks), `repeats`.
 Dataset `run`: `program` str, `repeat` int, `ok` bool, `verdict` str (`ok`, `diff`, `exit`,
 `timeout`), `seconds` float, `stdout_sha256` str. Key: `program`, `repeat`.

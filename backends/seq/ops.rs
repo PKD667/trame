@@ -4,6 +4,7 @@
 
 extern crate std;
 
+use super::limit;
 use super::state::{Abandoned, Phase, Route, Shared, State};
 use super::Selected;
 use crate::backend::Backend;
@@ -118,6 +119,7 @@ impl Backend for Selected {
                 len: 0,
             });
         }
+        let limit = limit::setting().map_err(|reason| Refused::Backend { reason })?;
         let state = State {
             phase: vec![Phase::Ready; n],
             turn: None,
@@ -128,6 +130,8 @@ impl Backend for Selected {
             pending: None,
             epoch: Instant::now(),
             acts: 0,
+            steps: 0,
+            limit,
         };
         let shared = Arc::new(Shared { state: Mutex::new(state), changed: Condvar::new() });
         for (i, f) in plan.workers.into_iter().enumerate() {
