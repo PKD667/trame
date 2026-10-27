@@ -87,6 +87,7 @@ pub(super) fn join(run: Leader) -> Vec<Outcome> {
             other => panic!("trame: unknown outcome word {other}"),
         })
         .collect();
+    run.get().end_run();
     finalize();
     out
 }

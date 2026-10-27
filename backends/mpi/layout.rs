@@ -18,6 +18,9 @@
 //   LEADER_EPOCH           u32, moves on every act that can change the leader's wait: a frame to the
 //                          leader, a worker's result, an abort (epoch.rs)
 //   LEADER_SLEEP           1 while the leader sleeps on LEADER_EPOCH
+//   RELAY_EPOCH            u32, moves on every act a node's relay must act on (NODES.md); unused on one node
+//   RELAY_SLEEP            1 while the relay sleeps on RELAY_EPOCH
+//   END                    1 once the leader has joined (NODES.md, End); unused on one node
 //   ARRIVE                 per worker, five lines each, kind k of worker w at ARRIVE + 64 (k W + w):
 //                            k=0 ARRIVE   last barrier generation it arrived at
 //                            k=1 EXITED   1 once the worker has returned (barrier, deadlock)
@@ -54,7 +57,10 @@ pub(crate) const DONE: usize = PEND_BYTES + PUB_MAX;
 pub(crate) const START: usize = DONE + LINE;
 pub(crate) const LEADER_EPOCH: usize = START + LINE;
 pub(crate) const LEADER_SLEEP: usize = LEADER_EPOCH + LINE;
-pub(crate) const ARRIVE: usize = LEADER_SLEEP + LINE;
+pub(crate) const RELAY_EPOCH: usize = LEADER_SLEEP + LINE;
+pub(crate) const RELAY_SLEEP: usize = RELAY_EPOCH + LINE;
+pub(crate) const END: usize = RELAY_SLEEP + LINE;
+pub(crate) const ARRIVE: usize = END + LINE;
 /// Header lines per worker, one per kind listed above.
 pub(crate) const WORKER_LINES: usize = 5;
 pub(crate) const K_ARRIVE: usize = 0;

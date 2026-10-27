@@ -20,14 +20,22 @@
 
 mod epoch;
 mod futex;
+mod harness;
 mod gate;
 mod imp;
 mod layout;
 mod leader;
+mod nodes;
 mod open;
 mod plan;
 mod poll;
+mod publish;
 mod recv;
+mod relay;
+mod relay_control;
+mod relay_in;
+mod relay_out;
+mod relay_routes;
 mod refusal;
 mod results;
 mod ring;
@@ -35,6 +43,7 @@ mod shape;
 mod shm;
 mod state;
 mod types;
+mod wire;
 mod worker;
 
 /// The backend the surface calls: `impl Backend for Selected` lives in imp.rs.
@@ -49,10 +58,15 @@ pub use layout::{Route, Topology, LIMIT, MAX, PUB_MAX};
 pub use open::{agree, launch, open};
 pub use refusal::Refusal;
 pub use shape::encode;
+pub use state::finalize;
+
+pub use harness::{deadlocked, leader_join, returned};
 pub use types::{clock, Answer, Error, Event, Received, Role, RouteId};
 
 use layout::{Layout, RouteLayout};
+use nodes::Nodes;
 use shm::Window;
+use std::sync::Arc;
 
 /// One endpoint's transport: a worker's, or the leader's. Not `Send`: it holds a pointer into the
 /// window, and it belongs to the rank's thread.
@@ -60,6 +74,8 @@ pub struct Transport {
     me: u32,
     win: Window,
     lay: Layout,
+    /// The node table: which node each rank is on (nodes.rs).
+    nodes: Arc<Nodes>,
     /// The number of barrier calls this endpoint has made.
     generation: u64,
     /// Lossy routes: the next index this endpoint will read. Local, because the receiver of a
@@ -74,7 +90,7 @@ pub struct Transport {
 
 impl Drop for Transport {
     /// A worker endpoint dropped without a result is an exit: signal it, without waiting for anyone
-    /// (gate.rs). A result already recorded makes this a repeat, which is harmless.
+    /// (gate.rs).
     fn drop(&mut self) {
         if self.me < self.lay.workers {
             self.exit();
@@ -83,9 +99,14 @@ impl Drop for Transport {
 }
 
 impl Transport {
-    pub(crate) fn new(me: u32, win: Window, lay: Layout) -> Transport {
+    pub(crate) fn new(me: u32, win: Window, lay: Layout, nodes: Arc<Nodes>) -> Transport {
         let routes = lay.routes.len();
-        Transport { me, win, lay, generation: 0, cursor: vec![0; routes], rr: vec![0; routes], trace: None, publication: None }
+        Transport { me, win, lay, nodes, generation: 0, cursor: vec![0; routes], rr: vec![0; routes], trace: None, publication: None }
+    }
+
+    /// The node table of this launch.
+    pub(crate) fn nodes(&self) -> &Nodes {
+        &self.nodes
     }
 
     /// This endpoint's rank: a worker's index, or `workers` for the leader.

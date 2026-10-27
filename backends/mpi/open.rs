@@ -5,16 +5,21 @@
 extern crate std;
 
 use std::mem::ManuallyDrop;
+use std::string::ToString;
+use std::sync::Arc;
 use std::vec;
 
 use mpi::collective::SystemOperation;
+use mpi::environment::{threading_support, Threading};
 use mpi::topology::SimpleCommunicator;
 use mpi::traits::*;
 
 use super::layout::Topology;
+use super::nodes::{discover, node_ranks_setting, split_groups};
+use super::relay;
 use super::refusal::Refusal;
-use super::shm::Window;
 use super::shape::{encode, plan};
+use super::shm::Window;
 use super::types::{clock, Role};
 use super::Transport;
 
@@ -48,14 +53,33 @@ pub fn agree(world: &SimpleCommunicator, bytes: &[u8], ranks: u32) -> Result<(),
 /// agreed on `topo` first (see `agree`). Refuses on every rank, or on none.
 pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal> {
     let lay = plan(topo)?;
-    // The node communicator is kept for as long as the window exists. It is never freed: a
-    // communicator free is a point where a rank could wait for others, so this leaks it instead.
-    let node = ManuallyDrop::new(world.split_shared(world.rank()));
-    let one_node = i32::from(node.size() == world.size());
+    // A bad TRAME_MPI_NODE_RANKS is refused on every rank before any split, so no rank waits in one.
+    let setting = node_ranks_setting();
+    let here = i32::from(setting.is_ok());
     let mut all = 0;
-    world.all_reduce_into(&one_node, &mut all, SystemOperation::min());
+    world.all_reduce_into(&here, &mut all, SystemOperation::min());
+    let split = match setting {
+        Ok(k) if all == 1 => k,
+        Ok(_) => return Err(Refusal::NodeRanks("set to a bad value on another rank".to_string())),
+        Err(text) => return Err(Refusal::NodeRanks(text)),
+    };
+    // The shared communicator is kept for as long as the window exists. It is never freed: a
+    // communicator free is a point where a rank could wait for others, so this leaks it instead.
+    let shared = world.split_shared(world.rank());
+    let node = match split {
+        Some(k) => {
+            let group = split_groups(world, &shared, k).expect("a rank's own colour is never undefined");
+            std::mem::forget(shared);
+            group
+        }
+        None => shared,
+    };
+    let node = ManuallyDrop::new(node);
+    let nodes = discover(world, &node);
+    let threads = i32::from(nodes.count == 1 || threading_support() == Threading::Multiple);
+    world.all_reduce_into(&threads, &mut all, SystemOperation::min());
     if all == 0 {
-        return Err(Refusal::NotOneNode { world: world.size(), shared: node.size() });
+        return Err(Refusal::Threads);
     }
     let win = Window::allocate(&node, lay.total)?;
     if win.len() != lay.total {
@@ -63,12 +87,18 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
     }
     let me = world.rank() as u32;
     let leader = me == topo.workers;
-    let t = Transport::new(me, win, lay);
-    if leader {
+    // The lowest rank of each node initialises that node's window: a replica of the whole layout.
+    let host = nodes.relay_rank[nodes.me as usize] == world.rank();
+    let t = Transport::new(me, win, lay, Arc::new(nodes));
+    if host {
         // No worker has run yet. The launch barrier below keeps every worker out until this is written.
         t.win().zero();
         t.set_start(clock());
         t.install_initial(&topo.publication);
+        // Several nodes: the relay runs before the launch barrier, so every rank's first act can reach it.
+        if t.nodes().count > 1 {
+            relay::start(&t, world.as_raw());
+        }
     }
     world.barrier();
     Ok(if leader { Role::Leader(t) } else { Role::Worker(t) })

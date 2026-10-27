@@ -15,7 +15,7 @@ extern crate std;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 use std::vec::Vec;
 
-use super::layout::{ABORT_BIT, DONE, K_OUTCOME, OUT_ABORT, RESULT, START};
+use super::layout::{ABORT_BIT, DONE, END, K_OUTCOME, OUT_ABORT, RESULT, START};
 use super::Transport;
 
 impl Transport {
@@ -77,5 +77,14 @@ impl Transport {
     /// Leader only, before the launch barrier.
     pub(super) fn set_start(&self, nanos: u64) {
         self.win().word(START).store(nanos, Release);
+    }
+
+    /// Leader only, after `join`: every result is in, so the relays may stop (NODES.md, End). A run on
+    /// one node has no relay, and nothing is written.
+    pub(super) fn end_run(&self) {
+        if self.nodes().count > 1 {
+            self.win().word(END).store(1, Release);
+            self.bump_relay();
+        }
     }
 }

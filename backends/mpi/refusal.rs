@@ -17,8 +17,10 @@ pub enum Refusal {
     Ranks { workers: u32, ranks: u32 },
     /// The window would need more than `LIMIT` bytes.
     Memory { need: usize, limit: usize },
-    /// The world is not one shared-memory domain. This backend has no cross-node transport.
-    NotOneNode { world: i32, shared: i32 },
+    /// TRAME_MPI_NODE_RANKS is set to something other than a number of ranks per node, 1 or more.
+    NodeRanks(String),
+    /// A launch over several nodes needs MPI_THREAD_MULTIPLE: the relay threads call MPI concurrently.
+    Threads,
     /// The MPI library does not promise the unified memory model that direct loads and stores
     /// on a shared window need.
     NotUnified,
@@ -37,10 +39,10 @@ impl fmt::Display for Refusal {
             Refusal::Memory { need, limit } => {
                 write!(f, "window needs {need} bytes, limit is {limit}")
             }
-            Refusal::NotOneNode { world, shared } => write!(
-                f,
-                "world of {world} ranks is not one shared-memory node ({shared} ranks share memory with this one)"
-            ),
+            Refusal::NodeRanks(value) => {
+                write!(f, "TRAME_MPI_NODE_RANKS must be 1 or more, got {value:?}")
+            }
+            Refusal::Threads => write!(f, "a launch over several nodes needs MPI_THREAD_MULTIPLE"),
             Refusal::NotUnified => write!(f, "MPI window is not in the unified memory model"),
             Refusal::Mpi(call) => write!(f, "MPI call {call} failed"),
         }

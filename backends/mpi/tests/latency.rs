@@ -11,16 +11,16 @@
 // it out busy-waiting on the same clock, and records both the target (`gap_target_ns`) and the
 // idle time actually spent (`gap_ns`), so an importer can check the spacing it was given.
 //
-// The message is `Probe`, sent as its bytes in Rust's layout. That layout is only the same on
-// both ends because they are the same binary, and the check below refuses big-endian targets.
-
+// `Probe` is sent as its bytes in Rust's layout: both ends are one binary, and big-endian is refused.
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use mpi::traits::*;
 use trame::__mpi::{clock, launch, Answer, Received, Role, Route, RouteId, Topology};
+
+#[path = "latency_util.rs"]
+mod util;
+use util::{arg, arg_num, utc_now, Rng};
 
 #[cfg(target_endian = "big")]
 compile_error!("the probe is sent as its bytes in native layout; this check needs a little-endian target");
@@ -43,49 +43,6 @@ fn probe_from(buf: &[u8]) -> Probe {
     unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<Probe>()) }
 }
 
-struct Rng(u64);
-
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 >> 12;
-        self.0 ^= self.0 << 25;
-        self.0 ^= self.0 >> 27;
-        self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
-    }
-}
-
-fn arg(args: &[String], name: &str) -> Option<String> {
-    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
-}
-
-fn arg_num(args: &[String], name: &str, default: u64) -> u64 {
-    arg(args, name).map_or(default, |v| v.parse().unwrap_or_else(|_| panic!("{name} wants a number")))
-}
-
-/// RFC 3339 UTC with microseconds and a `Z`, as nixsci's `time` field.
-fn utc_now() -> String {
-    let d = SystemTime::now().duration_since(UNIX_EPOCH).expect("clock before 1970");
-    let (secs, micros) = (d.as_secs() as i64, d.subsec_micros());
-    let days = secs.div_euclid(86_400);
-    let rem = secs.rem_euclid(86_400);
-    // Days since 1970-01-01 to a civil date (Howard Hinnant's algorithm).
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{micros:06}Z",
-        rem / 3600,
-        rem % 3600 / 60,
-        rem % 60
-    )
-}
-
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let samples = arg_num(&args, "--samples", 6636);
@@ -94,7 +51,7 @@ fn main() {
     let dir = arg(&args, "--dir").map(PathBuf::from).or_else(|| std::env::var_os("NIX_LAB_DIR").map(PathBuf::from));
     let run = std::env::var("NIX_LAB_RUN").unwrap_or_else(|_| "local".into());
 
-    let universe = mpi::initialize().expect("MPI");
+    let (universe, _) = mpi::initialize_with_threading(mpi::Threading::Multiple).expect("MPI");
     let world = universe.world();
     let me = world.rank();
     assert!(world.size() == 3, "latency wants two workers and the leader: three ranks");
@@ -108,7 +65,12 @@ fn main() {
     };
     let mut t = match launch(&world, &topo).unwrap_or_else(|e| panic!("refused: {e}")) {
         Role::Worker(t) => t,
-        Role::Leader(_) => return,
+        Role::Leader(l) => {
+            trame::__mpi::leader_join(&l);
+            trame::__mpi::finalize();
+            std::mem::forget(universe);
+            return;
+        }
     };
     let (ab, ba) = (RouteId(0), RouteId(1));
     let mut buf = vec![0u8; BYTES];
@@ -181,5 +143,8 @@ fn main() {
             }
         }
     }
+    trame::__mpi::returned(&t);
     drop(t);
+    trame::__mpi::finalize();
+    std::mem::forget(universe);
 }

@@ -12,27 +12,9 @@ extern crate self as trame;
 pub use bytemuck as __bytemuck;
 
 /// Marks a struct as a message type: `#[trame::message]`. The struct must be plain data, with no
-/// padding and no bit pattern that is invalid. A struct with padding is refused at compile time:
-///
-/// ```compile_fail
-/// #[trame::message]
-/// struct Padded {
-///     a: u8,
-///     b: u32,
-/// }
-/// ```
-///
-/// A struct with a reference is refused too (the macro reads the field types, since bytemuck
-/// would accept a raw pointer):
-///
-/// ```compile_fail
-/// #[trame::message]
-/// struct Borrowed {
-///     r: &'static u32,
-/// }
-/// ```
-///
-/// A plain struct is accepted:
+/// padding and no bit pattern that is invalid. A struct with padding, a reference, a raw pointer or
+/// a function pointer is refused at compile time; the refusals are cases of rejections/ (the macro
+/// reads the field types, since bytemuck would accept a raw pointer). A plain struct is accepted:
 ///
 /// ```
 /// #[trame::message]
@@ -48,38 +30,14 @@ pub use trame_macros::message;
 pub use trame_macros::item;
 
 /// `parallel!(f, &cx, &items, &mut slots)`: apply item `f` to `items` (spec.md 5.4). Without
-/// `--cfg trame_checked` it is a compile error. Doc tests run without that flag, so the example
-/// below is refused, and it fails only for that reason:
-///
-/// ```compile_fail
-/// #[trame::item(key = x.index as usize)]
-/// fn bump(x: &Work, slot: &mut u32, _cx: &()) {
-///     *slot += x.by;
-/// }
-/// struct Work { index: u32, by: u32 }
-/// let items = [Work { index: 0, by: 1 }];
-/// let mut slots = [0_u32];
-/// let _ = trame::parallel!(bump, &(), &items, &mut slots);
-/// ```
+/// `--cfg trame_checked` it is a compile error; rejections/ tests that. It has no doc test here,
+/// because doc tests are built without the flag.
 pub use trame_macros::parallel;
 
 /// `#[trame::process(receives = Job, ...)]` on `impl P { fn step(&mut self, a: &mut A, ...) -> Status }`
 /// (spec.md 5.2, 5.3). The parameters after `self` are the cells; each is `&mut T` for the program's
-/// own type `T`. A primitive or core/alloc type is refused, since it is not a type of the program:
-///
-/// ```compile_fail
-/// #[trame::message]
-/// struct Job { id: u32 }
-/// struct P;
-/// #[trame::process(receives = Job)]
-/// impl P {
-///     fn step(&mut self, n: &mut u32) -> trame::Status {
-///         trame::Status::Done
-///     }
-/// }
-/// ```
-///
-/// A cell of the program's own type is accepted:
+/// own type `T`. A primitive or core/alloc type is refused, since it is not a type of the program
+/// (rejections/, process/). A cell of the program's own type is accepted:
 ///
 /// ```
 /// #[trame::message]

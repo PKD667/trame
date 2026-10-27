@@ -1,7 +1,10 @@
-# trame MPI transport (one node)
+# trame MPI transport
 
-Implements spec.md's Launch and Run sections for workers that share one node. Not wired into the
-root `lib.rs`. Cross-node is refused (`Refusal::NotOneNode`) and untested. Results: `RESULT.md`.
+Implements spec.md's Launch and Run sections for workers on one or more nodes. Multi-node is the design
+in `NODES.md`: each node has its own window and a relay thread pair, and needs MPI_THREAD_MULTIPLE
+(without it, a multi-node launch is refused with `Refusal::Threads`). Wired into `programs/run.sh`,
+which runs each program on one node and on the `TRAME_MPI_NODE_RANKS=k` splits (k = 1, 2). Results:
+`RESULT.md`.
 
 ## Ranks
 
@@ -12,9 +15,9 @@ leader runs no worker code and is never counted at a barrier.
 
 ## Mechanism
 
-- One `MPI_Win_allocate_shared` window on the node communicator. The leader owns it; every route,
-  counter, barrier word and publication lives in it. No MPI call after launch except the launch
-  barrier. The window is never freed (`MPI_Win_free` is collective and would wait for peers).
+- One `MPI_Win_allocate_shared` window per node, on the node communicator. The root node's leader
+  owns the root window; every route, counter, barrier word and publication lives in a node's window.
+  Outside the relay threads, no MPI call after launch except the launch barrier. The window is never freed (`MPI_Win_free` is collective and would wait for peers).
 - Each route has its own ring of `cap` slots, sized from that route's declared message size
   (`layout.rs`), not from `MAX`. Window bytes per route: 128 + cap × (align8(size) + 8).
 - Lossless: the sender owns P, the receiver owns C. `Full` is decided by an acquire load of C.
@@ -24,8 +27,10 @@ leader runs no worker code and is never counted at a barrier.
 - Receive: the head of the first owned route, in rotating order, that has a frame. The scan starts
   past the route the last receive took, so a route with frames is taken within n receives (n = owned
   routes). Frames are ordered within a route only, as spec.md's Offers definition says.
-- Barrier: rootless. Each worker stores its generation in its arrive word and adds 1 to COUNT. The
-  add that makes COUNT a multiple of W releases the generation: that worker adds 2 to GEN and wakes
+- Barrier: rootless on one node. Each worker stores its generation in its arrive word and adds 1 to
+  COUNT. Across nodes, a node's relay sends `ARRIVED` to the root once all its workers arrived; the
+  root's relay counts the nodes that have workers (`Nodes::arrivers`). The add that makes COUNT a
+  multiple of W releases the generation: that worker adds 2 to GEN and wakes
   the waiters. Waiters sleep on GEN with `FUTEX_WAIT` (no PRIVATE flag, so it works across the
   processes that map the window). A worker that returned sets bit 0 of GEN and wakes the waiters,
   so a worker that never arrives is reported as `Deadlock` to every waiter.
@@ -33,6 +38,11 @@ leader runs no worker code and is never counted at a barrier.
   applied. The releaser of the next barrier to complete copies the pending deposit into the
   publication every worker reads. The deposit therefore takes effect at a barrier, not when it is
   made, and each worker sees each publication once and in order.
+
+## Testing on one machine
+
+`TRAME_MPI_NODE_RANKS=k` cuts each shared-memory node into groups of k ranks, each with its own window
+and relay, so the multi-node code runs on one machine. The design is in `NODES.md` (Testing on one machine).
 
 ## Tests (run inside `nix develop .#mpi`)
 
@@ -44,6 +54,10 @@ leader runs no worker code and is never counted at a barrier.
     mpirun --oversubscribe -n 6 target/mpi/debug/check barrier --seed 3 --rounds 300   # 5 workers
     mpirun --oversubscribe -n 5 target/mpi/debug/check deadlock                        # 4 workers
     mpirun --oversubscribe -n 3 target/mpi/release/latency --samples 6636 --dir D
+    TRAME_MPI_NODE_RANKS=2 mpirun --oversubscribe -n 4 target/mpi/debug/check fifo --seed 1 --dir D
+
+The multi-node runs are in `run.sh`: the same checks with `TRAME_MPI_NODE_RANKS` set to 1 and to 2.
+A failing check is named at the end, and the script exits non-zero.
 
 `latency` writes raw round trips to `$D/records.jsonl` (nixsci record format). It computes no
 verdict; an importer states its claim with nixsci.stats. Only release builds give timings, and a
@@ -51,7 +65,8 @@ record names the binary, toolchain, host, load and placement.
 
 ## Not checked
 
-- Cross-node, other MPI implementations, other CPUs.
+- Real multi-node hardware. Only the `TRAME_MPI_NODE_RANKS` splits on one machine are tested; a real
+  network is not. Other MPI implementations and other CPUs are not tested.
 - Formal proof. The Full, Overwrite and futex sleep arguments are argued in the module comments
   and tested, not proven. The traced build adds SeqCst fences, so its checks exercise a more
   strongly ordered variant than production (see RESULT.md).

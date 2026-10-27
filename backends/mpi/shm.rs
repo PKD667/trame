@@ -106,6 +106,12 @@ impl Window {
         self.len
     }
 
+    /// Another handle on the same window, for a relay thread (relay.rs). The window is never freed, so
+    /// both handles stay valid for the life of the process.
+    pub(crate) fn alias(&self) -> Window {
+        Window { win: self.win, base: self.base, len: self.len }
+    }
+
     /// The word at `off`. Panics unless `off` is 8-aligned and inside the window: a layout bug
     /// must stop the process, not reach memory outside the window.
     pub(crate) fn word(&self, off: usize) -> &AtomicU64 {

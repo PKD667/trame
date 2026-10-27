@@ -1,0 +1,16 @@
+# MPI ranks per program, read by programs/run.sh and backends/mpi/deploy/run-programs.sh.
+# Format: <program> <ranks>. The launch refuses any other rank count (open.rs agree).
+ping_pong 3
+leader_io 3
+full 3
+lossy 3
+abort 3
+refuse 3
+barrier_publish 4
+barrier_deadlock 4
+cells 2
+wait_frame 2
+wait_room 2
+wait_until 2
+err 2
+join_deadline 2

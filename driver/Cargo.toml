@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "rustc driver and `cargo trame` for trame's compile-time checks (spec.md, Compile time)"
 publish = false
-# Fixture crates under tests/ are separate packages, not Cargo targets.
+# The test is rejections/run.sh (tests/rejections.rs). Cargo does not discover other test targets.
 autotests = false
 # Own workspace, like verify/: the driver is built by its own toolchain, not by the trame root.
 [workspace]
@@ -18,7 +18,7 @@ name = "cargo-trame"
 path = "src/cargo_trame.rs"
 
 [[test]]
-name = "fixtures"
-path = "tests/fixtures.rs"
+name = "rejections"
+path = "tests/rejections.rs"
 
 [dependencies]

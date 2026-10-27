@@ -16,6 +16,7 @@ use crate::launch::Refused;
 
 use super::plan::Entry;
 use super::refusal::Refusal;
+use super::relay::Relay;
 use super::{RouteId, Transport};
 
 pub(super) struct Local {
@@ -26,6 +27,8 @@ pub(super) struct Local {
     pub inbox: Vec<(core::any::TypeId, Vec<RouteId>)>,
     /// The worker endpoint, once this rank has opened the window as a worker.
     pub endpoint: Option<Transport>,
+    /// This node's relay threads, when this rank hosts them (relay.rs). `finalize` joins them.
+    pub relay: Option<Relay>,
 }
 
 struct Slot(UnsafeCell<Option<Local>>);
@@ -39,7 +42,7 @@ static LOCAL: Slot = Slot(UnsafeCell::new(None));
 pub(super) fn local() -> &'static mut Local {
     // SAFETY: one thread per rank (see the module comment), and no reference is held across calls.
     let slot = unsafe { &mut *LOCAL.0.get() };
-    slot.get_or_insert_with(|| Local { world: None, entries: Vec::new(), inbox: Vec::new(), endpoint: None })
+    slot.get_or_insert_with(|| Local { world: None, entries: Vec::new(), inbox: Vec::new(), endpoint: None, relay: None })
 }
 
 /// The MPI world of this process. MPI is initialised once; the universe is forgotten, not dropped,
@@ -47,7 +50,7 @@ pub(super) fn local() -> &'static mut Local {
 pub(super) fn world() -> &'static SimpleCommunicator {
     let l = local();
     if l.world.is_none() {
-        if let Some(universe) = mpi::initialize() {
+        if let Some((universe, _)) = mpi::initialize_with_threading(mpi::Threading::Multiple) {
             std::mem::forget(universe);
             // A process that exits without `join` (a refusal, a dropped run) still finalizes.
             extern "C" fn at_exit() {
@@ -63,12 +66,18 @@ pub(super) fn world() -> &'static SimpleCommunicator {
 
 /// Call MPI_Finalize once, if MPI is up and not yet finalized. Finalize waits for every rank, so it
 /// is called only after this rank's result is final (see the README, Finalization).
-pub(super) fn finalize() {
-    let mut done: i32 = 0;
-    // SAFETY: MPI_Finalized takes one out-pointer; MPI_Finalize takes none.
+pub fn finalize() {
+    // The relay threads call MPI, so they stop before MPI does (NODES.md, End).
+    if let Some(relay) = local().relay.take() {
+        relay.join();
+    }
+    let (mut up, mut done): (i32, i32) = (0, 0);
+    // SAFETY: each query takes one out-pointer; MPI_Finalize takes none. The check is on MPI itself,
+    // not on `world()`: a test harness that initialises MPI on its own never sets `world`.
     unsafe {
+        mpi::ffi::MPI_Initialized(&mut up);
         mpi::ffi::MPI_Finalized(&mut done);
-        if done == 0 && local().world.is_some() {
+        if up != 0 && done == 0 {
             mpi::ffi::MPI_Finalize();
         }
     }
@@ -82,7 +91,8 @@ pub(super) fn refused(r: Refusal) -> Refused {
         Refusal::Inconsistent => "the ranks were given different plans",
         Refusal::Ranks { .. } => "the world does not have one rank per worker plus the leader",
         Refusal::Memory { .. } => "the window would be larger than the MPI backend allocates",
-        Refusal::NotOneNode { .. } => "the world is not one shared-memory node",
+        Refusal::NodeRanks(_) => "TRAME_MPI_NODE_RANKS is not a number of ranks per node",
+        Refusal::Threads => "a launch over several nodes needs MPI_THREAD_MULTIPLE",
         Refusal::NotUnified => "the MPI window is not in the unified memory model",
         Refusal::Mpi(_) => "an MPI call failed",
     };

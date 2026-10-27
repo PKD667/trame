@@ -68,7 +68,7 @@ impl Transport {
     }
 
     /// Write frame `index` into its slot as a seqlock writer: odd sequence, payload, even sequence.
-    fn put(&self, r: &RouteLayout, index: u64, msg: &[u8]) -> Result<(), Error> {
+    pub(super) fn put(&self, r: &RouteLayout, index: u64, msg: &[u8]) -> Result<(), Error> {
         let at = self.lay().slot(r, index);
         let done = checked_seq(index)?;
         let win = self.win();

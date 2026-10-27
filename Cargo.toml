@@ -98,3 +98,20 @@ path = "programs/wait_room.rs"
 [[example]]
 name = "err"
 path = "programs/err.rs"
+
+# Scaling benchmarks (scale/, scale/run.sh, scale/README.md). Not part of the conformance set.
+[[example]]
+name = "scale_barrier"
+path = "scale/barrier.rs"
+
+[[example]]
+name = "scale_ring"
+path = "scale/ring.rs"
+
+[[example]]
+name = "scale_idle"
+path = "scale/idle.rs"
+
+[[example]]
+name = "scale_fanin"
+path = "scale/fanin.rs"

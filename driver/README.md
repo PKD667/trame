@@ -40,11 +40,9 @@ Why: trame is the runtime. Its internals use `unsafe` and `std` legitimately (th
 
 What it costs: a non-effect trame function that does I/O, or unbounded work, will go unnoticed by the driver. The effect list is the only place a trame function's effect is named. So trame must keep such functions out of reach of the program: a new effect goes into effects.txt, and a host-only API (for example `Topology`) is harmless in a worker but useless there, so it should not be an effect. A review of trame's public API against effects.txt is the check that replaces the body reading.
 
-## Fixtures and the test
+## The test
 
-`tests/pass` (one per level and per allowed idiom) and `tests/fail` (one per rule). Each fixture's first line is its expectation (`// expect: pass` or `// expect: <rule> <level>`), and the harness requires the exact `error: [rule] <level>` line.
-
-The stand-in trame crate in `tests/support/trame` includes `check.rs` by path. Its effect paths match lists/effects.txt; a rename there must be made there too.
+`cargo test` runs `rejections/run.sh` (tests/rejections.rs). Each case there is checked against the real trame crate: accepted cases must compile, refused cases must be refused by exactly the rule and level they name, and macro refusals must match their message. The format and the list of known gaps are in rejections/README.md. There is no stand-in crate; the driver's effect paths must match lists/effects.txt, and the cases that call trame exercise them.
 
 ## Known approximations
 

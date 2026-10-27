@@ -1,0 +1,94 @@
+// The out thread of a node's relay (NODES.md, The relay). It sleeps on the relay epoch. Each wake it
+// scans this node's routes (relay_routes.rs) and control words and queues what is new, one buffer per
+// destination node, then sends each non-empty buffer as one MPI message. Only this thread sends (relay.rs).
+//
+// Order within a scan. Records to one node leave in the order they were queued, and MPI keeps one pair's
+// messages in order. The spec promises no delivery time across a barrier (a frame is available from its
+// arrival time, spec 5.2), so a barrier record may overtake a frame of the same scan: that is allowed.
+
+extern crate std;
+
+use std::sync::atomic::Ordering::Acquire;
+use std::vec;
+use std::vec::Vec;
+
+use super::relay::{send, Ctx};
+use super::wire::{put, Record, BATCH};
+
+/// The out thread's state. Only this thread touches it.
+pub(super) struct Out<'a> {
+    pub(super) ctx: &'a Ctx,
+    /// Per route, outbound: the next frame to send (F, the relay's own cursor).
+    pub(super) next: Vec<u64>,
+    /// Per route, inbound lossless: the last credit sent.
+    pub(super) credited: Vec<u64>,
+    /// Per worker: its result is sent, and its exit is sent.
+    pub(super) result_sent: Vec<bool>,
+    pub(super) exit_sent: Vec<bool>,
+    /// The last barrier generation this node has reported to the root.
+    pub(super) reported: u64,
+    /// This node has sent the abort bit.
+    pub(super) abort_sent: bool,
+    /// The root has sent END to every node.
+    pub(super) end_sent: bool,
+    /// Per node: the records queued for it in this scan.
+    pub(super) bufs: Vec<Vec<u8>>,
+}
+
+/// The thread's body. Returns when the run has ended (`Ctx::ended`) and the last scan is sent.
+pub(super) fn run(ctx: &Ctx) {
+    let t = &ctx.port;
+    let workers = t.lay().workers as usize;
+    let routes = t.lay().routes.len();
+    let mut out = Out {
+        ctx,
+        next: vec![0; routes],
+        credited: vec![0; routes],
+        result_sent: vec![false; workers],
+        exit_sent: vec![false; workers],
+        reported: 0,
+        abort_sent: false,
+        end_sent: false,
+        bufs: vec![Vec::new(); t.nodes().count as usize],
+    };
+    loop {
+        let seen = t.relay_epoch();
+        out.scan();
+        if ctx.ended.load(Acquire) {
+            break;
+        }
+        t.relay_sleep(seen);
+    }
+}
+
+impl Out<'_> {
+    pub(super) fn scan(&mut self) {
+        self.control();
+        self.routes();
+        for node in 0..self.bufs.len() {
+            self.flush(node);
+        }
+    }
+
+    /// Queue `r` for node `node`. A buffer over BATCH is sent first, and `r` starts the next one.
+    pub(super) fn push(&mut self, node: usize, r: &Record) {
+        let buf = &mut self.bufs[node];
+        let before = buf.len();
+        put(buf, r);
+        if buf.len() > BATCH {
+            let tail = buf.split_off(before);
+            self.flush(node);
+            self.bufs[node] = tail;
+        }
+    }
+
+    /// Send node `node`'s queued records as one message to its relay host.
+    fn flush(&mut self, node: usize) {
+        let buf = &mut self.bufs[node];
+        if !buf.is_empty() {
+            let dest = self.ctx.port.nodes().relay_rank[node];
+            send(self.ctx.comm, dest, buf);
+            buf.clear();
+        }
+    }
+}

@@ -20,14 +20,16 @@ extern crate std;
 use std::sync::atomic::Ordering::{Relaxed, SeqCst};
 use std::time::Duration;
 
-use super::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADER_SLEEP, START};
+use super::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADER_SLEEP, RELAY_EPOCH, RELAY_SLEEP, START};
 use super::Transport;
 
 impl Transport {
     /// The epoch word and the sleep flag of agent `w`: a worker's, or the leader's when `w` is the
-    /// leader's rank.
+    /// leader's rank. An agent on another node is woken through this node's relay (NODES.md).
     fn words(&self, w: u32) -> (usize, usize) {
-        if w >= self.lay().workers {
+        if self.nodes().node_of[w as usize] != self.nodes().me {
+            (RELAY_EPOCH, RELAY_SLEEP)
+        } else if w >= self.lay().workers {
             (LEADER_EPOCH, LEADER_SLEEP)
         } else {
             (self.lay().per_worker(K_EPOCH, w), self.lay().per_worker(K_SLEEP, w))
@@ -42,10 +44,30 @@ impl Transport {
     /// An act that can change agent `w`'s wait conditions. `w` may be the leader's rank.
     pub(crate) fn bump(&self, w: u32) {
         let (e, s) = self.words(w);
+        self.bump_word(e, s);
+    }
+
+    fn bump_word(&self, e: usize, s: usize) {
         self.win().word32(e).fetch_add(1, SeqCst);
         if self.win().word(s).load(SeqCst) != 0 {
             self.win().wake(e);
         }
+    }
+
+    /// The relay's epoch, read before its scan (NODES.md, relay): an act after the read makes the next
+    /// `relay_sleep` return at once.
+    pub(super) fn relay_epoch(&self) -> u32 {
+        self.win().word32(RELAY_EPOCH).load(SeqCst)
+    }
+
+    /// Sleep while the relay epoch equals `seen`. The relay's own wait, the same protocol as `sleep`.
+    pub(super) fn relay_sleep(&self, seen: u32) {
+        self.sleep_on(RELAY_EPOCH, RELAY_SLEEP, seen, None);
+    }
+
+    /// An act the relay must act on: wakes it when it sleeps (the same protocol as `bump`).
+    pub(super) fn bump_relay(&self) {
+        self.bump_word(RELAY_EPOCH, RELAY_SLEEP);
     }
 
     /// Every agent's epoch moves: the run aborted, and every waiter must see it.

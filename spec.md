@@ -327,7 +327,9 @@ frames across routes would need one clock that every sender agrees on, which tra
 > **Definition (Queues).** $\Gamma$ contains $Q$. $Q(r)$ is the sequence of frames on route $r$,
 > initially empty. A frame $f = (m, a)$ has a message $m$ and an arrival time $a$. It is
 > *available* when $a \leq \tau$. $a_{\mathrm{last}}(Q(r))$ is the arrival time of the last frame
-> of $Q(r)$, or $0$ when $Q(r)$ is empty.
+> of $Q(r)$, or $0$ when $Q(r)$ is empty. $\Gamma$ also contains $U$. $U(r)$ counts the frames
+> taken from $Q(r)$ whose slot the sender has not yet got back, initially $0$; it stays $0$ on a
+> lossy route. $\mathrm{held}(r) = |Q(r)| + U(r)$ is the number of slots of $r$ in use.
 
 > **Definition (Ownership).** While worker $w$ performs $\mathsf{concurrent}(\bar P)$, each process
 > $p \in \bar P$ owns its tags $\mathrm{tags}(p)$. $\mathrm{own}(w, t)$ is the process that owns
@@ -349,13 +351,13 @@ worker gets a result.
 > $w(x)$ to `to` with the tag of `m`'s type, and `trame::recv::<M>()`.
 
 $$
-\frac{\mathit{from}(r) = w(x) \quad |Q(r)| < \mathrm{cap}(r) \quad a \geq \max(\tau, a_{\mathrm{last}}(Q(r)))}
+\frac{\mathit{from}(r) = w(x) \quad \mathrm{held}(r) < \mathrm{cap}(r) \quad a \geq \max(\tau, a_{\mathrm{last}}(Q(r)))}
 {\Gamma \xrightarrow{x\,:\,\mathsf{send}(r,m)\,/\,\mathsf{ok}} \Gamma[Q(r) := Q(r) \cdot (m,a)]}
 \ \textbf{Send}
 $$
 
 $$
-\frac{\mathit{from}(r) = w(x) \quad \neg\,\mathrm{lossy}(r) \quad |Q(r)| = \mathrm{cap}(r)}
+\frac{\mathit{from}(r) = w(x) \quad \neg\,\mathrm{lossy}(r) \quad \mathrm{held}(r) = \mathrm{cap}(r)}
 {\Gamma \xrightarrow{x\,:\,\mathsf{send}(r,m)\,/\,\mathsf{full}} \Gamma}
 \ \textbf{Full}
 $$
@@ -368,7 +370,7 @@ $$
 
 $$
 \frac{\mathrm{tag}(r) = t \quad f \text{ is an offer to } x \text{ on } r \quad Q(r) = f \cdot q}
-{\Gamma \xrightarrow{x\,:\,\mathsf{recv}(t)\,/\,m_f} \Gamma[Q(r) := q]}
+{\Gamma \xrightarrow{x\,:\,\mathsf{recv}(t)\,/\,m_f} \Gamma[Q(r) := q,\ U(r) := U(r) + [\neg\,\mathrm{lossy}(r)]]}
 \ \textbf{Recv}
 \qquad
 \frac{\text{no frame on a route of tag } t \text{ is an offer to } x}
@@ -378,8 +380,12 @@ $$
 
 $$
 \frac{\mathit{to}(r) \text{ is a leader} \quad Q(r) = f \cdot q}
-{\Gamma \to \Gamma[Q(r) := q]}
+{\Gamma \to \Gamma[Q(r) := q,\ U(r) := U(r) + [\neg\,\mathrm{lossy}(r)]]}
 \ \textbf{Take}
+\qquad
+\frac{U(r) > 0}
+{\Gamma \to \Gamma[U(r) := U(r) - 1]}
+\ \textbf{Release}
 $$
 
 $$
@@ -388,10 +394,21 @@ $$
 \ \textbf{Drop}
 $$
 
-These are the only answers. **Full** applies only to a route that is not lossy, and only when its
-queue is at capacity. Without that precondition, a backend that answered $\mathsf{full}$ to every
+$[\varphi]$ is $1$ when $\varphi$ holds and $0$ otherwise.
+
+These are the only answers. **Full** applies only to a route that is not lossy, and only when all
+its slots are in use. Without that precondition, a backend that answered $\mathsf{full}$ to every
 send would deliver nothing and still never contradict $T$. With it, such a backend produces an
 answer that $T$ cannot produce, so it is incorrect.
+
+A receive frees its slot only at **Release**, which the environment fires later. Between the two,
+the frame is gone from the queue but its slot still counts against the sender. Across a network,
+the receiver's progress is a message on its way back to the sender, and until it arrives the
+sender may still be answered $\mathsf{full}$. Without **Release**, a backend would have to order
+that message before every message that the receiver sends afterwards, on every path that can reach
+the sender. A program therefore learns that a route has room only from $\mathsf{room}$ or from an
+$\mathsf{ok}$ answer, never from knowing that the receiver received. A backend on one memory may
+fire **Release** at once after every receive.
 
 A lossy route never makes its sender wait. When its queue is full, a send replaces the oldest frame
 (**Overwrite**). The transport may also lose any frame except the newest (**Drop**). A receiver
@@ -458,7 +475,7 @@ not an event that could be missed.
 > $\mathit{Status} = \{\mathsf{progress}, \mathsf{done}\} + \mathsf{wait}(\Omega) + \mathsf{err}(E)$,
 > where $\Omega$ is a set of conditions.
 > - $\mathsf{frame}$ holds when some frame is an offer to $p$.
-> - $\mathsf{room}(r)$ holds when $|Q(r)| < \mathrm{cap}(r)$ or $r$ is lossy.
+> - $\mathsf{room}(r)$ holds when $\mathrm{held}(r) < \mathrm{cap}(r)$ or $r$ is lossy.
 > - $\mathsf{until}(d)$, where $d$ is a reading of $\mathrm{clock}(p)$, holds when
 >   $\tau + \theta(\mathrm{clock}(p)) \geq d$. Waiting on a reading of another clock aborts.
 >
@@ -603,6 +620,7 @@ A backend that does nothing satisfies safety. Progress rules it out.
 > effects),
 > - time diverges,
 > - every frame becomes available unless a lossy route removes it first,
+> - **Release** eventually fires on every route $r$ with $U(r) > 0$,
 > - every effect that $T$ can still answer is answered,
 > - every started step reaches **End**,
 > - a frame that stays an offer to $x$ on $r$, while $x$ performs $\mathsf{recv}(\mathrm{tag}(r))$

@@ -124,6 +124,6 @@ pub(super) fn barrier() -> Arc<[u8]> {
 
 pub(super) fn now() -> (ClockId, u64) {
     let (t, _) = parts();
-    // The launch's start time names the clock: one clock for the run, shared by all its ranks.
-    (ClockId::new(t.start() as u32), t.elapsed())
+    // The clock is named by the node: each node has its own CLOCK_MONOTONIC start (NODES.md).
+    (ClockId::new(t.nodes().me + 1), t.elapsed())
 }
