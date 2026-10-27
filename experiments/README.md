@@ -69,6 +69,9 @@ Analysis `scale`, each judged at 0.99 and reported as supported, contradicted or
 - **Barrier growth.** In `barrier`, the median ns per round grows at most linearly in N.
 - **Cost against plain MPI.** In `ring`, trame's median is at most 3 times the MPI baseline's at
   the same `nodes`, `per_node` and size.
+- **The proxy benchmark.** The four claims of `backends/mpi/SCALING.md` (Claims) on `graph`:
+  overhead at most 1.10 against the MPI baseline, weak-scaling curve within 1.05 of the
+  baseline's, relay CPU per frame flat in N, strong-scaling speedup at least 0.9 of the baseline's.
 
 The ratios are computed by the analysis pipeline, with their intervals, and written to
 `values.json`; the thresholds above are the claims they are judged against. A contradicted claim
