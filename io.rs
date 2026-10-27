@@ -6,17 +6,24 @@ use crate::topology::WorkerId;
 use alloc::sync::Arc;
 use core::any::{type_name, TypeId};
 
-/// A message type: plain data, sent as its bytes.
+/// A message type: plain data, sent as its bytes. Every `Pod` type is one (bytemuck: no padding, no
+/// pointer or reference, every bit pattern a value), so numbers, arrays of them and structs of them
+/// are messages. `#[trame::message]` makes a struct `Pod`. Message bytes are little-endian.
 ///
-/// The bounds are the checks: `NoUninit` holds only for a type with no padding, and `AnyBitPattern`
-/// only for a type whose every bit pattern is a value. Implement it with `#[trame::message]`,
-/// which also refuses references and raw pointers, since bytemuck accepts a raw pointer as plain
-/// data. A hand-written impl is the implementer's promise that the type holds no reference, pointer,
-/// `Lock` or route handle, and that no field hides one behind an alias.
+/// The supertrait is the check: a type that is not `Pod` cannot be a message, and no impl but the
+/// blanket one below is needed or possible.
 ///
 /// # Safety
-/// The implementer promises that `Self` holds no reference, pointer, `Lock` or route handle.
-pub unsafe trait Message: crate::__bytemuck::NoUninit + crate::__bytemuck::AnyBitPattern + 'static {}
+/// Holds for every `Pod` type, by the safety of `Pod`.
+pub unsafe trait Message: crate::__bytemuck::Pod + 'static {
+    /// The all-zero value of the type, the start of a `read`.
+    fn zeroed() -> Self {
+        <Self as crate::__bytemuck::Zeroable>::zeroed()
+    }
+}
+
+// SAFETY: a `Pod` type is plain data (bytemuck's contract), which is what `Message` promises.
+unsafe impl<T: crate::__bytemuck::Pod + 'static> Message for T {}
 
 /// A send answered `full`: the route is at capacity and is not lossy (spec.md 5.2, Full).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,7 +54,7 @@ pub fn barrier() -> Arc<[u8]> {
 /// whether it wrote a frame. Every bit pattern is a value of `M` (`Message`), so the bytes the
 /// backend wrote are a valid `M`, and the frame's size is `size_of::<M>()` by the topology check.
 pub(crate) fn read<M: Message>(take: impl FnOnce(&mut [u8]) -> bool) -> Option<M> {
-    let mut out = <M as crate::__bytemuck::Zeroable>::zeroed();
+    let mut out = <M as Message>::zeroed();
     if take(crate::__bytemuck::bytes_of_mut(&mut out)) {
         Some(out)
     } else {

@@ -12,9 +12,9 @@ use syn::{
     parse_quote, Attribute, Expr, FnArg, Ident, ItemFn, ItemStruct, Pat, PathArguments, Token, Type,
 };
 
-/// Marks a struct as a message type (spec.md 3, "Messages"). It adds `#[repr(C)]`,
-/// `Clone`, `Copy`, a check that the struct has no padding and that every bit pattern is valid
-/// (by deriving bytemuck's `NoUninit` and `AnyBitPattern`), and `unsafe impl trame::Message`.
+/// Marks a struct as a message type (spec.md 3, "Messages"). It adds `#[repr(C)]`, `Clone`, `Copy`,
+/// and bytemuck's `Pod` and `Zeroable` derives, which check that the struct has no padding and that
+/// every bit pattern is valid. The blanket impl of `trame::Message` for `Pod` types makes it a message.
 ///
 /// Refused: generic structs, enums, any `repr` other than `C` (`packed` and `transparent` skip
 /// bytemuck's padding check), and a user `derive` of `Clone` or `Copy`.
@@ -37,17 +37,13 @@ fn expand_message(attr: TokenStream2, item: TokenStream) -> syn::Result<TokenStr
     for field in &s.fields {
         check_field_type(field.ty.to_token_stream())?;
     }
-    let name = &s.ident;
     // `check_attr` admits only `repr(C)`, so a repr the user wrote already says what is wanted.
     if !s.attrs.iter().any(|a| a.path().is_ident("repr")) {
         s.attrs.insert(0, parse_quote!(#[repr(C)]));
     }
-    s.attrs.push(parse_quote!(#[derive(::core::clone::Clone, ::core::marker::Copy, ::trame::__bytemuck::NoUninit, ::trame::__bytemuck::AnyBitPattern)]));
+    s.attrs.push(parse_quote!(#[derive(::core::clone::Clone, ::core::marker::Copy, ::trame::__bytemuck::Pod, ::trame::__bytemuck::Zeroable)]));
     s.attrs.push(parse_quote!(#[bytemuck(crate = "::trame::__bytemuck")]));
-    Ok(quote! {
-        #s
-        unsafe impl ::trame::Message for #name {}
-    })
+    Ok(quote! { #s })
 }
 
 /// A field type may not name a reference, a raw pointer or a function pointer (spec.md 3). The

@@ -11,10 +11,11 @@ extern crate self as trame;
 #[doc(hidden)]
 pub use bytemuck as __bytemuck;
 
-/// Marks a struct as a message type: `#[trame::message]`. The struct must be plain data, with no
-/// padding and no bit pattern that is invalid. A struct with padding, a reference, a raw pointer or
-/// a function pointer is refused at compile time; the refusals are cases of rejections/ (the macro
-/// reads the field types, since bytemuck would accept a raw pointer). A plain struct is accepted:
+/// Makes a struct a message type: `#[trame::message]`. A message is plain data (`Message`), so the
+/// struct must have no padding and no bit pattern that is invalid. A struct with padding, a reference,
+/// a raw pointer or a function pointer is refused at compile time; the refusals are cases of
+/// rejections/ (the macro reads the field types, since bytemuck would accept a raw pointer). A plain
+/// struct is accepted:
 ///
 /// ```
 /// #[trame::message]
@@ -81,7 +82,7 @@ mod topology;
 
 /// The surface of spec.md 7: every public name of the crate, at the root and nowhere else.
 pub use io::{barrier, recv, send, Full, Message};
-pub use launch::{Refused, MAX_FRAME};
+pub use launch::Refused;
 pub use run::{Outcome, Run};
 pub use status::Status;
 pub use time::{now, Reading};

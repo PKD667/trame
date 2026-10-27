@@ -140,10 +140,12 @@ fixed here. Which workers exchange them is fixed later, at launch.
 > **Definition (Tags).** A program declares a finite set of message types, and each message type
 > is a tag: $M_t$ is the type of tag $t$. Two kinds of message with the same fields are two types.
 
-> **Requirement (Messages).** Every message type is plain data: `#[trame::message]` on a struct
-> refuses references, pointers, function pointers and padding. A message is sent as its bytes in
-> its `repr(C)` layout, and its size is the size of that type. Trame supports little-endian
-> targets only.
+> **Requirement (Messages).** Every message type is plain data: a type with no padding, no pointer
+> into this process, and no bit pattern that is invalid (bytemuck's `Pod`). Numbers, arrays of plain
+> data and structs of plain data are messages. `#[trame::message]` on a struct makes it plain data,
+> and refuses references, pointers, function pointers and padding. A message is sent as its bytes
+> in its `repr(C)` layout, its size is the size of that type, and the bytes are little-endian. Trame
+> supports little-endian targets only.
 
 > **Requirement (Run-time aborts).** Overflow, an index out of range, division by zero, and
 > running out of memory abort the launch. Overflow checks are on in every build
@@ -214,9 +216,10 @@ flowchart LR
 > - An initial publication $\mathit{Pub}_0(h)$ for each host $h$.
 
 > **Requirement (Launch checks).** Before any worker starts, trame refuses $G$ unless no two routes
-> have the same sender, receiver and tag, and every message type $M_{\mathrm{tag}(r)}$ encodes in
-> at most $\mathrm{MAX}$ bytes. $\mathrm{MAX}$ is the backend's frame limit, and every backend
-> supports $\mathrm{MAX} \geq 65\,544$.
+> have the same sender, receiver and tag.
+
+A message of any size is one frame. A backend whose transport has a smaller unit splits it
+internally, and that is invisible to $T$.
 
 > **Requirement (Acceptance).** The backend then accepts or refuses $G$. It may refuse for any
 > reason, for instance memory for the queues, links between devices, or room to run
@@ -656,7 +659,7 @@ and the group will grow.
 
 | Name | Kind | Stands for |
 |---|---|---|
-| `#[trame::message]` | attribute on a struct | a tag and its message type (Section 3) |
+| `#[trame::message]` | attribute on a struct, which makes it plain data | a tag and its message type (Section 3) |
 | `#[trame::process(receives = A, B)]` | attribute on an `impl` with `step` | a process, its tags and its cells $L(p)$ (5.3) |
 | `#[trame::item(key = e)]` | attribute on a fn | an item function $F$ and its key $\kappa$ (5.4) |
 | `concurrent!(p, q; c, d)` | macro | $\mathsf{concurrent}(\bar P)$, cells matched by type (5.3) |
@@ -668,14 +671,13 @@ and the group will grow.
 | `Reading` | type: `since`, `after` | a reading of one clock (5.1) |
 | `Status` | type: `Progress`, `Done`, `wait()` with `.frame()`, `.room::<M>(to)`, `.until(r)` | $\mathit{Status}$ (5.3) |
 | `Full` | type | the answer $\mathsf{full}$ (5.2) |
-| `Message` | trait, implemented by `#[trame::message]` | plain data of a tag (Section 3) |
+| `Message` | trait, implemented by every plain-data type: `zeroed` | plain data of a tag (Section 3) |
 | `Topology` | type: `new`, `worker`, `route::<M>`, `lossy::<M>`, `publish`, `launch` | $G$ and its launch (Section 4) |
 | `WorkerId`, `LEADER` | type, constant | a worker, the leader |
 | `Context` | type: `me`, `workers` | the context (Section 4) |
 | `Refused` | type | a refusal at launch (Section 4) |
 | `Run` | type: `send`, `recv`, `wait`, `publish`, `join` | the leader's side of a run (5.2, 5.5, Join) |
 | `Outcome` | type: `Returned`, `Abort`, `Deadlock` | a worker's result (Section 5) |
-| `MAX_FRAME` | constant | the frame limit $\mathrm{MAX}$ (Section 4) |
 
 | `math::exp` | fn | the portable exponential (Requirement (Floating point)) |
 

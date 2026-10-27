@@ -3,17 +3,22 @@
 extern crate std;
 
 use super::tests::{within_10s, Ping};
-use crate::launch::{Refused, MAX_FRAME};
+use crate::io;
+use crate::launch::Refused;
 use crate::topology::{Context, Topology, WorkerId, LEADER};
 
 fn quick(_cx: &Context) {}
 
-/// Messages of exactly `MAX_FRAME + 1` and `MAX_FRAME` bytes of plain data.
+/// A message of 256 KiB: no size limit applies, so it is one frame and launches (spec.md 4).
 #[crate::message]
-struct Over([u8; MAX_FRAME + 1]);
+#[derive(Debug, PartialEq, Eq)]
+struct Large([u8; 256 * 1024]);
 
-#[crate::message]
-struct AtMax([u8; MAX_FRAME]);
+fn send_large(_cx: &Context) {
+    let mut bytes = [0u8; 256 * 1024];
+    bytes[256 * 1024 - 1] = 7;
+    while io::send(LEADER, Large(bytes)).is_err() {}
+}
 
 #[test]
 fn duplicate_sender_receiver_tag_is_refused() {
@@ -48,16 +53,15 @@ fn route_to_a_worker_not_in_the_topology_is_refused() {
 }
 
 #[test]
-fn message_over_the_frame_limit_is_refused_and_the_limit_is_accepted() {
+fn a_message_of_any_size_is_one_frame_and_round_trips() {
     within_10s(|| {
         let mut g = Topology::new();
-        g.route::<Over>(LEADER, LEADER, 1);
-        assert!(matches!(g.launch(), Err(Refused::TooLarge { size, .. }) if size == MAX_FRAME + 1));
-
-        let mut g = Topology::new();
-        g.route::<AtMax>(LEADER, LEADER, 1);
-        let run = g.launch().expect("a message of exactly MAX bytes is accepted");
-        assert!(run.join().is_empty(), "no workers, so no results");
+        let w = g.worker(send_large);
+        g.route::<Large>(w, LEADER, 1);
+        let run = g.launch().expect("no size limit: accepted");
+        let got = super::tests::await_frame::<Large>(&run);
+        assert_eq!(got.0[256 * 1024 - 1], 7);
+        assert_eq!(run.join().len(), 1);
     });
 }
 

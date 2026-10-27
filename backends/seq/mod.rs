@@ -12,6 +12,8 @@ mod tests_barrier;
 mod tests_stuck;
 #[cfg(test)]
 mod tests_launch;
+#[cfg(test)]
+mod tests_array;
 // `concurrent!` expands to compile_error! unless the build is checked, so its tests need that flag.
 #[cfg(all(test, trame_checked))]
 mod tests_concurrent;

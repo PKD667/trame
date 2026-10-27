@@ -220,6 +220,10 @@ name = "indirect__fn_pointer_worker"
 path = "cases/indirect/fn_pointer_worker.rs"
 
 [[example]]
+name = "message__array_field_ok"
+path = "cases/message/array_field_ok.rs"
+
+[[example]]
 name = "message__derive_clone"
 path = "cases/message/derive_clone.rs"
 
@@ -258,6 +262,10 @@ path = "cases/message/reference_field.rs"
 [[example]]
 name = "message__repr_packed"
 path = "cases/message/repr_packed.rs"
+
+[[example]]
+name = "process__array_receives_ok"
+path = "cases/process/array_receives_ok.rs"
 
 [[example]]
 name = "process__cell_newtype_ok"

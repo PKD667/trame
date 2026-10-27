@@ -6,9 +6,6 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::any::TypeId;
 
-/// The frame limit every backend supports: `MAX >= 65 544` bytes (spec.md 4).
-pub const MAX_FRAME: usize = 65_544;
-
 /// Why a topology was refused. Nothing ran.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refused {
@@ -16,8 +13,6 @@ pub enum Refused {
     UnknownWorker(WorkerId),
     /// Two routes have the same sender, receiver and message type.
     Duplicate { from: WorkerId, to: WorkerId, name: &'static str },
-    /// The message type is larger than `MAX_FRAME` bytes.
-    TooLarge { name: &'static str, size: usize },
     /// A route has capacity 0, but the spec requires `cap >= 1`.
     ZeroCapacity { name: &'static str },
     /// The backend could not allocate what the topology needs.
@@ -59,9 +54,6 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
         }
         if r.cap == 0 {
             return Err(Refused::ZeroCapacity { name: r.name });
-        }
-        if r.size > MAX_FRAME {
-            return Err(Refused::TooLarge { name: r.name, size: r.size });
         }
         let dup = plan.routes[..i]
             .iter()
