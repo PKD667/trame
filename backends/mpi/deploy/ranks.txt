@@ -1,4 +1,4 @@
-# MPI ranks per program, read by programs/run.sh and backends/mpi/deploy/run-programs.sh.
+# MPI ranks per program, read by programs/run.sh, flake.nix and the experiments.
 # Format: <program> <ranks>. The launch refuses any other rank count (open.rs agree).
 ping_pong 3
 leader_io 3

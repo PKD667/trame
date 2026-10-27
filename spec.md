@@ -674,8 +674,9 @@ importer that relies on both states both conditions.
 Every public name of the crate is listed here with the part of $T$ it stands for. A name that is
 not listed is not part of the contract, and a name with a leading `__` is internal. All names are at
 the crate root, except `math::exp`, which is in `trame::math`. `trame::math` holds pure numeric
-functions: code at the item level, not effects, and each gives the same bits on every backend. It is
-a feature module. A program never needs it to meet this specification.
+functions: code at the item level, not effects, and each gives the same bits on every backend. A
+function is added there when a program needs it; no program has to call one to meet this
+specification.
 
 | Name | Kind | Stands for |
 |---|---|---|

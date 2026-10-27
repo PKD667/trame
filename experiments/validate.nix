@@ -23,7 +23,7 @@ in
   # (a) every program, on seq, against its .expected output.
   programs-seq = v.check {
     name = "programs-seq";
-    property = "every program of backends/mpi/deploy/ranks.txt, run on the seq backend, prints its .expected stdout and exits 0 (spec.md section 6; programs/README)";
+    property = "every program of backends/mpi/deploy/ranks.txt, run on the seq backend, prints its .expected stdout and exits 0 (spec.md section 6)";
     model = "the seq backend's scheduler and launch, one process per program, the checked build (--cfg trame_checked). Not the mpi backend (lab: programs-mpi), not a node split, not timing";
     subject = trameSeqBins;
     checker = pkgs.diffutils;
