@@ -44,7 +44,7 @@
           ./programs
           ./tests
           ./scale
-          (pkgs.lib.fileset.difference ./backends/mpi ./backends/mpi/mpi-rma)
+          (pkgs.lib.fileset.difference ./backends/mpi (pkgs.lib.fileset.maybeMissing ./backends/mpi/mpi-rma))
         ] ++ map (n: ./. + "/${n}") (
           builtins.filter (n: pkgs.lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ./.))
         ));
