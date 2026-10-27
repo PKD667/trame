@@ -99,6 +99,11 @@ path = "programs/wait_room.rs"
 name = "err"
 path = "programs/err.rs"
 
+# The README's example: a ring of workers and a leader (README.md, examples/ring.rs).
+[[example]]
+name = "ring"
+path = "examples/ring.rs"
+
 # Scaling benchmarks (scale/, scale/run.sh, scale/README.md). Not part of the conformance set.
 [[example]]
 name = "scale_barrier"

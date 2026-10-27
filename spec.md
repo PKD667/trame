@@ -145,7 +145,8 @@ fixed here. Which workers exchange them is fixed later, at launch.
 > data and structs of plain data are messages. `#[trame::message]` on a struct makes it plain data,
 > and refuses references, pointers, function pointers and padding. A message is sent as its bytes
 > in its `repr(C)` layout, its size is the size of that type, and the bytes are little-endian. Trame
-> supports little-endian targets only.
+> supports little-endian targets only. The crate does not check the byte order of the target: a
+> big-endian build is outside the contract.
 
 > **Requirement (Run-time aborts).** Overflow, an index out of range, division by zero, and
 > running out of memory abort the launch. Overflow checks are on in every build
@@ -577,7 +578,8 @@ flowchart LR
 
 > **Definition (Publication).** $\Gamma$ contains $\mathit{Pub}$. $\mathit{Pub}(h)$ is the
 > publication of host $h$, initially $\mathit{Pub}_0(h)$. Only **Publish** changes it, and the
-> leader of $h$ chooses the new value $P$.
+> leader of $h$ chooses the new value $P$. A publication is a byte string of any length, and no
+> bound is set on its length.
 
 > **Definition (Barrier effect).** $\mathsf{barrier}$ answers the publication of the worker's
 > host. In Rust it is `trame::barrier`, and its answer is a snapshot of the publication that the
@@ -630,32 +632,50 @@ A backend that does nothing satisfies safety. Progress rules it out.
 >   infinitely often, is eventually received,
 > - if the premises of **Start** hold for $p$ from some point on, then $p$ is eventually started.
 
-The sequential backend runs one agent at a time, on Rust's own semantics. Each worker has its own
-thread, because `run` is ordinary code that may loop forever. A baton passes between them at every
-effect, so exactly one agent executes at any moment and the schedule is deterministic. Processes
-and items run on their worker's thread. The backend is the reference. Its scheduler, `sched.rs`,
-is shared by every backend and is checked against **Start** and **End** on every state up to a
-bounded size; that is a bounded check, not a proof. Other backends declare this contract and are
-tested by running the same programs as the reference.
+Two backends are in the tree. Both are tested on the programs of `programs/`, and `programs/run.sh`
+checks that they print the same output.
+
+The sequential backend (`backends/seq`) is the reference. It runs one agent at a time, on Rust's own
+semantics. Each worker has its own thread, because `run` is ordinary code that may loop forever. A
+baton passes between them at every effect, so exactly one agent executes at any moment and the
+schedule is deterministic. Processes and items run on their worker's thread. When every agent that
+can move has moved, and no idle worker has seen a change, after `join` the run is stuck: the backend
+ends each remaining agent with $\mathsf{deadlock}$.
+
+The MPI backend (`backends/mpi`, described in its `README.md`) runs one MPI rank per worker, with the
+leader on the last rank, so `mpirun` needs W + 1 ranks. Workers on one shared-memory node share one
+memory window, with one ring per route, and a worker that waits sleeps on a futex word in that
+window. Across nodes, each node runs a relay: two threads that send the node's frames, credits,
+barrier arrivals and results to the other nodes and apply what arrives. Each node has its own clock.
+A launch over several nodes needs `MPI_THREAD_MULTIPLE`, and is refused without it. This backend
+reports $\mathsf{deadlock}$ at a barrier that can never fire, but it does not yet detect a stuck run
+after `join`, which the rule above permits and does not require.
+
+The scheduling of `concurrent!` is the same Rust code for every backend (`concurrent.rs`, `sched.rs`).
+`sched.rs` is checked against **Start** and **End** by a test that enumerates every state up to a
+bounded size (`start_and_end_exhaustive_up_to_bounds`). That is a bounded check, not a proof. A new
+backend declares this contract and must print the same output as the reference on the same programs.
 
 **Conformance.** A monitor checks a logged trace against Section 5 and names the first transition
 that $T$ forbids. A finite trace can show that safety fails, but it cannot show that progress
 holds.
 
-**Latency.** $T$ leaves latency to the environment, so no proof says anything about it. A backend
-ships a nixsci experiment that records round trips between workers, and the run is locked by
-content hash next to the binary it measured. An importer states what it needs as a nixsci claim
-over those records, for instance that the fraction of round trips whose half exceeds the fastest
-one by more than 100 µs is below 0.1%, at confidence 0.99. The claim is judged under the
-experiment's sampling assumptions, and its verdict is supported, contradicted or inconclusive. A
-proof is conditional on its model; a claim is conditional on its samples; an importer that relies
-on both states both conditions.
+**Latency.** $T$ leaves latency to the environment, so no proof says anything about it. The MPI
+backend has a recorder, `backends/mpi/tests/latency.rs`, which writes round trips between workers in
+the nixsci record format and computes no verdict. The tree holds no nixsci experiment that locks
+those records by content hash yet, so no latency claim is checked. A claim has this form: that the
+fraction of round trips whose half exceeds the fastest one by more than 100 µs is below 0.1%, at
+confidence 0.99. Its verdict is supported, contradicted or inconclusive, under the experiment's
+sampling assumptions. A proof is conditional on its model; a claim is conditional on its samples; an
+importer that relies on both states both conditions.
+
 ## 7. Rust surface
 
 Every public name of the crate is listed here with the part of $T$ it stands for. A name that is
-not listed is not part of the contract. All names are at the crate root, except the numeric
-functions, which are grouped in `trame::math`: they are pure code at the item level, not effects,
-and the group will grow.
+not listed is not part of the contract, and a name with a leading `__` is internal. All names are at
+the crate root, except `math::exp`, which is in `trame::math`. `trame::math` holds pure numeric
+functions: code at the item level, not effects, and each gives the same bits on every backend. It is
+a feature module. A program never needs it to meet this specification.
 
 | Name | Kind | Stands for |
 |---|---|---|
@@ -678,8 +698,7 @@ and the group will grow.
 | `Refused` | type | a refusal at launch (Section 4) |
 | `Run` | type: `send`, `recv`, `wait`, `publish`, `join` | the leader's side of a run (5.2, 5.5, Join) |
 | `Outcome` | type: `Returned`, `Abort`, `Deadlock` | a worker's result (Section 5) |
-
-| `math::exp` | fn | the portable exponential (Requirement (Floating point)) |
+| `math::exp` | fn | the portable exponential (Requirement (Floating point)). Its accuracy is claimed for inputs in $[-30, 0]$: relative error below 2e-6 against `f64::exp`, tested in `math.rs`. Outside that range it returns what the same code computes, with no accuracy claim |
 
 `Duration` and `Arc` are the standard ones. A worker is any `Fn(&Context)`; a step is
 `fn step(&mut self, c: &mut C, ...) -> Status` or `-> Result<Status, E>`, where `Err(e)` is
