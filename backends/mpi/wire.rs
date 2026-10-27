@@ -6,8 +6,9 @@ extern crate std;
 
 use std::vec::Vec;
 
-/// Largest message a relay sends or receives, in bytes. One record never exceeds it: a frame is at
-/// most `MAX` bytes plus 17 bytes of header.
+/// The batching target, in bytes: the relay sends a buffer once it would pass this. It is not a limit. A
+/// record larger than BATCH (a big frame, a big publication) is sent alone, and the receiver sizes its
+/// buffer from the probed message (relay.rs `recv`).
 pub(super) const BATCH: usize = 1 << 20;
 
 const FRAMES: u8 = 1;

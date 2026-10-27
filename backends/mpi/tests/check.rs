@@ -10,6 +10,8 @@
 //   mpirun -n N check fair      --msgs M              two senders fill two routes to M frames; the
 //                                                     receiver must alternate between them (no starvation)
 //   mpirun -n N check deadlock                        worker 0 returns; the others must get Deadlock
+//   mpirun -n 3 check publication                     a 256 KiB message; publications of 1 MiB, 3 bytes,
+//                                                     4 MiB, each read back by both workers
 //   check verify D                                    no MPI: checks the fifo logs in D
 //
 // A failed check panics, which makes mpirun stop the job with a nonzero status.
@@ -20,6 +22,8 @@ mod common;
 mod fifo_check;
 #[path = "check_lossy.rs"]
 mod lossy;
+#[path = "check_publish.rs"]
+mod publish;
 #[path = "check_sync.rs"]
 mod sync;
 #[path = "check_verify.rs"]
@@ -31,6 +35,7 @@ use mpi::traits::*;
 use trame::__mpi::clock;
 use fifo_check::fifo;
 use lossy::{deadlock, overwrite};
+use publish::publication;
 use sync::{barrier, fair};
 use verify_check::verify;
 
@@ -48,6 +53,7 @@ fn main() {
         "overwrite" => overwrite(&world, &args),
         "barrier" => barrier(&world, &args),
         "fair" => fair(&world, &args),
+        "publication" => publication(&world, &args),
         "deadlock" => deadlock(&world),
         other => panic!("unknown check {other:?}"),
     }

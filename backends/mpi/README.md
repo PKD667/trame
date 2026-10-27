@@ -19,7 +19,7 @@ leader runs no worker code and is never counted at a barrier.
   owns the root window; every route, counter, barrier word and publication lives in a node's window.
   Outside the relay threads, no MPI call after launch except the launch barrier. The window is never freed (`MPI_Win_free` is collective and would wait for peers).
 - Each route has its own ring of `cap` slots, sized from that route's declared message size
-  (`layout.rs`), not from `MAX`. Window bytes per route: 128 + cap × (align8(size) + 8).
+  (`layout.rs`), not from a frame limit. Window bytes per route: 128 + cap × (align8(size) + 8).
 - Lossless: the sender owns P, the receiver owns C. `Full` is decided by an acquire load of C.
   That load is the linearization point: `Full` exactly when `P − C == cap`.
 - Lossy: a seqlock per slot. The sender never reads C and never waits. A receiver that sees a
@@ -34,10 +34,13 @@ leader runs no worker code and is never counted at a barrier.
   the waiters. Waiters sleep on GEN with `FUTEX_WAIT` (no PRIVATE flag, so it works across the
   processes that map the window). A worker that returned sets bit 0 of GEN and wakes the waiters,
   so a worker that never arrives is reported as `Deadlock` to every waiter.
-- Publication: the leader's `publish` writes a pending deposit and waits until the previous one is
-  applied. The releaser of the next barrier to complete copies the pending deposit into the
-  publication every worker reads. The deposit therefore takes effect at a barrier, not when it is
-  made, and each worker sees each publication once and in order.
+- Publication: the leader's `publish` never waits. It writes the bytes to a POSIX shared-memory object
+  of their own length, `<window>-pend-<no>`, then names it in the window under a seqlock. The releaser
+  of the next barrier to complete copies that deposit into `<window>-pub-<no>`, and the workers read
+  that object. The deposit therefore takes effect at a barrier, not when it is made; a newer deposit
+  replaces an older one not yet installed; each worker sees each publication once and in order. The
+  size of a publication is not limited by the backend. Objects are unlinked when the run ends
+  (`publish.rs`, `unlink_publication`).
 
 ## Testing on one machine
 

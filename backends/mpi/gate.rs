@@ -1,5 +1,5 @@
 // The barrier in the shared window. No MPI call. The publication and the leader's deposit are in
-// publish.rs.
+// publish.rs; their bytes are POSIX objects (object.rs).
 //
 // Barrier. Generation g is each worker's g-th call. A worker stores g in its ARRIVE word, then adds 1
 // to COUNT. The add that makes COUNT a multiple of N (workers) completes generation COUNT / N, and its
@@ -20,8 +20,9 @@ extern crate std;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, Release, SeqCst};
 use std::sync::Arc;
 
-use super::layout::{COUNT, GEN, K_ARRIVE, K_EXITED, PUB_BYTES, PUB_LEN, PUB_NO};
+use super::layout::{COUNT, GEN, K_ARRIVE, K_EXITED, PUB_LEN, PUB_NO};
 use super::nodes::arrival_done;
+use super::object;
 use super::{Error, Transport};
 
 impl Transport {
@@ -36,7 +37,7 @@ impl Transport {
         self.win().word(arrive).store(g, Release);
         let c = self.win().word(COUNT).fetch_add(1, AcqRel) + 1;
         if self.nodes().count == 1 && c % n == 0 {
-            self.install();
+            self.install()?;
             self.win().word(GEN).store(c / n, SeqCst);
             for w in 0..self.lay().workers {
                 self.bump(w);
@@ -46,7 +47,7 @@ impl Transport {
             self.bump_relay();
         }
         self.wait_released(g)?;
-        Ok(self.snapshot())
+        self.snapshot()
     }
 
     /// Sleep until generation `g` is released. Each pass reads the epoch first (see the module comment).
@@ -75,28 +76,26 @@ impl Transport {
         })
     }
 
-    /// The publication this worker reads. It copies the bytes only when PUB_NO moved since its last
-    /// barrier: one allocation per publication per worker, and none when the publication is unchanged.
-    fn snapshot(&mut self) -> Arc<[u8]> {
+    /// The publication this worker reads. It reads the object only when PUB_NO moved since its last
+    /// barrier: one copy per publication per worker, and none when the publication is unchanged. Its
+    /// object is unlinked only after every worker has arrived past this barrier (publish.rs), so an
+    /// object gone here means the run aborted and the leader ended it (`unlink_publication`).
+    fn snapshot(&mut self) -> Result<Arc<[u8]>, Error> {
         let no = self.win().word(PUB_NO).load(Acquire);
         if let Some((seen, bytes)) = &self.publication {
             if *seen == no {
-                return bytes.clone();
+                return Ok(bytes.clone());
             }
         }
         let len = self.win().word(PUB_LEN).load(Relaxed) as usize;
-        let mut fresh = Arc::<[u8]>::new_uninit_slice(len);
-        let dst = Arc::get_mut(&mut fresh).expect("a new Arc is unique");
-        for (k, chunk) in dst.chunks_mut(8).enumerate() {
-            let word = self.win().word(PUB_BYTES + 8 * k).load(Relaxed).to_le_bytes();
-            for (j, b) in chunk.iter_mut().enumerate() {
-                b.write(word[j]);
-            }
-        }
-        // SAFETY: every byte of `fresh` was written by the loop above.
-        let bytes = unsafe { fresh.assume_init() };
+        let name = self.win().object("pub", no);
+        let bytes: Arc<[u8]> = match object::read(&name, len) {
+            Ok(v) => Arc::from(v),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && self.aborted() => return Err(Error::Aborted),
+            Err(e) => panic!("trame: could not read the publication {name}: {e}"),
+        };
         self.publication = Some((no, bytes.clone()));
-        bytes
+        Ok(bytes)
     }
 
     /// This worker has returned: set its EXITED word, then bump every epoch, so each waiter re-checks

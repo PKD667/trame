@@ -29,6 +29,7 @@ mod nodes;
 mod open;
 mod plan;
 mod poll;
+mod object;
 mod publish;
 mod recv;
 mod relay;
@@ -54,7 +55,7 @@ extern crate std;
 use std::vec;
 use std::vec::Vec;
 
-pub use layout::{Route, Topology, LIMIT, MAX, PUB_MAX};
+pub use layout::{Route, Topology};
 pub use open::{agree, launch, open};
 pub use refusal::Refusal;
 pub use shape::encode;
@@ -145,5 +146,4 @@ impl Transport {
     pub(crate) fn cursor_mut(&mut self) -> &mut Vec<u64> {
         &mut self.cursor
     }
-
 }

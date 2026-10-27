@@ -39,6 +39,7 @@ run -n 3 "$B/check" overwrite --seed 7 --cap 4 --msgs 20000 --late
 run -n 4 "$B/check" fair --msgs 16
 run -n 6 "$B/check" barrier --seed 3 --rounds 300
 run -n 5 "$B/check" deadlock
+run -n 3 "$B/check" publication
 
 # Latency record: N = 6636 round trips between two workers, leader on rank 2, written to
 # $OUT/latency. See RESULT.md for the run that is kept.
@@ -64,6 +65,7 @@ multi() {
   check "k=$k fair" run -n 4 "$B/check" fair --msgs 16
   check "k=$k barrier" run -n 6 "$B/check" barrier --seed 3 --rounds 300
   check "k=$k deadlock" run -n 5 "$B/check" deadlock
+  check "k=$k publication" run -n 3 "$B/check" publication
   check "k=$k latency" run -n 3 "$R/latency" --samples 6636 --max-gap-ns 500000 --seed 20261026 --dir "$OUT/k$k-latency"
   unset TRAME_MPI_NODE_RANKS
 }
@@ -71,6 +73,13 @@ multi 1
 multi 2
 if ((${#nodes_failed[@]})); then
   echo "multi-node checks failed: ${nodes_failed[*]}; outputs in $OUT" >&2
+  exit 1
+fi
+# Every object a run makes is unlinked when the run ends (object.rs, publish.rs). A leftover is a leak.
+leftover="$(ls /dev/shm 2>/dev/null | grep '^trame-' || true)"
+if [[ -n "$leftover" ]]; then
+  echo "trame objects left in /dev/shm:" >&2
+  echo "$leftover" >&2
   exit 1
 fi
 echo "all checks passed; outputs in $OUT"

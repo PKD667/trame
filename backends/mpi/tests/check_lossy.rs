@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
-use trame::__mpi::{clock, deadlocked, launch, leader_join, returned, Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, MAX};
+use trame::__mpi::{clock, deadlocked, launch, leader_join, returned, Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport};
 
 pub(crate) fn overwrite(world: &mpi::topology::SimpleCommunicator, args: &[String]) {
     let seed = arg_num(args, "--seed", 1);
@@ -34,7 +34,7 @@ pub(crate) fn overwrite(world: &mpi::topology::SimpleCommunicator, args: &[Strin
             return leader_join(&l);
         }
     };
-    let mut buf = vec![0u8; MAX];
+    let mut buf = vec![0u8; FRAME];
     let r = RouteId(0);
     if me == 0 {
         let mut rng = Rng::new(seed);

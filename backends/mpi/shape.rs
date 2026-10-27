@@ -8,7 +8,7 @@ use std::format;
 use std::string::String;
 use std::vec::Vec;
 
-use super::layout::{Layout, RouteLayout, Topology, ARRIVE, LIMIT, LINE, MAX, PUB_MAX, SLOT_HEAD, WORKER_LINES};
+use super::layout::{Layout, RouteLayout, Topology, ARRIVE, LINE, SLOT_HEAD, WORKER_LINES};
 use super::refusal::Refusal;
 
 fn refuse(why: impl Into<String>) -> Refusal {
@@ -19,9 +19,6 @@ fn refuse(why: impl Into<String>) -> Refusal {
 pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
     if topo.workers == 0 {
         return Err(refuse("no workers"));
-    }
-    if topo.publication.len() > PUB_MAX {
-        return Err(refuse(format!("publication longer than {PUB_MAX} bytes")));
     }
     let mut seen = BTreeSet::new();
     let header = ARRIVE + WORKER_LINES * LINE * topo.workers as usize;
@@ -39,9 +36,6 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
         }
         if r.cap == 0 {
             return Err(refuse(format!("route {rank} has capacity 0")));
-        }
-        if r.size > MAX {
-            return Err(refuse(format!("route {rank} message is {} bytes, over {MAX}", r.size)));
         }
         let stride = r
             .size
@@ -66,9 +60,6 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
             base,
             stride,
         });
-    }
-    if at > LIMIT {
-        return Err(Refusal::Memory { need: at, limit: LIMIT });
     }
     Ok(Layout { workers: topo.workers, routes, total: at })
 }

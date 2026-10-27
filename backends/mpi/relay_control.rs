@@ -27,10 +27,8 @@ impl Out<'_> {
                 self.push(root, &Record::Arrived { generation: g });
             }
         }
-        for w in 0..workers {
-            if nodes.node_of[w as usize] as usize != me {
-                continue;
-            }
+        // The local agents in rank order; the leader's rank W, if it is here, comes last and is not a worker.
+        for &w in nodes.local.iter().take_while(|&&w| w < workers) {
             let wi = w as usize;
             if !self.result_sent[wi] {
                 let outcome = t.win().word(t.lay().per_worker(K_OUTCOME, w)).load(Acquire);

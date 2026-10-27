@@ -73,13 +73,17 @@ unsafe impl Sync for Comm {}
 pub(super) struct Relay {
     out: JoinHandle<()>,
     inn: JoinHandle<()>,
+    /// The shared state, kept so the node's objects can be unlinked once both threads have stopped.
+    ctx: Arc<Ctx>,
 }
 
 impl Relay {
-    /// Wait for both threads to stop. They stop when the run ends (END).
+    /// Wait for both threads to stop. They stop when the run ends (END), which the leader sends after
+    /// every worker has its result. Then no worker reads this node's objects, and they are unlinked.
     pub(super) fn join(self) {
         self.out.join().expect("trame: the relay's out thread panicked");
         self.inn.join().expect("trame: the relay's in thread panicked");
+        self.ctx.port.unlink_publication();
     }
 }
 
@@ -94,7 +98,7 @@ pub(super) fn start(t: &Transport, comm: ffi::MPI_Comm) {
         aborted: AtomicBool::new(false),
         release: Mutex::new(None),
     });
-    let (for_out, for_in) = (ctx.clone(), ctx);
+    let (for_out, for_in, keep) = (ctx.clone(), ctx.clone(), ctx);
     let out = Builder::new()
         .name("trame-relay-out".into())
         .spawn(move || super::relay_out::run(&for_out))
@@ -103,7 +107,7 @@ pub(super) fn start(t: &Transport, comm: ffi::MPI_Comm) {
         .name("trame-relay-in".into())
         .spawn(move || super::relay_in::run(&for_in))
         .expect("trame: could not start the relay's in thread");
-    local().relay = Some(Relay { out, inn });
+    local().relay = Some(Relay { out, inn, ctx: keep });
 }
 
 /// Send `bytes` to world rank `dest` as one message, with tag 0. Blocking. Never MPI_Bsend.
@@ -115,24 +119,23 @@ pub(super) fn send(comm: Comm, dest: i32, bytes: &[u8]) {
     assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_Send to rank {dest} failed");
 }
 
-/// Receive one message from any rank, with any tag, into `buf`. Blocking. Returns its length.
-pub(super) fn recv(comm: Comm, buf: &mut [u8]) -> usize {
-    let count = i32::try_from(buf.len()).expect("a relay buffer fits in i32");
+/// Receive one message from any rank, with any tag, into `buf`, which grows to its length. Blocking.
+/// Returns the message length, which is `buf.len()` afterwards. The probe learns the size and the sender,
+/// so a message of any size is received whole; only this thread receives on `comm`, so the probed message
+/// is the one the receive takes.
+pub(super) fn recv(comm: Comm, buf: &mut Vec<u8>) -> usize {
     let mut status: ffi::MPI_Status = unsafe { std::mem::zeroed() };
-    let rc = unsafe {
-        ffi::MPI_Recv(
-            buf.as_mut_ptr() as *mut c_void,
-            count,
-            ffi::RSMPI_UINT8_T,
-            ffi::RSMPI_ANY_SOURCE,
-            ffi::RSMPI_ANY_TAG,
-            comm.0,
-            &mut status,
-        )
-    };
-    assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_Recv failed");
+    let rc = unsafe { ffi::MPI_Probe(ffi::RSMPI_ANY_SOURCE, ffi::RSMPI_ANY_TAG, comm.0, &mut status) };
+    assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_Probe failed");
+    let (from, tag) = (status.MPI_SOURCE, status.MPI_TAG);
     let mut n: i32 = 0;
     let rc = unsafe { ffi::MPI_Get_count(&status, ffi::RSMPI_UINT8_T, &mut n) };
     assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_Get_count failed");
-    n as usize
+    let n = usize::try_from(n).expect("MPI_Get_count is not negative");
+    buf.resize(n, 0);
+    let rc = unsafe {
+        ffi::MPI_Recv(buf.as_mut_ptr() as *mut c_void, n as i32, ffi::RSMPI_UINT8_T, from, tag, comm.0, &mut status)
+    };
+    assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_Recv failed");
+    n
 }

@@ -1,42 +1,47 @@
 // The shared window: one `MPI_Win_allocate_shared` on the node communicator, owned by the last rank
-// (the leader), and every rank's pointer to it. This is the only file that calls MPI's one-sided
-// API. Its futex calls are in futex.rs.
+// (the leader). The only file that calls MPI's one-sided API. Futex calls are in futex.rs.
 //
-// The window is never freed. `MPI_Win_free` is collective, so calling it when a worker returns
-// would wait for its peers. The mapping lasts until the process exits.
+// Never freed: `MPI_Win_free` is collective, so a worker returning would wait for its peers.
 
 extern crate std;
 
 use std::ffi::c_void;
+use std::format;
+use std::string::String;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 
 use mpi::ffi;
 use mpi::topology::SimpleCommunicator;
 use mpi::traits::*;
 
-use super::refusal::Refusal;
+use super::refusal::{mpi_text, Refusal};
 
-/// MPI_SUCCESS as the `int` the C calls return.
-const SUCCESS: i32 = ffi::MPI_SUCCESS as i32;
-
+const SUCCESS: i32 = ffi::MPI_SUCCESS as i32; // MPI_SUCCESS as the `int` the C calls return.
 pub(crate) struct Window {
     win: ffi::MPI_Win,
     base: *mut u8,
     len: usize,
+    /// The prefix of this window's POSIX objects (object.rs): `/trame-<nonce>-<node>`.
+    name: String,
 }
 
 impl Window {
     /// Allocate `len` bytes on the last rank of `node`, a communicator whose ranks all share memory,
     /// and open it for direct access. Collective over `node`: every rank calls it, and every rank
-    /// gets the same answer back.
-    pub(crate) fn allocate(node: &SimpleCommunicator, len: usize) -> Result<Window, Refusal> {
+    /// gets the same answer back. `name` is the prefix of the window's POSIX objects.
+    pub(crate) fn allocate(node: &SimpleCommunicator, len: usize, name: String) -> Result<Window, Refusal> {
+        // MPI_Aint is signed. Every rank has the same `len`, so every rank refuses here, before any call.
+        let aint = isize::try_from(len).map_err(|_| Refusal::Memory {
+            need: len,
+            why: "more than an MPI address can name".into(),
+        })?;
         let raw = node.as_raw();
         // Errors come back as return codes, so one rank's failure cannot abort the others.
         unsafe {
             ffi::MPI_Comm_set_errhandler(raw, ffi::RSMPI_ERRORS_RETURN);
         }
         let owner = node.size() - 1;
-        let size: ffi::MPI_Aint = if node.rank() == owner { len as ffi::MPI_Aint } else { 0 };
+        let size: ffi::MPI_Aint = if node.rank() == owner { aint as ffi::MPI_Aint } else { 0 };
         let mut base: *mut c_void = std::ptr::null_mut();
         let mut win: ffi::MPI_Win = unsafe { ffi::RSMPI_WIN_NULL };
         let rc = unsafe {
@@ -53,7 +58,8 @@ impl Window {
         let mut ok = 0;
         node.all_reduce_into(&local, &mut ok, mpi::collective::SystemOperation::min());
         if ok == 0 {
-            return Err(Refusal::Mpi("MPI_Win_allocate_shared"));
+            let why = if rc == SUCCESS { "another rank could not allocate it".into() } else { mpi_text(rc) };
+            return Err(Refusal::Memory { need: len, why });
         }
         // Everyone reads the owner's segment, so every rank uses the same base.
         let mut here: ffi::MPI_Aint = 0;
@@ -71,7 +77,7 @@ impl Window {
         if rc != SUCCESS || ptr.is_null() {
             return Err(Refusal::Mpi("MPI_Win_shared_query"));
         }
-        let w = Window { win, base: ptr as *mut u8, len };
+        let w = Window { win, base: ptr as *mut u8, len, name };
         if !w.unified() {
             return Err(Refusal::NotUnified);
         }
@@ -106,10 +112,14 @@ impl Window {
         self.len
     }
 
-    /// Another handle on the same window, for a relay thread (relay.rs). The window is never freed, so
-    /// both handles stay valid for the life of the process.
+    /// The name of the object with `role` (`pub` or `pend`) and number `no`.
+    pub(crate) fn object(&self, role: &str, no: u64) -> String {
+        format!("{}-{role}-{no}", self.name)
+    }
+
+    /// Another handle on the same window, for a relay thread (relay.rs).
     pub(crate) fn alias(&self) -> Window {
-        Window { win: self.win, base: self.base, len: self.len }
+        Window { win: self.win, base: self.base, len: self.len, name: self.name.clone() }
     }
 
     /// The word at `off`. Panics unless `off` is 8-aligned and inside the window: a layout bug
@@ -126,13 +136,13 @@ impl Window {
         unsafe { &*(self.base.add(off) as *const AtomicU32) }
     }
 
-    /// A raw pointer to `off`, for copies the release/acquire pair around them makes ordered.
+    /// A raw pointer to `off`, for copies ordered by a release/acquire pair.
     pub(crate) fn ptr(&self, off: usize, n: usize) -> *mut u8 {
         assert!(off + n <= self.len, "bytes at {off}+{n} outside window of {}", self.len);
         unsafe { self.base.add(off) }
     }
 
-    /// Zero the whole window. The leader only, before the launch barrier.
+    /// Zero the window. The leader only, before the launch barrier.
     pub(crate) fn zero(&self) {
         unsafe { std::ptr::write_bytes(self.base, 0, self.len) }
     }

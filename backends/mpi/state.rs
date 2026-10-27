@@ -90,7 +90,7 @@ pub(super) fn refused(r: Refusal) -> Refused {
         Refusal::Topology(_) => "the MPI transport's layout refused the topology",
         Refusal::Inconsistent => "the ranks were given different plans",
         Refusal::Ranks { .. } => "the world does not have one rank per worker plus the leader",
-        Refusal::Memory { .. } => "the window would be larger than the MPI backend allocates",
+        Refusal::Memory { .. } => "the MPI backend could not allocate the shared memory the launch needs",
         Refusal::NodeRanks(_) => "TRAME_MPI_NODE_RANKS is not a number of ranks per node",
         Refusal::Threads => "a launch over several nodes needs MPI_THREAD_MULTIPLE",
         Refusal::NotUnified => "the MPI window is not in the unified memory model",

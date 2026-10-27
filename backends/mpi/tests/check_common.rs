@@ -7,7 +7,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
-use trame::__mpi::{clock, deadlocked, launch, leader_join, returned, Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, MAX};
+use trame::__mpi::{clock, deadlocked, launch, leader_join, returned, Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport};
+
+/// The frame size the checks send: 65,544 bytes, the size every backend is required to carry (spec.md).
+pub(crate) const FRAME: usize = 65_544;
 
 /// The worker transport of this rank, or None for the leader (the last rank).
 /// This rank's endpoint: a worker's, or the leader's (Err).
@@ -61,7 +64,7 @@ pub(crate) fn random_topology(seed: u64, n: u32) -> Topology {
         if routes.iter().any(|r| (r.from, r.to, r.tag) == (from, to, tag)) {
             continue;
         }
-        let size = [16, 200, MAX][rng.below(3) as usize];
+        let size = [16, 200, FRAME][rng.below(3) as usize];
         let cap = 1 + rng.below(8) as u32;
         routes.push(Route { from, to, tag, size, cap, lossy: false });
     }

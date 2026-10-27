@@ -79,12 +79,15 @@ impl Transport {
         self.win().word(START).store(nanos, Release);
     }
 
-    /// Leader only, after `join`: every result is in, so the relays may stop (NODES.md, End). A run on
-    /// one node has no relay, and nothing is written.
+    /// Leader only, after `join`: every result is in, so the relays may stop (NODES.md, End). On several
+    /// nodes the relays unlink the publication objects when they stop (relay.rs `join`). On one node there
+    /// is no relay, so this unlinks them: no worker is left in a barrier.
     pub(super) fn end_run(&self) {
         if self.nodes().count > 1 {
             self.win().word(END).store(1, Release);
             self.bump_relay();
+        } else {
+            self.unlink_publication();
         }
     }
 }

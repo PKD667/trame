@@ -84,8 +84,9 @@ every program with k = 1 and k = 2 as well. It is a test setting and never a def
 | window | the whole layout (only local parts touched) | same |
 | messages per barrier | 2 | 2N |
 | messages per result | N − 1 | |
-| `out` scan | routes with one end on the node | |
+| `out` scan | outbound and inbound lossless routes of this node (precomputed) | |
+| control scan | local workers | |
 
-The replica is the simple choice and costs address space: a program whose layout exceeds the
-window limit is refused, as on one node. A per-node layout is the change to make if a real
-program hits that limit.
+The replica is the simple choice and costs address space: a program whose layout the host cannot
+map is refused, as on one node, with the size asked for in the reason. A per-node layout is the
+change to make if a real program hits that limit.

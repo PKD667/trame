@@ -26,6 +26,9 @@ pub(crate) struct Nodes {
     pub relay_rank: Vec<i32>,
     /// The workers (ranks below W) on this rank's node.
     pub local_workers: u32,
+    /// The agent ranks on this rank's node, in rank order: the workers, then the leader's rank W if the
+    /// leader is here. The per-wake and per-barrier scans of the relay and of `bump_local` run over this.
+    pub local: Vec<u32>,
     /// The nodes with at least one worker: the nodes whose arrivals the root waits for. A node with only
     /// the leader has no barrier arrivals, so it never sends ARRIVED.
     pub arrivers: u32,
@@ -79,9 +82,10 @@ pub(crate) fn discover(world: &SimpleCommunicator, node: &SimpleCommunicator) ->
         .collect();
     let me = node_of[rank as usize];
     let workers = world.size() as usize - 1;
-    let local_workers = node_of[..workers].iter().filter(|&&n| n == me).count() as u32;
+    let local: Vec<u32> = (0..node_of.len() as u32).filter(|&w| node_of[w as usize] == me).collect();
+    let local_workers = local.iter().filter(|&&w| (w as usize) < workers).count() as u32;
     let arrivers = (0..relay_rank.len() as u32).filter(|n| node_of[..workers].contains(n)).count() as u32;
-    Nodes { node_of, me, count: relay_rank.len() as u32, relay_rank, local_workers, arrivers }
+    Nodes { node_of, me, count: relay_rank.len() as u32, relay_rank, local_workers, local, arrivers }
 }
 
 #[cfg(test)]

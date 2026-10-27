@@ -8,11 +8,10 @@
 //   GEN                    barrier generations released so far (a counter, not a futex word)
 //   COUNT                  barrier arrivals, over all generations
 //   PUB_NO                 the publication the workers read: its number (0 is the initial one)
-//   PUB_LEN, PUB_BYTES     its length and bytes, written by the releaser before it releases
-//   PEND_SEQ               seqlock of the leader's deposit (u32, futex word; gate.rs). Odd while the
+//   PUB_LEN                its length; its bytes are the object `<window>-pub-<PUB_NO>` (object.rs)
+//   PEND_SEQ               seqlock of the leader's deposit (u32, futex word; publish.rs). Odd while the
 //                          leader writes; the releaser waits on it only while it is odd
-//   PEND_NO, PEND_LEN,     the deposit: its number, length and bytes, written under PEND_SEQ
-//   PEND_BYTES
+//   PEND_NO, PEND_LEN      the deposit: its number and length; its bytes are `<window>-pend-<PEND_NO>`
 //   DONE                   bit 0 = aborted; RESULT x workers with a result (u32, futex word)
 //   START                  CLOCK_MONOTONIC at launch, written by the leader before the launch barrier
 //   LEADER_EPOCH           u32, moves on every act that can change the leader's wait: a frame to the
@@ -36,13 +35,6 @@ extern crate std;
 
 use std::vec::Vec;
 
-/// The backend's frame limit. Every backend supports at least 65,544 bytes.
-pub const MAX: usize = 65_544;
-/// Longest publication this backend stores. A longer one panics at publish, and is refused at launch.
-pub const PUB_MAX: usize = 1024;
-/// Largest window this backend allocates. A larger topology is refused at launch.
-pub const LIMIT: usize = 1 << 30;
-
 pub(crate) const LINE: usize = 64;
 pub(crate) const GEN: usize = 0;
 pub(crate) const COUNT: usize = LINE;
@@ -51,9 +43,7 @@ pub(crate) const PUB_LEN: usize = 3 * LINE;
 pub(crate) const PEND_SEQ: usize = 4 * LINE;
 pub(crate) const PEND_NO: usize = 5 * LINE;
 pub(crate) const PEND_LEN: usize = 6 * LINE;
-pub(crate) const PUB_BYTES: usize = 7 * LINE;
-pub(crate) const PEND_BYTES: usize = PUB_BYTES + PUB_MAX;
-pub(crate) const DONE: usize = PEND_BYTES + PUB_MAX;
+pub(crate) const DONE: usize = PEND_LEN + LINE;
 pub(crate) const START: usize = DONE + LINE;
 pub(crate) const LEADER_EPOCH: usize = START + LINE;
 pub(crate) const LEADER_SLEEP: usize = LEADER_EPOCH + LINE;

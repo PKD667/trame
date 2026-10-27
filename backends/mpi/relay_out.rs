@@ -33,6 +33,12 @@ pub(super) struct Out<'a> {
     pub(super) end_sent: bool,
     /// Per node: the records queued for it in this scan.
     pub(super) bufs: Vec<Vec<u8>>,
+    /// The route ids with `from` on this node and `to` not: frames go out on these.
+    pub(super) outbound: Vec<u32>,
+    /// The lossless route ids with `to` on this node and `from` not: credits go back on these.
+    pub(super) inbound: Vec<u32>,
+    /// One frame's payload, sized to the largest route, allocated once. A route uses its first `size` bytes.
+    pub(super) scratch: Vec<u8>,
 }
 
 /// The thread's body. Returns when the run has ended (`Ctx::ended`) and the last scan is sent.
@@ -40,6 +46,17 @@ pub(super) fn run(ctx: &Ctx) {
     let t = &ctx.port;
     let workers = t.lay().workers as usize;
     let routes = t.lay().routes.len();
+    let nodes = t.nodes();
+    let here = |rank: u32| nodes.node_of[rank as usize] == nodes.me;
+    let (mut outbound, mut inbound) = (Vec::new(), Vec::new());
+    for (id, r) in t.lay().routes.iter().enumerate() {
+        if here(r.from) && !here(r.to) {
+            outbound.push(id as u32);
+        } else if here(r.to) && !here(r.from) && !r.lossy {
+            inbound.push(id as u32);
+        }
+    }
+    let largest = t.lay().routes.iter().map(|r| r.size).max().unwrap_or(0);
     let mut out = Out {
         ctx,
         next: vec![0; routes],
@@ -49,7 +66,10 @@ pub(super) fn run(ctx: &Ctx) {
         reported: 0,
         abort_sent: false,
         end_sent: false,
-        bufs: vec![Vec::new(); t.nodes().count as usize],
+        bufs: vec![Vec::new(); nodes.count as usize],
+        outbound,
+        inbound,
+        scratch: vec![0; largest],
     };
     loop {
         let seen = t.relay_epoch();
@@ -70,7 +90,8 @@ impl Out<'_> {
         }
     }
 
-    /// Queue `r` for node `node`. A buffer over BATCH is sent first, and `r` starts the next one.
+    /// Queue `r` for node `node`. A buffer over BATCH is sent first, and `r` starts the next one. A record
+    /// that is larger than BATCH by itself goes out alone, as its own message (wire.rs BATCH).
     pub(super) fn push(&mut self, node: usize, r: &Record) {
         let buf = &mut self.bufs[node];
         let before = buf.len();
@@ -78,7 +99,12 @@ impl Out<'_> {
         if buf.len() > BATCH {
             let tail = buf.split_off(before);
             self.flush(node);
-            self.bufs[node] = tail;
+            if tail.len() > BATCH {
+                let dest = self.ctx.port.nodes().relay_rank[node];
+                send(self.ctx.comm, dest, &tail);
+            } else {
+                self.bufs[node] = tail;
+            }
         }
     }
 

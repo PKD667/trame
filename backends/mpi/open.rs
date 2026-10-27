@@ -4,9 +4,11 @@
 
 extern crate std;
 
+use std::format;
 use std::mem::ManuallyDrop;
-use std::string::ToString;
+use std::string::{String, ToString};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::vec;
 
 use mpi::collective::SystemOperation;
@@ -81,27 +83,57 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
     if all == 0 {
         return Err(Refusal::Threads);
     }
-    let win = Window::allocate(&node, lay.total)?;
+    let host_rank = nodes.relay_rank[nodes.me as usize];
+    let name = window_name(world, host_rank);
+    let win = Window::allocate(&node, lay.total, name)?;
     if win.len() != lay.total {
         return Err(Refusal::Mpi("window size"));
     }
     let me = world.rank() as u32;
     let leader = me == topo.workers;
     // The lowest rank of each node initialises that node's window: a replica of the whole layout.
-    let host = nodes.relay_rank[nodes.me as usize] == world.rank();
+    let host = host_rank == world.rank();
     let t = Transport::new(me, win, lay, Arc::new(nodes));
+    // The initial publication is a POSIX object, so its creation can fail on the host. Every rank
+    // refuses together, with the host's error where the host has one.
+    let mut failed = 0i32;
+    let mut why = String::new();
     if host {
         // No worker has run yet. The launch barrier below keeps every worker out until this is written.
         t.win().zero();
         t.set_start(clock());
-        t.install_initial(&topo.publication);
-        // Several nodes: the relay runs before the launch barrier, so every rank's first act can reach it.
-        if t.nodes().count > 1 {
-            relay::start(&t, world.as_raw());
+        if let Err(e) = t.install_initial(&topo.publication) {
+            failed = 1;
+            why = e.to_string();
         }
+    }
+    world.all_reduce_into(&failed, &mut all, SystemOperation::max());
+    if all != 0 {
+        if why.is_empty() {
+            why = "the node's host could not create it".into();
+        }
+        return Err(Refusal::Memory { need: topo.publication.len(), why });
+    }
+    if host && t.nodes().count > 1 {
+        // Several nodes: the relay runs before the launch barrier, so every rank's first act can reach it.
+        relay::start(&t, world.as_raw());
     }
     world.barrier();
     Ok(if leader { Role::Leader(t) } else { Role::Worker(t) })
+}
+
+/// The prefix of this launch's window objects (shm.rs `object`). The nonce comes from world rank 0, so
+/// two launches on one machine never share a name; the node's host rank keeps two nodes of one launch
+/// apart. Collective over `world`: every rank calls it.
+fn window_name(world: &SimpleCommunicator, host_rank: i32) -> String {
+    let mut nonce = if world.rank() == 0 { launch_nonce() } else { 0 };
+    world.process_at_rank(0).broadcast_into(&mut nonce);
+    format!("/trame-{nonce:016x}-{host_rank}")
+}
+
+fn launch_nonce() -> u64 {
+    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
+    nanos ^ (u64::from(std::process::id()) << 32)
 }
 
 /// `agree`, then `open`: the whole launch for callers that have no checks of their own (the tests).

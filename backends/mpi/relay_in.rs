@@ -9,16 +9,18 @@ extern crate std;
 
 use std::sync::atomic::Ordering::{self, AcqRel, Acquire, Relaxed, SeqCst};
 use std::vec;
+use std::vec::Vec;
 
 use super::layout::{ABORT_BIT, COUNT, DONE, GEN, K_ARRIVE, K_EXITED, K_OUTCOME, LINE, PUB_NO, RESULT};
 use super::publish::{deposit, set_publication};
 use super::relay::{self, Ctx, Release};
-use super::wire::{next, Record, BATCH};
+use super::wire::{next, Record};
 use super::Transport;
 
 /// The thread's body. Returns when END arrives.
 pub(super) fn run(ctx: &Ctx) {
-    let mut buf = vec![0u8; BATCH];
+    // Grows to the largest message received (relay.rs `recv`).
+    let mut buf: Vec<u8> = vec![];
     // The root's count: the generation whose arrivals are being counted, and how many nodes have sent it.
     let mut round = (0u64, 0u32);
     loop {
@@ -64,7 +66,8 @@ fn apply(ctx: &Ctx, rec: Record, round: &mut (u64, u32)) -> bool {
             round.1 += 1;
             if round.1 == t.nodes().arrivers {
                 *round = (0, 0);
-                let (no, bytes) = deposit(t.win(), None).expect("a deposit is copied when there is no `have`");
+                let copied = deposit(t.win(), None).unwrap_or_else(|e| panic!("trame: could not read the deposit: {e}"));
+                let (no, bytes) = copied.expect("a deposit is copied when there is no `have`");
                 *ctx.release.lock().expect("trame: the release lock") = Some(Release { generation, no, bytes });
                 t.bump_relay();
             }
@@ -73,7 +76,7 @@ fn apply(ctx: &Ctx, rec: Record, round: &mut (u64, u32)) -> bool {
             // Install the publication, then add the other nodes' share of COUNT, which makes this node's
             // releaser the one that stores GEN (gate.rs). The local workers are then released.
             if no > t.win().word(PUB_NO).load(Relaxed) {
-                set_publication(t.win(), no, bytes);
+                set_publication(t.win(), no, &bytes);
             }
             let share = u64::from(workers) - u64::from(t.nodes().local_workers);
             let c = t.win().word(COUNT).fetch_add(share, AcqRel) + share;
@@ -115,12 +118,10 @@ fn apply(ctx: &Ctx, rec: Record, round: &mut (u64, u32)) -> bool {
     false
 }
 
-/// Bump every local agent among ranks `0..upto` (workers, then the leader's rank W).
+/// Bump every local agent among ranks `0..upto` (workers, then the leader's rank W). Walks the node's
+/// own agents (`Nodes::local`, in rank order), not all ranks.
 fn bump_local(t: &Transport, upto: u32) {
-    let nodes = t.nodes();
-    for w in 0..upto {
-        if nodes.node_of[w as usize] == nodes.me {
-            t.bump(w);
-        }
+    for &w in t.nodes().local.iter().take_while(|&&w| w < upto) {
+        t.bump(w);
     }
 }
