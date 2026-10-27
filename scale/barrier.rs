@@ -1,6 +1,6 @@
 //! scale_barrier W ROUNDS: W workers. After one warm-up barrier, each worker calls `trame::barrier()`
 //! ROUNDS times, timed on its own clock, and sends one Report to the leader. The leader prints one JSON
-//! line per worker, then the outcomes. Built with `--cfg trame_checked` (scale/run.sh sets it).
+//! line per worker, then the outcomes. Built with `--cfg trame_checked` (flake.nix sets it).
 
 #[path = "common.rs"]
 mod common;

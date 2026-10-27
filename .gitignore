@@ -10,3 +10,5 @@ result-*
 
 # Scratch crates of driver/fuzz/run.sh
 /driver/fuzz/work/
+/.nixsci/
+__pycache__/

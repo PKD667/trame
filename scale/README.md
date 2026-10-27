@@ -2,7 +2,8 @@
 
 Four trame programs and two plain-MPI baselines. The trame programs are examples `scale_barrier`,
 `scale_ring`, `scale_idle`, `scale_fanin` (Cargo.toml). The baselines are `baseline/barrier.c` and
-`baseline/ring.c`. `run.sh OUTDIR` runs the local matrix; run it inside `nix develop .#mpi`.
+`baseline/ring.c`. The lab experiments `scale-local` and `scale-nN` run them (flake.nix,
+`experiments/scale.py`): `nix run .#scale-local`.
 
 Every trame worker times itself on its own clock and sends one report to the leader. The leader prints
 one JSON line per worker, then an outcomes line. Durations are never compared across workers, since
@@ -17,7 +18,7 @@ clocks have unknown offsets (spec.md 5.1).
   baseline does the same with `MPI_Irecv`, `MPI_Isend` and `MPI_Waitall`. The trame program waits on
   full routes (capacity CAP); MPI has no capacity, so its baseline has no CAP.
 - **idle** (`W SECONDS`): every worker waits for SECONDS with nothing sent to it. The wall time is the
-  wait; the cost is CPU, which `run.sh` reads per rank from GNU time.
+  wait; the cost is CPU, which the runner reads per rank from GNU time.
 - **fanin** (`W MSGS`): every worker sends MSGS 64-byte messages to the leader. The leader's receive
   time is the time from its first `recv` to its last. Each worker reports its own send span.
 
@@ -52,7 +53,7 @@ Two measurement caveats are part of the design:
 ## What the numbers cannot show
 
 - Load. Another session's jobs share the machine in our runs. Repeated runs of one configuration
-  differ by a factor of several, so a single run supports no scaling claim. `run.sh` writes the load
+  differ by a factor of several, so a single run supports no scaling claim. The runner should record the load
   average before each run, into stderr; read it before reading a number.
 - Nodes. One node only. The barrier and idle claims are about the one-node path.
 - Oversubscription. The runner uses `--oversubscribe`, so W+1 ranks can share fewer cores. Per-worker

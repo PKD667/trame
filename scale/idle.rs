@@ -1,6 +1,6 @@
 //! scale_idle W SECONDS: W workers, each waiting in `concurrent!` with `.frame().until(deadline)` for SECONDS
 //! on its own clock. Nothing is ever sent to a worker. Each worker reports the span it actually waited.
-//! Its point is CPU time, which scale/run.sh measures per rank with GNU time. The leader prints one JSON
+//! Its point is CPU time, which experiments/scale.py measures per rank with GNU time. The leader prints one JSON
 //! line per worker, then the outcomes. Built with `--cfg trame_checked`.
 
 #[path = "common.rs"]
