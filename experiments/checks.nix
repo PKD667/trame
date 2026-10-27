@@ -43,6 +43,6 @@ let
     data = { kill = killData; } // lib.optionalAttrs (b.name == "mpi") { mpi_config = mpiConfigData; };
   };
 in {
-  mutants-seq = experiment "mutants-seq" backends.seq;
+  # seq is deterministic: its mutation run is the verdict mutants-seq (experiments/validate.nix).
   mutants-mpi = experiment "mutants-mpi" backends.mpi;
 }

@@ -43,8 +43,6 @@ and writes `$out/outcome.json`. A verdict is a derivation; the flake exposes the
 exits 3. It counts steps, not seconds, so a looping mutant is a count and not a timing.
 
 Lab experiments remain for what needs threads, a network or hardware: `programs-mpi` and `mutants-mpi`.
-The lab `mutants-seq` still exists as a sealed record of a run; the verdict above is the deterministic check.
-Both are open: whether the lab `mutants-seq` should be retired is a decision for the owner.
 
 Scope numbers are measured, not guessed: `scheduler-exhaustive` states and end checks, `seq-tests`
 count. A change to either fails the check until its scope is updated.
