@@ -14,7 +14,8 @@ fn every_kind() -> Vec<Record<'static>> {
         Record::Release { generation: 4, no: 2, bytes: b"publication" },
         Record::Result { worker: 5, outcome: 3 },
         Record::Exited { worker: 6, arrive: 12 },
-        Record::Abort,
+        Record::Abort { worker: 2, bytes: b"worker 2 fails" },
+        Record::Abort { worker: 0, bytes: b"" },
         Record::End,
     ]
 }
@@ -59,4 +60,3 @@ fn a_truncated_record_panics() {
 fn an_unknown_kind_panics() {
     next(&[42]);
 }
-

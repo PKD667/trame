@@ -8,11 +8,14 @@
 
 extern crate std;
 
-use std::sync::atomic::{fence, Ordering::{Acquire, Relaxed, Release, SeqCst}};
+use std::sync::atomic::{
+    Ordering::{Acquire, Relaxed, Release, SeqCst},
+    fence,
+};
 
-use super::layout::{RouteLayout, LINE};
-use super::types::{clock, Error, Event, Received, RouteId};
 use super::Transport;
+use super::layout::{LINE, RouteLayout};
+use super::types::{Error, Event, Received, RouteId, clock};
 
 impl Transport {
     /// Receive a frame from the owned routes, which this worker must own, into `out`. Takes the
@@ -105,5 +108,4 @@ impl Transport {
         self.push(Event::Consume { route: id.0, index, before, after });
         Ok(true)
     }
-
 }

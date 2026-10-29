@@ -31,12 +31,12 @@ mod verify_check;
 
 use std::path::Path;
 
-use mpi::traits::*;
-use trame::__mpi::clock;
 use fifo_check::fifo;
 use lossy::{deadlock, overwrite};
+use mpi::traits::*;
 use publish::publication;
 use sync::{barrier, fair};
+use trame::__mpi::clock;
 use verify_check::verify;
 
 fn main() {

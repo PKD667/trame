@@ -7,7 +7,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
-use trame::__mpi::{clock, deadlocked, launch, leader_join, returned, Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport};
+use trame::__mpi::{
+    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, deadlocked, launch, leader_join,
+    returned,
+};
 
 pub(crate) fn verify(dir: &Path) {
     let topo = fs::read_to_string(dir.join("topo.txt")).expect("topo.txt");
@@ -18,7 +21,9 @@ pub(crate) fn verify(dir: &Path) {
         routes.push((f[1] as u32, f[2] as u32, f[4] as u32, f[3], f[5] == 1));
     }
     let nroutes = routes.len();
-    let mut sends: Vec<Vec<(u64, u64, u64, u64, bool)>> = vec![Vec::new(); nroutes]; // index, read, before, after, ok
+    // One send: index, read, before, after, ok.
+    type Sent = (u64, u64, u64, u64, bool);
+    let mut sends: Vec<Vec<Sent>> = vec![Vec::new(); nroutes];
     let mut consumes: Vec<Vec<(u64, u64, u64)>> = vec![Vec::new(); nroutes]; // index, before, after
     let mut files: Vec<PathBuf> = fs::read_dir(dir)
         .expect("log dir")
@@ -68,17 +73,15 @@ pub(crate) fn verify(dir: &Path) {
             // the consumes that had started, and no lower bound is checked. A credit from the future
             // (more consumes than had started) is an error.
             let hi = started_before(after);
-            assert!(
-                read <= hi,
-                "route {r}: send {index} read C={read}, but at most {hi} consumes had started"
-            );
+            assert!(read <= hi, "route {r}: send {index} read C={read}, but at most {hi} consumes had started");
             if ok {
-                assert!(read <= index && index - read < u64::from(cap),
-                    "route {r}: Ok send {index} with C={read}, cap {cap}");
+                assert!(
+                    read <= index && index - read < u64::from(cap),
+                    "route {r}: Ok send {index} with C={read}, cap {cap}"
+                );
                 oks.push(index);
             } else {
-                assert_eq!(index - read, u64::from(cap),
-                    "route {r}: spurious Full: P={index} C={read} cap={cap}");
+                assert_eq!(index - read, u64::from(cap), "route {r}: spurious Full: P={index} C={read} cap={cap}");
                 total_full += 1;
             }
         }

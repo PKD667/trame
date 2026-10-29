@@ -7,17 +7,20 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
-use trame::__mpi::{clock, deadlocked, launch, leader_join, returned, Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport};
+use trame::__mpi::{
+    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, deadlocked, launch, leader_join,
+    returned,
+};
 
 /// The frame size the checks send: 65,544 bytes, the size every backend is required to carry (spec.md).
 pub(crate) const FRAME: usize = 65_544;
 
 /// The worker transport of this rank, or None for the leader (the last rank).
 /// This rank's endpoint: a worker's, or the leader's (Err).
-pub(crate) fn worker(world: &mpi::topology::SimpleCommunicator, topo: &Topology) -> Result<Transport, Transport> {
+pub(crate) fn worker(world: &mpi::topology::SimpleCommunicator, topo: &Topology) -> Result<Transport, Box<Transport>> {
     match launch(world, topo).unwrap_or_else(|e| panic!("refused: {e}")) {
         Role::Worker(t) => Ok(t),
-        Role::Leader(l) => Err(l),
+        Role::Leader(l) => Err(Box::new(l)),
     }
 }
 
@@ -73,19 +76,11 @@ pub(crate) fn random_topology(seed: u64, n: u32) -> Topology {
 
 /// How many frames each route carries, from the seed and the route's rank only.
 pub(crate) fn plan_counts(seed: u64, routes: usize, max: u64) -> Vec<u64> {
-    (0..routes)
-        .map(|r| Rng::new(seed ^ (r as u64).wrapping_mul(0x1000_0000_01b3) ^ 0xc0)
-            .below(max + 1))
-        .collect()
+    (0..routes).map(|r| Rng::new(seed ^ (r as u64).wrapping_mul(0x1000_0000_01b3) ^ 0xc0).below(max + 1)).collect()
 }
 
 pub(crate) fn ids_to(routes: &[Route], me: u32) -> Vec<RouteId> {
-    routes
-        .iter()
-        .enumerate()
-        .filter(|(_, r)| r.to == me)
-        .map(|(i, _)| RouteId(i as u32))
-        .collect()
+    routes.iter().enumerate().filter(|(_, r)| r.to == me).map(|(i, _)| RouteId(i as u32)).collect()
 }
 
 pub(crate) fn fill(route: u32, seq: u64, buf: &mut [u8]) {
@@ -111,11 +106,9 @@ pub(crate) fn write_events(dir: &Path, me: u32, events: &[Event]) {
     let mut f = fs::File::create(dir.join(format!("rank-{me}.log"))).expect("create log");
     for e in events {
         match *e {
-            Event::Send { route, index, read, before, after, answer } => writeln!(
-                f,
-                "S {route} {index} {read} {before} {after} {}",
-                if answer == Answer::Ok { 0 } else { 1 }
-            ),
+            Event::Send { route, index, read, before, after, answer } => {
+                writeln!(f, "S {route} {index} {read} {before} {after} {}", if answer == Answer::Ok { 0 } else { 1 })
+            }
             Event::Consume { route, index, before, after } => {
                 writeln!(f, "C {route} {index} {before} {after}")
             }

@@ -10,8 +10,8 @@ extern crate std;
 
 // The runtime of `concurrent!` is `concurrent.rs`; its items are re-exported here so every
 // runtime entry is `trame::__rt::...`, as the driver's effects.txt names it.
-pub use crate::cells::{cell_ty, owns, Cells, Owning, Pick, Tags, MAX_OWNED};
-pub use crate::concurrent::{concurrent, offered, Process, Set, MAX_PROCESSES};
+pub use crate::cells::{Cells, MAX_OWNED, Owning, Pick, Tags, cell_ty, owns};
+pub use crate::concurrent::{MAX_PROCESSES, Process, Set, concurrent, offered};
 
 use core::cell::RefCell;
 use core::mem::take;
@@ -82,11 +82,11 @@ where
         b.order[b.ends[k]] = i;
     }
     // Now `ends[k]` is the start of key k's run, and the start of key k+1 ends it.
-    for k in 0..n {
+    for (k, slot) in slots.iter_mut().enumerate().take(n) {
         let begin = b.ends[k];
         let end = if k + 1 < n { b.ends[k + 1] } else { m };
         for &i in &b.order[begin..end] {
-            f(&items[i], &mut slots[k], cx);
+            f(&items[i], slot, cx);
         }
     }
 }

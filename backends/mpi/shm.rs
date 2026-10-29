@@ -14,7 +14,7 @@ use mpi::ffi;
 use mpi::topology::SimpleCommunicator;
 use mpi::traits::*;
 
-use super::refusal::{mpi_text, Refusal};
+use super::refusal::{Refusal, mpi_text};
 
 const SUCCESS: i32 = ffi::MPI_SUCCESS as i32; // MPI_SUCCESS as the `int` the C calls return.
 pub(crate) struct Window {
@@ -31,10 +31,8 @@ impl Window {
     /// gets the same answer back. `name` is the prefix of the window's POSIX objects.
     pub(crate) fn allocate(node: &SimpleCommunicator, len: usize, name: String) -> Result<Window, Refusal> {
         // MPI_Aint is signed. Every rank has the same `len`, so every rank refuses here, before any call.
-        let aint = isize::try_from(len).map_err(|_| Refusal::Memory {
-            need: len,
-            why: "more than an MPI address can name".into(),
-        })?;
+        let aint = isize::try_from(len)
+            .map_err(|_| Refusal::Memory { need: len, why: "more than an MPI address can name".into() })?;
         let raw = node.as_raw();
         // Errors come back as return codes, so one rank's failure cannot abort the others.
         unsafe {
@@ -66,13 +64,7 @@ impl Window {
         let mut unit: i32 = 0;
         let mut ptr: *mut c_void = std::ptr::null_mut();
         let rc = unsafe {
-            ffi::MPI_Win_shared_query(
-                win,
-                owner,
-                &mut here,
-                &mut unit,
-                &mut ptr as *mut *mut c_void as *mut c_void,
-            )
+            ffi::MPI_Win_shared_query(win, owner, &mut here, &mut unit, &mut ptr as *mut *mut c_void as *mut c_void)
         };
         if rc != SUCCESS || ptr.is_null() {
             return Err(Refusal::Mpi("MPI_Win_shared_query"));
@@ -125,14 +117,14 @@ impl Window {
     /// The word at `off`. Panics unless `off` is 8-aligned and inside the window: a layout bug
     /// must stop the process, not reach memory outside the window.
     pub(crate) fn word(&self, off: usize) -> &AtomicU64 {
-        assert!(off % 8 == 0 && off + 8 <= self.len, "word at {off} outside window of {}", self.len);
+        assert!(off.is_multiple_of(8) && off + 8 <= self.len, "word at {off} outside window of {}", self.len);
         unsafe { &*(self.base.add(off) as *const AtomicU64) }
     }
 
     /// The 32-bit word at `off`: every epoch and futex word (futex.rs compares 32 bits). Panics unless
     /// `off` is 4-aligned and inside the window.
     pub(crate) fn word32(&self, off: usize) -> &AtomicU32 {
-        assert!(off % 4 == 0 && off + 4 <= self.len, "word32 at {off} outside window of {}", self.len);
+        assert!(off.is_multiple_of(4) && off + 4 <= self.len, "word32 at {off} outside window of {}", self.len);
         unsafe { &*(self.base.add(off) as *const AtomicU32) }
     }
 

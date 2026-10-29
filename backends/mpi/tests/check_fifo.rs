@@ -8,7 +8,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
-use trame::__mpi::{clock, deadlocked, launch, leader_join, returned, Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport};
+use trame::__mpi::{
+    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, deadlocked, launch, leader_join,
+    returned,
+};
 
 pub(crate) fn fifo(world: &mpi::topology::SimpleCommunicator, args: &[String]) {
     let seed = arg_num(args, "--seed", 1);
@@ -43,13 +46,7 @@ pub(crate) fn fifo(world: &mpi::topology::SimpleCommunicator, args: &[String]) {
     for i in (1..tokens.len()).rev() {
         tokens.swap(i, rng.below(i as u64 + 1) as usize);
     }
-    let expected_in: u64 = topo
-        .routes
-        .iter()
-        .enumerate()
-        .filter(|(_, r)| r.to == me)
-        .map(|(i, _)| counts[i])
-        .sum();
+    let expected_in: u64 = topo.routes.iter().enumerate().filter(|(_, r)| r.to == me).map(|(i, _)| counts[i]).sum();
 
     let mut next = 0usize;
     let mut sent_seq = vec![0u64; topo.routes.len()];

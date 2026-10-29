@@ -12,15 +12,15 @@
 // idle time actually spent (`gap_ns`), so an importer can check the spacing it was given.
 //
 // `Probe` is sent as its bytes in Rust's layout: both ends are one binary, and big-endian is refused.
+use mpi::traits::*;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
-use mpi::traits::*;
-use trame::__mpi::{clock, launch, Answer, Received, Role, Route, RouteId, Topology};
+use trame::__mpi::{Answer, Received, Role, Route, RouteId, Topology, clock, launch};
 
 #[path = "latency_util.rs"]
 mod util;
-use util::{arg, arg_num, utc_now, Rng};
+use util::{Rng, arg, arg_num, utc_now};
 
 #[cfg(target_endian = "big")]
 compile_error!("the probe is sent as its bytes in native layout; this check needs a little-endian target");
@@ -78,11 +78,8 @@ fn main() {
     if me == 0 {
         let dir = dir.expect("rank 0 wants --dir or NIX_LAB_DIR");
         fs::create_dir_all(&dir).expect("lab dir");
-        let mut log = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(dir.join("records.jsonl"))
-            .expect("records.jsonl");
+        let mut log =
+            OpenOptions::new().create(true).append(true).open(dir.join("records.jsonl")).expect("records.jsonl");
         let mut rng = Rng(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
         let mut rtts = Vec::with_capacity(samples as usize);
         // `idle_from` is the end of the previous record's write, so logging is never counted as

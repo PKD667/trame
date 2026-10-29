@@ -2,10 +2,10 @@
 
 extern crate std;
 
-use super::tests::{within_10s, Ping};
+use super::tests::{Ping, within_10s};
 use crate::io;
 use crate::launch::Refused;
-use crate::topology::{Context, Topology, WorkerId, LEADER};
+use crate::topology::{Context, LEADER, Topology, WorkerId};
 
 fn quick(_cx: &Context) {}
 

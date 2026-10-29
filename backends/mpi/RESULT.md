@@ -32,8 +32,8 @@ route. It does not read the transport's internal state.
   The barrier run passes; the old design timed out at 120 s.
 - Verify failure, fifo n = 6 seed = 4 (one run): the checker saw a consume that finished before
   a send that still read `C` as its old value. The trace stamps do not prove visibility. Fix:
-  `SeqCst` fences on the traced path only (`ring.rs`). I did not rebuild the old code to confirm
-  this was the cause; that case has passed every run since (25 reruns in a row, then the matrix and full runs).
+  `SeqCst` fences on the traced path only (`ring.rs`). The old code was not rebuilt to confirm
+  this was the cause. That case has passed every run since (25 reruns in a row, then the matrix and full runs).
 - Receive ordering: `recv` used a per-frame stamp and an oldest-offer search across routes, with a
   retry when a frame was overtaken. Removed. Frames are FIFO per route only; `recv` takes the head of
   the first owned route with a frame, scanning from a rotating start. Cross-route order is not a
@@ -46,7 +46,7 @@ route. It does not read the transport's internal state.
 
 `latency` writes raw round trips, one JSON line each, in nixsci record format (`kind: value`, name
 `rtt`): `ns` is A's round trip on A's clock (CLOCK_MONOTONIC), `bytes` is `size_of::<Probe>()`,
-plus the drawn and measured gap before the send, the seed and `seq`. No verdict is computed here;
+plus the drawn and measured gap before the send, the seed and `seq`. No verdict is computed here:
 an importer states its claim over the records with nixsci.stats.
 
 No record is kept in this tree. The first records came from unpinned runs on a loaded laptop, and
@@ -59,6 +59,3 @@ cause, so a kept record must state where each rank ran.
   `TRAME_MPI_NODE_RANKS`); runs on separate machines are lab experiments (experiments/).
 - Other MPI implementations and other CPUs. Timings are on this machine only.
 - The traced build adds SeqCst fences, so trace checks exercise a more strongly ordered variant than production, which relies on the standard SPSC acquire/release and seqlock (Boehm 2012) argument.
-- The mpi-rma submodule is not used by this transport. Its `src/ring.rs` allocates per frame
-  (`vec![0; lane.slot]` at line 555, `to_vec()` at line 583). This needs a change inside the
-  submodule if that code is ever used. Not changed here.

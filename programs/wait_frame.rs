@@ -3,7 +3,7 @@
 //! twice: once to say `Ready` and wait, and once when `Want` arrives. A call for `Noise` would show as a
 //! third call. The leader sends nothing until `Ready`, so the first call always comes before `Want`.
 
-use trame::{Context, Outcome, Status, Topology, LEADER};
+use trame::{Context, LEADER, Outcome, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]

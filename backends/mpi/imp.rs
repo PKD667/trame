@@ -6,7 +6,7 @@
 extern crate std;
 
 use core::any::TypeId;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::process;
 use std::sync::Arc;
 use std::vec::Vec;
@@ -18,17 +18,19 @@ use crate::run::Outcome;
 use crate::time::ClockId;
 use crate::topology::{Context, WorkerId};
 
-use super::layout::{OUT_DEADLOCK, OUT_RETURNED};
+use super::layout::{OUT_ABORT, OUT_DEADLOCK, OUT_RETURNED};
 use super::leader::{self, Leader};
 use super::open::{agree, open};
 use super::plan::{encode_plan, entries, inbox, topology};
 use super::state::{finalize, local, refused, world};
 use super::types::Role;
-use super::{worker, Selected, Transport};
+use super::{Selected, Transport, worker};
+use crate::run::panic_message;
 
-/// Run this worker's function on the main thread. A panic, or an abort that reached this worker,
-/// records Abort; a return records Returned. The result is recorded before anything waits on a peer:
-/// then MPI_Finalize (state.rs), which waits for every rank, and then the process ends.
+/// Run this worker's function on the main thread. A return records Returned; stuck at a barrier, Deadlock.
+/// A panic records the abort with its message (results.rs `abort`), and an abort that reached this worker
+/// records only its own result. The result is recorded before anything waits on a peer: then MPI_Finalize
+/// (state.rs), which waits for every rank, and then the process ends.
 fn run_worker(f: &(dyn Fn(&Context) + Send), me: u32, workers: u32) -> ! {
     let ids: Vec<WorkerId> = (0..workers).map(WorkerId).collect();
     let ctx = Context::new(WorkerId(me), ids);
@@ -42,7 +44,11 @@ fn run_worker(f: &(dyn Fn(&Context) + Send), me: u32, workers: u32) -> ! {
         Err(p) if p.is::<worker::Stuck>() => {
             t.finish(OUT_DEADLOCK);
         }
-        Err(_) => t.abort(),
+        // The run aborted before this worker panicked: its first record stands.
+        Err(p) if p.is::<worker::Aborted>() => {
+            t.finish(OUT_ABORT);
+        }
+        Err(p) => t.abort(panic_message(&*p).as_bytes()),
     }
     finalize();
     process::exit(0)

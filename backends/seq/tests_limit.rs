@@ -3,7 +3,7 @@
 
 extern crate std;
 
-use super::limit::{parse, EXIT};
+use super::limit::{EXIT, parse};
 
 #[test]
 fn unset_is_no_limit() {

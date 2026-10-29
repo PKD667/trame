@@ -299,12 +299,7 @@ mod property_tests {
                     1 => St::Progress,
                     2 => St::Done,
                     3 => St::Err,
-                    _ => St::Wait {
-                        frame: rng.flag(),
-                        room: rng.flag(),
-                        until: rng.flag(),
-                        cells: rng.flag(),
-                    },
+                    _ => St::Wait { frame: rng.flag(), room: rng.flag(), until: rng.flag(), cells: rng.flag() },
                 };
                 Proc { cells, st, d: rng.flag(), running: rng.below(4) == 0 }
             })
@@ -365,12 +360,8 @@ mod property_tests {
                     let k = rest % per;
                     rest /= per;
                     let q = k / m; // q = st + 20 * d + 40 * running
-                    *slot = Proc {
-                        cells: (k % m) as u64,
-                        st: st_of(q % 20),
-                        d: (q / 20) % 2 == 1,
-                        running: q / 40 == 1,
-                    };
+                    *slot =
+                        Proc { cells: (k % m) as u64, st: st_of(q % 20), d: (q / 20) % 2 == 1, running: q / 40 == 1 };
                 }
                 let procs = &ps[..n];
                 // Consistent states only: running processes hold disjoint cells.

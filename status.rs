@@ -6,7 +6,7 @@ use crate::backend::{Backend, Selected};
 use crate::io::Message;
 use crate::time::Reading;
 use crate::topology::WorkerId;
-use core::any::{type_name, TypeId};
+use core::any::{TypeId, type_name};
 
 /// The status a step returns (spec.md 5.3). A failing step answers `Err(e)` from a step that returns
 /// `Result<Status, E>`, which is the spec's `err(e)`.
@@ -101,8 +101,12 @@ impl Status {
     fn with_condition(self, method: &str, add: impl FnOnce(Waits) -> Waits) -> Status {
         match self {
             Status::Wait(w) => Status::Wait(add(w)),
-            Status::Progress => panic!("trame: {method} adds a wait condition, but this Status is Progress; start from Status::wait()"),
-            Status::Done => panic!("trame: {method} adds a wait condition, but this Status is Done; start from Status::wait()"),
+            Status::Progress => {
+                panic!("trame: {method} adds a wait condition, but this Status is Progress; start from Status::wait()")
+            }
+            Status::Done => {
+                panic!("trame: {method} adds a wait condition, but this Status is Done; start from Status::wait()")
+            }
         }
     }
 }

@@ -35,8 +35,8 @@ pub(super) enum Record<'a> {
     Result { worker: u32, outcome: u64 },
     /// Worker `worker` has returned; `arrive` is its last barrier generation.
     Exited { worker: u32, arrive: u64 },
-    /// The run aborted.
-    Abort,
+    /// The run aborted: worker `worker` panicked with `bytes`, its message (results.rs `record_abort`).
+    Abort { worker: u32, bytes: &'a [u8] },
     /// The leader has joined: no more records follow from the root.
     End,
 }
@@ -75,7 +75,11 @@ pub(super) fn put(buf: &mut Vec<u8>, r: &Record) {
             buf.extend_from_slice(&worker.to_le_bytes());
             buf.extend_from_slice(&arrive.to_le_bytes());
         }
-        Record::Abort => buf.push(ABORT),
+        Record::Abort { worker, bytes } => {
+            buf.push(ABORT);
+            buf.extend_from_slice(&worker.to_le_bytes());
+            put_bytes(buf, bytes);
+        }
         Record::End => buf.push(END),
     }
 }
@@ -98,7 +102,7 @@ pub(super) fn next(buf: &[u8]) -> Option<(Record<'_>, usize)> {
         RELEASE => Record::Release { generation: r.u64(), no: r.u64(), bytes: r.bytes() },
         RESULT => Record::Result { worker: r.u32(), outcome: r.u64() },
         EXITED => Record::Exited { worker: r.u32(), arrive: r.u64() },
-        ABORT => Record::Abort,
+        ABORT => Record::Abort { worker: r.u32(), bytes: r.bytes() },
         END => Record::End,
         other => panic!("trame: MPI relay record of unknown kind {other}"),
     };

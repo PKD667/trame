@@ -1,15 +1,17 @@
 //! `concurrent!(p0, p1; c0, c1)` (spec.md 5.3): runs the processes `p0, p1` (values of process types,
-//! in priority order) over the cells `c0, c1` (variables, borrowed mutably for the run). Answers
-//! `Result<(), E>`. Without `--cfg trame_checked` it is a compile error.
+//! in priority order) over the cells `c0, c1` (places, borrowed mutably for the run). Each argument is
+//! evaluated once, in order. Answers `Result<(), E>`. Without `--cfg trame_checked` it is a compile
+//! error.
 //!
 //! The expansion generates a `Set` over the processes, with a `match` on the process index, and
 //! calls the runtime `trame::__rt::concurrent`. The driver sees each process's `step` through the
 //! `trame::__check::step` marker, which is compiled only in a checked build.
 
-use proc_macro2::TokenStream as TokenStream2;
-use quote::{format_ident, quote};
+use proc_macro2::{Span, TokenStream as TokenStream2};
+use quote::{format_ident, quote, quote_spanned};
 use syn::parse::{ParseStream, Parser};
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::{Expr, Index, Token};
 
 pub fn expand(input: TokenStream2) -> syn::Result<TokenStream2> {
@@ -31,6 +33,17 @@ pub fn expand(input: TokenStream2) -> syn::Result<TokenStream2> {
     let fields: Vec<Index> = idx.iter().map(|&i| Index::from(i)).collect();
     let n = procs.len();
     let c = cells.len();
+    let cell_refs: Vec<_> = (0..c).map(|i| format_ident!("__c{}", i)).collect();
+    // The driver's step marker, located at each process argument so a refusal points at it, and
+    // resolved at the call site so `__procs` is found however the argument was produced.
+    let marks: Vec<TokenStream2> = procs
+        .iter()
+        .zip(&fields)
+        .map(|(p, f)| {
+            let at = Span::call_site().located_at(p.span());
+            quote_spanned! { at=> ::trame::__check::step(&__procs.#f); }
+        })
+        .collect();
     let first = &gens[0];
     let bounds: Vec<TokenStream2> = gens
         .iter()
@@ -47,10 +60,6 @@ pub fn expand(input: TokenStream2) -> syn::Result<TokenStream2> {
         {
             #[cfg(not(trame_checked))]
             compile_error!("build with cargo trame");
-            #[cfg(trame_checked)]
-            {
-                #(::trame::__check::step(&#procs);)*
-            }
             struct __Set<#(#gens),*>(#(#gens),*);
             impl<#(#bounds),*> ::trame::__rt::Set for __Set<#(#gens),*> {
                 type Error = <#first as ::trame::__rt::Process>::Error;
@@ -93,8 +102,13 @@ pub fn expand(input: TokenStream2) -> syn::Result<TokenStream2> {
                 }
             }
             let mut __procs = __Set(#(#procs),*);
-            let __tys: [(::core::any::TypeId, &'static str); #c] = [#(::trame::__rt::cell_ty(&#cells)),*];
-            let mut __refs: [&mut dyn ::core::any::Any; #c] = [#(&mut #cells),*];
+            #[cfg(trame_checked)]
+            {
+                #(#marks)*
+            }
+            #(let #cell_refs = &mut #cells;)*
+            let __tys: [(::core::any::TypeId, &'static str); #c] = [#(::trame::__rt::cell_ty(&*#cell_refs)),*];
+            let mut __refs: [&mut dyn ::core::any::Any; #c] = [#(#cell_refs),*];
             let mut __cells = ::trame::__rt::Cells::new(&mut __refs, &__tys);
             ::trame::__rt::concurrent(&mut __procs, &mut __cells)
         }

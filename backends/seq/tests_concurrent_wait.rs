@@ -4,10 +4,10 @@
 extern crate std;
 
 use super::tests::within_10s;
-use super::tests_concurrent::{collect, enter, leave, report, Ev, Gate};
+use super::tests_concurrent::{Ev, Gate, collect, enter, leave, report};
 use crate::run::Outcome::Returned;
 use crate::status::Status;
-use crate::topology::{Context, Topology, LEADER};
+use crate::topology::{Context, LEADER, Topology};
 
 /// `Waiter` (priority 0) waits on cells until the gate opens. `Opener` opens it and ends. Ending a
 /// step wakes the process that shares a cell with it, so `Waiter` runs again after `Opener`. A lost
@@ -60,4 +60,3 @@ fn a_waiter_on_cells_is_woken_after_the_other_steps() {
         assert_eq!(run.join(), [Returned]);
     });
 }
-

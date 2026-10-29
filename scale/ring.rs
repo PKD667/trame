@@ -7,7 +7,7 @@
 #[path = "common.rs"]
 mod common;
 
-use trame::{Context, Message, Reading, Status, Topology, WorkerId, LEADER};
+use trame::{Context, LEADER, Message, Reading, Status, Topology, WorkerId};
 
 const WARM: u64 = 10;
 #[trame::message]
@@ -143,7 +143,10 @@ fn main() {
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     common::collect::<Report>(&run, w, |r| {
-        println!("{{\"bench\":\"ring\",\"workers\":{w},\"worker\":{},\"steps\":{steps},\"size\":{size},\"cap\":{cap},\"ns\":{}}}", r.worker, r.ns);
+        println!(
+            "{{\"bench\":\"ring\",\"workers\":{w},\"worker\":{},\"steps\":{steps},\"size\":{size},\"cap\":{cap},\"ns\":{}}}",
+            r.worker, r.ns
+        );
     });
     common::finish(run);
 }

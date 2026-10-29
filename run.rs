@@ -2,10 +2,11 @@
 //! its operations are not rules of T; the backend records what it does.
 
 use crate::backend::{Backend, Selected};
-use crate::io::{read, Full, Message};
+use crate::io::{Full, Message, read};
 use crate::topology::WorkerId;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use core::any::{type_name, TypeId};
+use core::any::{Any, TypeId, type_name};
 use core::cell::Cell;
 
 /// A launched run, as the leader holds it. Dropping it does not stop the workers.
@@ -44,19 +45,30 @@ impl Run {
         Selected::leader_publish(&self.inner, bytes)
     }
 
-    /// Wait until every worker has a result, and return them in declaration order.
+    /// Wait until every worker has a result, and return them in declaration order. A panic in a
+    /// worker aborts the run, and then this panics too (see `wait`).
     pub fn join(self) -> Vec<Outcome> {
         Selected::leader_join(self.inner)
     }
 }
 
-/// The result of one agent: spec.md 5, "Abort" and "Deadlock".
+/// The result of one worker: spec.md 5, "Deadlock". A panic never has a result: it panics the leader.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
     /// The worker's `run` returned.
     Returned,
-    /// Some worker panicked, and the run ended.
-    Abort,
     /// The run was stuck: no worker could move, and the backend ended it.
     Deadlock,
+}
+
+/// The text of a panic, as the leader reports it: the payload's message, or `<non-string panic
+/// payload>` when the payload is neither a `&str` nor a `String` (spec.md 5, Abort).
+pub(crate) fn panic_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "<non-string panic payload>".to_string()
+    }
 }

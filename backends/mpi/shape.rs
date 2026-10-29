@@ -8,7 +8,7 @@ use std::format;
 use std::string::String;
 use std::vec::Vec;
 
-use super::layout::{Layout, RouteLayout, Topology, ARRIVE, LINE, SLOT_HEAD, WORKER_LINES};
+use super::layout::{ARRIVE, LINE, Layout, RouteLayout, SLOT_HEAD, Topology, WORKER_LINES};
 use super::refusal::Refusal;
 
 fn refuse(why: impl Into<String>) -> Refusal {
@@ -29,10 +29,7 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
             return Err(refuse(format!("route {rank} names an agent outside the launch")));
         }
         if !seen.insert((r.from, r.to, r.tag)) {
-            return Err(refuse(format!(
-                "two routes with sender {}, receiver {}, tag {}",
-                r.from, r.to, r.tag
-            )));
+            return Err(refuse(format!("two routes with sender {}, receiver {}, tag {}", r.from, r.to, r.tag)));
         }
         if r.cap == 0 {
             return Err(refuse(format!("route {rank} has capacity 0")));
@@ -43,9 +40,7 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
             .checked_mul(8)
             .and_then(|b| b.checked_add(SLOT_HEAD))
             .ok_or_else(|| refuse("slot size overflows"))?;
-        let body = (r.cap as usize)
-            .checked_mul(stride)
-            .ok_or_else(|| refuse("route size overflows"))?;
+        let body = (r.cap as usize).checked_mul(stride).ok_or_else(|| refuse("route size overflows"))?;
         let base = at;
         at = base
             .checked_add(2 * LINE)

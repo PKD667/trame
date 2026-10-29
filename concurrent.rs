@@ -80,7 +80,9 @@ fn check<S: Set>(cells: &Cells<'_, '_>) {
             );
         }
         if !(0..S::LEN).any(|i| S::takes(i, *t)) {
-            panic!("trame: concurrent!: the cell of type `{name}` is taken by no process's step; remove it from concurrent!");
+            panic!(
+                "trame: concurrent!: the cell of type `{name}` is taken by no process's step; remove it from concurrent!"
+            );
         }
     }
     for i in 0..S::LEN {

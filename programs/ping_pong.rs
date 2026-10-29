@@ -2,7 +2,7 @@
 //! which prints it and then the outcomes. Built with `--cfg trame_checked`, because `concurrent!`
 //! needs it (run.sh sets it). Expected output: ping_pong.expected.
 
-use trame::{Context, Outcome, Status, Topology, WorkerId, LEADER};
+use trame::{Context, LEADER, Outcome, Status, Topology, WorkerId};
 
 const ROUNDS: u32 = 1000;
 

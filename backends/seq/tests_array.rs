@@ -4,8 +4,8 @@
 extern crate std;
 
 use super::tests::{await_frame, within_10s};
-use crate::topology::{Context, Topology, LEADER};
 use crate::io;
+use crate::topology::{Context, LEADER, Topology};
 
 #[crate::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -22,7 +22,12 @@ struct Burst {
 }
 
 fn burst(_cx: &Context) {
-    let spikes = [Spike { neuron: 1, t: 10 }, Spike { neuron: 2, t: 11 }, Spike { neuron: 3, t: 12 }, Spike { neuron: 4, t: 13 }];
+    let spikes = [
+        Spike { neuron: 1, t: 10 },
+        Spike { neuron: 2, t: 11 },
+        Spike { neuron: 3, t: 12 },
+        Spike { neuron: 4, t: 13 },
+    ];
     while io::send(LEADER, Burst { id: 9, spikes }).is_err() {}
 }
 

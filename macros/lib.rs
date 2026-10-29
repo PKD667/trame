@@ -4,13 +4,11 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2, TokenTree};
-use quote::{format_ident, quote, ToTokens};
+use quote::{ToTokens, format_ident, quote};
 use syn::meta::ParseNestedMeta;
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
-use syn::{
-    parse_quote, Attribute, Expr, FnArg, Ident, ItemFn, ItemStruct, Pat, PathArguments, Token, Type,
-};
+use syn::{Attribute, Expr, FnArg, Ident, ItemFn, ItemStruct, Pat, PathArguments, Token, Type, parse_quote};
 
 /// Marks a struct as a message type (spec.md 3, "Messages"). It adds `#[repr(C)]`, `Clone`, `Copy`,
 /// and bytemuck's `Pod` and `Zeroable` derives, which check that the struct has no padding and that
@@ -165,7 +163,8 @@ fn expand_parallel(input: TokenStream2) -> syn::Result<TokenStream2> {
         return Err(syn::Error::new_spanned(&args, "parallel! takes (f, &cx, &items, &mut slots)"));
     }
     let mut args = args.into_iter();
-    let (f, cx, items, slots) = (args.next().unwrap(), args.next().unwrap(), args.next().unwrap(), args.next().unwrap());
+    let (f, cx, items, slots) =
+        (args.next().unwrap(), args.next().unwrap(), args.next().unwrap(), args.next().unwrap());
     let Expr::Path(fp) = &f else {
         return Err(syn::Error::new_spanned(&f, "parallel!: the first argument is the name of an item function"));
     };

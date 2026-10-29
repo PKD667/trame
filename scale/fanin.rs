@@ -8,7 +8,7 @@
 mod common;
 
 use std::time::Instant;
-use trame::{Context, Reading, Status, Topology, LEADER};
+use trame::{Context, LEADER, Reading, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]

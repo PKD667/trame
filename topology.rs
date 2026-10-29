@@ -3,11 +3,11 @@
 
 use crate::backend::{Backend, Selected};
 use crate::io::Message;
-use crate::launch::{check, Plan, Refused, Route};
+use crate::launch::{Plan, Refused, Route, check};
 use crate::run::Run;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::any::{type_name, TypeId};
+use core::any::{TypeId, type_name};
 use core::mem::size_of;
 
 /// Opaque identity of a worker, or of the leader. Made only by `Topology::worker`, and `LEADER`.

@@ -3,12 +3,10 @@
 
 extern crate std;
 
-use super::tests::{within_10s, Ping};
+use super::tests::{Ping, panic_text, within_10s};
 use crate::io;
-use crate::run::Outcome::{Abort, Deadlock, Returned};
-use crate::topology::{Context, Topology, LEADER};
-use std::thread;
-use std::time::Duration;
+use crate::run::Outcome::{Deadlock, Returned};
+use crate::topology::{Context, LEADER, Topology};
 
 fn quick(_cx: &Context) {}
 
@@ -42,7 +40,8 @@ fn returned_worker_leaves_a_barrier_waiter_deadlocked() {
     });
 }
 
-/// Join called only after the run is stuck: the stall is already there, and join still returns.
+/// Join called only after the run is stuck: the leader waits until its wait panics as stuck, so the
+/// stall is there before join (spec.md 5, Deadlock), and join still returns.
 #[test]
 fn join_after_the_run_is_stuck_returns_deadlock() {
     within_10s(|| {
@@ -51,28 +50,42 @@ fn join_after_the_run_is_stuck_returns_deadlock() {
         g.worker(wait_at_barrier);
         g.worker(wait_at_barrier);
         let run = g.launch().expect("accepted");
-        thread::sleep(Duration::from_millis(50));
+        let stuck = panic_text(|| {
+            loop {
+                run.wait();
+            }
+        });
+        assert_eq!(stuck, "trame: deadlock: the leader waits and nothing can arrive");
         assert_eq!(run.join(), [Returned, Deadlock, Deadlock]);
     });
 }
 
-/// A panic in one worker aborts every agent without a result, including one waiting at a barrier.
+/// A panic in one worker aborts the run: the leader's join panics, naming the worker and its
+/// message, and the waiter at the barrier does not hang the test.
 #[test]
-fn panic_aborts_every_worker_without_a_result() {
+fn panic_aborts_the_run_and_the_leader_panics() {
     within_10s(|| {
         let mut g = Topology::new();
         g.worker(wait_at_barrier);
         g.worker(boom);
-        assert_eq!(g.launch().expect("accepted").join(), [Abort, Abort]);
+        let run = g.launch().expect("accepted");
+        let text = panic_text(move || {
+            run.join();
+        });
+        assert_eq!(text, "trame: worker 1 panicked: intentional panic, for the abort test");
     });
 }
 
-/// A send on a route the topology does not have aborts the run.
+/// A send on a route the topology does not have aborts the run, and the leader's join panics.
 #[test]
 fn send_without_a_route_aborts() {
     within_10s(|| {
         let mut g = Topology::new();
         g.worker(stray);
-        assert_eq!(g.launch().expect("accepted").join(), [Abort]);
+        let run = g.launch().expect("accepted");
+        let text = panic_text(move || {
+            run.join();
+        });
+        assert!(text.starts_with("trame: worker 0 panicked: "), "{text}");
     });
 }

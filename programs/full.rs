@@ -4,7 +4,7 @@
 //! waits for room). Worker 1 turns each job into an event for the leader, and checks its clock. The
 //! leader prints the events in order, then the outcomes.
 
-use trame::{Context, Outcome, Status, Topology, WorkerId, LEADER};
+use trame::{Context, LEADER, Outcome, Status, Topology, WorkerId};
 
 const JOBS: u32 = 5;
 

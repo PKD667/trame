@@ -5,9 +5,12 @@ extern crate std;
 
 use crate::io::{self, Full, Message};
 use crate::run::{Outcome, Run};
-use crate::topology::{Context, Topology, LEADER};
+use crate::topology::{Context, LEADER, Topology};
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::string::String;
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[crate::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -17,24 +20,35 @@ pub(super) struct Ping(pub u32);
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Pong(pub u32);
 
-/// Run `f` on its own thread. Fail if it has not finished in 10 s, so a hang cannot stall the suite.
+/// Run `f` on its own thread. Fail if it has not answered in 10 s, so a hang cannot stall the suite.
+/// A panic of `f` is raised again here, with its own payload.
 pub(super) fn within_10s<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
-    let handle = thread::spawn(f);
-    let start = Instant::now();
-    while !handle.is_finished() {
-        assert!(start.elapsed() < Duration::from_secs(10), "hung: no answer within 10 s");
-        thread::sleep(Duration::from_millis(5));
+    let (answer, answered) = mpsc::channel();
+    let body = thread::spawn(move || answer.send(f()));
+    match answered.recv_timeout(Duration::from_secs(10)) {
+        Ok(out) => out,
+        Err(RecvTimeoutError::Timeout) => panic!("hung: no answer within 10 s"),
+        Err(RecvTimeoutError::Disconnected) => match body.join() {
+            Err(payload) => std::panic::resume_unwind(payload),
+            Ok(_) => unreachable!("the body dropped its sender without answering or panicking"),
+        },
     }
-    handle.join().expect("the test body panicked (its message is above)")
 }
 
-/// Spin until the leader has a frame of type `M`. Only ever waits on a worker's effects.
+/// The message of the panic that `f` ends with, read as the leader reports one (`run::panic_message`).
+/// `f` must panic.
+pub(super) fn panic_text(f: impl FnOnce()) -> String {
+    let payload = catch_unwind(AssertUnwindSafe(f)).expect_err("the leader must panic");
+    crate::run::panic_message(&*payload)
+}
+
+/// The leader's next frame of type `M`: `recv`, and `wait` while there is none (run.rs, `wait`).
 pub(super) fn await_frame<M: Message>(run: &Run) -> M {
     loop {
         if let Some(m) = run.recv::<M>() {
             return m;
         }
-        thread::yield_now();
+        run.wait();
     }
 }
 

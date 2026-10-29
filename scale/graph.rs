@@ -14,14 +14,19 @@ mod graph_net;
 #[path = "graph_proc.rs"]
 mod graph_proc;
 
-use trame::{Context, Message, Reading, Status, Topology, WorkerId, LEADER};
+use trame::{Context, LEADER, Message, Reading, Status, Topology, WorkerId};
 
 const WARM: u64 = 10;
 const CAP: usize = 4;
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
-struct Report { worker: u64, ns: u64, compute_ns: u64, checksum: u64 }
+struct Report {
+    worker: u64,
+    ns: u64,
+    compute_ns: u64,
+    checksum: u64,
+}
 
 graph!(GraphSmall, Small, 48, worker_small);
 graph!(GraphBig, Big, 1008, worker_big);
@@ -58,7 +63,11 @@ fn main() {
         ids.push(id);
     }
     for i in 0..w {
-        if size == 64 { wire::<Small>(&mut t, &ids, i, &offs) } else { wire::<Big>(&mut t, &ids, i, &offs) }
+        if size == 64 {
+            wire::<Small>(&mut t, &ids, i, &offs)
+        } else {
+            wire::<Big>(&mut t, &ids, i, &offs)
+        }
         t.route::<Report>(ids[i], LEADER, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));

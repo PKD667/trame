@@ -5,7 +5,7 @@
 #[path = "common.rs"]
 mod common;
 
-use trame::{Context, Topology, LEADER};
+use trame::{Context, LEADER, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -40,7 +40,10 @@ fn main() {
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     common::collect::<Report>(&run, w, |r| {
-        println!("{{\"bench\":\"barrier\",\"workers\":{w},\"worker\":{},\"rounds\":{rounds},\"ns\":{}}}", r.worker, r.ns);
+        println!(
+            "{{\"bench\":\"barrier\",\"workers\":{w},\"worker\":{},\"rounds\":{rounds},\"ns\":{}}}",
+            r.worker, r.ns
+        );
     });
     common::finish(run);
 }

@@ -5,8 +5,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::thread;
-use std::time::{Duration, Instant};
-use trame::{Context, Outcome, Topology, LEADER};
+use trame::{Context, LEADER, Outcome, Topology};
 
 struct Counting;
 
@@ -111,13 +110,12 @@ fn a_frame_and_a_barrier_allocate_nothing_in_a_worker() {
         g.route::<Report>(w, LEADER, 1);
         g.publish(b"init");
         let run = g.launch().expect("accepted");
-        let deadline = Instant::now() + Duration::from_secs(10);
+        // A worker that ends without its report leaves the leader stuck, and seq panics the wait.
         let report = loop {
             if let Some(r) = run.recv::<Report>() {
                 break r;
             }
-            assert!(Instant::now() < deadline, "hung: no report within 10 s");
-            thread::yield_now();
+            run.wait();
         };
         assert_eq!(run.join(), [Outcome::Returned]);
         report

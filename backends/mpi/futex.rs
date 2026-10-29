@@ -16,15 +16,16 @@ impl Window {
     /// As `wait`, and give up after `timeout` (relative). A timeout returns the same way a wake does.
     pub(crate) fn wait_for(&self, off: usize, seen: u32, timeout: Option<std::time::Duration>) {
         let at = self.ptr(off, 4) as *mut u32;
-        let spec = timeout.map(|d| libc::timespec {
-            tv_sec: d.as_secs() as libc::time_t,
-            tv_nsec: d.subsec_nanos() as libc::c_long,
-        });
+        let spec = timeout
+            .map(|d| libc::timespec { tv_sec: d.as_secs() as libc::time_t, tv_nsec: d.subsec_nanos() as libc::c_long });
         let ts = spec.as_ref().map_or(std::ptr::null(), |t| t as *const libc::timespec);
         let (op, val) = (libc::FUTEX_WAIT as libc::c_long, seen as libc::c_long);
         let rc = unsafe { libc::syscall(libc::SYS_futex, at, op, val, ts, 0, 0) };
         let e = std::io::Error::last_os_error().raw_os_error();
-        assert!(rc == 0 || e == Some(libc::EAGAIN) || e == Some(libc::EINTR) || e == Some(libc::ETIMEDOUT), "futex wait: {e:?}");
+        assert!(
+            rc == 0 || e == Some(libc::EAGAIN) || e == Some(libc::EINTR) || e == Some(libc::ETIMEDOUT),
+            "futex wait: {e:?}"
+        );
     }
 
     /// Wake every sleeper on the futex word at `off`.

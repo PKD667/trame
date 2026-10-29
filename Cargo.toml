@@ -53,6 +53,10 @@ name = "abort"
 path = "programs/abort.rs"
 
 [[example]]
+name = "abort_join"
+path = "programs/abort_join.rs"
+
+[[example]]
 name = "refuse"
 path = "programs/refuse.rs"
 
@@ -104,7 +108,7 @@ path = "programs/err.rs"
 name = "ring"
 path = "examples/ring.rs"
 
-# Scaling benchmarks (scale/, scale/run.sh, scale/README.md). Not part of the conformance set.
+# Scaling benchmarks (scale/, scale/README.md; run by experiments/scale.py). Not part of the conformance set.
 [[example]]
 name = "scale_barrier"
 path = "scale/barrier.rs"
@@ -124,3 +128,39 @@ path = "scale/fanin.rs"
 [[example]]
 name = "scale_graph"
 path = "scale/graph.rs"
+
+[[example]]
+name = "start_order"
+path = "programs/start_order.rs"
+
+[[example]]
+name = "refuse_dup"
+path = "programs/refuse_dup.rs"
+
+[[example]]
+name = "err_done"
+path = "programs/err_done.rs"
+
+[[example]]
+name = "frame_other"
+path = "programs/frame_other.rs"
+
+[[example]]
+name = "until_calls"
+path = "programs/until_calls.rs"
+
+[[example]]
+name = "room_spin"
+path = "programs/room_spin.rs"
+
+[[example]]
+name = "take_rotate"
+path = "programs/take_rotate.rs"
+
+[[example]]
+name = "leader_stuck"
+path = "programs/leader_stuck.rs"
+
+[[example]]
+name = "leader_panics"
+path = "programs/leader_panics.rs"

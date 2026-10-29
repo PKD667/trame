@@ -4,12 +4,12 @@
 extern crate std;
 
 use super::tests::within_10s;
-use super::tests_concurrent::{collect, enter, leave, report, Ev, Gate};
+use super::tests_concurrent::{Ev, Gate, collect, enter, leave, report};
 use crate::run::Outcome::Returned;
 use crate::status::Status;
 use crate::time::Reading;
+use crate::topology::{Context, LEADER, Topology};
 use core::time::Duration;
-use crate::topology::{Context, Topology, LEADER};
 
 /// `Fails` (priority 0) returns an error at once. `Late` shares the gate and would report 500 if it
 /// ran. It never does: no step starts once a process has failed. `concurrent!` answers the error.

@@ -4,15 +4,15 @@
 //! borrowed from the runtime by type. The step's `Status`, or its `Result<Status, E>`, is the answer.
 
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::parse::{ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::{FnArg, Ident, ImplItem, ItemImpl, PathArguments, ReturnType, Token, Type};
 
 /// The primitive type names: a cell may not be one of them.
 const PRIMITIVES: &[&str] = &[
-    "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64",
-    "bool", "char", "str",
+    "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64", "bool",
+    "char", "str",
 ];
 
 /// The core and alloc types a cell may not be (spec.md 5.3: the cells are the step's own state).
@@ -22,7 +22,10 @@ pub fn expand(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream
     let receives = parse_receives(attr)?;
     let imp: ItemImpl = syn::parse2(item)?;
     if imp.trait_.is_some() {
-        return Err(syn::Error::new_spanned(&imp.self_ty, "#[trame::process] goes on an inherent `impl P`, not a trait impl"));
+        return Err(syn::Error::new_spanned(
+            &imp.self_ty,
+            "#[trame::process] goes on an inherent `impl P`, not a trait impl",
+        ));
     }
     if !imp.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(&imp.generics, "a process type cannot be generic yet"));
@@ -47,17 +50,25 @@ pub fn expand(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream
         };
         let name = match &*pt.pat {
             syn::Pat::Ident(p) => &p.ident,
-            other => return Err(syn::Error::new_spanned(other, "a cell parameter is a plain name: `queue: &mut Queue`")),
+            other => {
+                return Err(syn::Error::new_spanned(other, "a cell parameter is a plain name: `queue: &mut Queue`"));
+            }
         };
         let Type::Reference(r) = &*pt.ty else {
-            return Err(syn::Error::new_spanned(&pt.ty, "a cell parameter is `&mut T`, where T is the cell's own type"));
+            return Err(syn::Error::new_spanned(
+                &pt.ty,
+                "a cell parameter is `&mut T`, where T is the cell's own type",
+            ));
         };
         if r.mutability.is_none() {
             return Err(syn::Error::new_spanned(&pt.ty, "a cell parameter is `&mut T`, not `&T`"));
         }
         refuse_cell(&step.sig.ident, name, &r.elem)?;
         if cells.iter().any(|(_, t)| t.to_token_stream().to_string() == r.elem.to_token_stream().to_string()) {
-            return Err(syn::Error::new_spanned(&pt.ty, "two parameters of one type: a cell is matched by type, so give one of them a type of its own"));
+            return Err(syn::Error::new_spanned(
+                &pt.ty,
+                "two parameters of one type: a cell is matched by type, so give one of them a type of its own",
+            ));
         }
         cells.push((name, &r.elem));
     }

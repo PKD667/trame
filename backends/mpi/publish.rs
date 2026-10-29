@@ -23,15 +23,15 @@ extern crate std;
 
 use std::eprintln;
 use std::io;
-use std::sync::atomic::fence;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use std::sync::atomic::fence;
 use std::vec::Vec;
 
+use super::Transport;
 use super::layout::{PEND_LEN, PEND_NO, PEND_SEQ, PUB_LEN, PUB_NO};
 use super::object;
 use super::shm::Window;
 use super::types::Error;
-use super::Transport;
 
 impl Transport {
     /// Releaser only: if the deposit is newer than the publication, install it. An `Aborted` answer means
@@ -82,14 +82,14 @@ impl Transport {
         Ok(())
     }
 
-    /// Unlink the current publication and deposit objects of this window. Called only when no worker can
-    /// still read them: after the leader's join (`end_run`, one node), or after the relays have stopped
-    /// (`Relay::join`). An object that is already gone is not an error.
+    /// Unlink the current publication and deposit objects of this window, and the abort message. Called only
+    /// when no worker can still read them: after the leader's join (`end_run`, one node), or after the relays
+    /// have stopped (`Relay::join`). An object that is already gone is not an error.
     pub(crate) fn unlink_publication(&self) {
         let win = self.win();
         let pub_no = win.word(PUB_NO).load(Acquire);
         let pend_no = win.word(PEND_NO).load(Acquire);
-        for name in [win.object("pub", pub_no), win.object("pend", pend_no)] {
+        for name in [win.object("pub", pub_no), win.object("pend", pend_no), win.object("abort", 0)] {
             if let Err(e) = object::unlink(&name) {
                 eprintln!("trame: could not unlink {name}: {e}");
             }
@@ -132,9 +132,9 @@ pub(super) fn set_publication(win: &Window, no: u64, bytes: &[u8]) {
         .unwrap_or_else(|e| panic!("trame: publication {no} of {} bytes: {e}", bytes.len()));
     win.word(PUB_LEN).store(bytes.len() as u64, Relaxed);
     win.word(PUB_NO).store(no, Release);
-    if prev != no {
-        if let Err(e) = object::unlink(&win.object("pub", prev)) {
-            eprintln!("trame: could not unlink an old publication: {e}");
-        }
+    if prev != no
+        && let Err(e) = object::unlink(&win.object("pub", prev))
+    {
+        eprintln!("trame: could not unlink an old publication: {e}");
     }
 }

@@ -1,7 +1,7 @@
 //! The step limit of the sequential backend, TRAME_SEQ_STEP_LIMIT. A scheduler step is one hand-off
 //! of the baton (`State::advance`). With the variable set to n, the run ends its process at step
 //! n + 1, with a message and `EXIT`. Unset, there is no limit. Read once at launch, as
-//! TRAME_MPI_NODE_RANKS is on mpi. The mutants check of validate (experiments/validate.nix) sets it,
+//! TRAME_MPI_NODE_RANKS is on mpi. The mutants check of validate (experiments/validate-mutants.nix) sets it,
 //! so a mutant that loops forever is killed by a count, not by the clock.
 
 extern crate std;

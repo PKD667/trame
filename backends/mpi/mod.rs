@@ -20,24 +20,24 @@
 
 mod epoch;
 mod futex;
-mod harness;
 mod gate;
+mod harness;
 mod imp;
 mod layout;
 mod leader;
 mod nodes;
+mod object;
 mod open;
 mod plan;
 mod poll;
-mod object;
 mod publish;
 mod recv;
+mod refusal;
 mod relay;
 mod relay_control;
 mod relay_in;
 mod relay_out;
 mod relay_routes;
-mod refusal;
 mod results;
 mod ring;
 mod shape;
@@ -62,7 +62,7 @@ pub use shape::encode;
 pub use state::finalize;
 
 pub use harness::{deadlocked, leader_join, returned};
-pub use types::{clock, Answer, Error, Event, Received, Role, RouteId};
+pub use types::{Answer, Error, Event, Received, Role, RouteId, clock};
 
 use layout::{Layout, RouteLayout};
 use nodes::Nodes;
@@ -90,11 +90,12 @@ pub struct Transport {
 }
 
 impl Drop for Transport {
-    /// A worker endpoint dropped without a result is an exit: signal it, without waiting for anyone
-    /// (gate.rs).
+    /// Dropped without a result: a worker exits (gate.rs); a leader dropped by a panic ends the run (leader.rs).
     fn drop(&mut self) {
         if self.me < self.lay.workers {
             self.exit();
+        } else if std::thread::panicking() {
+            self.leader_panicked();
         }
     }
 }
@@ -102,7 +103,17 @@ impl Drop for Transport {
 impl Transport {
     pub(crate) fn new(me: u32, win: Window, lay: Layout, nodes: Arc<Nodes>) -> Transport {
         let routes = lay.routes.len();
-        Transport { me, win, lay, nodes, generation: 0, cursor: vec![0; routes], rr: vec![0; routes], trace: None, publication: None }
+        Transport {
+            me,
+            win,
+            lay,
+            nodes,
+            generation: 0,
+            cursor: vec![0; routes],
+            rr: vec![0; routes],
+            trace: None,
+            publication: None,
+        }
     }
 
     /// The node table of this launch.

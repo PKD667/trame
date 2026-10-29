@@ -1,6 +1,6 @@
 # Credit return without sender progress (Open MPI 5.0.11, MIST, 2 ranks, cap 4, K 200)
 
-Command: `bash run.sh out` (matrix); `mpirun --oversubscribe -n 2 [--mca ...] ./out/progress MODE 4 K STALL_MS DIR`
+Commands: `bash run.sh out` (matrix), and `mpirun --oversubscribe -n 2 [--mca ...] ./out/progress MODE 4 K STALL_MS DIR`
 Sender waits for credit with plain loads (no MPI call), STALL_MS=200 before one MPI_Iprobe.
 analyze.py prints full_without_cap_outstanding (must be 0) and stall_events.
 

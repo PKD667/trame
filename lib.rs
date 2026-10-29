@@ -69,7 +69,7 @@ pub mod __rt;
 #[path = "check.rs"]
 pub mod __check;
 
-/// Numeric functions, grouped apart from the effects: `trame::math::exp` (spec.md 7).
+/// Numeric functions, grouped apart from the effects (spec.md 7).
 pub mod math;
 
 // The modules are private: the surface is the root re-exports below (spec.md 7). Their definition
@@ -81,12 +81,12 @@ mod time;
 mod topology;
 
 /// The surface of spec.md 7: every public name of the crate, at the root and nowhere else.
-pub use io::{barrier, recv, send, Full, Message};
+pub use io::{Full, Message, barrier, recv, send};
 pub use launch::Refused;
 pub use run::{Outcome, Run};
 pub use status::Status;
-pub use time::{now, Reading};
-pub use topology::{Context, Topology, WorkerId, LEADER};
+pub use time::{Reading, now};
+pub use topology::{Context, LEADER, Topology, WorkerId};
 
 #[cfg(all(feature = "seq", feature = "mpi"))]
 compile_error!("features `seq` and `mpi` are exclusive: one backend per build");

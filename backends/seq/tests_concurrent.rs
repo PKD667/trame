@@ -10,7 +10,7 @@ use crate::io;
 use crate::run::Outcome::Returned;
 use crate::run::Run;
 use crate::status::Status;
-use crate::topology::{Context, Topology, LEADER};
+use crate::topology::{Context, LEADER, Topology};
 use alloc::vec::Vec;
 
 /// One observation of a step, reported by the worker to the leader.
@@ -107,4 +107,3 @@ fn priority_order_and_no_overlap_on_a_shared_cell() {
         assert_eq!(run.join(), [Returned]);
     });
 }
-

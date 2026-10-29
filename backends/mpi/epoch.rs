@@ -9,19 +9,20 @@
 // does not sleep. If the bumper reads SLEEP = 1, it wakes the futex. The kernel sleeps only while
 // EPOCH still equals `seen`, so a bump between the check and the sleep makes the sleep return at once.
 //
-// Width. EPOCH is a u32, because the futex compares 32 bits. A waiter misses a bump only when the word
-// wraps back to the value it read: that needs a multiple of 2^32 bumps between its read and the kernel's
-// compare, and the smallest such count is exactly 2^32. Every bump after the waiter set SLEEP also wakes
-// it, so no single bump can be missed. The bound is a count, not a rate: at 2^32 bumps the argument
-// fails, and nothing here measures how close a run gets.
+// Width. EPOCH is a u32, because the futex compares 32 bits. A bump between the waiter's SLEEP store
+// and the kernel's compare wakes nobody, since nobody sleeps yet; the compare covers it, because EPOCH
+// no longer equals `seen`. That fails only when EPOCH has wrapped back to `seen`: a multiple of 2^32
+// bumps between the waiter's read and the compare, so at least 2^32. The bound is a count, not a rate,
+// and nothing here measures how close a run gets. proofs/mpi/Epoch.tla checks both statements on a
+// small word: no lost wake-up with 16 values and 3 bumps; a lost wake-up with 3 values at 3 bumps.
 
 extern crate std;
 
 use std::sync::atomic::Ordering::{Relaxed, SeqCst};
 use std::time::Duration;
 
-use super::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADER_SLEEP, RELAY_EPOCH, RELAY_SLEEP, START};
 use super::Transport;
+use super::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADER_SLEEP, RELAY_EPOCH, RELAY_SLEEP, START};
 
 impl Transport {
     /// The epoch word and the sleep flag of agent `w`: a worker's, or the leader's when `w` is the
@@ -108,7 +109,9 @@ impl Transport {
                 return;
             }
             self.win().word(s).store(1, SeqCst);
-            // The Dekker check: an act between the test above and the store is seen here.
+            // The Dekker check: an act between the test above and the store is seen here, without a
+            // syscall. The model (proofs/mpi/Epoch.tla) needs it for no property, because it puts the
+            // kernel's compare in the SeqCst order; the hardware argument for that read is not modelled.
             if self.win().word32(e).load(SeqCst) != seen {
                 self.win().word(s).store(0, Relaxed);
                 return;

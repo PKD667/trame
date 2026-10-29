@@ -13,17 +13,17 @@
 
 extern crate std;
 
-use std::sync::atomic::{fence, Ordering::{Acquire, Relaxed, Release, SeqCst}};
+use std::sync::atomic::{
+    Ordering::{Acquire, Relaxed, Release, SeqCst},
+    fence,
+};
 
-use super::layout::{RouteLayout, LINE, SLOT_HEAD};
-use super::types::{clock, Answer, Error, Event, RouteId};
 use super::Transport;
+use super::layout::{LINE, RouteLayout, SLOT_HEAD};
+use super::types::{Answer, Error, Event, RouteId, clock};
 
 pub(super) fn checked_seq(index: u64) -> Result<u64, Error> {
-    index
-        .checked_mul(2)
-        .and_then(|x| x.checked_add(2))
-        .ok_or(Error::Broken("frame index overflows the sequence word"))
+    index.checked_mul(2).and_then(|x| x.checked_add(2)).ok_or(Error::Broken("frame index overflows the sequence word"))
 }
 
 impl Transport {
@@ -52,11 +52,8 @@ impl Transport {
             fence(SeqCst);
         }
         let after = if tracing { clock() } else { 0 };
-        let answer = if r.lossy || p.checked_sub(c).is_some_and(|used| used < r.cap) {
-            Answer::Ok
-        } else {
-            Answer::Full
-        };
+        let answer =
+            if r.lossy || p.checked_sub(c).is_some_and(|used| used < r.cap) { Answer::Ok } else { Answer::Full };
         if answer == Answer::Ok {
             self.put(&r, p, msg)?;
             // Release: the frame's words are visible before P moves.

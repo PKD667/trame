@@ -11,11 +11,11 @@ use std::sync::atomic::Ordering::{self, AcqRel, Acquire, Relaxed, SeqCst};
 use std::vec;
 use std::vec::Vec;
 
-use super::layout::{ABORT_BIT, COUNT, DONE, GEN, K_ARRIVE, K_EXITED, K_OUTCOME, LINE, PUB_NO, RESULT};
+use super::Transport;
+use super::layout::{COUNT, DONE, GEN, K_ARRIVE, K_EXITED, K_OUTCOME, LINE, PUB_NO, RESULT};
 use super::publish::{deposit, set_publication};
 use super::relay::{self, Ctx, Release};
-use super::wire::{next, Record};
-use super::Transport;
+use super::wire::{Record, next};
 
 /// The thread's body. Returns when END arrives.
 pub(super) fn run(ctx: &Ctx) {
@@ -66,7 +66,8 @@ fn apply(ctx: &Ctx, rec: Record, round: &mut (u64, u32)) -> bool {
             round.1 += 1;
             if round.1 == t.nodes().arrivers {
                 *round = (0, 0);
-                let copied = deposit(t.win(), None).unwrap_or_else(|e| panic!("trame: could not read the deposit: {e}"));
+                let copied =
+                    deposit(t.win(), None).unwrap_or_else(|e| panic!("trame: could not read the deposit: {e}"));
                 let (no, bytes) = copied.expect("a deposit is copied when there is no `have`");
                 *ctx.release.lock().expect("trame: the release lock") = Some(Release { generation, no, bytes });
                 t.bump_relay();
@@ -76,7 +77,7 @@ fn apply(ctx: &Ctx, rec: Record, round: &mut (u64, u32)) -> bool {
             // Install the publication, then add the other nodes' share of COUNT, which makes this node's
             // releaser the one that stores GEN (gate.rs). The local workers are then released.
             if no > t.win().word(PUB_NO).load(Relaxed) {
-                set_publication(t.win(), no, &bytes);
+                set_publication(t.win(), no, bytes);
             }
             let share = u64::from(workers) - u64::from(t.nodes().local_workers);
             let c = t.win().word(COUNT).fetch_add(share, AcqRel) + share;
@@ -102,12 +103,11 @@ fn apply(ctx: &Ctx, rec: Record, round: &mut (u64, u32)) -> bool {
             t.win().word(t.lay().per_worker(K_EXITED, worker)).store(1, Ordering::Release);
             bump_local(t, workers);
         }
-        Record::Abort => {
-            // The flag first: `out` must see it before it sees the bit, to not send the abort back.
+        Record::Abort { worker, bytes } => {
+            // The flag first: `out` must see it before it sees the record, to not send the abort back.
+            // A record already made here (a local panic first) stays; the bytes are then not used.
             ctx.aborted.store(true, Ordering::Release);
-            t.win().word32(DONE).fetch_or(ABORT_BIT, AcqRel);
-            t.win().wake(DONE);
-            bump_local(t, workers + 1);
+            t.record_abort(worker, bytes);
         }
         Record::End => {
             ctx.ended.store(true, Ordering::Release);

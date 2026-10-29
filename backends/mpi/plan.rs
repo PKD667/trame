@@ -10,7 +10,7 @@ use std::vec;
 use std::vec::Vec;
 
 use crate::launch::{Plan, Refused};
-use crate::topology::{WorkerId, LEADER};
+use crate::topology::{LEADER, WorkerId};
 
 use super::{Route, RouteId, Topology};
 
@@ -79,7 +79,8 @@ pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
                 tags.len() - 1
             }
         };
-        let cap = u32::try_from(r.cap).map_err(|_| Refused::Backend { reason: "a route's capacity does not fit in 32 bits" })?;
+        let cap = u32::try_from(r.cap)
+            .map_err(|_| Refused::Backend { reason: "a route's capacity does not fit in 32 bits" })?;
         routes.push(Route {
             from: rank_of(r.from, workers),
             to: rank_of(r.to, workers),

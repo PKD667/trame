@@ -28,7 +28,7 @@ The structural condition behind that bound:
 > No such path iterates over all workers W, all routes R or all nodes N.
 
 A loop over W or R that runs once per run (launch, `join`, finalize) is allowed. The barrier is the
-one operation that must involve every node; its cost is allowed to grow, but only as log N in depth
+one operation that must involve every node. Its cost is allowed to grow, but only as log N in depth
 and O(k) per node, for a fixed fan-out k.
 
 ## Where the backend breaks locality today
@@ -45,16 +45,16 @@ and O(k) per node, for a fixed fan-out k.
 The first row is the one that matters. A ring of W = 1024 workers with 8 routes each makes the relay
 read 8192 route records on every wake, whichever node it runs on, so its cost per frame grows with
 N under weak scaling. NODES.md's table already states the intended cost ("routes with one end on the
-node"); the code does not meet it.
+node"), and the code does not meet it.
 
 The barrier is not fixed by argument alone. A star costs the root about 2(N - 1) message handlings
-and two network latencies; a tree costs 2 log_k N latencies and O(k) handlings per node. At N = 32
+and two network latencies. A tree costs 2 log_k N latencies and O(k) handlings per node. At N = 32
 with a 10 µs latency the two are close, so the fan-out k is a constant in `nodes.rs`, chosen from
 the measured barrier curve (k >= N - 1 is the star). One mechanism, one constant, set by data.
 
 ## What does not change
 
-- **Futex waits.** A worker waiting for a remote frame sleeps; the relay's `in` thread wakes it.
+- **Futex waits.** A worker waiting for a remote frame sleeps, and the relay's `in` thread wakes it.
   A sleep and a wake cost a few microseconds that a polling MPI program does not pay. This is a choice
   (no spinning workers), and its price is part of the overhead constant. The proxy benchmark below
   measures it.
@@ -62,8 +62,8 @@ the measured barrier curve (k >= N - 1 is the star). One mechanism, one constant
   `cpu` dataset.
 - **One sender per node.** All cross-node frames of a node leave through one thread. This is a cost
   (serialisation) and a gain (frames to the same node share one MPI message: at most N - 1 messages
-  per wake, whatever the number of workers). Which one dominates depends on message size and degree;
-  the proxy benchmark sweeps both.
+  per wake, whatever the number of workers). Which one dominates depends on message size and degree.
+  The proxy benchmark sweeps both.
 
 ## The proxy benchmark
 
@@ -72,14 +72,14 @@ block of work. Each step it computes for a fixed number of iterations, sends one
 its D out-neighbours, receives one from each of its D in-neighbours, and starts the next step.
 
 - **Graph.** A circulant graph: D distinct offsets drawn from 1..W-1 by a seeded generator, the same
-  in Rust and in C; worker w sends to (w + o) mod W for each offset o. In-degree equals out-degree
+  in Rust and in C. Worker w sends to (w + o) mod W for each offset o. In-degree equals out-degree
   equals D, and with offsets drawn over the whole range most edges cross nodes: the worst placement.
 - **Compute.** ITERS rounds of a fixed integer recurrence (xorshift), so the work is identical in both
   implementations and does not depend on a clock. Each worker records its compute time separately.
-- **Weak scaling.** ITERS and the workers per node are fixed; N grows.
-- **Strong scaling.** ITERS x W is fixed; N grows, and the compute per worker shrinks.
+- **Weak scaling.** ITERS and the workers per node are fixed, and N grows.
+- **Strong scaling.** ITERS x W is fixed. N grows, and the compute per worker shrinks.
 - **Baseline.** `baseline/graph.c` does the same with `MPI_Irecv`, `MPI_Isend`, `MPI_Waitall`.
-- **Result.** Each worker times STEPS steps after a warm-up on its own clock; the runner records every
+- **Result.** Each worker times STEPS steps after a warm-up on its own clock, and the runner records every
   worker's time. A step's cost is set by the slowest worker, so claims use the maximum and the median.
 
 ## Claims

@@ -12,18 +12,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::vec;
 
 use mpi::collective::SystemOperation;
-use mpi::environment::{threading_support, Threading};
+use mpi::environment::{Threading, threading_support};
 use mpi::topology::SimpleCommunicator;
 use mpi::traits::*;
 
+use super::Transport;
 use super::layout::Topology;
 use super::nodes::{discover, node_ranks_setting, split_groups};
-use super::relay;
 use super::refusal::Refusal;
+use super::relay;
 use super::shape::{encode, plan};
 use super::shm::Window;
-use super::types::{clock, Role};
-use super::Transport;
+use super::types::{Role, clock};
 
 /// Every rank of the launch checks that it was given the same bytes. Collective over `world`: every
 /// rank calls it, and every rank gets the same answer. The bytes of the last rank (the leader, when

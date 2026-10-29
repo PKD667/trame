@@ -7,7 +7,7 @@
 mod common;
 
 use core::time::Duration;
-use trame::{Context, Reading, Status, Topology, LEADER};
+use trame::{Context, LEADER, Reading, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -67,7 +67,10 @@ fn main() {
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     common::collect::<Report>(&run, w, |r| {
-        println!("{{\"bench\":\"idle\",\"workers\":{w},\"worker\":{},\"seconds\":{seconds},\"ns\":{}}}", r.worker, r.ns);
+        println!(
+            "{{\"bench\":\"idle\",\"workers\":{w},\"worker\":{},\"seconds\":{seconds},\"ns\":{}}}",
+            r.worker, r.ns
+        );
     });
     common::finish(run);
 }

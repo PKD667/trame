@@ -48,7 +48,11 @@ pub(crate) fn node_ranks_setting() -> Result<Option<i32>, String> {
 
 /// Cut the shared-memory communicator `shared` into groups of `k` consecutive world ranks. Collective
 /// over `shared`. The result is the node communicator for the window and the relay.
-pub(crate) fn split_groups(world: &SimpleCommunicator, shared: &SimpleCommunicator, k: i32) -> Option<SimpleCommunicator> {
+pub(crate) fn split_groups(
+    world: &SimpleCommunicator,
+    shared: &SimpleCommunicator,
+    k: i32,
+) -> Option<SimpleCommunicator> {
     shared.split_by_color(Color::with_value(world.rank() / k))
 }
 
@@ -58,7 +62,7 @@ pub(crate) fn split_groups(world: &SimpleCommunicator, shared: &SimpleCommunicat
 /// test is `count - local` a multiple of W: it holds exactly at j = local. `local` = W is covered, and
 /// `local` = 0 never completes (that node has no arrivals).
 pub(crate) fn arrival_done(count: u64, workers: u64, local: u64) -> Option<u64> {
-    if local == 0 || count < local || (count - local) % workers != 0 {
+    if local == 0 || count < local || !(count - local).is_multiple_of(workers) {
         return None;
     }
     Some((count - local) / workers + 1)
@@ -70,16 +74,13 @@ pub(crate) fn discover(world: &SimpleCommunicator, node: &SimpleCommunicator) ->
     let rank = world.rank();
     let mut low = 0i32;
     node.all_reduce_into(&rank, &mut low, SystemOperation::min());
-    let mut lows = Vec::new();
-    lows.resize(world.size() as usize, 0i32);
+    let mut lows: Vec<i32> = std::vec![0i32; world.size() as usize];
     world.all_gather_into(&low, &mut lows[..]);
     let mut relay_rank = lows.clone();
     relay_rank.sort_unstable();
     relay_rank.dedup();
-    let node_of: Vec<u32> = lows
-        .iter()
-        .map(|l| relay_rank.binary_search(l).expect("every lowest rank is in the table") as u32)
-        .collect();
+    let node_of: Vec<u32> =
+        lows.iter().map(|l| relay_rank.binary_search(l).expect("every lowest rank is in the table") as u32).collect();
     let me = node_of[rank as usize];
     let workers = world.size() as usize - 1;
     let local: Vec<u32> = (0..node_of.len() as u32).filter(|&w| node_of[w as usize] == me).collect();

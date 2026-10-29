@@ -5,7 +5,7 @@ extern crate std;
 
 use std::sync::atomic::Ordering::Acquire;
 
-use super::layout::{RouteLayout, LINE};
+use super::layout::{LINE, RouteLayout};
 use super::relay_out::Out;
 use super::wire::Record;
 

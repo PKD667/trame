@@ -1,6 +1,6 @@
 // The worker's side: every operation acts for this process's worker endpoint (state.rs). Each one
 // first checks for an abort. An aborted run ends this worker at its next effect (spec.md 5, Abort):
-// the check unwinds with `Aborted`, which the worker's catch_unwind (imp.rs) records as Abort.
+// the check unwinds with `Aborted`, which the worker's catch_unwind (imp.rs) records as its own result.
 
 extern crate std;
 
@@ -10,10 +10,10 @@ use std::panic::resume_unwind;
 
 use crate::io::Full;
 use crate::time::ClockId;
-use std::sync::Arc;
 use crate::topology::WorkerId;
+use std::sync::Arc;
 
-use super::plan::{self, rank_of, Entry};
+use super::plan::{self, Entry, rank_of};
 use super::state::local;
 use super::types::{Answer, Error, Received};
 use super::{RouteId, Transport};

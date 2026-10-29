@@ -2,7 +2,7 @@
 //! command on its own route, with its own message type, so the leader's output per worker is in the
 //! order that worker sent. The leader prints the answers, then the outcomes.
 
-use trame::{Context, Outcome, Status, Topology, LEADER};
+use trame::{Context, LEADER, Outcome, Status, Topology};
 
 const N: u32 = 3;
 

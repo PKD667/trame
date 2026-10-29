@@ -4,22 +4,22 @@
 
 extern crate std;
 
+use super::Selected;
 use super::limit;
 use super::state::{Abandoned, Phase, Route, Shared, State};
-use super::Selected;
 use crate::backend::Backend;
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
-use crate::run::Outcome;
+use crate::run::{Outcome, panic_message};
 use crate::time::ClockId;
-use crate::topology::{Context, WorkerId, LEADER};
+use crate::topology::{Context, LEADER, WorkerId};
 use std::boxed::Box;
 use std::cell::RefCell;
-use std::thread_local;
-use std::vec;
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::thread_local;
 use std::time::{Duration, Instant};
+use std::vec;
 use std::vec::Vec;
 
 /// One launched run, as the leader holds it.
@@ -71,6 +71,18 @@ fn turn_effect<T>(op: impl FnOnce(&mut State, usize) -> T, bump: bool) -> T {
     answer
 }
 
+/// The leader's check, before each of its calls: an aborted run panics the leader, naming the worker
+/// and its message (spec.md 5, Abort). The guard is released before the panic, so the Mutex is not
+/// poisoned for the leader's own calls.
+fn leader_check(st: MutexGuard<'_, State>) -> MutexGuard<'_, State> {
+    if let Some((w, msg)) = &st.panic {
+        let text = std::format!("trame: worker {w} panicked: {msg}");
+        drop(st);
+        panic!("{text}");
+    }
+    st
+}
+
 /// The body of a worker's thread. A worker that returns hands the baton on. A panic aborts the run.
 fn worker_main(shared: Arc<Shared>, me: usize, f: Box<dyn Fn(&Context) + Send>, ctx: Context) {
     CURRENT.with(|c| *c.borrow_mut() = Some((shared.clone(), me)));
@@ -87,8 +99,8 @@ fn worker_main(shared: Arc<Shared>, me: usize, f: Box<dyn Fn(&Context) + Send>, 
             st.acts += 1;
         }
         Err(payload) if payload.is::<Abandoned>() => {}
-        Err(_) => {
-            st.abort_all();
+        Err(payload) => {
+            st.abort_all(Some((me, panic_message(&*payload))));
             st.acts += 1;
         }
     }
@@ -117,6 +129,7 @@ impl Backend for Selected {
                 buf: vec![0; bytes],
                 head: 0,
                 len: 0,
+                taken: 0,
             });
         }
         let limit = limit::setting().map_err(|reason| Refused::Backend { reason })?;
@@ -124,8 +137,9 @@ impl Backend for Selected {
             phase: vec![Phase::Ready; n],
             turn: None,
             aborted: false,
+            panic: None,
             routes,
-            cursor: 0,
+            takes: 0,
             publication: Arc::from(plan.publication),
             pending: None,
             epoch: Instant::now(),
@@ -138,7 +152,7 @@ impl Backend for Selected {
             let ctx = Context::new(WorkerId(i as u32), ids.clone());
             let sh = shared.clone();
             if std::thread::Builder::new().spawn(move || worker_main(sh, i, f, ctx)).is_err() {
-                shared.lock().abort_all();
+                shared.lock().abort_all(None);
                 shared.changed.notify_all();
                 return Err(Refused::Backend { reason: "could not start a worker thread" });
             }
@@ -219,10 +233,13 @@ impl Backend for Selected {
     }
 
     fn worker_now() -> (ClockId, u64) {
-        turn_effect(|st, _| {
-            let nanos = u64::try_from(st.epoch.elapsed().as_nanos()).unwrap_or(u64::MAX);
-            (ClockId::new(0), nanos)
-        }, false)
+        turn_effect(
+            |st, _| {
+                let nanos = u64::try_from(st.epoch.elapsed().as_nanos()).unwrap_or(u64::MAX);
+                (ClockId::new(0), nanos)
+            },
+            false,
+        )
     }
 
     fn worker_barrier() -> Arc<[u8]> {
@@ -237,8 +254,14 @@ impl Backend for Selected {
         current().0.lock().publication.clone()
     }
 
-    fn leader_send(run: &Run, to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
-        let mut st = run.shared.lock();
+    fn leader_send(
+        run: &Run,
+        to: WorkerId,
+        ty: core::any::TypeId,
+        name: &'static str,
+        bytes: &[u8],
+    ) -> Result<(), Full> {
+        let mut st = leader_check(run.shared.lock());
         let answer = match st.route(LEADER, to, ty) {
             Some(i) => st.push(i, bytes),
             None => panic!("trame: the leader has no route to {to:?} for {name}"),
@@ -250,7 +273,7 @@ impl Backend for Selected {
 
     fn leader_recv(run: &Run, ty: core::any::TypeId, out: &mut [u8]) -> bool {
         // A take frees room on a route, so it wakes a worker that waits for room.
-        let mut st = run.shared.lock();
+        let mut st = leader_check(run.shared.lock());
         let taken = st.take(LEADER, ty, out);
         if taken {
             st.acts += 1;
@@ -260,7 +283,7 @@ impl Backend for Selected {
     }
 
     fn leader_publish(run: &Run, bytes: &[u8]) {
-        let mut st = run.shared.lock();
+        let mut st = leader_check(run.shared.lock());
         st.pending = Some(Arc::from(bytes));
         st.acts += 1;
         run.shared.changed.notify_all();
@@ -268,32 +291,33 @@ impl Backend for Selected {
 
     fn leader_wait(run: &Run, seen: u64) -> u64 {
         // Every act bumps `acts` and wakes the leader (turn_effect, the leader's ops, a result).
-        let mut st = run.shared.lock();
+        let mut st = leader_check(run.shared.lock());
         while st.acts == seen {
+            // Stuck: this call can never return (spec.md 5, Deadlock). The guard is released first.
+            if st.leader_stuck() {
+                drop(st);
+                panic!("trame: deadlock: the leader waits and nothing can arrive");
+            }
             st = run.shared.park(st);
+            st = leader_check(st);
         }
         st.acts
     }
 
     fn leader_join(run: Run) -> Vec<Outcome> {
         let shared = run.shared;
-        let mut st = shared.lock();
+        let mut st = leader_check(shared.lock());
         // The leader sends nothing after join. A worker that is still able to move is waited for.
         // When none is, and no idle worker has seen a change since it went idle, the run is stuck
         // (spec.md 5, Deadlock): every agent without a result gets deadlock. An idle worker with a
         // deadline is not stuck: it moves when time passes, so join waits for the earliest one.
         while st.phase.iter().any(|p| !matches!(p, Phase::Done(_))) {
-            let ready = st.phase.iter().any(|p| *p == Phase::Ready);
-            let pending = st.phase.iter().any(|p| matches!(p, Phase::Idle(seen, _) if *seen != st.acts));
-            if ready || pending {
+            st = leader_check(st);
+            if st.worker_moves_now() {
                 st = shared.park(st);
                 continue;
             }
-            let deadline = st.phase.iter().filter_map(|p| match p {
-                Phase::Idle(_, Some(t)) => Some(*t),
-                _ => None,
-            }).min();
-            if let Some(t) = deadline {
+            if let Some(t) = st.earliest_deadline() {
                 let elapsed = u64::try_from(st.epoch.elapsed().as_nanos()).unwrap_or(u64::MAX);
                 // Past the deadline, the worker wakes itself and notifies: a plain wait is enough.
                 st = match t.checked_sub(elapsed) {

@@ -4,7 +4,7 @@
 //! step never runs inside a writer's step: each writer step ends, the reader wakes, and it checks again.
 //! The worker logs each step to the leader, and the leader prints the log in arrival order.
 
-use trame::{Context, Outcome, Status, Topology, LEADER};
+use trame::{Context, LEADER, Outcome, Status, Topology};
 
 const READER: u32 = 0;
 const WRITER: u32 = 1;

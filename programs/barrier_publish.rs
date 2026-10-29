@@ -5,7 +5,7 @@
 //! The order is forced: barrier r cannot fire before every gate passed, and every gate waits for a
 //! `Go` sent after publish r. So each worker sees exactly "round r" at barrier r, on either backend.
 
-use trame::{Context, Outcome, Status, Topology, LEADER};
+use trame::{Context, LEADER, Outcome, Status, Topology};
 
 const WORKERS: u32 = 3;
 const ROUNDS: u32 = 10;
@@ -99,7 +99,8 @@ fn main() {
                 run.wait();
             }
         }
-        let line: Vec<String> = seen.iter().enumerate().map(|(w, s)| format!("worker {w} saw {}", s.unwrap())).collect();
+        let line: Vec<String> =
+            seen.iter().enumerate().map(|(w, s)| format!("worker {w} saw {}", s.unwrap())).collect();
         println!("round {r}: {}", line.join(", "));
     }
     println!("published {ROUNDS} rounds");

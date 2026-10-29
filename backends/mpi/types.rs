@@ -36,7 +36,7 @@ pub enum Error {
     /// The barrier can never complete: a worker returned while others wait at it (spec.md 5,
     /// Deadlock). The waiter ends with `Outcome::Deadlock`.
     Deadlock,
-    /// The run aborted while this worker waited at the barrier. The waiter ends with `Outcome::Abort`.
+    /// The run aborted while this worker waited at the barrier. The waiter unwinds; its run is aborted.
     Aborted,
     /// The endpoint sends on a route it does not send on, or receives on one it does not receive.
     NotYours(RouteId),

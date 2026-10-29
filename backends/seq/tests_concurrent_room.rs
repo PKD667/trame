@@ -3,11 +3,11 @@
 
 extern crate std;
 
-use super::tests_concurrent::{collect, Ev, Gate};
+use super::tests_concurrent::{Ev, Gate, collect};
 use crate::io::{self, Full};
 use crate::run::Outcome::Returned;
 use crate::status::Status;
-use crate::topology::{Context, Topology, LEADER};
+use crate::topology::{Context, LEADER, Topology};
 
 use super::tests::within_10s;
 

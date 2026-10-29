@@ -42,7 +42,13 @@ static LOCAL: Slot = Slot(UnsafeCell::new(None));
 pub(super) fn local() -> &'static mut Local {
     // SAFETY: one thread per rank (see the module comment), and no reference is held across calls.
     let slot = unsafe { &mut *LOCAL.0.get() };
-    slot.get_or_insert_with(|| Local { world: None, entries: Vec::new(), inbox: Vec::new(), endpoint: None, relay: None })
+    slot.get_or_insert_with(|| Local {
+        world: None,
+        entries: Vec::new(),
+        inbox: Vec::new(),
+        endpoint: None,
+        relay: None,
+    })
 }
 
 /// The MPI world of this process. MPI is initialised once; the universe is forgotten, not dropped,

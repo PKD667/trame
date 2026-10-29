@@ -8,7 +8,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
-use trame::__mpi::{clock, deadlocked, launch, leader_join, returned, Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport};
+use trame::__mpi::{
+    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, deadlocked, launch, leader_join,
+    returned,
+};
 
 pub(crate) fn overwrite(world: &mpi::topology::SimpleCommunicator, args: &[String]) {
     let seed = arg_num(args, "--seed", 1);
@@ -55,14 +58,17 @@ pub(crate) fn overwrite(world: &mpi::topology::SimpleCommunicator, args: &[Strin
         let owned = [r];
         let last = msgs - 1;
         if late {
-            // Every frame has been sent: the route must hold exactly the newest cap frames.
-            let mut got = Vec::new();
-            while let Received::Message(_) = t.recv(&owned, &mut buf).expect("recv") {
-                got.push(u64::from_le_bytes(buf[4..12].try_into().unwrap()));
+            // Every frame has been sent, but a send only queues it: the frames reach this node later (spec.md 6,
+            // Progress: "eventually"), so a barrier does not bound it. Receive until the newest frame arrives: the
+            // frames seen are increasing, and the newest is kept.
+            let mut got: Vec<u64> = Vec::new();
+            while got.last() != Some(&last) {
+                if let Received::Message(_) = t.recv(&owned, &mut buf).expect("recv") {
+                    got.push(u64::from_le_bytes(buf[4..12].try_into().unwrap()));
+                }
             }
-            let want: Vec<u64> = (msgs.saturating_sub(u64::from(cap))..msgs).collect();
-            assert_eq!(got, want, "late read: expected the newest {cap} frames");
-            println!("overwrite rank 1 (late): got the newest {cap} frames {got:?}");
+            assert!(got.windows(2).all(|w| w[0] < w[1]), "late read reordered: {got:?}");
+            println!("overwrite rank 1 (late): {} of {msgs} frames seen, increasing, newest {last} kept", got.len());
         } else {
             // Concurrent with the sender: the frames seen are increasing and the newest is kept.
             let mut prev: Option<u64> = None;

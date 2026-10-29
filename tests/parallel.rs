@@ -1,7 +1,7 @@
 //! `parallel!` (spec.md 5.4) against a reference fold. Needs `--cfg trame_checked`, as every use of
 //! `parallel!` does: without it this file does not compile, by design.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 /// One input: the slot it folds into, and its value.
 #[derive(Clone, Copy)]
@@ -60,9 +60,8 @@ fn parallel_equals_the_reference_fold_on_1000_random_inputs() {
     for case in 0..1000 {
         let n_slots = 1 + rng.below(8) as usize;
         let n_items = rng.below(40) as usize;
-        let items: Vec<Work> = (0..n_items)
-            .map(|_| Work { key: rng.below(n_slots as u64) as u32, value: rng.next() })
-            .collect();
+        let items: Vec<Work> =
+            (0..n_items).map(|_| Work { key: rng.below(n_slots as u64) as u32, value: rng.next() }).collect();
         let start: Vec<u64> = (0..n_slots).map(|_| rng.next()).collect();
         let cx = Ctx { salt: rng.next() };
 
@@ -80,12 +79,8 @@ fn parallel_equals_the_reference_fold_on_1000_random_inputs() {
 fn a_key_without_a_slot_aborts_before_any_item_runs() {
     let cx = Ctx { salt: 1 };
     // The first two inputs are valid and would change their slots if they ran.
-    let items = [
-        Work { key: 0, value: 5 },
-        Work { key: 1, value: 6 },
-        Work { key: 9, value: 7 },
-        Work { key: 0, value: 8 },
-    ];
+    let items =
+        [Work { key: 0, value: 5 }, Work { key: 1, value: 6 }, Work { key: 9, value: 7 }, Work { key: 0, value: 8 }];
     let mut slots = [10_u64, 20];
     let r = catch_unwind(AssertUnwindSafe(|| trame::parallel!(fold, &cx, &items, &mut slots)));
     let msg = r.expect_err("a key without a slot must abort");

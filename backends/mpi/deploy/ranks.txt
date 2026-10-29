@@ -1,10 +1,12 @@
 # MPI ranks per program, read by programs/run.sh, flake.nix and the experiments.
 # Format: <program> <ranks>. The launch refuses any other rank count (open.rs agree).
+# A program with no row does not run on mpi; every programs/*.rs runs on seq.
 ping_pong 3
 leader_io 3
 full 3
 lossy 3
 abort 3
+abort_join 3
 refuse 3
 barrier_publish 4
 barrier_deadlock 4
@@ -14,3 +16,11 @@ wait_room 2
 wait_until 2
 err 2
 join_deadline 2
+start_order 2
+refuse_dup 3
+err_done 2
+frame_other 2
+until_calls 2
+room_spin 2
+take_rotate 3
+leader_panics 2

@@ -25,11 +25,11 @@ workers: tens to a hundred nodes of 16 to 64 cores.
     the local agents it concerns.
 
   Only `out` sends and only `in` receives, so a blocked send never stops a receive, and MPI's
-  ordering between one pair of ranks keeps every route FIFO. This needs `MPI_THREAD_MULTIPLE`; a
+  ordering between one pair of ranks keeps every route FIFO. This needs `MPI_THREAD_MULTIPLE`, and a
   multi-node launch without it is refused.
 - **The cost.** Open MPI's blocking receive spins in its progress loop, so `in` keeps one core busy
   on every node for the whole run. Workers still sleep in the kernel. The scaling benchmarks measure
-  this cost; a socket transport that sleeps would replace `in` without changing anything else.
+  this cost. A socket transport that sleeps would replace `in` without changing anything else.
 
 With one node there is no relay, no thread and no extra MPI call: the backend is the one-node
 backend.
@@ -49,7 +49,7 @@ $P_A - C_A$ is $\mathrm{held}(r)$ (spec 5.2), and A's C moving is **Release**. `
 exactly when $\mathrm{held}(r) = c$: a slot consumed on B but not yet credited on A still counts,
 as **Release** allows. B's ring cannot overflow: a frame with index $i$ was sent only when
 $i < C_A + c \leq C_B + c$. A lossy route has no credits. A's `out` sends the newest frames it can
-read; a frame overwritten before it is read is a **Drop**, and B's ring overwrites as on one node.
+read. A frame overwritten before it is read is a **Drop**, and B's ring overwrites as on one node.
 
 ## Control
 
@@ -63,9 +63,9 @@ The relay of the leader's node is the root.
   therefore installs the same publication at the same generation.
 - **Results and exits.** `out` sends each new local outcome and each new exit to every other node.
   `in` stores them, so `join` on the leader's node and the barrier's Deadlock check see every worker.
-- **Abort.** `out` sends the abort bit once, and `in` sets it locally and wakes every local agent.
+- **Abort.** `out` sends the abort record once (the panicking worker's rank and its message), and `in` records it locally, sets the bit and wakes every local agent.
   An abort that arrived is not sent again.
-- **End.** After `join`, the leader sets END and bumps the relay; the root sends END to every node.
+- **End.** After `join`, the leader sets END and bumps the relay, and the root sends END to every node.
   Each relay stops, and its process calls `MPI_Finalize` only after both threads have stopped.
 
 Not built yet: detecting that nothing can move after `join` (counting waves over the relays). The

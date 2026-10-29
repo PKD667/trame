@@ -4,7 +4,7 @@
 use crate::backend::{Backend, Selected};
 use crate::topology::WorkerId;
 use alloc::sync::Arc;
-use core::any::{type_name, TypeId};
+use core::any::{TypeId, type_name};
 
 /// A message type: plain data, sent as its bytes. Every `Pod` type is one (bytemuck: no padding, no
 /// pointer or reference, every bit pattern a value), so numbers, arrays of them and structs of them
@@ -55,9 +55,5 @@ pub fn barrier() -> Arc<[u8]> {
 /// backend wrote are a valid `M`, and the frame's size is `size_of::<M>()` by the topology check.
 pub(crate) fn read<M: Message>(take: impl FnOnce(&mut [u8]) -> bool) -> Option<M> {
     let mut out = <M as Message>::zeroed();
-    if take(crate::__bytemuck::bytes_of_mut(&mut out)) {
-        Some(out)
-    } else {
-        None
-    }
+    if take(crate::__bytemuck::bytes_of_mut(&mut out)) { Some(out) } else { None }
 }

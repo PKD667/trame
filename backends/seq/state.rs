@@ -3,11 +3,12 @@
 
 extern crate std;
 
+use super::limit;
 use crate::io::Full;
 use crate::run::Outcome;
 use crate::topology::WorkerId;
-use super::limit;
 use std::any::TypeId;
+use std::string::String;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 use std::vec::Vec;
@@ -38,6 +39,8 @@ pub(super) struct Route {
     pub buf: Vec<u8>,
     pub head: usize,
     pub len: usize,
+    /// The number of the take that last took a frame from this route; 0 before the first.
+    pub taken: u64,
 }
 
 impl Route {
@@ -51,9 +54,12 @@ pub(super) struct State {
     /// The worker that holds the baton, or `None` when no worker can run.
     pub turn: Option<usize>,
     pub aborted: bool,
+    /// The first panic of the run: the worker's index and its message. Set with `aborted` by a panic;
+    /// `None` when the run aborted without one (a worker thread that could not start).
+    pub panic: Option<(usize, String)>,
     pub routes: Vec<Route>,
-    /// Where the next `take` starts its scan over the routes, so no route is favoured.
-    pub cursor: usize,
+    /// The takes so far, numbering them for `Route::taken`.
+    pub takes: u64,
     /// The publication of the host, shared with the guards workers hold (see io::Publication).
     pub publication: Arc<[u8]>,
     /// A publication the leader made, installed when the barrier next fires.
@@ -130,12 +136,13 @@ impl State {
         }
     }
 
-    /// A panic ended the run: every agent without a result gets `Abort`, and no baton is held.
-    pub fn abort_all(&mut self) {
+    /// The run aborted: no baton is held, and every agent unwinds at its next effect. The first panic
+    /// is kept; a later one does not replace it. The leader's next call panics with it (ops.rs).
+    pub fn abort_all(&mut self, panic: Option<(usize, String)>) {
         self.aborted = true;
         self.turn = None;
-        for p in self.phase.iter_mut().filter(|p| !matches!(p, Phase::Done(_))) {
-            *p = Phase::Done(Outcome::Abort);
+        if self.panic.is_none() {
+            self.panic = panic;
         }
     }
 
@@ -168,22 +175,23 @@ impl State {
         Ok(())
     }
 
-    /// Copy the oldest frame of the first route to `to` with tag `ty` that has one into `out`, and
-    /// drop it from the route. Scans from the rotating cursor. Answers `false` when none has one.
+    /// Copy the oldest frame of a route to `to` with tag `ty` into `out`, and drop it from the route.
+    /// Of the routes that have a frame, the one taken least recently is taken: a route that keeps a
+    /// frame is then taken within one round of its siblings, whatever is taken in between (spec.md 6,
+    /// Progress). A cursor shared by every route and tag is not enough: a periodic mix of takes can
+    /// bring it back to the same route each time. Answers `false` when no route has a frame.
     pub fn take(&mut self, to: WorkerId, ty: TypeId, out: &mut [u8]) -> bool {
-        let n = self.routes.len();
-        for k in 0..n {
-            let i = (self.cursor + k) % n;
-            let r = &mut self.routes[i];
-            if r.to == to && r.ty == ty && r.len > 0 {
-                let range = r.slot(r.head);
-                out.copy_from_slice(&r.buf[range]);
-                r.head = (r.head + 1) % r.cap;
-                r.len -= 1;
-                self.cursor = (i + 1) % n;
-                return true;
-            }
-        }
-        false
+        let next = self.takes + 1;
+        let Some(r) = self.routes.iter_mut().filter(|r| r.to == to && r.ty == ty && r.len > 0).min_by_key(|r| r.taken)
+        else {
+            return false;
+        };
+        let range = r.slot(r.head);
+        out.copy_from_slice(&r.buf[range]);
+        r.head = (r.head + 1) % r.cap;
+        r.len -= 1;
+        r.taken = next;
+        self.takes = next;
+        true
     }
 }

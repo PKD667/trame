@@ -5,13 +5,11 @@
 extern crate std;
 
 use super::tests::within_10s;
-use super::tests_concurrent::{collect, report, Ev, Gate};
+use super::tests_concurrent::{Ev, Gate, collect, report};
 use crate::io;
 use crate::run::Outcome::Returned;
 use crate::status::Status;
-use crate::topology::{Context, Topology, LEADER};
-use std::thread;
-use std::time::Duration;
+use crate::topology::{Context, LEADER, Topology};
 
 #[crate::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -25,8 +23,9 @@ pub(super) struct Other {
     pub id: u32,
 }
 
-/// Owns `Job`. Each step reports `100 + count`. A step waits for a `Job`, and an `Other` frame is not
-/// an offer to it: it must not wake, so the count stays put until the `Job` arrives.
+/// Owns `Job`. Each step takes a `Job` if there is one, then reports `100 + count`. The take comes
+/// first so step 1 cannot see a `Job` the leader sends after reading 101: the program has one
+/// execution. An `Other` frame is not an offer to it, so it waits until the `Job` arrives.
 struct Frames {
     count: u32,
 }
@@ -35,8 +34,9 @@ struct Frames {
 impl Frames {
     fn step(&mut self, _g: &mut Gate) -> Status {
         self.count += 1;
+        let job = io::recv::<Job>();
         report(100 + self.count);
-        match io::recv::<Job>() {
+        match job {
             Some(_) => Status::Done,
             None => Status::wait().frame(),
         }
@@ -60,9 +60,9 @@ fn a_frame_wait_wakes_on_an_owned_type_only() {
         g.route::<Other>(LEADER, w, 4);
         let run = g.launch().expect("accepted");
         assert_eq!(collect(&run, 1), [101], "the first step waits for a job");
+        // That `Other` does not wake the process is programs/frame_other's check (a step count);
+        // here it only must stay queued while the `Job` is taken.
         run.send(w, Other { id: 1 }).expect("room");
-        thread::sleep(Duration::from_millis(50));
-        assert!(run.recv::<Ev>().is_none(), "an unowned frame woke the process");
         run.send(w, Job { id: 2 }).expect("room");
         assert_eq!(collect(&run, 1), [102]);
         assert_eq!(run.join(), [Returned]);
@@ -116,4 +116,3 @@ fn a_process_cannot_receive_a_type_it_does_not_own_and_its_frames_stay_queued() 
         assert_eq!(run.join(), [Returned]);
     });
 }
-

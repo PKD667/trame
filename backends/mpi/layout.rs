@@ -20,6 +20,9 @@
 //   RELAY_EPOCH            u32, moves on every act a node's relay must act on (NODES.md); unused on one node
 //   RELAY_SLEEP            1 while the relay sleeps on RELAY_EPOCH
 //   END                    1 once the leader has joined (NODES.md, End); unused on one node
+//   ABORT_WORKER           the rank of the worker whose panic aborted the run (its first abort; the
+//                          message is the object `<window>-abort-0`, written before DONE's bit is set)
+//   ABORT_LEN              the length of that message
 //   ARRIVE                 per worker, five lines each, kind k of worker w at ARRIVE + 64 (k W + w):
 //                            k=0 ARRIVE   last barrier generation it arrived at
 //                            k=1 EXITED   1 once the worker has returned (barrier, deadlock)
@@ -50,7 +53,9 @@ pub(crate) const LEADER_SLEEP: usize = LEADER_EPOCH + LINE;
 pub(crate) const RELAY_EPOCH: usize = LEADER_SLEEP + LINE;
 pub(crate) const RELAY_SLEEP: usize = RELAY_EPOCH + LINE;
 pub(crate) const END: usize = RELAY_SLEEP + LINE;
-pub(crate) const ARRIVE: usize = END + LINE;
+pub(crate) const ABORT_WORKER: usize = END + LINE;
+pub(crate) const ABORT_LEN: usize = ABORT_WORKER + LINE;
+pub(crate) const ARRIVE: usize = ABORT_LEN + LINE;
 /// Header lines per worker, one per kind listed above.
 pub(crate) const WORKER_LINES: usize = 5;
 pub(crate) const K_ARRIVE: usize = 0;
@@ -63,7 +68,8 @@ pub(crate) const SLOT_HEAD: usize = 8;
 pub(crate) const ABORT_BIT: u32 = 1;
 /// Each worker with a result adds this to DONE, so DONE / RESULT counts them.
 pub(crate) const RESULT: u32 = 2;
-/// Outcome words: what a worker's `run` came to. Zero means no result yet.
+/// Outcome words: what a worker's `run` came to. Zero means no result yet. A panicking worker sets
+/// OUT_ABORT only so that its own result is set: the leader panics before it reads any word (results.rs).
 pub(crate) const OUT_RETURNED: u64 = 1;
 pub(crate) const OUT_ABORT: u64 = 2;
 /// The worker was stuck at a barrier and ended with Deadlock (spec.md 5, Deadlock).

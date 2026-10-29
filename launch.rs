@@ -1,7 +1,7 @@
 //! Launch checks: spec.md section 4, "Launch checks". A topology that fails them never starts a
 //! worker. The checks are the trame part of acceptance; the backend adds its own refusals.
 
-use crate::topology::{Context, WorkerId, LEADER};
+use crate::topology::{Context, LEADER, WorkerId};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::any::TypeId;
@@ -32,13 +32,16 @@ pub(crate) struct Route {
     pub lossy: bool,
 }
 
+/// One worker's run.
+pub(crate) type WorkerFn = Box<dyn Fn(&Context) + Send>;
+
 /// A topology as the surface built it, before the checks. The backend receives it only after
 /// `check` passes.
 #[derive(Default)]
 pub(crate) struct Plan {
     /// Each worker's run, boxed: a generic `Topology::worker` cannot keep a fn pointer. `Send`, since a
     /// backend may start each worker on a thread of its own.
-    pub workers: Vec<Box<dyn Fn(&Context) + Send>>,
+    pub workers: Vec<WorkerFn>,
     pub routes: Vec<Route>,
     pub publication: Vec<u8>,
 }
@@ -55,9 +58,7 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
         if r.cap == 0 {
             return Err(Refused::ZeroCapacity { name: r.name });
         }
-        let dup = plan.routes[..i]
-            .iter()
-            .any(|q| q.from == r.from && q.to == r.to && q.ty == r.ty);
+        let dup = plan.routes[..i].iter().any(|q| q.from == r.from && q.to == r.to && q.ty == r.ty);
         if dup {
             return Err(Refused::Duplicate { from: r.from, to: r.to, name: r.name });
         }

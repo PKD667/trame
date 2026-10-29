@@ -3,7 +3,7 @@
 //! `concurrent!` must answer `Fails`'s error at once, and `Idle` must never step again. The worker reports
 //! the code it got back to the leader; the run returns normally.
 
-use trame::{Context, Outcome, Status, Topology, LEADER};
+use trame::{Context, LEADER, Outcome, Status, Topology};
 
 #[derive(Debug, PartialEq, Eq)]
 struct Boom(u32);

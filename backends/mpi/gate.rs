@@ -17,8 +17,8 @@
 
 extern crate std;
 
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, Release, SeqCst};
 use std::sync::Arc;
+use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, Release, SeqCst};
 
 use super::layout::{COUNT, GEN, K_ARRIVE, K_EXITED, PUB_LEN, PUB_NO};
 use super::nodes::arrival_done;
@@ -36,7 +36,7 @@ impl Transport {
         let arrive = self.lay().per_worker(K_ARRIVE, self.me());
         self.win().word(arrive).store(g, Release);
         let c = self.win().word(COUNT).fetch_add(1, AcqRel) + 1;
-        if self.nodes().count == 1 && c % n == 0 {
+        if self.nodes().count == 1 && c.is_multiple_of(n) {
             self.install()?;
             self.win().word(GEN).store(c / n, SeqCst);
             for w in 0..self.lay().workers {
@@ -82,10 +82,10 @@ impl Transport {
     /// object gone here means the run aborted and the leader ended it (`unlink_publication`).
     fn snapshot(&mut self) -> Result<Arc<[u8]>, Error> {
         let no = self.win().word(PUB_NO).load(Acquire);
-        if let Some((seen, bytes)) = &self.publication {
-            if *seen == no {
-                return Ok(bytes.clone());
-            }
+        if let Some((seen, bytes)) = &self.publication
+            && *seen == no
+        {
+            return Ok(bytes.clone());
         }
         let len = self.win().word(PUB_LEN).load(Relaxed) as usize;
         let name = self.win().object("pub", no);

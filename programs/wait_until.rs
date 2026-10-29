@@ -2,7 +2,7 @@
 //! (`Status::wait().until`). It logs only once the deadline has passed, so an early wake changes nothing. The
 //! leader prints that it woke; no times are printed.
 
-use trame::{Context, Outcome, Reading, Status, Topology, LEADER};
+use trame::{Context, LEADER, Outcome, Reading, Status, Topology};
 
 const WAIT_NANOS: u64 = 20_000_000;
 

@@ -16,8 +16,8 @@ use std::vec::Vec;
 
 use mpi::ffi;
 
-use super::state::local;
 use super::Transport;
+use super::state::local;
 
 /// A release the root's `in` has decided and `out` must send: barrier generation `generation`, with
 /// publication `no` and its bytes.
@@ -113,9 +113,7 @@ pub(super) fn start(t: &Transport, comm: ffi::MPI_Comm) {
 /// Send `bytes` to world rank `dest` as one message, with tag 0. Blocking. Never MPI_Bsend.
 pub(super) fn send(comm: Comm, dest: i32, bytes: &[u8]) {
     let count = i32::try_from(bytes.len()).expect("a relay message fits in i32");
-    let rc = unsafe {
-        ffi::MPI_Send(bytes.as_ptr() as *const c_void, count, ffi::RSMPI_UINT8_T, dest, 0, comm.0)
-    };
+    let rc = unsafe { ffi::MPI_Send(bytes.as_ptr() as *const c_void, count, ffi::RSMPI_UINT8_T, dest, 0, comm.0) };
     assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_Send to rank {dest} failed");
 }
 

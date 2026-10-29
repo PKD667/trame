@@ -1,7 +1,7 @@
 // What the test harnesses call at the end of a run. They stand in for the runner (imp.rs) and the
 // leader (leader.rs), which do the same things on the real path.
 
-use super::{layout, Transport};
+use super::{Transport, layout};
 
 /// For the test harnesses, which stand in for the runner (imp.rs) and the leader (leader.rs): a
 /// worker that returns records its result, as the runner does.
@@ -18,5 +18,6 @@ pub fn deadlocked(t: &Transport) {
 /// worker's result, then ends the relays (NODES.md, End).
 pub fn leader_join(t: &Transport) {
     t.join();
+    t.fail_if_aborted();
     t.end_run();
 }

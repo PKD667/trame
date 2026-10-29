@@ -1,7 +1,9 @@
 //! abort: worker 0 panics before it sends anything. Worker 1 waits for a frame that never comes, so
-//! only the abort can end it. The leader reports Abort for both workers, and the run does not hang.
+//! only the abort can end it. The leader is blocked in `Run::wait`, and the panic of worker 0 ends the
+//! leader's call: it panics with `trame: worker 0 panicked: worker 0 fails on purpose` (abort.panics).
+//! abort_join.rs is the same with the leader in `join`.
 
-use trame::{Context, Outcome, Status, Topology};
+use trame::{Context, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -47,6 +49,8 @@ fn main() {
             return;
         }
     };
-    let outcomes: Vec<Outcome> = run.join();
-    println!("outcomes: {outcomes:?}");
+    // Blocks until the run changes for the leader; the abort is a change, and it panics the leader.
+    loop {
+        run.wait();
+    }
 }

@@ -3,7 +3,7 @@
 //! overwrite has already happened and the output does not depend on timing: the four newest frames
 //! survive. Worker 1 reports them to the leader, which prints them and the outcomes.
 
-use trame::{Context, Outcome, Status, Topology, WorkerId, LEADER};
+use trame::{Context, LEADER, Outcome, Status, Topology, WorkerId};
 
 const SENT: u32 = 10;
 

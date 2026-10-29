@@ -12,8 +12,8 @@ use std::sync::atomic::Ordering::Acquire;
 use std::vec;
 use std::vec::Vec;
 
-use super::relay::{send, Ctx};
-use super::wire::{put, Record, BATCH};
+use super::relay::{Ctx, send};
+use super::wire::{BATCH, Record, put};
 
 /// The out thread's state. Only this thread touches it.
 pub(super) struct Out<'a> {

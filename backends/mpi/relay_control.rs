@@ -21,11 +21,11 @@ impl Out<'_> {
         let workers = t.lay().workers;
         let root = nodes.node_of[workers as usize] as usize;
         let c = t.win().word(COUNT).load(Acquire);
-        if let Some(g) = arrival_done(c, u64::from(workers), u64::from(nodes.local_workers)) {
-            if g > self.reported {
-                self.reported = g;
-                self.push(root, &Record::Arrived { generation: g });
-            }
+        if let Some(g) = arrival_done(c, u64::from(workers), u64::from(nodes.local_workers))
+            && g > self.reported
+        {
+            self.reported = g;
+            self.push(root, &Record::Arrived { generation: g });
         }
         // The local agents in rank order; the leader's rank W, if it is here, comes last and is not a worker.
         for &w in nodes.local.iter().take_while(|&&w| w < workers) {
@@ -34,20 +34,21 @@ impl Out<'_> {
                 let outcome = t.win().word(t.lay().per_worker(K_OUTCOME, w)).load(Acquire);
                 if outcome != 0 {
                     self.result_sent[wi] = true;
-                    self.to_others(me, &Record::Result { worker: w, outcome });
+                    self.queue_others(me, &Record::Result { worker: w, outcome });
                 }
             }
             if !self.exit_sent[wi] && t.win().word(t.lay().per_worker(K_EXITED, w)).load(Acquire) == 1 {
                 // Exited first, then arrived (gate.rs): the arrive word is final by now.
                 let arrive = t.win().word(t.lay().per_worker(K_ARRIVE, w)).load(Acquire);
                 self.exit_sent[wi] = true;
-                self.to_others(me, &Record::Exited { worker: w, arrive });
+                self.queue_others(me, &Record::Exited { worker: w, arrive });
             }
         }
         // An abort this node has, and did not get from the network, goes to every other node once.
         if t.aborted() && !self.abort_sent && !ctx.aborted.load(Acquire) {
             self.abort_sent = true;
-            self.to_others(me, &Record::Abort);
+            let (worker, bytes) = t.abort_record();
+            self.queue_others(me, &Record::Abort { worker, bytes: &bytes });
         }
         if me == root {
             let release = ctx.release.lock().expect("trame: the release lock").take();
@@ -66,7 +67,7 @@ impl Out<'_> {
     }
 
     /// Queue `r` for every node but `me`.
-    fn to_others(&mut self, me: usize, r: &Record) {
+    fn queue_others(&mut self, me: usize, r: &Record) {
         for n in 0..self.bufs.len() {
             if n != me {
                 self.push(n, r);

@@ -5,12 +5,12 @@
 extern crate std;
 
 use super::tests::within_10s;
-use super::tests_concurrent::{collect, report, Ev, Gate};
+use super::tests_concurrent::{Ev, Gate, collect, report};
 use super::tests_concurrent_io::Job;
 use crate::io;
 use crate::run::Outcome::{Deadlock, Returned};
 use crate::status::Status;
-use crate::topology::{Context, Topology, LEADER};
+use crate::topology::{Context, LEADER, Topology};
 
 /// Owns `Job`, and waits for one. Reports the id of each job it gets.
 struct Await;

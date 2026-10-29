@@ -3,7 +3,7 @@
 //! blocked, so the block is certain: the second send finds the route full. The process reports the block
 //! once. The leader prints the items in order, so a wake that never comes shows as a hang, not a mismatch.
 
-use trame::{Context, Outcome, Status, Topology, LEADER};
+use trame::{Context, LEADER, Outcome, Status, Topology};
 
 const ITEMS: u32 = 3;
 

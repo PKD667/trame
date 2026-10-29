@@ -3,10 +3,10 @@
 
 extern crate std;
 
-use super::tests::{await_frame, within_10s, Ping, Pong};
+use super::tests::{Ping, Pong, await_frame, within_10s};
 use crate::io;
 use crate::run::Outcome;
-use crate::topology::{Context, Topology, LEADER};
+use crate::topology::{Context, LEADER, Topology};
 
 /// A worker's report: its index, and whether each barrier showed the expected publication.
 #[crate::message]
