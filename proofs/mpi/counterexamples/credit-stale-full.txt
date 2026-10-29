@@ -1,0 +1,121 @@
+Counterexample (expected): a "stale Full" on one lossless route, C = 2, N = 4
+
+Produced by: tlc -workers 4 -deadlock MCCreditFull.tla   (in proofs/mpi; TLC2 Version 2.19, tlaplus 1.7.4)
+Invariant: StaleFull (Credit.tla). It is EXPECTED to fail: the state it rejects is allowed by spec 5.2.
+Meaning: the sender reports Full (P_A - C_A = C) with every frame at B (P_A = P_B) and room at B
+(P_B - C_B < C). The room is a consumption (Took) whose credit has not reached A. Not a bug: the
+sender waits for a credit that is on its way.
+
+Map of the steps (Credit.tla line -> code, file:line in backends/mpi):
+  step 2, 3  Send (Credit.tla 32-34)     the sender writes frame 0, then 1: the route is full at 2 = C.
+                                         NODES.md step 1; the Full test is P - C_A < c (NODES.md "Full").
+  step 4     AStart (37-40)              relay_out.rs:75-76: scan() starts; snap := P_A (relay_routes.rs:32).
+  step 5, 6  ASend (42-46)               relay_routes.rs:37-40: push Frames 0, then 1 (NODES.md step 2).
+  step 7, 8  BIn (55-59)                 NODES.md step 3: B's in writes slots 0, 1 and stores P_B = 2.
+  step 9     BTake (62-64)               NODES.md step 4: v receives frame 0, C_B := 1 (the Took).
+  (not yet)  BOut (67-71)                relay_routes.rs:50-59: B's out reads C_B and sends the credit
+                                         only at its next scan. Until A's in stores it (NODES.md step 5),
+                                         C_A = 0, and held = 2 = C.
+
+At step 9: P_A = 2, C_A = 0, P_B = 2, C_B = 1. B has one free slot; A's view says held = C.
+
+step 1: <Initial predicate>
+/\ credited = 0
+/\ CA = 0
+/\ CB = 0
+/\ wireAB = <<>>
+/\ PA = 0
+/\ PB = 0
+/\ wireBA = <<>>
+/\ FA = 0
+/\ snap = 0
+/\ pcA = "idle"
+
+step 2: <Send line 32, col 9 to line 34, col 76 of module Credit>
+/\ credited = 0
+/\ CA = 0
+/\ CB = 0
+/\ wireAB = <<>>
+/\ PA = 1
+/\ PB = 0
+/\ wireBA = <<>>
+/\ FA = 0
+/\ snap = 0
+/\ pcA = "idle"
+
+step 3: <Send line 32, col 9 to line 34, col 76 of module Credit>
+/\ credited = 0
+/\ CA = 0
+/\ CB = 0
+/\ wireAB = <<>>
+/\ PA = 2
+/\ PB = 0
+/\ wireBA = <<>>
+/\ FA = 0
+/\ snap = 0
+/\ pcA = "idle"
+
+step 4: <AStart line 37, col 11 to line 40, col 71 of module Credit>
+/\ credited = 0
+/\ CA = 0
+/\ CB = 0
+/\ wireAB = <<>>
+/\ PA = 2
+/\ PB = 0
+/\ wireBA = <<>>
+/\ FA = 0
+/\ snap = 2
+/\ pcA = "send"
+
+step 5: <ASend line 42, col 10 to line 46, col 64 of module Credit>
+/\ credited = 0
+/\ CA = 0
+/\ CB = 0
+/\ wireAB = <<0>>
+/\ PA = 2
+/\ PB = 0
+/\ wireBA = <<>>
+/\ FA = 1
+/\ snap = 2
+/\ pcA = "send"
+
+step 6: <ASend line 42, col 10 to line 46, col 64 of module Credit>
+/\ credited = 0
+/\ CA = 0
+/\ CB = 0
+/\ wireAB = <<0, 1>>
+/\ PA = 2
+/\ PB = 0
+/\ wireBA = <<>>
+/\ FA = 2
+/\ snap = 2
+/\ pcA = "send"
+
+step 7: <BIn line 55, col 8 to line 59, col 67 of module Credit>
+/\ credited = 0
+/\ CA = 0
+/\ CB = 0
+/\ wireAB = <<1>>
+/\ PA = 2
+/\ PB = 1
+/\ wireBA = <<>>
+/\ FA = 2
+/\ snap = 2
+/\ pcA = "send"
+
+step 8: <BIn line 55, col 8 to line 59, col 67 of module Credit>
+/\ credited = 0
+/\ CA = 0
+/\ CB = 0
+/\ wireAB = <<>>
+/\ PA = 2
+/\ PB = 2
+/\ wireBA = <<>>
+/\ FA = 2
+/\ snap = 2
+/\ pcA = "send"
+
+step 9: <BTake line 62, col 10 to line 64, col 77 of module Credit>
+
+TLC footer (first violation, the run stops):
+97 states generated, 53 distinct states found, 6 states left on queue.

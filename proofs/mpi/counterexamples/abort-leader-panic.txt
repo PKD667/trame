@@ -1,0 +1,105 @@
+Counterexample: the leader panics after an abort arrived, and no END is ever sent (FIX = FALSE, as coded)
+
+Produced by: tlc -workers 4 -deadlock MCAbort.tla   (in proofs/mpi; TLC2 Version 2.19, tlaplus 1.7.4)
+Result: "Temporal properties were violated": Live (an abort on some node ends every rank and stops every
+relay) fails. Reach holds in the same run. The run has 3 nodes, root = 0 (holds the leader).
+With FIX = TRUE (MCAbortFix.cfg) the same model holds: 1780 distinct states, no error.
+
+Map of the steps (Abort.tla line -> code, file:line in backends/mpi):
+  step 2  WPanic(2)  (34-39)  a worker on node 2 panics; its node records the abort: record_abort
+                              (results.rs:54-70), sets the bit, and the out thread has a record to send.
+  step 3  Out(2)     (60-63)  NODES.md "Abort": out sends the record once, to nodes 0 and 1.
+  step 4  In(0)      (66-69)  the root's in records it: the abort bit on node 0 is set; the leader's
+                              wait is woken by the same record (results.rs:54-70: the record wakes the node's waiters).
+  step 5  WPanic(0)  (34-39)  the worker on the root node panics too; its node already has the bit, so
+                              record_abort keeps the first record and nothing is sent.
+  step 6  In(1)      (66-69)  node 1 records the abort.
+  step 7  WPanic(1)  (34-39)  the worker on node 1 ends.
+  step 8  LPanic     (42-48)  the leader panics before its next leader call. leader_panicked
+                              (leader.rs:28-37): aborted() is TRUE (leader.rs:32), so it RETURNS at
+                              line 33. end_run (leader.rs:36, results.rs:141-150) is not called, so
+                              the END word stays 0 (endw = FALSE).
+  end        no action is enabled. RootOut needs endw; EndIn needs END in flight; no relay stops.
+
+Consequence (not checked in the code): with no END, the relay threads never stop, and NODES.md says
+the process calls MPI_Finalize only after both threads have stopped. Whether the launch then hangs
+depends on whether the host waits for the relay thread at exit; this model does not say.
+
+Why the window is real: the leader calls fail_if_aborted at its next call (results.rs:112-124), and
+that call sets END. Between the arrival of an abort on the root node (step 4) and that call, the
+leader can panic from its own code (step 8). This is a race, not a common path.
+
+The trace below is TLC's output, with the steps renumbered as above (TLC's state 1 is step 1).
+
+step 1: <Initial predicate>
+/\ endSent = FALSE
+/\ ab = {}
+/\ flight = {}
+/\ endFlight = {}
+/\ ldone = FALSE
+/\ pend = {}
+/\ endw = FALSE
+/\ wdone = {}
+/\ stopped = {}
+step 2: <WPanic line 34, col 14 to line 39, col 78 of module Abort>
+/\ endSent = FALSE
+/\ ab = {2}
+/\ flight = {}
+/\ endFlight = {}
+/\ ldone = FALSE
+/\ pend = {2}
+/\ endw = FALSE
+/\ wdone = {2}
+/\ stopped = {}
+step 3: <Out line 60, col 11 to line 63, col 78 of module Abort>
+/\ endSent = FALSE
+/\ ab = {2}
+/\ flight = {0, 1}
+/\ endFlight = {}
+/\ ldone = FALSE
+/\ pend = {}
+/\ endw = FALSE
+/\ wdone = {2}
+/\ stopped = {}
+step 4: <In line 66, col 10 to line 69, col 79 of module Abort>
+/\ endSent = FALSE
+/\ ab = {0, 2}
+/\ flight = {1}
+/\ endFlight = {}
+/\ ldone = FALSE
+/\ pend = {}
+/\ endw = FALSE
+/\ wdone = {2}
+/\ stopped = {}
+step 5: <WPanic line 34, col 14 to line 39, col 78 of module Abort>
+/\ endSent = FALSE
+/\ ab = {0, 2}
+/\ flight = {1}
+/\ endFlight = {}
+/\ ldone = FALSE
+/\ pend = {}
+/\ endw = FALSE
+/\ wdone = {0, 2}
+/\ stopped = {}
+step 6: <In line 66, col 10 to line 69, col 79 of module Abort>
+/\ endSent = FALSE
+/\ ab = {0, 1, 2}
+/\ flight = {}
+/\ endFlight = {}
+/\ ldone = FALSE
+/\ pend = {}
+/\ endw = FALSE
+/\ wdone = {0, 2}
+/\ stopped = {}
+step 7: <WPanic line 34, col 14 to line 39, col 78 of module Abort>
+/\ endSent = FALSE
+/\ ab = {0, 1, 2}
+/\ flight = {}
+/\ endFlight = {}
+/\ ldone = FALSE
+/\ pend = {}
+/\ endw = FALSE
+/\ wdone = {0, 1, 2}
+/\ stopped = {}
+step 8: <LPanic line 42, col 11 to line 48, col 69 of module Abort>
+step 9: (stuttering: no action enabled)

@@ -1,0 +1,137 @@
+Counterexample: a lost wake-up at a 1-bit epoch word (W = 2, K = 2 bumps)
+
+Produced by: nix-pinned tlc (tlaplus 1.7.4, TLC2 Version 2.19 of 08 August 2024), command
+  tlc -workers 4 -deadlock MCEpochWrap.tla      (in proofs/mpi; exit code 12 = invariant violated)
+Model: Epoch.tla. Bounds: W = 2, K = 2. The run is deterministic in content; state order may differ.
+
+Map of the model's steps to the code (file:line in backends/mpi):
+  W1  Epoch.tla 41-44  epoch.rs:40     the caller reads the epoch word: seen := E
+  W2  Epoch.tla 46-48  caller          the caller's condition: no frame yet, so it must wait
+  W2b Epoch.tla 50-52  epoch.rs:103    sleep_on's first test: E = seen, so it does not return
+  W3  Epoch.tla 54-57  epoch.rs:110    SLEEP := 1
+  W4  Epoch.tla 59-63  epoch.rs:112    the Dekker re-read: E = seen, so it does not return
+  B1  Epoch.tla 79-82  bump's caller   the act: the frame is stored (cond := TRUE)
+  B2  Epoch.tla 84-88  epoch.rs:51     fetch_add(1): E moves to 1, then (second bump) back to 0
+  B3  Epoch.tla 90-93  epoch.rs:52-53  the bumper loads SLEEP = 1 and calls wake; the waiter is not
+                                       in the kernel, so the wake finds no sleeper and does nothing
+  Kern Epoch.tla 66-70 futex.rs:24-25  FUTEX_WAIT compares the word with seen: 0 = 0, so it sleeps
+
+Result: at the last state the waiter is in the kernel (pcw = fw), its condition is true (cond = TRUE),
+and the bumper is done (pcb = done). No later bump exists to wake it, so the waiter sleeps for ever.
+
+The numbered steps below are the steps of the TLC trace, in order. Step 1 is the initial state.
+Steps 8 and 11 (B2) are the two bumps that return E to the value the waiter read: the wrap.
+
+step 1: <Initial predicate>
+/\ sleep = 0
+/\ pcb = "b1"
+/\ seen = 0
+/\ pcw = "r1"
+/\ cond = FALSE
+/\ E = 0
+/\ bumps = 0
+
+step 2: <W1 line 41, col 7 to line 44, col 49 of module Epoch>
+/\ sleep = 0
+/\ pcb = "b1"
+/\ seen = 0
+/\ pcw = "r2"
+/\ cond = FALSE
+/\ E = 0
+/\ bumps = 0
+
+step 3: <W2 line 46, col 7 to line 48, col 55 of module Epoch>
+/\ sleep = 0
+/\ pcb = "b1"
+/\ seen = 0
+/\ pcw = "r2b"
+/\ cond = FALSE
+/\ E = 0
+/\ bumps = 0
+
+step 4: <W2b line 50, col 8 to line 52, col 56 of module Epoch>
+/\ sleep = 0
+/\ pcb = "b1"
+/\ seen = 0
+/\ pcw = "r3"
+/\ cond = FALSE
+/\ E = 0
+/\ bumps = 0
+
+step 5: <W3 line 54, col 7 to line 57, col 48 of module Epoch>
+/\ sleep = 1
+/\ pcb = "b1"
+/\ seen = 0
+/\ pcw = "r4"
+/\ cond = FALSE
+/\ E = 0
+/\ bumps = 0
+
+step 6: <W4 line 59, col 7 to line 63, col 48 of module Epoch>
+/\ sleep = 1
+/\ pcb = "b1"
+/\ seen = 0
+/\ pcw = "kern"
+/\ cond = FALSE
+/\ E = 0
+/\ bumps = 0
+
+step 7: <B1 line 79, col 7 to line 82, col 49 of module Epoch>
+/\ sleep = 1
+/\ pcb = "b2"
+/\ seen = 0
+/\ pcw = "kern"
+/\ cond = TRUE
+/\ E = 0
+/\ bumps = 0
+
+step 8: <B2 line 84, col 7 to line 88, col 45 of module Epoch>
+/\ sleep = 1
+/\ pcb = "b3"
+/\ seen = 0
+/\ pcw = "kern"
+/\ cond = TRUE
+/\ E = 1
+/\ bumps = 1
+
+step 9: <B3 line 90, col 7 to line 93, col 50 of module Epoch>
+/\ sleep = 1
+/\ pcb = "b1"
+/\ seen = 0
+/\ pcw = "kern"
+/\ cond = TRUE
+/\ E = 1
+/\ bumps = 1
+
+step 10: <B1 line 79, col 7 to line 82, col 49 of module Epoch>
+/\ sleep = 1
+/\ pcb = "b2"
+/\ seen = 0
+/\ pcw = "kern"
+/\ cond = TRUE
+/\ E = 1
+/\ bumps = 1
+
+step 11: <B2 line 84, col 7 to line 88, col 45 of module Epoch>
+/\ sleep = 1
+/\ pcb = "b3"
+/\ seen = 0
+/\ pcw = "kern"
+/\ cond = TRUE
+/\ E = 0
+/\ bumps = 2
+
+step 12: <B3 line 90, col 7 to line 93, col 50 of module Epoch>
+/\ sleep = 1
+/\ pcb = "done"
+/\ seen = 0
+/\ pcw = "kern"
+/\ cond = TRUE
+/\ E = 0
+/\ bumps = 2
+
+step 13: <Kern line 66, col 9 to line 70, col 50 of module Epoch>
+
+TLC footer:
+110 states generated, 67 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 13.
