@@ -30,7 +30,8 @@ import proc
 # The MCA parameter of OpenMPI's launch agent for remote daemons (rsh/ssh launch).
 AGENT_MCA = "plm_rsh_agent"
 
-# Verbatim from the orchestrator's verified wrapper: the two variables are command prefixes, unquoted on purpose.
+# The launch agent. NIX_DEPLOY_RSH and NIX_DEPLOY_ENTER are set by nixsci's deploy (deploy/group.py,
+# deploy/backend.py, in the nixsci repository); they are command prefixes, unquoted on purpose.
 AGENT_SCRIPT = '#!/bin/sh\nhost="$1"; shift; exec $NIX_DEPLOY_RSH "$host" $NIX_DEPLOY_ENTER "$@"\n'
 
 

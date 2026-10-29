@@ -38,7 +38,9 @@
       trameFiles = pkgs.lib.fileset.unions ([
           ./Cargo.toml
           ./Cargo.lock
+          ./README.md
           ./macros
+          ./math
           ./backends/seq
           ./programs
           ./tests
@@ -53,6 +55,17 @@
       rejectionsSrc = pkgs.lib.fileset.toSource {
         root = ./.;
         fileset = pkgs.lib.fileset.unions [ trameFiles (pkgs.lib.fileset.difference ./rejections (pkgs.lib.fileset.maybeMissing ./rejections/target)) ];
+      };
+      fmtSrc = pkgs.lib.fileset.toSource {
+        root = ./.;
+        fileset = pkgs.lib.fileset.unions [
+          ./rustfmt.toml
+          (pkgs.lib.fileset.difference (pkgs.lib.fileset.fileFilter (f: f.hasExt "rs") ./.) (pkgs.lib.fileset.unions [
+            ./rejections
+            (pkgs.lib.fileset.maybeMissing ./backends/nv)
+            (pkgs.lib.fileset.maybeMissing ./backends/mpi/mpi-rma)
+          ]))
+        ];
       };
       mpiDeps = import ./backends/mpi/dependencies.nix { inherit pkgs; };
       trameMpiBinsWith = patches: pkgs.rustPlatform.buildRustPackage {
@@ -76,7 +89,7 @@
           runHook preInstall
           mkdir -p $out/bin $out/share/expected
           rel=target/${pkgs.stdenv.hostPlatform.rust.rustcTarget}/release
-          for p in $(awk '!/^#/ && NF { print $1 }' backends/mpi/deploy/ranks.txt) scale_barrier scale_ring scale_idle scale_fanin scale_graph; do
+          for p in ${pkgs.lib.concatStringsSep " " mpiPrograms} scale_barrier scale_ring scale_idle scale_fanin scale_graph; do
             cp $rel/examples/$p $out/bin/
           done
           cp $rel/check $rel/latency $out/bin/
@@ -88,8 +101,11 @@
         '';
       };
       trameMpiBins = trameMpiBinsWith [ ];
-      # The program table (backends/mpi/deploy/ranks.txt, `<program> <ranks>` per line): the programs both backends run.
-      programNames = map (l: builtins.head (pkgs.lib.splitString " " l))
+      # The two program lists (programs/run.sh says the same in words). seq runs every programs/*.rs; mpi runs
+      # the rows of backends/mpi/deploy/ranks.txt (`<program> <ranks>` per line), so a program without a row is seq only.
+      seqPrograms = map (n: pkgs.lib.removeSuffix ".rs" n)
+        (builtins.filter (n: pkgs.lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ./programs)));
+      mpiPrograms = map (l: builtins.head (pkgs.lib.splitString " " l))
         (builtins.filter (l: l != "" && !pkgs.lib.hasPrefix "#" l)
           (pkgs.lib.splitString "\n" (builtins.readFile ./backends/mpi/deploy/ranks.txt)));
       # The seq backend: the default build, one process per program (programs/run.sh, seq).
@@ -101,13 +117,13 @@
         cargoLock.lockFile = ./Cargo.lock;
         # Every program is built with the checked cfg (programs/run.sh).
         RUSTFLAGS = "--cfg trame_checked";
-        cargoBuildFlags = map (p: "--example ${p}") programNames;
+        cargoBuildFlags = map (p: "--example ${p}") seqPrograms;
         doCheck = false;
         installPhase = ''
           runHook preInstall
           mkdir -p $out/bin $out/share/expected
           rel=target/${pkgs.stdenv.hostPlatform.rust.rustcTarget}/release
-          for p in ${pkgs.lib.concatStringsSep " " programNames}; do
+          for p in ${pkgs.lib.concatStringsSep " " seqPrograms}; do
             cp $rel/examples/$p $out/bin/
           done
           cp programs/*.expected $out/share/expected/
@@ -131,6 +147,7 @@
           BIN = "${bins}/bin";
           EXPECTED = "${bins}/share/expected";
           RANKS_FILE = "${./backends/mpi/deploy/ranks.txt}";
+          PANICS = "${./programs}";
         };
         runtime = labRuntime;
       };
@@ -230,7 +247,7 @@
       # The deterministic checks: nixsci validate verdicts (experiments/validate.nix).
       v = nixsci.lib.validate { inherit pkgs; };
       suite = v.suite (import ./experiments/validate.nix {
-        inherit pkgs v trameSeqBins programNames driverToolchain trameDriver;
+        inherit pkgs v trameSeqBins seqPrograms driverToolchain trameDriver;
         trameSrc = trameMpiSrc;
         rejectionsSrc = rejectionsSrc;
       });
@@ -239,16 +256,22 @@
           dependencies = import (./backends + "/${backend}/dependencies.nix") { inherit pkgs; };
         in
         pkgs.mkShell {
-          packages = [ pkgs.rustc pkgs.cargo ] ++ dependencies.packages ++ extra;
+          packages = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt ] ++ dependencies.packages ++ extra;
           shellHook = builtins.concatStringsSep "\n" (
             builtins.attrValues (builtins.mapAttrs (name: value: "export ${name}=${value}") dependencies.env)
           );
         };
     in {
       validate.${system} = suite;
-      # mutants-seq is a verdict but not yet a gate: seven catalogue mutants survive every program
-      # (conformance/README.md). It stays in the table, where it reads `no`, until programs observe them.
-      checks.${system} = builtins.removeAttrs suite.checks [ "mutants-seq" ];
+      # The verdicts, and one style for the Rust sources (rustfmt.toml). rejections/ is left out: its cases
+      # carry line-anchored annotations.
+      checks.${system} = suite.checks // {
+        fmt = pkgs.runCommand "trame-fmt" { nativeBuildInputs = [ pkgs.rustfmt pkgs.findutils ]; } ''
+          cd ${fmtSrc}
+          find . -name '*.rs' -print0 | xargs -0 rustfmt --check --edition 2024 --config-path rustfmt.toml
+          touch $out
+        '';
+      };
       packages.${system} = {
         trame-driver = trameDriver;
         trame-mpi-bins = trameMpiBins;
@@ -257,7 +280,7 @@
       lab.${system}.experiments = experiments;
       apps.${system} = builtins.mapAttrs (_: e: e.run) experiments;
       devShells.${system} = {
-        default = pkgs.mkShell { packages = [ pkgs.rustc pkgs.cargo ]; };
+        default = pkgs.mkShell { packages = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt ]; };
         # GNU time: experiments/scale.py measures per-rank CPU with it.
         mpi = mkBackendShell "mpi" [ pkgs.time ];
         # The pinned nightly, for building driver/ with `cargo` (see driver/README.md). The shell

@@ -128,7 +128,7 @@ items, so these lists are trusted.
 > recurses nor allocates. It writes only its slot.
 
 > **Definition (Counted loop).** A loop is counted when it is a `for` over a range, a slice or an
-> array that the body does not mutate.
+> array, or over one of these reversed, that the body does not mutate.
 
 Counted loops over an acyclic call graph are LOOP programs (Meyer & Ritchie, 1967), and LOOP
 programs always terminate. This is why every step returns. It bounds the work of a step but not
@@ -157,8 +157,12 @@ only on its inputs, so items stay deterministic.
 
 > **Requirement (Floating point).** Floating point follows IEEE 754 with round to nearest even, no
 > FMA contraction and no flush to zero. Results are bit-identical except for the sign and payload
-> of NaNs, which Rust leaves unspecified. Each numeric function trame provides, such as `trame::math::exp`,
-> is defined by one portable code, lives in `trame::math`, and has no backend-specific version.
+> of NaNs, which Rust leaves unspecified. An operation is allowed at every level when Rust
+> specifies its result bit for bit: the arithmetic operators, negation, comparisons, `abs`,
+> `copysign`, `signum`, `clamp`, `total_cmp`, the classification predicates (`is_nan`,
+> `is_finite`, ...), `to_bits` and `from_bits`. `max` and `min` are not among them: the sign of a
+> zero result is unspecified. Every other numeric function comes from `trame::math`, where it is defined by one
+> portable code with no backend-specific version.
 
 > **Requirement (Checked builds).** The driver compiles with `--cfg trame_checked`. Without this
 > flag, `concurrent!` and `parallel!` expand to `compile_error!`.
@@ -269,15 +273,19 @@ components of $\Gamma$ that its rules read and write, with their initial values.
 > **Definition (Initial configuration).** $\Gamma_0$ gives every component the initial value
 > stated where the component is introduced.
 
-> **Definition (Abort).** If any code panics, the run ends, and every agent that has no result yet
-> gets the result $\mathsf{abort}$.
+> **Definition (Abort).** If any code panics, the run ends. Every worker that has no result yet
+> unwinds at its next effect, and every leader call on the ended run, including one already blocked,
+> panics with `trame: worker <w> panicked: <message>`. Here $w$ is the first worker that panicked
+> and $\mathrm{message}$ its panic message, or `<non-string panic payload>` when the payload is
+> neither a `&str` nor a `String`. The leader observes no result of an aborted run.
 
 > **Definition (Join).** The leader's last act is $\mathsf{join}$. After it, no transition of that
 > leader occurs. In Rust it is `Run::join`, which answers each worker's result.
 
 > **Definition (Deadlock).** A worker or process $x$ is stuck in $\Gamma$ when no run from
 > $\Gamma$ contains another transition of $x$. A backend may end a stuck agent, and it then gets
-> the result $\mathsf{deadlock}$.
+> the result $\mathsf{deadlock}$. A leader call that can never return is stuck too. A backend that
+> shows it panics that call with `trame: deadlock: the leader waits and nothing can arrive`.
 
 Without this rule, a backend that detects a deadlock and reports it would produce a result that
 $T$ never produces, so it would fail safety. A backend need not decide stuckness, which is
@@ -285,7 +293,9 @@ undecidable in general: it may report $\mathsf{deadlock}$ only where it can show
 stuck. Two cases are cheap. A worker waiting at a barrier while another worker has a result is
 stuck, whatever anyone does. After every leader has joined, an agent is stuck when no worker or
 process can take any transition, now or after time passes. A process waiting for a frame before its
-leader joins is never reported, since the leader may still send.
+leader joins is never reported, since the leader may still send. A leader blocked in `wait` is stuck
+when no worker can move now or after time passes, since only a worker can change what it sees. The
+sequential backend shows this case. The MPI backend does not, as the rule permits.
 
 ### 5.1 Time
 
@@ -298,7 +308,7 @@ never needs to synchronize clocks.
 > a worker or a process $x$. $\Gamma_0$ fixes an arbitrary offset $\theta(c)$ for each clock $c$,
 > and no rule changes it. The effect $\mathsf{now}()$ answers a reading, which pairs a clock with a
 > value. `since` between two readings of the same clock answers the span between them, and between
-> readings of different clocks it aborts; `after` adds a span to a reading, giving a reading of the
+> readings of different clocks it aborts. `after` adds a span to a reading, giving a reading of the
 > same clock. Spans are `core::time::Duration`. In Rust the effect is
 > `trame::now`.
 
@@ -332,7 +342,7 @@ frames across routes would need one clock that every sender agrees on, which tra
 > initially empty. A frame $f = (m, a)$ has a message $m$ and an arrival time $a$. It is
 > *available* when $a \leq \tau$. $a_{\mathrm{last}}(Q(r))$ is the arrival time of the last frame
 > of $Q(r)$, or $0$ when $Q(r)$ is empty. $\Gamma$ also contains $U$. $U(r)$ counts the frames
-> taken from $Q(r)$ whose slot the sender has not yet got back, initially $0$; it stays $0$ on a
+> taken from $Q(r)$ whose slot the sender has not yet got back, initially $0$. It stays $0$ on a
 > lossy route. $\mathrm{held}(r) = |Q(r)| + U(r)$ is the number of slots of $r$ in use.
 
 > **Definition (Ownership).** While worker $w$ performs $\mathsf{concurrent}(\bar P)$, each process
@@ -483,7 +493,7 @@ not an event that could be missed.
 > - $\mathsf{until}(d)$, where $d$ is a reading of $\mathrm{clock}(p)$, holds when
 >   $\tau + \theta(\mathrm{clock}(p)) \geq d$. Waiting on a reading of another clock aborts.
 >
-> $\Omega$ may be empty; then only $D(p)$ wakes $p$. In Rust, `Status::wait()` is $\mathsf{wait}(\varnothing)$,
+> $\Omega$ may be empty, and then only $D(p)$ wakes $p$. In Rust, `Status::wait()` is $\mathsf{wait}(\varnothing)$,
 > and `.frame()`, `.room::<M>(to)` and `.until(reading)` each add one condition.
 
 > **Definition (Enabled).** Process $p$ is enabled when $\mathit{St}(p)$ is $\mathsf{fresh}$ or
@@ -506,8 +516,8 @@ $$
 
 Any step that ends wakes the processes it shares a cell with, even one that returns
 $\mathsf{wait}$, because it may have changed the cell before waiting. So two processes that wait
-only on each other's cells keep waking each other. That run is not stuck, so it is not a deadlock;
-it spins, and the spinning is the program's error.
+only on each other's cells keep waking each other. That run is not stuck, so it is not a deadlock.
+It spins, and the spinning is the program's error.
 
 > **Definition (Concurrent effect).** $\mathsf{concurrent}(\bar P)$ answers $\mathsf{done}$ or
 > $\mathsf{err}(e)$.
@@ -666,16 +676,16 @@ the nixsci record format and computes no verdict. The tree holds no nixsci exper
 those records by content hash yet, so no latency claim is checked. A claim has this form: that the
 fraction of round trips whose half exceeds the fastest one by more than 100 µs is below 0.1%, at
 confidence 0.99. Its verdict is supported, contradicted or inconclusive, under the experiment's
-sampling assumptions. A proof is conditional on its model; a claim is conditional on its samples; an
+sampling assumptions. A proof is conditional on its model, and a claim on its samples. An
 importer that relies on both states both conditions.
 
 ## 7. Rust surface
 
 Every public name of the crate is listed here with the part of $T$ it stands for. A name that is
 not listed is not part of the contract, and a name with a leading `__` is internal. All names are at
-the crate root, except `math::exp`, which is in `trame::math`. `trame::math` holds pure numeric
+the crate root, except the functions of `trame::math`. `trame::math` holds pure numeric
 functions: code at the item level, not effects, and each gives the same bits on every backend. A
-function is added there when a program needs it; no program has to call one to meet this
+function is added there when a program needs it. No program has to call one to meet this
 specification.
 
 | Name | Kind | Stands for |
@@ -698,9 +708,12 @@ specification.
 | `Context` | type: `me`, `workers` | the context (Section 4) |
 | `Refused` | type | a refusal at launch (Section 4) |
 | `Run` | type: `send`, `recv`, `wait`, `publish`, `join` | the leader's side of a run (5.2, 5.5, Join) |
-| `Outcome` | type: `Returned`, `Abort`, `Deadlock` | a worker's result (Section 5) |
-| `math::exp` | fn | the portable exponential (Requirement (Floating point)). Its accuracy is claimed for inputs in $[-30, 0]$: relative error below 2e-6 against `f64::exp`, tested in `math.rs`. Outside that range it returns what the same code computes, with no accuracy claim |
+| `Outcome` | type: `Returned`, `Deadlock` | a worker's result (Section 5). A panic is Definition Abort, not a result |
+| `math::f32::exp` | fn | the portable f32 exponential (Requirement (Floating point)). Its accuracy is claimed for inputs in $[-30, 0]$: relative error below 2e-6 against `f64::exp`, tested in `math/f32/tests.rs`. Outside that range it returns what the same code computes, with no accuracy claim |
+| `math::f64::{exp, ln, exp_m1, powf}` | fn | ports of fdlibm (`e_exp.c`, `e_log.c`, `s_expm1.c`, `e_pow.c`) in plain IEEE arithmetic. The tests assert at most 2 ulp from glibc on 200,000 samples each; the largest measured was 1 ulp (`math/f64/tests/sweep.rs`). A sample, not a proof. `powf(1, NaN)` and `powf(-1, ±inf)` are NaN, as in fdlibm |
+| `math::f64::{sqrt, round}` | fn | correctly rounded square root and round-half-away-from-zero, in integer arithmetic: exact |
+| `math::f64::powi` | fn | integer power by squaring in a fixed order, not correctly rounded |
 
-`Duration` and `Arc` are the standard ones. A worker is any `Fn(&Context)`; a step is
+`Duration` and `Arc` are the standard ones. A worker is any `Fn(&Context)`, and a step is
 `fn step(&mut self, c: &mut C, ...) -> Status` or `-> Result<Status, E>`, where `Err(e)` is
 $\mathsf{err}(e)$.

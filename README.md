@@ -13,30 +13,45 @@ the backend must not produce a behaviour the spec forbids (spec.md, Section 6).
 
 ## Example
 
-`examples/ring.rs`, included as it is. Four workers pass a token around a ring for three rounds, and
+`examples/ring.rs`, quoted whole (`tests/readme.rs` fails if the two differ). Four workers pass a token around a ring for three rounds, and
 each reports its total to the leader. Worker `i` adds the values it takes from worker `i - 1`.
 
 ```rust
 //! ring: W workers pass a token around a ring for ROUNDS rounds, then report to the leader.
-use trame::{Context, Status, Topology, WorkerId, LEADER};
+use trame::{Context, LEADER, Status, Topology, WorkerId};
 
 const W: usize = 4;
 const ROUNDS: u32 = 3;
 
 #[trame::message]
-struct Token { value: u32 }
+struct Token {
+    value: u32,
+}
 
 #[trame::message]
-struct Report { worker: u32, total: u32 }
+struct Report {
+    worker: u32,
+    total: u32,
+}
 
-struct Hop { me: u32, next: WorkerId, round: u32, value: u32, total: u32, sent: bool }
+struct Hop {
+    me: u32,
+    next: WorkerId,
+    round: u32,
+    value: u32,
+    total: u32,
+    sent: bool,
+}
 
 #[trame::process(receives = Token)]
 impl Hop {
     fn step(&mut self) -> Status {
         if self.round == ROUNDS {
             let report = Report { worker: self.me, total: self.total };
-            return match trame::send(LEADER, report) { Ok(()) => Status::Done, Err(_) => Status::wait().room::<Report>(LEADER) };
+            return match trame::send(LEADER, report) {
+                Ok(()) => Status::Done,
+                Err(_) => Status::wait().room::<Report>(LEADER),
+            };
         }
         if !self.sent {
             if trame::send(self.next, Token { value: self.value }).is_err() {
@@ -46,7 +61,8 @@ impl Hop {
         }
         match trame::recv::<Token>() {
             Some(t) => {
-                (self.value, self.total, self.round, self.sent) = (t.value, self.total + t.value, self.round + 1, false);
+                (self.value, self.total, self.round, self.sent) =
+                    (t.value, self.total + t.value, self.round + 1, false);
                 Status::Progress
             }
             None => Status::wait().frame(),
@@ -56,16 +72,20 @@ impl Hop {
 
 fn worker(cx: &Context) {
     let me = cx.workers().iter().position(|&w| w == cx.me()).expect("a worker is listed");
-    let hop = Hop { me: me as u32, next: cx.workers()[(me + 1) % W], round: 0, value: me as u32 + 1, total: 0, sent: false };
+    let hop =
+        Hop { me: me as u32, next: cx.workers()[(me + 1) % W], round: 0, value: me as u32 + 1, total: 0, sent: false };
     assert_eq!(trame::concurrent!(hop;), Ok(()));
 }
 
 fn main() {
     let mut topo = Topology::new();
     let ws: Vec<WorkerId> = (0..W).map(|_| topo.worker(worker)).collect();
-    for i in 0..W { topo.route::<Token>(ws[i], ws[(i + 1) % W], 1); topo.route::<Report>(ws[i], LEADER, 1); }
+    for i in 0..W {
+        topo.route::<Token>(ws[i], ws[(i + 1) % W], 1);
+        topo.route::<Report>(ws[i], LEADER, 1);
+    }
     let run = topo.launch().expect("the ring launches");
-    let mut totals = vec![None; W];
+    let mut totals = [None; W];
     while totals.iter().any(Option::is_none) {
         match run.recv::<Report>() {
             Some(r) => totals[r.worker as usize] = Some(r.total),
@@ -90,9 +110,9 @@ worker 3 total 6
 outcomes: [Returned, Returned, Returned, Returned]
 ```
 
-The example does not handle a failed run. If a worker panics, the leader waits forever: `Run::wait`
-returns on an abort, but it does not say why, so the loop goes on waiting. `programs/abort.rs` shows the leader that calls `join` and
-reads `Outcome::Abort`.
+The example does not handle a failed run. If a worker panics, the leader's next call panics too, with
+`trame: worker <w> panicked: <message>` (spec.md 5, Abort). `programs/abort.rs` shows the leader in
+`Run::wait`, and `programs/abort_join.rs` the leader in `join`.
 
 ## Build and run
 
@@ -109,12 +129,12 @@ MPI:
     mpirun --oversubscribe -n 5 target/mpi/debug/examples/ring
 
 The cfg flag is needed because `concurrent!` and `parallel!` are compile errors without it. The driver
-sets it when it checks a build (spec.md, Section 3); by hand, it only lifts the error, and it does not
+sets it when it checks a build (spec.md, Section 3). Set by hand, it only lifts the error: it does not
 stop a deliberate unchecked build.
 
 `mpirun` needs W + 1 ranks: one per worker, and the leader on the last rank. With four workers, that
 is five. Any other count is refused on every rank before a worker starts. Open MPI may print
-`osc_ucx_component` errors on stderr on some machines; they come from Open MPI, not from the program.
+`osc_ucx_component` errors on stderr on some machines. They come from Open MPI, not from the program.
 
 ## The levels
 
@@ -139,21 +159,21 @@ A program has four levels, each inside the one above it (spec.md, Section 1). Ea
 | crate tests | `cargo test` in the seq build; `sched.rs` enumerates scheduler states up to a bound (a bounded check, not a proof) | `sched.rs`, `tests/` |
 | programs | every program in `programs/` on seq and MPI, stdout compared with `.expected` | `programs/run.sh` |
 | MPI checks | the transport: FIFO, overwrite, barrier, deadlock, on one node and split across nodes | `backends/mpi/tests/run.sh` |
-| `nix flake check` | the Nix checks the rejection suite and the driver fuzzer (see Status) | `experiments/README.md` |
-| lab experiments | `nix run .#<name>`: `programs-seq`, `programs-mpi`, `transport-mpi`, `scale-local`, `mutants-seq`, `mutants-mpi` | `experiments/README.md` |
+| `nix flake check` | builds the verdicts that must hold: `programs-seq`, `seq-tests`, `scheduler-exhaustive`, `rejections`, `mutants-seq` | `experiments/validate.nix` |
+| lab experiments | `nix run .#<name>` runs real processes: `programs-mpi`, `transport-mpi`, `mutants-mpi`, `scale-local`, `scale-n1` to `scale-n32`, and the `-cluster` variants | `experiments/README.md` |
 
 ## Repository map
 
-- `backends/`: `seq`, the reference; `mpi`, MPI ranks, memory windows and relays. `nv` holds a plan
-  (`PLAN.md`), not a backend.
+- `backends/`: `seq` is the reference, `mpi` runs on MPI ranks, memory windows and relays.
 - `conformance/`: mutants of each backend, and the runner that checks the programs kill them.
 - `driver/`: the rustc driver that judges MIR, and `cargo trame`.
 - `experiments/`: the lab runners and the claims they test.
 - `macros/`: the proc macros `message`, `process`, `item`, `concurrent`, `parallel`.
+- `math/`: `trame::math::f32` and `trame::math::f64`, numeric functions with the same bits on every backend.
 - `programs/`: shared programs with their expected output, run by `programs/run.sh`.
 - `rejections/`: cases the compile-time checks must refuse or accept.
 - `scale/`: scaling benchmarks and their plain-MPI baselines.
-- `tests/`: crate tests for the allocation and `parallel!` rules.
+- `tests/`: crate tests for the allocation and `parallel!` rules, and for this README's example.
 - `examples/`: the example in this README.
 - Top level: `spec.md` (the contract), `lib.rs` and the modules it names (the surface and the core),
   `flake.nix` (pinned inputs, builds, lab experiments). `target/` is build output.
@@ -162,11 +182,9 @@ A program has four levels, each inside the one above it (spec.md, Section 1). Ea
 
 - Backends: seq and mpi. The MPI backend runs several nodes only on one machine, through
   `TRAME_MPI_NODE_RANKS`. It has not run on a real network (`backends/mpi/README.md`, Not checked).
-- `nix flake check`: `experiments/README.md` calls the rejection suite and the fuzzer Nix checks, but
-  `flake.nix` has no `checks` output at this commit. Run them as their READMEs say.
-- Not built: detecting a stuck run after `join` on MPI. Seq does it (`backends/seq/ops.rs`).
-- Not built: a leader that can tell an abort from a change in `Run::wait`. The example above hangs for
-  that reason.
+- The driver fuzzer is not a verdict: run it as `driver/fuzz/README.md` says.
+- Not built on MPI: detecting a stuck run after `join`, and a leader whose `wait` can never return. Seq
+  does both (`backends/seq/stuck.rs`). Spec.md, Definition (Deadlock), allows a backend not to.
 - Open point: when a publication made during a barrier takes effect on MPI (`backends/mpi/README.md`,
   Not checked).
 - The crate does not check the byte order of the target. Only the latency test does.
@@ -175,5 +193,3 @@ A program has four levels, each inside the one above it (spec.md, Section 1). Ea
   one of a worker's first 64 routes. Exceeding one aborts with a message naming it.
 - Latency: the MPI backend records round trips, but no nixsci experiment locks them yet, so no latency
   claim is checked (spec.md, Section 6).
-- The CUDA backend, its device heap, warp lowering and `cargo nv` are on the `legacy` branch, for
-  reference only.

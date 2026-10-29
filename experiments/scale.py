@@ -68,7 +68,7 @@ def program(bench: str, impl: str, workers: int, p: dict, bindir: Path) -> list[
 
 
 def parse(stdout: str, stderr: str) -> tuple[list[dict], dict[int, dict]]:
-    """(JSON lines of rank 0's stdout, {rank: {host, user_s, sys_s, wall_s}} from the time lines)."""
+    """(JSON lines of the leader, the last rank, or of an mpi baseline's rank 0; {rank: times} of all ranks)."""
     lines: list[dict] = []
     ranks: dict[int, dict] = {}
     for text in stdout.splitlines():
@@ -121,7 +121,6 @@ def main() -> None:
     bench, impl = p["bench"], p["impl"]
     if bench not in FAMILY or impl not in ("trame", "mpi"):
         raise SystemExit(f"unknown bench {bench!r} or impl {impl!r}")
-    mpirun.record_config()
     nodes = int(p.get("nodes", 1))
     per_node = per_node_of(p["fill"])
     workers = nodes * per_node
@@ -129,6 +128,7 @@ def main() -> None:
     args = program(bench, impl, workers, p, bindir)
     if args is None:
         return print(f"{bench} {impl}: no job (no baseline, or W <= degree): nothing measured", file=sys.stderr)
+    mpirun.record_config()
     ranks = workers + 1 if impl == "trame" else workers
     cmd = mpirun.argv(ranks, {**p, "leader": impl == "trame"}) + ["--output", "tag", "sh", "-c", RANK_WRAP, "sh"] + args
     mpirun.record_argv(cmd)

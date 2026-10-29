@@ -4,7 +4,8 @@ Parameters: backend (seq or mpi), mutant (a patch id such as m01, or none: the u
 control), timeout (seconds, default 120), and the mpirun parameters of mpirun.py.
 Environment (set by checks.nix): MUTANTS (one directory per id, with bin/ and share/expected/ of that
 mutant's build), PATCHES (conformance/mutants/<backend>: the headers `# violates:` and `# expect:` of
-<id>.patch or <id>.skip, and the reason of a skip), RANKS_FILE (the table `<program> <ranks>`).
+<id>.patch or <id>.skip, and the reason of a skip), RANKS_FILE (the table `<program> <ranks>`), and
+PANICS (the programs directory: the <program>.panics files, judged as programs.py judges them).
 
 Dataset `kill`, one row per program: killed is true when the program fails (how is diff, exit or
 timeout). A mutant with a .skip file has no build; it records one row, program "-", how "skipped".
@@ -63,17 +64,12 @@ def main() -> None:
     if backend == "mpi":
         mpirun.record_config()
     for name, ranks in programs.programs():
-        expected = (root / "share" / "expected" / f"{name}.expected").read_text()
+        panic = programs.panic_line(name)
+        expected = programs.read_expected(root / "share" / "expected", name, panic)
         res = proc.run(programs.command(backend, str(root / "bin" / name), ranks, params), timeout)
         if res.stderr:
             (stderr_dir / f"{mutant}.{name}.txt").write_text(res.stderr)
-        got = programs.normalise(res.stdout, collapse)
-        if res.timed_out:
-            how = "timeout"
-        elif res.rc != 0:
-            how = "exit"
-        else:
-            how = "ok" if got == expected else "diff"
+        how = programs.judge(res, programs.normalise(res.stdout, collapse), expected, panic)
         record(mutant, rule, expect, name, how != "ok", how)
 
 

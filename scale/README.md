@@ -16,25 +16,25 @@ clocks have unknown offsets (spec.md 5.1).
 - **ring** (`W STEPS SIZE CAP`): W >= 3 workers in a ring. Each step, a worker sends one SIZE-byte
   message to each neighbour and receives one from each. The clock starts after 10 warm-up steps. The
   baseline does the same with `MPI_Irecv`, `MPI_Isend` and `MPI_Waitall`. The trame program waits on
-  full routes (capacity CAP); MPI has no capacity, so its baseline has no CAP.
+  full routes (capacity CAP). MPI has no capacity, so its baseline has no CAP.
 - **idle** (`W SECONDS`): every worker waits for SECONDS with nothing sent to it. The wall time is the
-  wait; the cost is CPU, which the runner reads per rank from GNU time.
+  wait, and the cost is CPU, which the runner reads per rank from GNU time.
 - **fanin** (`W MSGS`): every worker sends MSGS 64-byte messages to the leader. The leader's receive
   time is the time from its first `recv` to its last. Each worker reports its own send span.
 - **graph** (`W STEPS SIZE DEGREE ITERS SEED`): the proxy benchmark of `backends/mpi/SCALING.md` ('The proxy
   benchmark' is its spec). Each step: ITERS xorshift rounds, one SIZE-byte message to each of DEGREE
   out-neighbours on a seeded circulant graph, one from each in-neighbour. The baseline `baseline/graph.c`
   (`mpi_graph`) does the same with `MPI_Irecv`, `MPI_Isend`, `MPI_Waitall`, and must print the same
-  checksum per rank. `graph.rs` and `graph_proc.rs` (the per-size process, a macro) are its sources; the
+  checksum per rank. `graph.rs` and `graph_proc.rs` (the per-size process, a macro) are its sources. The
   generator and recurrence are in `graph_net.rs`, which the C file repeats. Each worker's JSON line has
   `ns` (STEPS steps), `compute_ns` (the recurrence alone) and `checksum`: the xorshift state XOR the sum of every frame received,
   so it covers the graph, not only the recurrence. It is a u64, stored as text in the dataset.
-  W must exceed DEGREE, else scale_graph exits 2; the lab skips such a job and records nothing.
+  W must exceed DEGREE, else scale_graph exits 2, and the lab skips such a job and records nothing.
 
 Two measurement caveats are part of the design:
 
 - The fanin leader times itself with `std::time::Instant`, because `trame::now` panics outside a
-  worker. That clock is outside the spec's contract; it is a host measurement.
+  worker. That clock is outside the spec's contract: it is a host measurement.
 - The MPI ring baseline runs one `MPI_Barrier` before its timed steps, and the trame ring does not.
   The two rings therefore start their clocks differently.
 
@@ -54,7 +54,7 @@ Two measurement caveats are part of the design:
   rank also pays for MPI startup and finalization, so a control run with SECONDS=0 is needed to read
   the wait cost off the total. *Refuted by*: CPU seconds that grow with SECONDS, rather than staying
   at the SECONDS=0 level. With nodes > 1, the relay (one core per node) is expected to be the only
-  steady CPU cost; the single-node matrix cannot show it.
+  steady CPU cost. The single-node matrix cannot show it.
 - **Fanin**: the leader is a single sink, so its receive rate sets a ceiling on the total message
   rate. The claim is the ceiling, not the leader's latency. *Refuted by*: a leader time that grows
   faster than the number of messages it receives, at fixed load.
@@ -62,8 +62,8 @@ Two measurement caveats are part of the design:
 ## What the numbers cannot show
 
 - Load. Another session's jobs share the machine in our runs. Repeated runs of one configuration
-  differ by a factor of several, so a single run supports no scaling claim. Each job records
-  `/proc/loadavg` at its start (dataset `mpi_config`, source `loadavg`); read it before reading a number.
+  can differ widely (no run in the tree measures how widely), so a single run supports no scaling claim. Each job records
+  `/proc/loadavg` at its start (dataset `mpi_config`, source `loadavg`). Read it before reading a number.
 - Nodes. `scale-local` is one node. `scale-nN` (N nodes) is defined in flake.nix, but no locked run is
   quoted here. The barrier and idle claims are about the one-node path until those runs exist.
 - Oversubscription. The runner passes `--oversubscribe`, so it would let ranks share fewer cores than

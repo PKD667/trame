@@ -1,11 +1,11 @@
 # The deterministic checks of trame, as nixsci validate verdicts (experiments/README.md, "Verdicts").
 # Called from flake.nix with the flake's own values. Each check states its property, model, subject,
 # checker, scope, and writes $out/outcome.json (validate/README.md).
-{ pkgs, v, trameSeqBins, trameSrc, rejectionsSrc, programNames, driverToolchain, trameDriver }:
+{ pkgs, v, trameSeqBins, trameSrc, rejectionsSrc, seqPrograms, driverToolchain, trameDriver }:
 let
   lib = pkgs.lib;
   rejectionCases = builtins.length (builtins.filter (lib.hasSuffix ".rs") (lib.filesystem.listFilesRecursive ../rejections/cases));
-  seqTests = 57; # tests of seq-tests, counted by its command
+  seqTests = 76; # tests of seq-tests, counted by its command (76 with tests/readme.rs, 2026-10-29)
   # The exhaustive scheduler test (sched.rs): states and end checks it reports for 2 processes, 3 cells.
   exhaustiveStates = 22430721;
   exhaustiveEnds = 372787200;
@@ -23,22 +23,23 @@ in
   # (a) every program, on seq, against its .expected output.
   programs-seq = v.check {
     name = "programs-seq";
-    property = "every program of backends/mpi/deploy/ranks.txt, run on the seq backend, prints its .expected stdout and exits 0 (spec.md section 6)";
+    property = "every program of programs/*.rs, run on the seq backend, prints its .expected stdout and exits 0 (spec.md section 6)";
     model = "the seq backend's scheduler and launch, one process per program, the checked build (--cfg trame_checked). Not the mpi backend (lab: programs-mpi), not a node split, not timing";
     subject = trameSeqBins;
     checker = pkgs.diffutils;
-    runtime = [ pkgs.coreutils ];
-    scope = { programs = builtins.length programNames; runs = 1; backend = "seq"; wall_guard_s = 120; };
+    runtime = [ pkgs.coreutils pkgs.gnugrep ];
+    scope = { programs = builtins.length seqPrograms; runs = 1; backend = "seq"; wall_guard_s = 120; };
     command = ''
       mkdir -p $out/counterexamples
       holds=true
       items=""
-      for p in ${lib.concatStringsSep " " programNames}; do
-        rc=0
-        got="$(timeout -k 5 120 "$subject/bin/$p" 2>"$TMPDIR/$p.stderr")" || rc=$?
+      for p in ${lib.concatStringsSep " " seqPrograms}; do
+        rc=0; panic=""; [ -f "${../programs}/$p.panics" ] && panic="$(cat "${../programs}/$p.panics")"; got="$(timeout -k 5 120 "$subject/bin/$p" 2>"$TMPDIR/$p.stderr")" || rc=$?
         if [ "$rc" -eq 124 ]; then why="timeout after 120 s"
-        elif [ "$rc" -ne 0 ]; then why="exit status $rc"
-        elif ! diff -u "$subject/share/expected/$p.expected" <(echo "$got") > "$TMPDIR/$p.diff" 2>&1; then why="stdout differs"
+        elif [ -n "$panic" ] && { [ "$rc" -eq 0 ] || ! grep -F -x -q -- "$panic" "$TMPDIR/$p.stderr"; }; then why="no panic line on stderr, or exit 0"
+        elif [ -z "$panic" ] && [ "$rc" -ne 0 ]; then why="exit status $rc"
+        # A program that panics on purpose may have no .expected: then only its panic is judged.
+        elif { [ -z "$panic" ] || [ -f "$subject/share/expected/$p.expected" ]; } && ! diff -u "$subject/share/expected/$p.expected" <(if [ -n "$got" ]; then echo "$got"; fi) > "$TMPDIR/$p.diff" 2>&1; then why="stdout differs"
         else why=""; fi
         if [ -n "$why" ]; then
           holds=false
@@ -99,14 +100,17 @@ in
 
   # (e) the seq mutants: every patch of conformance/mutants/seq is caught or spared as its header says.
   mutants-seq = import ./validate-mutants.nix {
-    inherit pkgs v cargoHomeWith vendor trameSrc programNames;
+    inherit pkgs v cargoHomeWith vendor trameSrc seqPrograms;
     mutantsDir = ../conformance/mutants/seq;
   };
+  # (f) the MPI backend's protocols, model-checked with TLC (proofs/mpi, validate-protocol.nix).
+  protocol-mpi = import ./validate-protocol.nix { inherit pkgs v; };
+
   # (d) the rejection suite (rejections/README.md): every case is judged by the pinned driver against the
-  # real crate. Known gaps are gaps; a case that differs from its expectation is a counterexample.
+  # real crate. Each case's diagnostics must be exactly its annotations (a file name cannot match one).
   rejections = v.check {
     name = "rejections";
-    property = "every rejection case is judged as its expectation says: accepted, or refused by exactly the rule and level it names (spec.md sections 3, 5.3-5.4, 7); a known gap is reported, not counted as a failure";
+    property = "every rejection case is judged as its annotations say: accepted with no diagnostic, or refused with exactly the diagnostics it annotates (rule, level, message); spec.md sections 3, 5.3-5.4, 7";
     model = "the driver (driver/, pinned nightly) judging the cases of rejections/cases against the root crate's seq feature, with the lists of driver/lists. It samples the checker on chosen programs; it does not show the rules sound, nor the driver correct";
     subject = rejectionsSrc;
     checker = driverToolchain;
@@ -114,35 +118,23 @@ in
     scope = { cases = rejectionCases; toolchain = "driver/rust-toolchain.toml"; };
     command = ''
       ${cargoHomeWith vendorRejections rejectionsSrc "rejections"}
-      export TRAME_REJECTIONS_INNER=1 TRAME_DRIVER_BIN=${trameDriver}/bin
-      rc=0; bash ./run.sh > "$TMPDIR/run.txt" 2>&1 || rc=$?
-      mkdir -p "$out/counterexamples/cases"
+      unset RUSTFLAGS
+      export TRAME_DRIVER_BIN=${trameDriver}/bin
+      rc=0; cargo test --offline > "$TMPDIR/run.txt" 2>&1 || rc=$?
+      mkdir -p "$out/counterexamples"
       cp "$TMPDIR/run.txt" "$out/counterexamples/run.txt"
       python3 - "$TMPDIR/run.txt" "$out" "$rc" ${toString rejectionCases} <<'PY'
-      import json, re, shutil, sys
+      import json, re, sys
       log, out, rc, cases = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
-      counted = [int(m) for m in re.findall(r"^(\d+) pass, (\d+) known gap, (\d+) fail", open(log).read(), re.M)[0]] if re.search(r"^\d+ pass, ", open(log).read(), re.M) else None
-      lines = open(log).read().split("\n")
-      gaps, bad = [], []
-      for i, line in enumerate(lines):
-          parts = line.split()
-          if line.startswith("GAP ") and len(parts) > 1:
-              why = lines[i + 1].strip().removeprefix("known: ") if i + 1 < len(lines) else ""
-              gaps.append({"id": parts[1], "why": why})
-          if (line.startswith("FAIL ") or line.startswith("XPASS ")) and len(parts) > 1:
-              bad.append(parts[1])
-      items = []
-      for case in bad:
-          art = "counterexamples/cases/" + case.replace("/", "__") + ".log"
-          src = "target/rejections-logs/" + case.replace("/", "__") + ".log"
-          shutil.copy(src, out + "/" + art)
-          items.append({"id": case, "artifact": art})
-      # Every case file is counted: a run that judged fewer cases than exist does not hold.
-      complete = counted is not None and sum(counted) == cases
-      holds = rc == 0 and not bad and complete
+      # One verdict line per case and configuration, as the harness prints them: "cases/<...>.rs ... ok".
+      verdicts = [m for m in (re.match(r"^(cases/\S+\.rs) \.\.\. (ok|FAILED)$", l) for l in open(log).read().split("\n")) if m]
+      bad = [m.group(1) for m in verdicts if m.group(2) == "FAILED"]
+      # Every case file is judged: a run that judged fewer cases than exist does not hold.
+      holds = rc == 0 and not bad and len(verdicts) == cases
+      items = [{"id": case, "artifact": "counterexamples/run.txt"} for case in bad]
       if not holds and not items:
           items.append({"id": "run", "artifact": "counterexamples/run.txt"})
-      json.dump({"holds": holds, "gaps": gaps, "counterexamples": items}, open(out + "/outcome.json", "w"))
+      json.dump({"holds": holds, "gaps": [], "counterexamples": items}, open(out + "/outcome.json", "w"))
       PY
     '';
   };

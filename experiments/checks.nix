@@ -1,10 +1,11 @@
-# Conformance by mutation as lab experiments (conformance/README.md; experiments/README.md, "mutants").
-# Called from flake.nix with the flake's own values. One experiment per backend. Its closure holds one
-# build of the backend per mutant (the patch applied with the other sources unchanged), and the runner.
+# Conformance by mutation as a lab experiment on mpi (conformance/README.md; experiments/README.md,
+# "mutants"). Called from flake.nix with the flake's own values. Its closure holds one build of the mpi
+# backend per mutant (the patch applied with the other sources unchanged), and the runner. The seq record
+# is the validate verdict mutants-seq (validate-mutants.nix), not this experiment. flake.nix passes
+# trameSeqBinsWith too; it is not used here (flake.nix:232 may drop it).
 { pkgs, lib, labLib, system, trameSeqBinsWith, trameMpiBinsWith, runners, labRuntime, nixsci }:
 let
   backends = {
-    seq = { name = "seq"; dir = ../conformance/mutants/seq; bins = trameSeqBinsWith; };
     mpi = { name = "mpi"; dir = ../conformance/mutants/mpi; bins = trameMpiBinsWith; };
   };
   # The ids of the files of `dir` with the given suffix: `.patch` (applied) or `.skip` (no patch, a reason).
@@ -33,6 +34,7 @@ let
         PYTHONPATH = "${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
         MUTANTS = "${mutantFarm b}";
         PATCHES = "${b.dir}";
+        PANICS = "${../programs}";
         RANKS_FILE = "${../backends/mpi/deploy/ranks.txt}";
       };
       runtime = labRuntime;
@@ -43,6 +45,5 @@ let
     data = { kill = killData; } // lib.optionalAttrs (b.name == "mpi") { mpi_config = mpiConfigData; };
   };
 in {
-  # seq is deterministic: its mutation run is the verdict mutants-seq (experiments/validate.nix).
   mutants-mpi = experiment "mutants-mpi" backends.mpi;
 }

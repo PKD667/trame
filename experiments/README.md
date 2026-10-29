@@ -12,7 +12,7 @@ nix build .#<analysis>        derive: tables, figures and claims from the locked
 nixsci lab verify <run>       re-measure one run from the closure it used
 ```
 
-Hosts come from a provider name. The flake says `local` or `cluster`; what `cluster` means
+Hosts come from a provider name. The flake says `local` or `cluster`. What `cluster` means
 (which machines, how to reach them) is set in `~/.config/nixsci/providers.json` on the machine
 that runs the experiment, never in this repository.
 
@@ -28,7 +28,7 @@ records.
 A check that depends only on the code, not on threads, the network or hardware, is a validate verdict,
 not a lab experiment: `experiments/validate.nix`, built by `nixsci.lib.validate` (validate/README.md in the
 nixsci repository). Each check states its property (spec.md section), model, subject, checker and scope,
-and writes `$out/outcome.json`. A verdict is a derivation; the flake exposes them as
+and writes `$out/outcome.json`. A verdict is a derivation. The flake exposes them as
 `validate.<system>.verdicts.<name>`, the table as `validate.<system>.table`, and `checks` as the holds.
 
 | check | property | what it runs |
@@ -39,27 +39,31 @@ and writes `$out/outcome.json`. A verdict is a derivation; the flake exposes the
 | `rejections` | every rejection case is judged as its expectation says | `rejections/run.sh` (driver pinned) |
 | `mutants-seq` | each seq mutant is killed or spared as its header says | one patch at a time, step limit (`conformance/README.md`) |
 
-`TRAME_SEQ_STEP_LIMIT` (`backends/seq/limit.rs`) bounds the seq scheduler's steps; a run over the limit
+`TRAME_SEQ_STEP_LIMIT` (`backends/seq/limit.rs`) bounds the seq scheduler's steps, and a run over the limit
 exits 3. It counts steps, not seconds, so a looping mutant is a count and not a timing.
 
-Lab experiments remain for what needs threads, a network or hardware: `programs-mpi` and `mutants-mpi`.
+Lab experiments remain for what needs threads, a network or hardware: `programs-mpi`, `transport-mpi`,
+`mutants-mpi` and the scale experiments.
 
 Scope numbers are measured, not guessed: `scheduler-exhaustive` states and end checks, `seq-tests`
 count. A change to either fails the check until its scope is updated.
 
 ## Experiments and datasets
 
-**programs** (`programs-mpi`; `programs-cluster` with `span = 2`): every
+**programs** (`programs-mpi`, and `programs-cluster` with `span = 2`): every
 program of `programs/` against its `.expected` output on mpi. The seq run is a verdict (below). Parameters: `backend`, `node_ranks` (0 is
-the real node layout; k splits one machine into nodes of k ranks), `repeats`.
+the real node layout, k splits one machine into nodes of k ranks), `repeats`.
 Dataset `run`: `program` str, `repeat` int, `ok` bool, `verdict` str (`ok`, `diff`, `exit`,
 `timeout`), `seconds` float, `stdout_sha256` str. Key: `program`, `repeat`.
 
-**transport** (`transport-mpi`; `transport-cluster` with `span = 2`): the checks of
-`backends/mpi/tests`. Dataset `check`: `check` str, `workers` int, `seed` int, `repeat` int,
-`ok` bool, `seconds` float. Key: `check`, `workers`, `seed`, `repeat`.
+**transport** (`transport-mpi`, and `transport-cluster` with `span = 2`): the checks of
+`backends/mpi/tests/run.sh` (`transport.py`). The sweep of `node_ranks` (0, 1, 2) is run.sh's whole set:
+0 is its first part, 1 and 2 are its `multi 1` and `multi 2` parts. Dataset `check`: `check` str, `workers`
+int, `seed` int, `repeat` int, `ok` bool, `seconds` float. Key: `check`, `workers`, `seed`, `repeat`. The
+dataset has no `node_ranks` column, so rows of different splits share a key: `flake.nix` `transportData`
+needs that column before an analysis merges them (not changed here).
 
-**scale** (`scale-local`; `scale-n<N>` with `span = N` for N in 1, 2, 4, 8, 16, 32): the
+**scale** (`scale-local`, and `scale-n<N>` with `span = N` for N in 1, 2, 4, 8, 16, 32): the
 programs of `scale/` and their plain-MPI baselines. One job runs one benchmark with one
 implementation at one size. Parameters: `bench`, `impl` (`trame` or `mpi`), `nodes`, `fill`, and the
 bench's sizes. `fill` is `half` or `full`: workers per node are half the physical cores (at least 3)
@@ -73,29 +77,32 @@ can select on them.
 - `graph`: `worker`, `steps`, `size`, `degree`, `iters`, `ns`, `compute_ns`, `checksum` (text: a u64).
   Benches `graph64` (weak, SIZE 64), `graph1024` (weak, SIZE 1024) and `graph1024s` (strong, SIZE 1024:
   ITERS = graph_iters // nodes, so ITERS x workers is fixed per fill). The dataset's `bench` column is
-  `graph` for all three; select on `size` and `iters`. Parameters `graph_iters` (100000), `graph_steps`
+  `graph` for all three. Select on `size` and `iters`. Parameters `graph_iters` (100000), `graph_steps`
   (2000), `degree` (8), `seed` (1). A job with workers <= degree records nothing.
 - `cpu`: `rank`, `host`, `user_s`, `sys_s`, `wall_s`, from GNU time around each rank
 
 Each job also writes `mpi_config` rows (`mpirun.py`): the job's full mpirun command line (`argv`,
 scale only), the load average at its start (`loadavg`), and the MCA settings of the account.
 
-Timing columns are `noisy`; `replicates = 3`.
+Timing columns are `noisy`, with `replicates = 3`.
 
-**mutants** (`mutants-seq`, `mutants-mpi`; `checks.nix`, runner `mutants.py`): conformance by mutation
-(`conformance/`). Nix builds one backend build per mutant, its patch applied, and one closure holds them
-all with the runner. Parameters: `backend`, `mutant` (a patch id, `none` for the unpatched control),
+**mutants** (`mutants-mpi`, built by `checks.nix`, runner `mutants.py`): conformance by mutation (`conformance/`).
+Nix builds one mpi build per mutant, its patch applied, and one closure holds them all with the runner.
+The seq record is the validate verdict `mutants-seq`, not an experiment. Parameters: `backend`, `mutant` (a patch id, `none` for the unpatched control),
 `timeout` (120). The sweep is every id with a `.patch` or a `.skip` file of `conformance/mutants/<backend>`,
-so a mutant that cannot apply (`m23`; `m17` on mpi) is one job that records `how` `skipped`.
+so a mutant that cannot apply (`m23`, and `m17` on mpi) is one job that records `how` `skipped`.
 Dataset `kill`, one row per program: `mutant`, `rule`, `expect`, `program` (`-` when skipped), `killed`
 bool (true for `diff`, `exit` or `timeout`), `how` (`ok`, `diff`, `exit`, `timeout`, `skipped`).
 Key: `mutant`, `program`. Mpi also records `mpi_config`, as `programs-mpi` does.
-`conformance/mutate.sh` remains the quick local loop; the lab run is the record.
+`conformance/mutate.sh` is the quick local loop. The lab run is the record.
 
-The rejection suite and the driver fuzzer are deterministic compilations, not measurements:
-they are Nix checks (`nix flake check`), not experiments.
+The rejection suite is a validate verdict (above). The driver fuzzer is not a check: `driver/fuzz/flake.nix`
+defines packages, not checks, and `driver/fuzz/run.sh <seed> <batches> <K>` is run by hand.
 
 ## Claims, stated before measuring
+
+No analysis named here is in the tree yet: there is no `conformance`, `mutants` or `scale` analysis, and no
+`values.json`. The list below is the plan: nothing in the tree supports or contradicts these claims yet.
 
 Analysis `conformance`: every row of `programs-*` and `transport-*` has `ok = true` (exact).
 Analysis `mutants`: every mutant whose catalogue entry says `killed` and that applies is killed
@@ -115,6 +122,6 @@ Analysis `scale`, each judged at 0.99 and reported as supported, contradicted or
   overhead at most 1.10 against the MPI baseline, weak-scaling curve within 1.05 of the
   baseline's, relay CPU per frame flat in N, strong-scaling speedup at least 0.9 of the baseline's.
 
-The ratios are computed by the analysis pipeline, with their intervals, and written to
-`values.json`; the thresholds above are the claims they are judged against. A contradicted claim
-stays in the report.
+When the analyses exist, they will compute the ratios with their intervals and write them to
+`values.json`. The thresholds above are the claims they are judged against. A contradicted claim
+will stay in the report.
