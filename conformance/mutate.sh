@@ -4,8 +4,9 @@
 # killed when a program fails (stdout differs, non-zero exit or timeout); a mutant that does not build is
 # reported as BUILD and counts as a failure of the catalogue, not as a kill.
 #   nix develop .#mpi --command conformance/mutate.sh [seq|mpi|both] [mutant-id-regex]
-# The two backends run concurrently, each in its own copy (/tmp/trame-mutate/<backend>) with its own
-# warm target directory, so Cargo rebuilds only what a patch changed. Exits non-zero when a verdict
+# The two backends run concurrently, each in its own copy, /tmp/trame-mutate/<backend> (or $TRAME_MUTATE_DIR/<backend>),
+# which is kept between runs with its target directory, so Cargo rebuilds only what a patch changed. A lock
+# on the copy refuses a second run of the same backend while one runs. Exits non-zero when a verdict
 # contradicts its header: a `killed` mutant survives, or an `equivalent` one is killed, or a build fails.
 set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,6 +16,7 @@ case "$which_backend" in seq|mpi|both) ;; *) echo "usage: $0 [seq|mpi|both] [reg
 backends=(seq mpi)
 [[ "$which_backend" == both ]] || backends=("$which_backend")
 out="$(mktemp -d)"
+scratch="${TRAME_MUTATE_DIR:-/tmp/trame-mutate}"
 
 # Restore the copy from the working tree, without its target directory or the mpi-rma submodule.
 sync_copy() {
@@ -27,7 +29,11 @@ sync_copy() {
 
 # One backend: every patch in order. Writes one line per mutant to $out/<backend>.tsv.
 run_backend() {
-  local b="$1" work="/tmp/trame-mutate/$1" tsv="$out/$1.tsv"
+  local b="$1" work="$scratch/$1" tsv="$out/$1.tsv"
+  # One run per copy: a second run of this backend would rebuild under the first. Refuse it.
+  mkdir -p "$scratch"
+  exec {lock}>"$scratch/$b.lock"
+  flock -n "$lock" || { echo "mutate.sh: another run holds $work ($scratch/$b.lock)" >&2; exit 2; }
   : > "$tsv"
   for patch in "$root/conformance/mutants/$b"/*.patch; do
     local id header expect rule verdict prog detail
@@ -67,8 +73,10 @@ run_backend() {
   done
 }
 
-for b in "${backends[@]}"; do run_backend "$b" & done
-wait
+pids=()
+for b in "${backends[@]}"; do run_backend "$b" & pids+=($!); done
+# A backend that could not run (its copy is locked) fails the whole run.
+for pid in "${pids[@]}"; do wait "$pid" || exit 2; done
 
 # The table and the exit status: a verdict that contradicts its header is an error.
 bad=0

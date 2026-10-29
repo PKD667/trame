@@ -1,9 +1,9 @@
 # violates: Deadlock, Join
-# expect: killed
+# expect: equivalent: spec.md 5, Definition Deadlock says a backend may end a stuck agent and does not say when. The mutant only moves that ending from the advance that first finds the run stuck to leader_join (ops.rs), which ends the same agents with the same result. A barrier waiter has no effect after the barrier, so no output records when it ended.
 --- a/backends/seq/state.rs
 +++ b/backends/seq/state.rs
-@@ -104,7 +104,7 @@
-     pub fn advance(&mut self, from: usize) {
+@@ -117,7 +117,7 @@
+         }
          // An idle worker can still be woken by the leader, so the run is not stuck while one exists.
          if !self.phase.iter().any(|p| matches!(p, Phase::Ready | Phase::Idle(..))) {
 -            for p in self.phase.iter_mut().filter(|p| **p == Phase::Blocked) {

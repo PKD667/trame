@@ -2,10 +2,10 @@
 # expect: killed
 --- a/backends/mpi/ring.rs
 +++ b/backends/mpi/ring.rs
-@@ -57,7 +57,7 @@
-         } else {
-             Answer::Full
-         };
+@@ -54,7 +54,7 @@
+         let after = if tracing { clock() } else { 0 };
+         let answer =
+             if r.lossy || p.checked_sub(c).is_some_and(|used| used < r.cap) { Answer::Ok } else { Answer::Full };
 -        if answer == Answer::Ok {
 +        if answer == Answer::Ok && !(r.lossy && p >= r.cap) {
              self.put(&r, p, msg)?;

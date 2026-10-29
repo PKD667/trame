@@ -1,5 +1,12 @@
-# violates: efficiency only (m26)
-# expect: equivalent: worker_idle returns at once, so the worker re-checks its conditions in a busy loop. Only CPU use should change; a worker that re-checks is still a worker that moves when a condition holds (conformance/README.md, Efficiency). Expected to be contradicted in a deadlocked run, see survivors.md.
+# violates: none that a program's output shows (a busy wait: CPU use only, see the expect line)
+# expect: equivalent: worker_idle returns at once, so an idle worker re-checks its conditions in a busy loop. The
+#   scheduler (sched::start, concurrent.rs) still starts a process only when it is enabled (spec.md, Definition
+#   Enabled), so no transition runs without its frame or deadline. Every program of programs/ gives its expected
+#   output (run: mutate.sh seq '^m26$', survived). One difference is not output: a run that is stuck after join
+#   with an idle worker, unpatched, ends with deadlock (seq/state.rs, advance); with this patch it spins and never
+#   ends. Definition (Deadlock) says a backend may end such an agent, so the spec permits both; whether a run must
+#   end is not stated in spec.md. A probe outside the tree (one worker waiting for a frame that never comes, the
+#   leader joins) gives [Deadlock] unpatched and times out with this patch. No program of programs/ does this.
 --- a/backends/seq/ops.rs
 +++ b/backends/seq/ops.rs
 @@ -191,9 +191,11 @@

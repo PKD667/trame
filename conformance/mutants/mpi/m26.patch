@@ -1,5 +1,8 @@
-# violates: efficiency only (m26)
-# expect: equivalent: worker_idle returns at once, so the worker re-checks its conditions in a busy loop. Only CPU use should change (conformance/README.md, Efficiency). Expected to be contradicted in a deadlocked run, see survivors.md.
+# violates: none that a program's output shows (a busy wait: CPU use only, see the expect line)
+# expect: equivalent: worker_idle returns at once, so the worker re-checks its conditions in a busy loop. A step
+#   still runs only when sched::start (concurrent.rs, shared) finds the process enabled, so the output of a run that
+#   ends does not change; only CPU use does. The mpi backend reports no Deadlock for an idle worker (m17.skip), so a
+#   stuck run hangs with or without this patch. Not run here; the seq argument (seq/m26.patch) is the same.
 --- a/backends/mpi/worker.rs
 +++ b/backends/mpi/worker.rs
 @@ -107,7 +107,7 @@

@@ -2,12 +2,12 @@
 # expect: killed
 --- a/backends/seq/state.rs
 +++ b/backends/seq/state.rs
-@@ -166,7 +166,7 @@
-         for k in 0..n {
-             let i = (self.cursor + k) % n;
-             let r = &mut self.routes[i];
--            if r.to == to && r.ty == ty && r.len > 0 {
-+            if r.to == to && r.len > 0 {
-                 let range = r.slot(r.head);
-                 out.copy_from_slice(&r.buf[range]);
-                 r.head = (r.head + 1) % r.cap;
+@@ -182,7 +182,7 @@
+     /// bring it back to the same route each time. Answers `false` when no route has a frame.
+     pub fn take(&mut self, to: WorkerId, ty: TypeId, out: &mut [u8]) -> bool {
+         let next = self.takes + 1;
+-        let Some(r) = self.routes.iter_mut().filter(|r| r.to == to && r.ty == ty && r.len > 0).min_by_key(|r| r.taken)
++        let Some(r) = self.routes.iter_mut().filter(|r| r.to == to && r.len > 0).min_by_key(|r| r.taken)
+         else {
+             return false;
+         };

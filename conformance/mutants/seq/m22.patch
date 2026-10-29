@@ -2,10 +2,10 @@
 # expect: killed
 --- a/backends/seq/ops.rs
 +++ b/backends/seq/ops.rs
-@@ -247,7 +247,7 @@
+@@ -264,7 +264,7 @@
      fn leader_recv(run: &Run, ty: core::any::TypeId, out: &mut [u8]) -> bool {
          // A take frees room on a route, so it wakes a worker that waits for room.
-         let mut st = run.shared.lock();
+         let mut st = leader_check(run.shared.lock());
 -        let taken = st.take(LEADER, ty, out);
 +        let taken = st.take(LEADER, ty, out) && st.acts % 2 == 0;
          if taken {

@@ -2,12 +2,11 @@
 # expect: killed
 --- a/backends/mpi/results.rs
 +++ b/backends/mpi/results.rs
-@@ -42,7 +42,7 @@
- 
-     /// A worker panicked: the run is aborted, and this worker's own result is Abort.
-     pub fn abort(&self) {
--        self.win().word32(DONE).fetch_or(ABORT_BIT, AcqRel);
-+        let _ = ABORT_BIT;
-         self.win().wake(DONE);
-         self.bump_all();
+@@ -76,7 +76,6 @@
+     /// A worker panicked with `message`: the run aborts, and this worker's own result is set, so the
+     /// leader's join sees it as finished. The leader then panics (`fail_if_aborted`).
+     pub fn abort(&self, message: &[u8]) {
+-        self.record_abort(self.me(), message);
          self.finish(OUT_ABORT);
+     }
+ 

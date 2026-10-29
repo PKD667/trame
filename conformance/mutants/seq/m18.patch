@@ -2,12 +2,14 @@
 # expect: killed
 --- a/backends/seq/ops.rs
 +++ b/backends/seq/ops.rs
-@@ -87,7 +87,8 @@
+@@ -99,8 +99,9 @@
+             st.acts += 1;
          }
          Err(payload) if payload.is::<Abandoned>() => {}
-         Err(_) => {
--            st.abort_all();
-+            st.phase[me] = Phase::Done(Outcome::Abort);
+-        Err(payload) => {
+-            st.abort_all(Some((me, panic_message(&*payload))));
++        Err(_) => {
++            st.phase[me] = Phase::Done(Outcome::Returned);
 +            st.advance(me);
              st.acts += 1;
          }

@@ -2,15 +2,14 @@
 # expect: killed
 --- a/backends/seq/state.rs
 +++ b/backends/seq/state.rs
-@@ -167,9 +167,9 @@
-             let i = (self.cursor + k) % n;
-             let r = &mut self.routes[i];
-             if r.to == to && r.ty == ty && r.len > 0 {
--                let range = r.slot(r.head);
-+                let range = r.slot((r.head + r.len - 1) % r.cap);
-                 out.copy_from_slice(&r.buf[range]);
--                r.head = (r.head + 1) % r.cap;
-+                
-                 r.len -= 1;
-                 self.cursor = (i + 1) % n;
-                 return true;
+@@ -186,9 +186,8 @@
+         else {
+             return false;
+         };
+-        let range = r.slot(r.head);
++        let range = r.slot((r.head + r.len - 1) % r.cap);
+         out.copy_from_slice(&r.buf[range]);
+-        r.head = (r.head + 1) % r.cap;
+         r.len -= 1;
+         r.taken = next;
+         self.takes = next;

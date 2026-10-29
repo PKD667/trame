@@ -2,10 +2,10 @@
 # expect: killed
 --- a/launch.rs
 +++ b/launch.rs
-@@ -66,7 +66,7 @@
-         let dup = plan.routes[..i]
-             .iter()
-             .any(|q| q.from == r.from && q.to == r.to && q.ty == r.ty);
+@@ -59,7 +59,7 @@
+             return Err(Refused::ZeroCapacity { name: r.name });
+         }
+         let dup = plan.routes[..i].iter().any(|q| q.from == r.from && q.to == r.to && q.ty == r.ty);
 -        if dup {
 +        if dup && false {
              return Err(Refused::Duplicate { from: r.from, to: r.to, name: r.name });

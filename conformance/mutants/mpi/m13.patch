@@ -2,13 +2,13 @@
 # expect: killed
 --- a/backends/mpi/gate.rs
 +++ b/backends/mpi/gate.rs
-@@ -35,9 +35,9 @@
+@@ -36,9 +36,9 @@
          let arrive = self.lay().per_worker(K_ARRIVE, self.me());
          self.win().word(arrive).store(g, Release);
          let c = self.win().word(COUNT).fetch_add(1, AcqRel) + 1;
--        if self.nodes().count == 1 && c % n == 0 {
-+        if self.nodes().count == 1 && (c + 1) % n == 0 {
-             self.install();
+-        if self.nodes().count == 1 && c.is_multiple_of(n) {
++        if self.nodes().count == 1 && (c + 1).is_multiple_of(n) {
+             self.install()?;
 -            self.win().word(GEN).store(c / n, SeqCst);
 +            self.win().word(GEN).store((c + 1) / n, SeqCst);
              for w in 0..self.lay().workers {

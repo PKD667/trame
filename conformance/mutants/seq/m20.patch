@@ -2,7 +2,7 @@
 # expect: killed
 --- a/launch.rs
 +++ b/launch.rs
-@@ -52,7 +52,7 @@
+@@ -55,7 +55,7 @@
                  return Err(Refused::UnknownWorker(end));
              }
          }
@@ -10,4 +10,4 @@
 +        if r.cap == 0 && false {
              return Err(Refused::ZeroCapacity { name: r.name });
          }
-         let dup = plan.routes[..i]
+         let dup = plan.routes[..i].iter().any(|q| q.from == r.from && q.to == r.to && q.ty == r.ty);

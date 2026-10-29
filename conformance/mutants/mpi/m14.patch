@@ -2,13 +2,13 @@
 # expect: killed
 --- a/backends/mpi/publish.rs
 +++ b/backends/mpi/publish.rs
-@@ -33,6 +33,9 @@
-     pub(super) fn install(&self) {
+@@ -39,6 +39,9 @@
+     pub(super) fn install(&self) -> Result<(), Error> {
          let win = self.win();
          let have = win.word(PUB_NO).load(Relaxed);
 +        if have < u64::MAX {
-+            return;
++            return Ok(());
 +        }
-         if let Some((no, bytes)) = deposit(win, Some(have)) {
-             set_publication(win, no, &bytes);
-         }
+         match deposit(win, Some(have)) {
+             Ok(Some((no, bytes))) => set_publication(win, no, &bytes),
+             Ok(None) => {}

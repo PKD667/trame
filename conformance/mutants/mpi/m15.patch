@@ -2,20 +2,20 @@
 # expect: killed
 --- a/backends/mpi/gate.rs
 +++ b/backends/mpi/gate.rs
-@@ -31,6 +31,7 @@
+@@ -32,6 +32,7 @@
      pub fn barrier(&mut self) -> Result<Arc<[u8]>, Error> {
          self.generation += 1;
          let g = self.generation;
-+        let early = if self.me() == 0 { Some(self.snapshot()) } else { None };
++        let early = if self.me() == 0 { self.snapshot().ok() } else { None };
          let n = u64::from(self.lay().workers);
          let arrive = self.lay().per_worker(K_ARRIVE, self.me());
          self.win().word(arrive).store(g, Release);
-@@ -46,7 +47,7 @@
+@@ -47,7 +48,7 @@
              self.bump_relay();
          }
          self.wait_released(g)?;
--        Ok(self.snapshot())
-+        Ok(match early { Some(b) => b, None => self.snapshot() })
+-        self.snapshot()
++        match early { Some(b) => Ok(b), None => self.snapshot() }
      }
  
      /// Sleep until generation `g` is released. Each pass reads the epoch first (see the module comment).
