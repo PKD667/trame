@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (All levels) forbids FFI, which is a call into code that is not Rust. This is the pair
 // of extern_item.rs: an `extern "C"` function defined in Rust is an ordinary Rust function, so it is accepted.
 extern "C" fn bump(x: u32) -> u32 {

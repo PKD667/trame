@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (Item). This is the pair of helper_alloc_from_item.rs: the helper does arithmetic only, so
 // it is legal at the item level and at the worker level, and is accepted at both.
 fn remember(n: u32) -> u32 {

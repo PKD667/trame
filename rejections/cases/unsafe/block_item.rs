@@ -1,4 +1,3 @@
-//! expect: refused [unsafe] item
 // spec: Requirement (All levels): no unsafe. An item reads through a raw pointer in an unsafe block.
 struct Work {
     index: u32,
@@ -9,6 +8,8 @@ struct Work {
 fn read(x: &Work, slot: &mut u32, _cx: &()) {
     let p = &x.by as *const u32;
     *slot = unsafe { *p };
+    //~^ ERROR: [unsafe] item
+    //~| ERROR: [unsafe] item
 }
 
 fn main() {

@@ -2,7 +2,7 @@
 //! language". A program is named functions (`funcs`) and roots. Every statement reads the one
 //! parameter `x: u32`, so that no condition is a constant the optimizer could fold.
 
-use crate::rng::{mix, Rng};
+use crate::rng::{Rng, mix};
 
 /// A level of spec.md section 3. Smaller is stricter (the order the driver takes the minimum in).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -124,7 +124,7 @@ pub enum Allow {
     OptMap,
     /// indexing an array with `x & 3`
     Index,
-    /// `trame::math::exp`
+    /// `trame::math::f32::exp`
     Exp,
     /// `x.min(7)`
     Min,
@@ -193,10 +193,6 @@ impl Wrap {
             Wrap::Into => "into",
             Wrap::SumForeign => "sumforeign(extra)",
         }
-    }
-
-    pub fn is_extra(self) -> bool {
-        self == Wrap::SumForeign
     }
 }
 

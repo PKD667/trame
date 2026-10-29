@@ -61,6 +61,8 @@ pub enum Verdict {
 
 pub struct Lists {
     effects: BTreeMap<String, Effect>,
+    /// The entries of deny.txt: denied at every level, cited as Requirement (All levels).
+    global: BTreeSet<String>,
     /// Per level (indexed by `Level as usize`): the allowed entries.
     allow: [BTreeSet<String>; 3],
     /// Per level: the denies of deny.txt and of that level's file (`-` lines).
@@ -89,15 +91,15 @@ fn well_formed(entry: &str) -> bool {
     }
 }
 
-/// The specificity of `entry` matching `name`, if it does: the length of the matched text.
+/// The specificity of `entry` matching `name`, if it does: twice the length of the matched text, plus
+/// one for an exact entry, so `P` beats `P::*` and both lose to any longer match.
 fn matches(entry: &str, name: &str) -> Option<usize> {
     match entry.strip_suffix("::*") {
         Some(base) => {
             let under = name.strip_prefix(base).is_some_and(|rest| rest.starts_with("::"));
-            (under || name == base).then_some(base.len() + 2)
+            (under || name == base).then_some(2 * base.len())
         }
-        // An exact entry is one more than any prefix of the same text, so it wins a tie.
-        None => (name == entry).then_some(entry.len() + 1),
+        None => (name == entry).then_some(2 * entry.len() + 1),
     }
 }
 
@@ -137,6 +139,7 @@ impl Lists {
             }
             global.insert(entry.to_string());
         }
+        let global_entries = global.clone();
         for (i, (name, text)) in [("A_I", A_I), ("A_C", A_C), ("A_W", A_W)].into_iter().enumerate() {
             for (is_deny, entry) in entries(text) {
                 if !well_formed(entry) {
@@ -165,7 +168,7 @@ impl Lists {
                 return Err(format!("deny `{m}` of level {} is not denied at the stricter level {}", loose, strict));
             }
         }
-        Ok(Lists { effects, allow, deny })
+        Ok(Lists { effects, global: global_entries, allow, deny })
     }
 
     pub fn effect(&self, path: &str) -> Option<Effect> {
@@ -183,8 +186,35 @@ impl Lists {
         }
     }
 
+    /// Whether `entry` is one of deny.txt's (denied at every level) rather than a per-level deny.
+    pub fn is_global(&self, entry: &str) -> bool {
+        self.global.contains(entry)
+    }
+
     /// The deny entry, if any, that names the type or path `name` at `level`.
     pub fn denied(&self, level: Level, name: &str) -> Option<String> {
         best(&self.deny[level as usize], &[name.to_string()]).map(|(_, e)| e)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches;
+
+    #[test]
+    fn an_exact_entry_beats_the_prefix_of_the_same_text() {
+        assert!(matches("core::ptr", "core::ptr") > matches("core::ptr::*", "core::ptr"));
+    }
+
+    #[test]
+    fn a_longer_match_beats_an_exact_shorter_one() {
+        let name = "core::ptr::read::x";
+        assert_eq!(matches("core::ptr", name), None);
+        assert!(matches("core::ptr::read::*", name) > matches("core::ptr::*", name));
+    }
+
+    #[test]
+    fn a_prefix_does_not_match_a_sibling_with_the_same_start() {
+        assert_eq!(matches("core::ptr::*", "core::ptrx"), None);
     }
 }

@@ -188,19 +188,17 @@ pub struct Diff {
 }
 
 impl Diff {
-    /// Agreement: no verdict miss, no attribution miss, no over-refusal, no extra rule. Undecided
-    /// records do not break agreement; they are counted.
+    /// Agreement on the verdict (README, properties 1 and 2): no verdict miss, no over-refusal.
+    /// Attribution misses, extra rules and undecided records are counted, not disagreements.
     pub fn agrees(&self) -> bool {
-        self.verdict_misses.is_empty() && self.attr_misses.is_empty() && self.over.is_empty() && self.extra.is_empty()
+        self.verdict_misses.is_empty() && self.over.is_empty()
     }
 
-    /// The differences as keys that name the bug. Shrinking keeps programs that keep one key.
+    /// The disagreements as keys that name the bug. Shrinking keeps programs that keep one key.
     pub fn keys(&self) -> Vec<String> {
         let mut ks: Vec<String> = Vec::new();
         ks.extend(self.verdict_misses.iter().map(|l| format!("verdict-miss {}", l.noun())));
-        ks.extend(self.attr_misses.iter().map(|r| format!("attr-miss {} {}", r.rule, r.level.noun())));
         ks.extend(self.over.iter().map(|v| format!("over {} {}", v.level, v.rule)));
-        ks.extend(self.extra.iter().map(|v| format!("extra {} {}", v.rule, v.level)));
         ks.sort();
         ks.dedup();
         ks
@@ -222,7 +220,11 @@ impl Diff {
             parts.push(format!("EXTRA {}", v.describe()));
         }
         if parts.is_empty() {
-            return if self.undecided.is_empty() { "agree".into() } else { format!("agree (undecided: {})", self.undecided.len()) };
+            return if self.undecided.is_empty() {
+                "agree".into()
+            } else {
+                format!("agree (undecided: {})", self.undecided.len())
+            };
         }
         parts.join("; ")
     }
@@ -291,10 +293,19 @@ error: could not compile `pkg` (example \"e0002\") due to 1 previous error
         let u1 = &p.units["e0001"];
         assert_eq!(
             u1.recs,
-            vec![VRec { rule: "std".into(), level: "item".into(), root: Some("r0".into()), internal: false, via_glue: false }]
+            vec![VRec {
+                rule: "std".into(),
+                level: "item".into(),
+                root: Some("r0".into()),
+                internal: false,
+                via_glue: false
+            }]
         );
         let u2 = &p.units["e0002"];
-        assert_eq!(u2.recs, vec![VRec { rule: "recursion".into(), level: "item".into(), root: None, internal: false, via_glue: false }]);
+        assert_eq!(
+            u2.recs,
+            vec![VRec { rule: "recursion".into(), level: "item".into(), root: None, internal: false, via_glue: false }]
+        );
     }
 
     #[test]
@@ -319,7 +330,13 @@ error: could not compile `pkg` (example \"e0002\") due to 1 previous error
             refusals: vec![Refusal { rule: "std".into(), level: Level::Item, roots: vec!["r0".into()] }],
             drop_glue: false,
         };
-        let recs = vec![VRec { rule: "std".into(), level: "item".into(), root: Some("r0".into()), internal: false, via_glue: false }];
+        let recs = vec![VRec {
+            rule: "std".into(),
+            level: "item".into(),
+            root: Some("r0".into()),
+            internal: false,
+            via_glue: false,
+        }];
         assert!(compare(&e, &recs).agrees());
         assert!(!compare(&e, &[]).agrees());
         assert_eq!(compare(&e, &[]).verdict_misses, vec![Level::Item]);
@@ -328,7 +345,8 @@ error: could not compile `pkg` (example \"e0002\") due to 1 previous error
     #[test]
     fn drop_glue_unsafe_is_undecided_not_over_refusal() {
         let e = Expect { roots: vec![], refusals: vec![], drop_glue: true };
-        let recs = vec![VRec { rule: "unsafe".into(), level: "item".into(), root: None, internal: true, via_glue: true }];
+        let recs =
+            vec![VRec { rule: "unsafe".into(), level: "item".into(), root: None, internal: true, via_glue: true }];
         let d = compare(&e, &recs);
         assert!(d.agrees());
         assert_eq!(d.undecided.len(), 1);
@@ -337,7 +355,8 @@ error: could not compile `pkg` (example \"e0002\") due to 1 previous error
     #[test]
     fn over_refusal_is_reported() {
         let e = Expect { roots: vec![], refusals: vec![], drop_glue: false };
-        let recs = vec![VRec { rule: "unsafe".into(), level: "item".into(), root: None, internal: true, via_glue: false }];
+        let recs =
+            vec![VRec { rule: "unsafe".into(), level: "item".into(), root: None, internal: true, via_glue: false }];
         assert_eq!(compare(&e, &recs).over.len(), 1);
     }
 }

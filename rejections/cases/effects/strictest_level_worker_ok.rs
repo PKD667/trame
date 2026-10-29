@@ -1,6 +1,6 @@
-//! expect: accepted
-// spec: Section 3 (driver/README.md). This is the pair of strictest_level_item.rs: helper, called only from a
-// worker, is checked at the worker's level, where barrier is allowed. Accepted.
+//@check-pass
+// spec: Definition (Effect sets): Sigma_W includes barrier. driver/README.md:21 gives the strictest-level rule. This is the pair
+// of strictest_level_item.rs: helper, called only from a worker, is checked at the worker's level, where barrier is allowed.
 fn helper() {
     let _ = trame::barrier();
 }

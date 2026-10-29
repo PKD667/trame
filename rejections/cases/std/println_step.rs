@@ -1,4 +1,3 @@
-//! expect: refused [std] step, [unsafe] step
 // spec: Requirement (All levels): no std. A step prints, which calls std. The unsafe rule also fires on core's
 // `fmt::Arguments::new` (rejections/README.md, finding D1).
 #[trame::message]
@@ -16,6 +15,8 @@ struct P;
 impl P {
     fn step(&mut self, q: &mut Queue) -> trame::Status {
         std::println!("n = {}", q.n);
+        //~^ ERROR: [unsafe] step
+        //~| ERROR: [std] step
         trame::Status::Done
     }
 }

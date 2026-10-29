@@ -7,7 +7,7 @@
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::ty::{Instance, TyCtxt};
 
-use super::scan::{is_trame_instance, Scan};
+use super::scan::{Scan, is_trame_instance};
 
 /// The bodies judged in full. Every other scanned body is trusted, and a trame body is never in the set.
 /// A body is in the set when a root reaches it, or when an `Own` edge reaches it from anywhere, and then
@@ -32,7 +32,12 @@ pub fn judged_in_full<'tcx>(
     judged
 }
 
-fn mark<'tcx>(tcx: TyCtxt<'tcx>, n: Instance<'tcx>, judged: &mut FxHashSet<Instance<'tcx>>, work: &mut Vec<Instance<'tcx>>) {
+fn mark<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    n: Instance<'tcx>,
+    judged: &mut FxHashSet<Instance<'tcx>>,
+    work: &mut Vec<Instance<'tcx>>,
+) {
     if !is_trame_instance(tcx, n) && judged.insert(n) {
         work.push(n);
     }

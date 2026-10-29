@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Definition (Effect sets): Sigma_C contains send. This is the pair of send_item.rs: the same send, in a step.
 #[trame::message]
 struct Msg {

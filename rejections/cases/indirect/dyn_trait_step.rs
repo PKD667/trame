@@ -1,4 +1,3 @@
-//! expect: refused [indirect] step
 // spec: Requirement (All levels): no indirect calls. A step calls a method through a trait object.
 trait Scale {
     fn scale(&self, x: u32) -> u32;
@@ -27,7 +26,7 @@ struct P;
 impl P {
     fn step(&mut self, q: &mut Queue) -> trame::Status {
         let s: &dyn Scale = &Double;
-        q.n = s.scale(q.n);
+        q.n = s.scale(q.n); //~ ERROR: [indirect] step
         trame::Status::Done
     }
 }

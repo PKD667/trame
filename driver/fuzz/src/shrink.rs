@@ -5,7 +5,7 @@
 //! function called once and drop that function; drop a root or a function that nothing calls.
 
 use crate::batch::{self, Case};
-use crate::prog::{size, Func, Prog, Root, Stmt, Wrap};
+use crate::prog::{Func, Prog, Root, Stmt, Wrap, size};
 use std::path::Path;
 
 /// Single-edit variants of a statement list.
@@ -155,7 +155,14 @@ pub struct Shrunk {
 
 /// Shrink `p` while the batch verdict keeps `key`. `work` is `work/` (see batch.rs), `tag` names the
 /// round directories; `driver_dir` is the driver's bin dir. The check is done by the driver, not by R alone.
-pub fn shrink(p: Prog, key: &str, work: &Path, tag: &str, driver_dir: Option<&Path>, max_rounds: usize) -> Result<Shrunk, String> {
+pub fn shrink(
+    p: Prog,
+    key: &str,
+    work: &Path,
+    tag: &str,
+    driver_dir: Option<&Path>,
+    max_rounds: usize,
+) -> Result<Shrunk, String> {
     let mut cur = p;
     let mut rounds = 0;
     let mut tried = 0;
@@ -169,7 +176,8 @@ pub fn shrink(p: Prog, key: &str, work: &Path, tag: &str, driver_dir: Option<&Pa
         }
         rounds += 1;
         tried += cands.len();
-        let cases: Vec<Case> = cands.iter().enumerate().map(|(i, q)| Case::new(format!("s{i:05}"), q.clone())).collect();
+        let cases: Vec<Case> =
+            cands.iter().enumerate().map(|(i, q)| Case::new(format!("s{i:05}"), q.clone())).collect();
         let dir = work.join(format!("{tag}-r{rounds}"));
         let outcomes = batch::run(&dir, cases, driver_dir)
             .map_err(|hs| format!("harness problem while shrinking: {}", hs.join(" | ")))?;

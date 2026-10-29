@@ -1,4 +1,3 @@
-//! expect: refused [static] step
 // spec: Requirement (All levels): no globals. A step reads a static. Only consts are allowed.
 static COUNT: u32 = 7;
 
@@ -16,7 +15,7 @@ struct P;
 #[trame::process(receives = Job)]
 impl P {
     fn step(&mut self, q: &mut Queue) -> trame::Status {
-        q.n = COUNT;
+        q.n = COUNT; //~ ERROR: [static] step
         trame::Status::Done
     }
 }

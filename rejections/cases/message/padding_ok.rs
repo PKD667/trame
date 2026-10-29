@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Section 3 (Compile time), Requirement (Message). This is the pair of padding.rs: the same two fields,
 // with the u8 widened to a u32, leave no padding. Accepted.
 #[trame::message]

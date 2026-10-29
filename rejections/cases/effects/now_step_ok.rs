@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Definition (Effect sets): Sigma_C contains now. This is the pair of now_item.rs: the same clock read, in a step.
 #[trame::message]
 struct Msg {

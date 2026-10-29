@@ -55,13 +55,28 @@ pub fn write(dir: &Path, cases: &[Case]) -> io::Result<()> {
     let mut exp = String::from("[\n");
     for (i, c) in cases.iter().enumerate() {
         fs::write(dir.join("examples").join(format!("{}.rs", c.name)), &c.source)?;
-        exp.push_str(&format!("{{\"example\":{},\"seed\":{},\"index\":{},\"roots\":[{}],\"refusals\":[{}]}}",
+        exp.push_str(&format!(
+            "{{\"example\":{},\"seed\":{},\"index\":{},\"roots\":[{}],\"refusals\":[{}]}}",
             quote(&c.name),
             c.prog.seed,
             c.prog.index,
-            c.expect.roots.iter().map(|(n, l)| format!("{{\"name\":{},\"level\":{}}}", quote(n), quote(l.noun()))).collect::<Vec<_>>().join(","),
-            c.expect.refusals.iter().map(|r| format!("{{\"rule\":{},\"level\":{},\"roots\":[{}]}}",
-                quote(&r.rule), quote(r.level.noun()), r.roots.iter().map(|x| quote(x)).collect::<Vec<_>>().join(","))).collect::<Vec<_>>().join(","),
+            c.expect
+                .roots
+                .iter()
+                .map(|(n, l)| format!("{{\"name\":{},\"level\":{}}}", quote(n), quote(l.noun())))
+                .collect::<Vec<_>>()
+                .join(","),
+            c.expect
+                .refusals
+                .iter()
+                .map(|r| format!(
+                    "{{\"rule\":{},\"level\":{},\"roots\":[{}]}}",
+                    quote(&r.rule),
+                    quote(r.level.noun()),
+                    r.roots.iter().map(|x| quote(x)).collect::<Vec<_>>().join(",")
+                ))
+                .collect::<Vec<_>>()
+                .join(","),
         ));
         exp.push_str(if i + 1 < cases.len() { ",\n" } else { "\n" });
     }
@@ -100,10 +115,8 @@ pub fn run_driver(dir: &Path, driver_dir: Option<&Path>) -> io::Result<String> {
 /// The result for one case.
 #[derive(Clone)]
 pub struct Outcome {
-    pub name: String,
     pub prog: Prog,
     pub expect: Expect,
-    pub source: String,
     pub unit: verdict::Unit,
     pub diff: Diff,
 }
@@ -116,9 +129,11 @@ pub fn judge(cases: Vec<Case>, parsed: &Parsed) -> Result<Vec<Outcome>, Vec<Stri
     }
     let mut out = Vec::new();
     for c in cases {
+        // An accepted case prints nothing, so it has no unit. A crash prints a harness line, which
+        // failed the batch above: a missing unit here is an acceptance, not missing data.
         let unit = parsed.units.get(&c.name).cloned().unwrap_or_default();
         let diff = verdict::compare(&c.expect, &unit.recs);
-        out.push(Outcome { name: c.name, prog: c.prog, expect: c.expect, source: c.source, unit, diff });
+        out.push(Outcome { prog: c.prog, expect: c.expect, unit, diff });
     }
     Ok(out)
 }

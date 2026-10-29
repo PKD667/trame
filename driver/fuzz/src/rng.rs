@@ -37,11 +37,6 @@ impl Rng {
         self.next() % n
     }
 
-    /// True with probability `num / den`.
-    pub fn chance(&mut self, num: u64, den: u64) -> bool {
-        self.below(den) < num
-    }
-
     pub fn pick<T: Copy>(&mut self, xs: &[T]) -> T {
         xs[self.below(xs.len() as u64) as usize]
     }

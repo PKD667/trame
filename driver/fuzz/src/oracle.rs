@@ -7,14 +7,12 @@
 //! level). A refusal is a site whose construct is forbidden at that level; a cyclic node at Item
 //! or Step is a recursion refusal.
 
-use crate::prog::{root_name, Forb, Level, Prog, Stmt, Wrap};
+use crate::prog::{Forb, Level, Prog, Stmt, Wrap, root_name};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Site {
     Forb(Forb),
     While,
-    /// A refused call at the call site, at every level: the allow-list rule (driver/lists).
-    AllowList,
 }
 
 #[derive(Debug, Default)]
@@ -59,13 +57,10 @@ fn build(g: &mut Graph, node: usize, stmts: &[Stmt]) {
                 build(g, node, a);
                 build(g, node, b);
             }
-            Stmt::Wrap(w, b) => {
-                // `.into()` on a user type: Into::into is a default method of core, which the
-                // allow-list does not match on user types (driver/lists/A_I.txt header). The call
-                // is refused at the call site; the From impl's body is still a node of its own.
-                if *w == Wrap::Into {
-                    g.nodes[node].sites.push(Site::AllowList);
-                }
+            Stmt::Wrap(_, b) => {
+                // Every wrapper body is a node of its own, reached from the call. `.into()` on a user
+                // type calls core's blanket `Into::into`, which the lists match by its trait path; its
+                // body is core's, and it reaches the user `From` impl through its bound (driver/README.md).
                 let id = g.nodes.len();
                 g.nodes.push(Node::default());
                 g.nodes[node].edges.push(id);
@@ -89,10 +84,10 @@ pub struct Expect {
     /// (root name, level) of every root, in program order.
     pub roots: Vec<(String, Level)>,
     pub refusals: Vec<Refusal>,
-    /// The program has a Drop impl. The driver then reads the drop glue, which contains a raw
-    /// pointer dereference (`core::ptr::drop_in_place`). Whether that is `unsafe` code is not
-    /// settled by spec.md (it says only that drop glue counts as a call), so an `unsafe` refusal
-    /// from core internals is reported as undecided, not as a mismatch. See README.md.
+    /// The program has a Drop impl, so the driver reads drop glue. Glue's own raw pointer reads are not
+    /// refusals (README.md, Known classifications), but a call it makes can be: a `JoinHandle` dropped
+    /// in an item reaches `[std] Thread::drop` with its span in `core::ptr::drop_in_place`. Such a
+    /// record is real, cannot be attributed to a root by span, and is counted as undecided.
     pub drop_glue: bool,
 }
 
@@ -151,17 +146,19 @@ pub fn expect(prog: &Prog) -> Expect {
         refusals: Vec::new(),
         drop_glue: has_wrap(prog, Wrap::Drop),
     };
-    let add = |out: &mut Expect, rule: &str, lv: Level, roots: Vec<String>| {
-        match out.refusals.iter_mut().find(|r| r.rule == rule && r.level == lv) {
-            Some(r) => {
-                for name in roots {
-                    if !r.roots.contains(&name) {
-                        r.roots.push(name);
-                    }
+    let add = |out: &mut Expect, rule: &str, lv: Level, roots: Vec<String>| match out
+        .refusals
+        .iter_mut()
+        .find(|r| r.rule == rule && r.level == lv)
+    {
+        Some(r) => {
+            for name in roots {
+                if !r.roots.contains(&name) {
+                    r.roots.push(name);
                 }
             }
-            None => out.refusals.push(Refusal { rule: rule.to_string(), level: lv, roots }),
         }
+        None => out.refusals.push(Refusal { rule: rule.to_string(), level: lv, roots }),
     };
 
     for m in 0..n {
@@ -182,7 +179,6 @@ pub fn expect(prog: &Prog) -> Expect {
                         add(&mut out, "counted-loop", lv, names.clone());
                     }
                 }
-                Site::AllowList => add(&mut out, "allow-list", lv, names.clone()),
             }
         }
         // Cyclic: m reaches itself through at least one edge.
@@ -266,7 +262,10 @@ mod tests {
     #[test]
     fn while_is_refused_at_item_and_step_only() {
         let body = vec![Stmt::While(vec![])];
-        assert_eq!(rules(&expect(&prog(vec![], vec![(Level::Step, body.clone())]))), vec![("counted-loop".into(), Level::Step)]);
+        assert_eq!(
+            rules(&expect(&prog(vec![], vec![(Level::Step, body.clone())]))),
+            vec![("counted-loop".into(), Level::Step)]
+        );
         assert!(expect(&prog(vec![], vec![(Level::Worker, body)])).accepts());
     }
 }

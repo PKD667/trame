@@ -1,4 +1,3 @@
-//! expect: refused [ffi] item, [unsafe] item
 // spec: Requirement (All levels): no FFI. The item calls abs from the C library. Rust makes the call an unsafe
 // block, so the unsafe rule reports it too: both are true, and both are named.
 unsafe extern "C" {
@@ -13,6 +12,8 @@ struct Work {
 #[trame::item(key = x.index as usize)]
 fn absolute(x: &Work, slot: &mut i32, _cx: &()) {
     *slot = unsafe { abs(x.by as i32) };
+    //~^ ERROR: [unsafe] item
+    //~| ERROR: [ffi] item
 }
 
 fn main() {

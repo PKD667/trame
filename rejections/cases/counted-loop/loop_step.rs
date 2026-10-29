@@ -1,4 +1,3 @@
-//! expect: refused [counted-loop] step
 // spec: Definition (Counted loop), Requirement (Step): `loop` has no bound in its header. It is not counted,
 // even though this one breaks.
 #[trame::message]
@@ -17,7 +16,7 @@ impl P {
     fn step(&mut self, q: &mut Queue) -> trame::Status {
         let mut i = 0u32;
         loop {
-            i += 1;
+            i += 1; //~ ERROR: [counted-loop] step
             if i == 3 {
                 break;
             }

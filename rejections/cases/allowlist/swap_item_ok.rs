@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Section 3 (Compile time): the pair of forget_item.rs. core::mem::swap is in A_I, so an item may call
 // it. The same shape of call, with a listed function, is accepted.
 struct Work {

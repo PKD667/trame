@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Definition (Counted loop). This is the pair of unbounded_range_step.rs: the same iteration over a
 // bounded range is counted, and accepted.
 #[trame::message]

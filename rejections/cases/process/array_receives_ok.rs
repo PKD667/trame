@@ -1,6 +1,6 @@
-//! expect: accepted
-// spec: Section 5.3 (Processes and cells): `receives` takes any message type, an array included, since an array of
-// a message struct is one (Section 3, Messages).
+//@check-pass
+// spec: Section 5.3 (Scheduling), Definition (Processes): a process owns the message types it receives. receives takes any
+// message type, an array included, since an array of a message struct is one (Requirement (Messages)).
 #[trame::message]
 struct Spike {
     neuron: u32,

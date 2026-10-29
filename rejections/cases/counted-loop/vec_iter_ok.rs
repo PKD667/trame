@@ -1,7 +1,7 @@
-//! expect: accepted
-//! known: a step may iterate a slice (spec.md, Definition (Counted loop)), but core::slice::Iter reads raw pointers, so the driver refuses it as unsafe (finding C1).
+//@check-pass
 // spec: Definition (Counted loop). This is the pair of vec_iter_mutated_step.rs: a `for` over a slice that the
-// body only reads is counted, and accepted.
+// body only reads is counted, and accepted. Its refusal before the Box and vec! fixes came from vec![1, 2] (the
+// allocation's raw derefs, a Box), not from the slice iterator: core::slice::* is judged by its list entry.
 #[trame::message]
 struct Job {
     id: u32,

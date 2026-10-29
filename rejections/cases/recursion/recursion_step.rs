@@ -1,7 +1,6 @@
-//! expect: refused [recursion] step
 // spec: Requirement (Step): a step does not recurse. A step calls a function that calls itself.
 fn down(n: u32) -> u32 {
-    if n == 0 { 0 } else { down(n - 1) }
+    if n == 0 { 0 } else { down(n - 1) } //~ ERROR: [recursion] step
 }
 
 #[trame::message]

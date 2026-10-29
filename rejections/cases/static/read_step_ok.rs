@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (All levels): no globals. This is the pair of read_step.rs: a const is a value, not a
 // global, so the same read is accepted.
 const COUNT: u32 = 7;

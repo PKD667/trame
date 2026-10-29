@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Definition (Counted loop). This is the pair of while_step.rs: the same three iterations written as a
 // `for` over a range are counted, and accepted.
 #[trame::message]

@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (All levels): no UnsafeCell. This is the pair of cell_worker.rs: the same write is a
 // plain `mut` local, which needs no interior mutability, and is accepted.
 fn main() {

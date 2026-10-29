@@ -1,7 +1,6 @@
-//! expect: refused [indirect] worker
 // spec: Requirement (All levels): no indirect calls. A worker calls a function pointer, fn(u32) -> u32.
 fn apply(f: fn(u32) -> u32, x: u32) -> u32 {
-    f(x)
+    f(x) //~ ERROR: [indirect] worker
 }
 
 fn id(x: u32) -> u32 {

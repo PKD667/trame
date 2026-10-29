@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Definition (Effect sets): Sigma_C contains parallel. This is the pair of parallel_item.rs: the same
 // parallel!, in a step.
 #[trame::message]

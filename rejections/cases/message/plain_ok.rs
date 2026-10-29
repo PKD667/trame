@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Section 3 (Compile time), Requirement (Message): a plain struct of u32, f32 and arrays is a message.
 // This is the boundary the refusals above sit next to.
 #[trame::message]

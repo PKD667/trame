@@ -1,7 +1,7 @@
 {
   description = "trame-fuzz: fuzzer for the trame compile-time driver (driver/fuzz/README.md)";
 
-  # Same nixpkgs as the repository's flake.nix; pinned by this directory's flake.lock.
+  # Pinned by this directory's flake.lock to the nixpkgs revision of the repository's flake.lock.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs = { nixpkgs, ... }:

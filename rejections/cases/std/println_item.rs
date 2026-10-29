@@ -1,4 +1,3 @@
-//! expect: refused [std] item, [unsafe] item
 // spec: Requirement (All levels): no std. An item prints, which calls std. The unsafe rule also fires on core's
 // `fmt::Arguments::new`, which the format_args! expansion calls (rejections/README.md, finding D1).
 struct Work {
@@ -9,6 +8,8 @@ struct Work {
 #[trame::item(key = x.index as usize)]
 fn show(x: &Work, slot: &mut u32, _cx: &()) {
     std::println!("{}", x.by);
+    //~^ ERROR: [unsafe] item
+    //~| ERROR: [std] item
     *slot = x.by;
 }
 

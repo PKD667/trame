@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (Worker): a worker may allocate. The worker level of the allocation pair: the push that an
 // item may not do (vec_push_item.rs) is accepted here.
 fn main() {

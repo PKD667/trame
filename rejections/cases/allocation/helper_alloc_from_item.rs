@@ -1,12 +1,11 @@
-//! expect: refused [allocation] item
 // spec: Requirement (Item): an item neither allocates nor calls alloc. The helper pushes to a Vec: legal for a
 // worker (which may allocate), but the item reaches it too, and a function is checked at the strictest level
 // that reaches it (driver/README.md). So the helper is refused at the item level.
 fn remember(n: u32) -> u32 {
-    let mut v: Vec<u32> = Vec::new();
-    v.push(n);
+    let mut v: Vec<u32> = Vec::new(); //~ ERROR: [allocation] item
+    v.push(n); //~ ERROR: [allocation] item
     v[0]
-}
+} //~ ERROR: [allocation] item
 
 struct Work {
     index: u32,

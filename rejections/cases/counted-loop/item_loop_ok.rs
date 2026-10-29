@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (Item): every loop is counted, and a counted loop is allowed. A `for` over a range in an
 // item is accepted (the fixed bound is the loop's own).
 struct Work {

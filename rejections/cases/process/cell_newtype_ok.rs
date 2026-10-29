@@ -1,6 +1,7 @@
-//! expect: accepted
-// spec: Section 5.3 (Processes and cells). This is the pair of cell_primitive_u32.rs and cell_vec_u32.rs: the
-// cell is a newtype over the Vec, which is its own type, and is accepted.
+//@check-pass
+// spec: Section 5.3 (Scheduling), Definition (Processes): cells are matched to steps by type, and each cell has a type of its
+// own. This is the pair of cell_primitive_u32.rs and cell_vec_u32.rs: the cell is a newtype over the Vec, which is its own
+// type, and is accepted.
 #[trame::message]
 struct Job {
     id: u32,

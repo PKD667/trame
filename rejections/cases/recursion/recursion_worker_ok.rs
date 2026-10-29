@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (Worker): a worker may use any loop and may recurse. This is the pair of recursion_step.rs:
 // the same recursion, and a while loop, in a worker, are accepted.
 fn countdown(n: u32) -> u32 {

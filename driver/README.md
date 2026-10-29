@@ -3,7 +3,7 @@
 Trame's compile-time checker (spec.md, Compile time): a rustc driver, and `cargo trame`, which runs cargo with it.
 The driver reads the optimized MIR of each root marker (`trame::__check::{item,step,worker}`, check.rs) and everything reachable from it, and refuses code that breaks the rules. Refusals are rustc errors: `error: [rule] <level> ...`.
 
-Run (from driver/; the compiler is pinned in driver/rust-toolchain.toml and built by flake.nix):
+Run from driver/. The compiler is pinned in driver/rust-toolchain.toml and built by flake.nix.
 
     nix develop "path:$PWD/..#driver" --command cargo test
 
@@ -12,7 +12,7 @@ Debug: `TRAME_DRIVER_DEBUG=1` prints each root and its level.
 
 ## Checks
 
-Per level (Item, Step, Worker; spec.md, Requirement per level), for every function reached from a root:
+Per level (Item, Step, Worker, as in spec.md, Requirement per level), for every function reached from a root:
 - Unsafe code, FFI, indirect calls, statics: refused at every level.
 - Effects (lists/effects.txt): each effect is allowed at the levels spec.md names for it.
 - Core and alloc callees: judged by the lists (below).
@@ -23,7 +23,7 @@ A function reached from several roots is checked at the strictest level that rea
 ## The lists (lists/)
 
 Each line is a path, or `P::*` for every item under `P`, then a `# reason`. A `-` line is a deny at one level.
-- `deny.txt`: refused at every level, and it overrides any allow. Interior mutability, locks, `Rc`, raw pointers, hints, intrinsics, arch.
+- `deny.txt`: refused at every level; where a deny and an allow both match, the more specific entry decides, and a deny wins a tie. Interior mutability, locks, `Rc`, raw pointers, hints, intrinsics, arch.
 - `A_I.txt`: what an item may call. Read with deny.txt. The infinite iterator sources are denied here (`-` lines), because an item has no unbounded loop.
 - `A_C.txt`: what a step may call. Every line of A_I, plus allocation (`alloc::vec`, `boxed`, `collections`, `string`, `slice`, `fmt`, `alloc`).
 - `A_W.txt`: what a worker may call. Every line of A_C, without the infinite-source denies, plus the `Arc` snapshot handle.
@@ -46,15 +46,17 @@ What it costs: a non-effect trusted function that does I/O, or unbounded work, g
 
 ## The test
 
-`cargo test` runs `rejections/run.sh` (tests/rejections.rs). Each case there is checked against the real trame crate: accepted cases must compile, refused cases must be refused by exactly the rule and level they name, and macro refusals must match their message. The format and the list of known gaps are in rejections/README.md. There is no stand-in crate; the driver's effect paths must match lists/effects.txt, and the cases that call trame exercise them.
+`cargo test` runs the rejection suite with the driver it has just built (tests/rejections.rs). Each case is checked against the real trame crate: a refused case must carry exactly the diagnostics its `//~ ERROR` annotations name, on their lines, and an accepted case none. The format is in rejections/README.md. There is no stand-in crate; the driver's effect paths must match lists/effects.txt, and the cases that call trame exercise them.
 
 ## Known approximations
 
 - The checker reads optimized MIR, not source: asserts and dead code that optimization removed are invisible. Checked crates build with `-Zinline-mir=no`, so `for` keeps its `Iterator::next` call.
 - Checked crates use `-Clink-dead-code` (eager collection, so `cargo check` also has roots) and every crate uses `-Zalways-encode-mir`. Both change compile time, not the output.
 - Effect paths and allow-list entries are placeholders until the trame surface lands (lists/effects.txt says how renames fail).
-- Counted loops: a loop counts if it is a `for` over Range, RangeInclusive, slice Iter/IterMut or array IntoIter, and its iterator is not mutated in the body. The mutation test is shallow (direct assignment or `&mut`).
-- A trait method on a user type is matched by its self-type shape only, not by its trait path (`names_of` in scan.rs). So a core default method the user did not override (e.g. `Iterator::for_each` on a user iterator) is not in any list and is refused. This fails closed; it is a refusal the user may not expect.
+- Counted loops: a loop counts if it is a `for` over Range, RangeInclusive, slice Iter/IterMut or array IntoIter, or one of these under `Rev` (`counted_source`, scan.rs), and its iterator is not mutated in the body. The mutation test is shallow (direct assignment or `&mut`).
+- A default method of a core trait on a user type (`ne` of a derived `PartialEq`) is matched by its trait path, as `core::cmp::*` (`names_of`, scan.rs). Its body is core's, and the user code it calls is reached through the callee's trait bounds (`callable_traits`), so a user impl of a trait the callee does not bound is not walked. This assumes core reaches user code only through its bounds and `Drop`; specialization inside core could break that, and it holds on stable Rust because the traits core specializes on (`TrustedLen`, ...) cannot be implemented there. The reach also follows a fn item's signature (`map(mk)` with `mk -> X`), since a user type can appear only there. A user `Iterator` is refused as unbounded below Worker regardless.
+- Box: a deref of a Box is the Box's own pointer, not a raw-pointer deref of the program's, and is not [unsafe]. The driver recognises the MIR shape it observed for this (`box_pointer`, scan.rs: a local whose only definition is a transmute of `b.0.0`, a field path user code cannot name). That is a matched shape, not a proof about std; `unsafe/box_deref_step_ok` and `allocation/vec_macro_step_ok` are the cases that pin it.
+- Drop glue is compiler code (a shim): its raw derefs and union accesses are not [unsafe]. Its calls are scanned. A program's own `Drop` impl is an `Own` edge and is judged in full, so `Box<X>` with an unsafe `X::drop` is refused, and `Box<u32>` is not.
 - Not implemented: the Lock rules (UnsafeCell only in Lock, no Lock in Lock) and the rest of spec.md section 3 outside the milestones.
 - Calls with no readable body and not listed are refused (`allow-list`), so a missing body fails closed.
 - Diagnostics point at MIR spans, which may be inside macro expansions.

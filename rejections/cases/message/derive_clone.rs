@@ -1,8 +1,7 @@
-//! expect: error derives Clone and Copy itself
-// spec: Section 3 (Compile time), Requirement (Message): the macro derives Clone and Copy itself; a user derive
-// of them is refused, so the set is fixed.
+// spec: Requirement (Messages) states that a message is plain data; it does not state the derive rule. The macro derives Clone
+// and Copy itself and refuses a user derive of them (macros/lib.rs:20, 88-91), so the set is fixed.
 #[trame::message]
-#[derive(Clone)]
+#[derive(Clone)] //~ ERROR: #[trame::message] derives Clone and Copy itself; remove this
 struct Twice {
     a: u32,
 }

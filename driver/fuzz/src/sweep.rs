@@ -68,8 +68,19 @@ pub fn items() -> Vec<Item> {
 }
 
 /// The (rule, level) set of a verdict, without root names.
+/// The (rule, level) pairs the driver reported.
 fn rule_set(o: &Outcome) -> BTreeSet<(String, String)> {
     o.unit.recs.iter().map(|r| (r.rule.clone(), r.level.clone())).collect()
+}
+
+/// The (rule, level) pairs the oracle predicts.
+fn predicted(o: &Outcome) -> BTreeSet<(String, String)> {
+    o.expect.refusals.iter().map(|r| (r.rule.clone(), r.level.noun().to_string())).collect()
+}
+
+/// The levels at which the driver refused.
+fn levels(set: &BTreeSet<(String, String)>) -> BTreeSet<String> {
+    set.iter().map(|(_, l)| l.clone()).collect()
 }
 
 pub struct Report {
@@ -106,38 +117,40 @@ pub fn run(work: &Path, k: usize, driver_dir: Option<&Path>) -> Result<(Report, 
             break;
         }
         batches += 1;
-        let cases: Vec<Case> = chunk
-            .iter()
-            .enumerate()
-            .map(|(i, it)| Case::new(format!("q{:05}", i), it.prog.clone()))
-            .collect();
+        let cases: Vec<Case> =
+            chunk.iter().enumerate().map(|(i, it)| Case::new(format!("q{:05}", i), it.prog.clone())).collect();
         let dir = work.join(format!("sweep-{batches}"));
-        let res = batch::run(&dir, cases, driver_dir).map_err(|hs| format!("sweep batch {batches}: {}", hs.join(" | ")))?;
+        let res =
+            batch::run(&dir, cases, driver_dir).map_err(|hs| format!("sweep batch {batches}: {}", hs.join(" | ")))?;
         batch::clean_target(&dir);
         for (it, o) in chunk.into_iter().zip(res) {
             outcomes.push((it, o));
         }
     }
-    // Metamorphic: every item agrees with its group's bare item.
-    let bare: std::collections::BTreeMap<String, BTreeSet<(String, String)>> = outcomes
+    // Metamorphic (README, property 4): every item has its bare item's verdict at each level, and its
+    // rules too when the oracle predicts the same rules for both. A wrapper refused at its own call
+    // site (`.into()` on a user type) ends the walk there, so only its levels are compared.
+    type Pairs = BTreeSet<(String, String)>;
+    let bare: std::collections::BTreeMap<String, (Pairs, Pairs)> = outcomes
         .iter()
         .filter(|(it, _)| it.is_bare)
-        .map(|(it, o)| (it.group.clone(), rule_set(o)))
+        .map(|(it, o)| (it.group.clone(), (rule_set(o), predicted(o))))
         .collect();
     for (it, o) in &outcomes {
         rep.cases += 1;
+        rep.verdict_misses += o.diff.verdict_misses.len();
+        rep.over += o.diff.over.len();
+        rep.attr_misses += o.diff.attr_misses.len();
+        rep.extra += o.diff.extra.len();
         if o.diff.agrees() {
             rep.agreements += 1;
         } else {
-            rep.verdict_misses += o.diff.verdict_misses.len();
-            rep.over += o.diff.over.len();
-            rep.attr_misses += o.diff.attr_misses.len();
-            rep.extra += o.diff.extra.len();
             rep.mismatches.push((it.label.clone(), o.clone()));
         }
-        if let Some(b) = bare.get(&it.group) {
+        if let Some((b, b_predicted)) = bare.get(&it.group) {
             let s = rule_set(o);
-            if &s != b {
+            let differ = if predicted(o) == *b_predicted { &s != b } else { levels(&s) != levels(b) };
+            if differ {
                 rep.meta_violations.push(format!(
                     "{}: refusals {:?} differ from bare {}: {:?}",
                     it.label,

@@ -1,7 +1,7 @@
-//! expect: error a message type cannot be generic
-// spec: Section 3 (Compile time), Requirement (Message): a message has one concrete layout, so it is not generic.
+// spec: Requirement (Messages) does not state this. The macro refuses a generic message struct: "a message type cannot be
+// generic" (macros/lib.rs:31-32).
 #[trame::message]
-struct Wrapped<T> {
+struct Wrapped<T> { //~ ERROR: a message type cannot be generic
     v: T,
 }
 

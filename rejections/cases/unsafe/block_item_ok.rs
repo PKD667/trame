@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (All levels) is about unsafe code. This is the pair of block_item.rs: the same read
 // through a reference, which needs no unsafe block, is accepted.
 struct Work {

@@ -124,11 +124,8 @@ fn cmd_run(args: &Args) -> i32 {
     let start = std::time::Instant::now();
     for b in 0..batches {
         let progs = batch_programs(seed, b, k, o);
-        let cases: Vec<Case> = progs
-            .into_iter()
-            .enumerate()
-            .map(|(i, p)| Case::new(format!("p{:05}", b * k + i as u64), p))
-            .collect();
+        let cases: Vec<Case> =
+            progs.into_iter().enumerate().map(|(i, p)| Case::new(format!("p{:05}", b * k + i as u64), p)).collect();
         let dir = work.join(format!("run-{seed}-{b}"));
         match batch::run(&dir, cases, drv.as_deref()) {
             Ok(outs) => {
@@ -145,7 +142,13 @@ fn cmd_run(args: &Args) -> i32 {
             }
         }
         batch::clean_target(&dir);
-        batch::say(&format!("batch {}/{} done: {} programs so far, {} mismatches", b + 1, batches, t.programs, mismatches.len()));
+        batch::say(&format!(
+            "batch {}/{} done: {} programs so far, {} mismatches",
+            b + 1,
+            batches,
+            t.programs,
+            mismatches.len()
+        ));
     }
     // One shrink per (mismatch, key): a program can carry several keys, and shrinking against one
     // of them can drop another (the shrunk case must keep the key it is filed under).
@@ -216,13 +219,24 @@ fn account(t: &mut Totals, out: &Outcome) {
     }
 }
 
-fn found_text(label: &str, key: &str, first: &Outcome, small: &Prog, final_out: Option<&Outcome>, rounds: usize, tried: usize) -> String {
+fn found_text(
+    label: &str,
+    key: &str,
+    first: &Outcome,
+    small: &Prog,
+    final_out: Option<&Outcome>,
+    rounds: usize,
+    tried: usize,
+) -> String {
     let diff_text = final_out.map_or_else(|| "(shrunk program not re-run)".to_string(), |f| f.diff.describe());
     let e = oracle::expect(small);
     let mut s = String::new();
     s.push_str(&format!("// trame-fuzz found: {label}\n"));
     s.push_str(&format!("// key: {key} (the shrunk program keeps this difference)\n"));
-    s.push_str(&format!("// first seen: seed={} index={}; shrunk in {rounds} rounds, {tried} candidates\n", first.prog.seed, first.prog.index));
+    s.push_str(&format!(
+        "// first seen: seed={} index={}; shrunk in {rounds} rounds, {tried} candidates\n",
+        first.prog.seed, first.prog.index
+    ));
     s.push_str("// Expected (R, from the abstract program):\n");
     if e.refusals.is_empty() {
         s.push_str("//   accept\n");
@@ -249,7 +263,17 @@ fn found_text(label: &str, key: &str, first: &Outcome, small: &Prog, final_out: 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn print_report(seed: u64, batches: u64, k: u64, o: GenOpts, t: &Totals, mismatches: usize, shrunk: usize, harness: &[String], elapsed: f64) {
+fn print_report(
+    seed: u64,
+    batches: u64,
+    k: u64,
+    o: GenOpts,
+    t: &Totals,
+    mismatches: usize,
+    shrunk: usize,
+    harness: &[String],
+    elapsed: f64,
+) {
     println!("trame-fuzz run: seed={seed} batches={batches} K={k} extra={}", o.extra);
     println!("  programs              {}", t.programs);
     println!("  roots                 {}", t.roots);

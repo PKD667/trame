@@ -19,7 +19,7 @@ use rustc_middle::ty::{self, GenericArg, Instance, InstanceKind, TyCtxt, TypingE
 use rustc_span::Span;
 
 use lists::{Effect, Lists, Verdict};
-use scan::{canon, Scan, What};
+use scan::{Scan, What, canon};
 
 /// A level of spec.md section 3. Smaller is stricter, so `min` picks the strictest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -204,16 +204,17 @@ fn recursion<'tcx>(
                 let cycle: Vec<String> =
                     stack[at..].iter().chain(std::iter::once(&m)).map(|x| canon(tcx, x.def_id())).collect();
                 let lv = level[&n];
-                tcx.dcx().struct_span_err(
-                    span,
-                    format!(
-                        "[recursion] {} recurses: {} (spec.md, Requirement ({}))",
-                        lv.noun(),
-                        cycle.join(" -> "),
-                        lv.name()
-                    ),
-                )
-                .emit();
+                tcx.dcx()
+                    .struct_span_err(
+                        span,
+                        format!(
+                            "[recursion] {} recurses: {} (spec.md, Requirement ({}))",
+                            lv.noun(),
+                            cycle.join(" -> "),
+                            lv.name()
+                        ),
+                    )
+                    .emit();
                 errors += 1;
             }
             Some(_) => {}
@@ -259,7 +260,7 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> O
         }
         What::Core { key, names, alloc } => match lists.verdict(level, names) {
             Verdict::Allow => None,
-            Verdict::Deny(entry) => Some(("deny", format!("{subj} calls {key}: denied by `{entry}` (driver/lists/deny.txt, {}.txt) (spec.md, Requirement ({lvl}))", level.list_file()))),
+            Verdict::Deny(entry) => Some(("deny", format!("{subj} calls {key}: denied by `{entry}` (driver/lists/deny.txt, {}.txt) ({})", level.list_file(), deny_clause(lists, level, &entry)))),
             Verdict::Refuse if *alloc && level == Level::Item => {
                 Some(("allocation", format!("{subj} calls {key}: items neither allocate nor call alloc (spec.md, Requirement (Item))")))
             }
@@ -269,10 +270,10 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> O
             )),
         },
         What::Type(name) => lists.denied(level, name).map(|entry| {
-            ("deny", format!("{subj} uses type {name}: denied by `{entry}` (driver/lists/deny.txt, {}.txt) (spec.md, Requirement ({lvl}))", level.list_file()))
+            ("deny", format!("{subj} uses type {name}: denied by `{entry}` (driver/lists/deny.txt, {}.txt) ({})", level.list_file(), deny_clause(lists, level, &entry)))
         }),
         What::Unbounded(name) => (level != Level::Worker).then(|| {
-            ("unbounded", format!("{subj} passes {name}, a user iterator, to core code, which would drive it without a bound (spec.md, Requirement ({lvl}))"))
+            ("unbounded", format!("{subj} passes {name}, a user iterator, to core code, which would drive it without a bound (spec.md, Definition (Counted loop))"))
         }),
         What::Loop { counted, reason } => {
             if *counted || level == Level::Worker {
@@ -282,6 +283,18 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> O
             }
         }
         What::Edge(_) | What::Own(_) => None,
+    }
+}
+
+/// The clause of spec.md that a deny entry enforces: deny.txt's entries are the All-levels rules (no UnsafeCell,
+/// no locks, no raw pointers); a per-level deny is an infinite source, which is a loop the counted-loop rule
+/// does not bound (the level files say so).
+fn deny_clause(lists: &Lists, level: Level, entry: &str) -> String {
+    if lists.is_global(entry) {
+        "spec.md, Requirement (All levels)".into()
+    } else {
+        debug_assert!(level != Level::Worker, "the worker lists deny no per-level entry");
+        "spec.md, Definition (Counted loop)".into()
     }
 }
 
@@ -300,7 +313,9 @@ fn root_target<'tcx>(tcx: TyCtxt<'tcx>, level: Level, marker: Instance<'tcx>) ->
         }
         (Level::Step, ty::Adt(adt, pargs)) => {
             for imp in tcx.inherent_impls(adt.did()) {
-                let Some(step) = tcx.associated_items(*imp).in_definition_order().find(|a| a.name().as_str() == "step" && a.is_fn()) else {
+                let Some(step) =
+                    tcx.associated_items(*imp).in_definition_order().find(|a| a.name().as_str() == "step" && a.is_fn())
+                else {
                     continue;
                 };
                 let imp_self = tcx.type_of(*imp).skip_binder();
@@ -320,7 +335,11 @@ fn root_target<'tcx>(tcx: TyCtxt<'tcx>, level: Level, marker: Instance<'tcx>) ->
     }
 }
 
-fn root_name<'tcx>(tcx: TyCtxt<'tcx>, n: Instance<'tcx>, parent: &FxHashMap<Instance<'tcx>, Option<Instance<'tcx>>>) -> String {
+fn root_name<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    n: Instance<'tcx>,
+    parent: &FxHashMap<Instance<'tcx>, Option<Instance<'tcx>>>,
+) -> String {
     let mut cur = n;
     while let Some(Some(p)) = parent.get(&cur) {
         cur = *p;
@@ -328,7 +347,11 @@ fn root_name<'tcx>(tcx: TyCtxt<'tcx>, n: Instance<'tcx>, parent: &FxHashMap<Inst
     canon(tcx, cur.def_id())
 }
 
-fn path_to<'tcx>(tcx: TyCtxt<'tcx>, n: Instance<'tcx>, parent: &FxHashMap<Instance<'tcx>, Option<Instance<'tcx>>>) -> String {
+fn path_to<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    n: Instance<'tcx>,
+    parent: &FxHashMap<Instance<'tcx>, Option<Instance<'tcx>>>,
+) -> String {
     let mut names = vec![canon(tcx, n.def_id())];
     let mut cur = n;
     while let Some(Some(p)) = parent.get(&cur) {

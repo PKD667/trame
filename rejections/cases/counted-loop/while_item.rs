@@ -1,4 +1,3 @@
-//! expect: refused [counted-loop] item
 // spec: Requirement (Item): every loop is counted. An item loops with while, which is not a counted loop.
 struct Work {
     index: u32,
@@ -8,7 +7,7 @@ struct Work {
 #[trame::item(key = x.index as usize)]
 fn count(x: &Work, slot: &mut u32, _cx: &()) {
     let mut i = 0u32;
-    while i < x.by {
+    while i < x.by { //~ ERROR: [counted-loop] item
         i += 1;
     }
     *slot = i;

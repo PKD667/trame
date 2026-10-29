@@ -1,5 +1,7 @@
-//! expect: refused [effects] item, [allocation] item
-// spec: Requirement (Item), Definition (Effect sets): an item performs no effect; barrier is a worker effect.
+// spec: Requirement (Item), Definition (Effect sets): an item performs no effect (Sigma_I is empty); barrier is a worker effect.
+// Refused [effects] item: the call to trame::barrier is an effect that no item may perform.
+// Refused [allocation] item: barrier returns an Arc<[u8]> that `let _ =` drops at once. Arc::drop calls alloc, and an item neither
+// allocates nor calls alloc (Requirement (Item)). A_W.txt lists Arc::drop at worker level only.
 struct Work {
     index: u32,
     by: u32,
@@ -8,6 +10,8 @@ struct Work {
 #[trame::item(key = x.index as usize)]
 fn wait_all(x: &Work, slot: &mut u32, _cx: &()) {
     let _ = trame::barrier();
+    //~^ ERROR: [effects] item
+    //~| ERROR: [allocation] item
     *slot = x.by;
 }
 

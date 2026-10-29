@@ -1,4 +1,3 @@
-//! expect: refused [effects] item
 // spec: Requirement (Item), Definition (Effect sets): Sigma_I is empty. An item reads the clock, which is an effect.
 struct Work {
     index: u32,
@@ -7,7 +6,7 @@ struct Work {
 
 #[trame::item(key = x.index as usize)]
 fn stamp(x: &Work, slot: &mut u32, _cx: &()) {
-    let _ = trame::now();
+    let _ = trame::now(); //~ ERROR: [effects] item
     *slot = x.by;
 }
 

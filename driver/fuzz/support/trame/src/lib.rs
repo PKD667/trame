@@ -22,7 +22,9 @@ pub mod __rt {
     pub fn parallel() {}
 }
 pub mod math {
-    pub fn exp(x: f32) -> f32 {
-        x
+    pub mod f32 {
+        pub fn exp(x: f32) -> f32 {
+            x
+        }
     }
 }

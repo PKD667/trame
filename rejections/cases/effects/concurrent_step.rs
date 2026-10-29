@@ -1,4 +1,3 @@
-//! expect: refused [effects] step
 // spec: Requirement (Step), Definition (Effect sets): Sigma_C has no concurrent. A step may not start a
 // concurrent! of other processes: that is a worker's effect.
 #[trame::message]
@@ -26,7 +25,7 @@ struct Outer;
 impl Outer {
     fn step(&mut self, q: &mut Queue) -> trame::Status {
         let mut local = Queue { n: 0 };
-        let _ = trame::concurrent!(Inner; local);
+        let _ = trame::concurrent!(Inner; local); //~ ERROR: [effects] step
         q.n = local.n;
         trame::Status::Done
     }

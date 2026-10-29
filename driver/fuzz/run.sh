@@ -23,22 +23,15 @@ export RUSTUP_TOOLCHAIN=nightly-2026-04-21
 if [ -n "${TRAME_DRIVER_BIN:-}" ]; then
   drv_bin=$TRAME_DRIVER_BIN
 else
-  # The driver package is an output of the repository's flake.nix. A `path:` flake copies the whole
-  # repository, so a build directory that another process is writing can vanish during the copy;
-  # retry rather than fail.
-  drv=
-  for attempt in 1 2 3; do
-    if drv=$(nix build "path:$repo#trame-driver" --no-link --print-out-paths); then break; fi
-    echo "driver build attempt $attempt failed; retrying" >&2
-    sleep 20
-  done
-  [ -n "$drv" ] || { echo "driver build failed" >&2; exit 2; }
+  # The driver package is an output of the repository's flake.nix, built from the git tree: only
+  # tracked files are copied, so a build directory another process is writing cannot be read.
+  drv=$(nix build "git+file://$repo#trame-driver" --no-link --print-out-paths)
   drv_bin=$drv/bin
 fi
 echo "driver: $drv_bin"
-"$drv_bin/trame-driver" -vV 2>/dev/null | head -1 | sed 's/^/driver version: /' || true
+echo "driver version: $("$drv_bin/trame-driver" -vV | head -1)"
 
-fuzz=$(nix build "path:$here" --no-link --print-out-paths)
+fuzz=$(nix build "git+file://$repo?dir=driver/fuzz" --no-link --print-out-paths)
 echo "fuzzer: $fuzz"
 echo "machine: $(uname -srm), $(nproc) cpus"
 

@@ -1,4 +1,3 @@
-//! expect: refused [recursion] step
 // spec: Requirement (Step): a step does not recurse, directly or through other functions. Two functions that
 // call each other form a cycle.
 fn even(n: u32) -> bool {
@@ -6,7 +5,7 @@ fn even(n: u32) -> bool {
 }
 
 fn odd(n: u32) -> bool {
-    if n == 0 { false } else { even(n - 1) }
+    if n == 0 { false } else { even(n - 1) } //~ ERROR: [recursion] step
 }
 
 #[trame::message]

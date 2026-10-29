@@ -9,7 +9,10 @@ use rustc_hir::intravisit::{self, Visitor};
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor as MirVisitor};
 use rustc_middle::mir::*;
 use rustc_middle::ty::adjustment::PointerCoercion;
-use rustc_middle::ty::{self, GenericArg, GenericArgKind, GenericArgsRef, GenericParamDefKind, Instance, InstanceKind, Ty, TyCtxt, TypeFoldable, TypingEnv};
+use rustc_middle::ty::{
+    self, GenericArg, GenericArgKind, GenericArgsRef, GenericParamDefKind, Instance, InstanceKind, Ty, TyCtxt,
+    TypeFoldable, TypingEnv,
+};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 
@@ -104,6 +107,23 @@ pub fn core_impls(tcx: TyCtxt<'_>) -> Impls {
     Impls { by_adt, iterator: tcx.lang_items().iterator_trait() }
 }
 
+/// The traits in `roots` and all their supertraits.
+fn trait_closure(tcx: TyCtxt<'_>, roots: Vec<DefId>) -> FxHashSet<DefId> {
+    let mut out = FxHashSet::default();
+    let mut work = roots;
+    while let Some(tr) = work.pop() {
+        if out.insert(tr) {
+            work.extend(
+                tcx.explicit_super_predicates_of(tr)
+                    .skip_binder()
+                    .iter()
+                    .filter_map(|(c, _)| c.as_trait_clause().map(|t| t.skip_binder().def_id())),
+            );
+        }
+    }
+    out
+}
+
 /// Defined in core, alloc or std.
 fn is_std(tcx: TyCtxt<'_>, def: DefId) -> bool {
     matches!(tcx.crate_name(def.krate).as_str(), "core" | "alloc" | "std")
@@ -145,13 +165,20 @@ fn unify<'tcx>(tcx: TyCtxt<'tcx>, pat: Ty<'tcx>, t: Ty<'tcx>, out: &mut [Option<
             d1 == d2 && a1.len() == a2.len() && a1.iter().zip(a2.iter()).all(|(x, y)| unify_arg(tcx, x, y, out))
         }
         (ty::Ref(_, p, m1), ty::Ref(_, c, m2)) => m1 == m2 && unify(tcx, *p, *c, out),
-        (ty::Tuple(p), ty::Tuple(c)) => p.len() == c.len() && p.iter().zip(c.iter()).all(|(x, y)| unify(tcx, x, y, out)),
+        (ty::Tuple(p), ty::Tuple(c)) => {
+            p.len() == c.len() && p.iter().zip(c.iter()).all(|(x, y)| unify(tcx, x, y, out))
+        }
         (ty::Slice(p), ty::Slice(c)) | (ty::Array(p, _), ty::Array(c, _)) => unify(tcx, *p, *c, out),
         _ => pat == t,
     }
 }
 
-fn unify_arg<'tcx>(tcx: TyCtxt<'tcx>, x: GenericArg<'tcx>, y: GenericArg<'tcx>, out: &mut [Option<GenericArg<'tcx>>]) -> bool {
+fn unify_arg<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    x: GenericArg<'tcx>,
+    y: GenericArg<'tcx>,
+    out: &mut [Option<GenericArg<'tcx>>],
+) -> bool {
     match (x.kind(), y.kind()) {
         (GenericArgKind::Type(p), GenericArgKind::Type(c)) => unify(tcx, p, c, out),
         (GenericArgKind::Lifetime(_), GenericArgKind::Lifetime(_)) => true,
@@ -190,7 +217,11 @@ pub fn canon(tcx: TyCtxt<'_>, def: rustc_span::def_id::DefId) -> String {
 
 /// Monomorphize `value` for `inst`'s body.
 pub fn mono<'tcx, T: TypeFoldable<TyCtxt<'tcx>>>(tcx: TyCtxt<'tcx>, inst: Instance<'tcx>, value: T) -> T {
-    inst.instantiate_mir_and_normalize_erasing_regions(tcx, TypingEnv::fully_monomorphized(), ty::EarlyBinder::bind(value))
+    inst.instantiate_mir_and_normalize_erasing_regions(
+        tcx,
+        TypingEnv::fully_monomorphized(),
+        ty::EarlyBinder::bind(value),
+    )
 }
 
 /// Trait-method or inherent-method keys: `<self shape>::<method>`, or the path of a free function.
@@ -215,6 +246,7 @@ fn shape<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> String {
         ty::Str => "str".into(),
         ty::Ref(_, inner, m) => format!("&{}{}", if m.is_mut() { "mut " } else { "" }, shape(tcx, *inner)),
         ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) | ty::Float(_) => ty.to_string(),
+        ty::RawPtr(_, m) => format!("*{} _", if m.is_mut() { "mut" } else { "const" }),
         _ => "?".into(),
     }
 }
@@ -225,6 +257,9 @@ pub struct Scanner<'a, 'tcx> {
     body: &'a Body<'tcx>,
     scan: Scan<'tcx>,
     impls: &'a Impls,
+    /// The body is compiler-generated (a shim: drop glue, clone glue, fn-pointer adapters). Its raw
+    /// derefs and union accesses are the compiler's, not the program's; its calls are still scanned.
+    shim: bool,
 }
 
 /// Scan `inst`'s body. Bodies of `core`/`alloc`/`std` are never scanned: they are leaves.
@@ -232,7 +267,10 @@ pub fn scan<'tcx>(tcx: TyCtxt<'tcx>, inst: Instance<'tcx>, impls: &Impls) -> Sca
     let mut out = Scan::default();
     if let InstanceKind::Item(def) = inst.def {
         if let Some(local) = def.as_local() {
-            if matches!(tcx.def_kind(def), rustc_hir::def::DefKind::Fn | rustc_hir::def::DefKind::AssocFn | rustc_hir::def::DefKind::Closure) {
+            if matches!(
+                tcx.def_kind(def),
+                rustc_hir::def::DefKind::Fn | rustc_hir::def::DefKind::AssocFn | rustc_hir::def::DefKind::Closure
+            ) {
                 let span = tcx.def_span(def);
                 for span in unsafe_blocks(tcx, local) {
                     out.sites.push(Site { span, what: What::Unsafe("unsafe block".into()) });
@@ -246,7 +284,8 @@ pub fn scan<'tcx>(tcx: TyCtxt<'tcx>, inst: Instance<'tcx>, impls: &Impls) -> Sca
         }
     }
     let body = tcx.instance_mir(inst.def);
-    let mut s = Scanner { tcx, inst, body, scan: out, impls };
+    let shim = !matches!(inst.def, InstanceKind::Item(_));
+    let mut s = Scanner { tcx, inst, body, scan: out, impls, shim };
     s.visit_body(body);
     s.loops();
     s.scan
@@ -290,28 +329,40 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
     }
 
     /// The paths the lists match for a core or alloc callee: its shape key, and its definition path.
-    /// A trait method on a user type is not matched by its trait path: if the user type did not define
-    /// the method, core's default body would run user code (an `Iterator` default on a user iterator).
+    /// A default method of a core trait, on a user type, is matched by its trait path as well: its body is
+    /// core's, and the user code it calls is reached through `reach`. A user `Iterator` is refused by
+    /// `Unbounded` (below Worker), whatever the trait path allows.
     fn names_of(&self, def: DefId, args: GenericArgsRef<'tcx>) -> Vec<String> {
+        vec![key(self.tcx, def, args), canon(self.tcx, def)]
+    }
+
+    /// The traits that core code can call on a user type through callee `def`: the traits its generics
+    /// bound (with their supertraits), and Drop, since drop glue runs in any container. This is what
+    /// `reach` follows; the other impls of a user type are not called by the callee, so are not edges.
+    fn callable_traits(&self, def: DefId) -> FxHashSet<DefId> {
         let tcx = self.tcx;
-        let mut names = vec![key(tcx, def, args)];
-        let user_self = tcx.trait_of_assoc(def).is_some() && is_user_ty(tcx, args.type_at(0));
-        if !user_self {
-            names.push(canon(tcx, def));
-        }
-        names
+        let bound = |c: &ty::Clause<'tcx>| c.as_trait_clause().map(|t| t.skip_binder().def_id());
+        let mut work: Vec<DefId> = tcx
+            .predicates_of(def)
+            .instantiate_identity(tcx)
+            .predicates
+            .iter()
+            .filter_map(|c| bound(&c.skip_normalization()))
+            .collect();
+        work.extend(tcx.lang_items().drop_trait());
+        trait_closure(tcx, work)
     }
 
     /// Core and trame are trusted callees: a closure or fn item among the types of their call is called
     /// by them, so it is checked at this level. A user type's impls of core traits are called by core
     /// code too, and so are its fields' types. Types are followed through references and ADT arguments.
-    fn reach(&mut self, start: Vec<Ty<'tcx>>, span: Span) {
+    fn reach(&mut self, start: Vec<Ty<'tcx>>, span: Span, traits: &FxHashSet<DefId>) {
         let mark = self.scan.sites.len();
-        self.reach_types(start, span);
+        self.reach_types(start, span, traits);
         self.own_since(mark);
     }
 
-    fn reach_types(&mut self, start: Vec<Ty<'tcx>>, span: Span) {
+    fn reach_types(&mut self, start: Vec<Ty<'tcx>>, span: Span, traits: &FxHashSet<DefId>) {
         let tcx = self.tcx;
         let mut work = start;
         let mut seen: FxHashSet<Ty<'tcx>> = FxHashSet::default();
@@ -330,7 +381,14 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
                 ty::Closure(def, cargs) if !is_std(tcx, *def) => {
                     self.push(span, What::Edge(Instance::new_raw(*def, *cargs)))
                 }
-                ty::FnDef(def, fargs) => self.fn_use(*def, *fargs, span),
+                ty::FnDef(def, fargs) => {
+                    self.fn_use(*def, *fargs, span);
+                    // A fn item's signature holds the types core code passes it and gets back. A user type there
+                    // is reached as it is through a closure's signature (the walk above): `map(mk).max()` with
+                    // `mk -> X` calls X's Ord, and X is in no generic argument of `max`.
+                    let sig = tcx.fn_sig(*def).instantiate(tcx, self.mono(*fargs)).skip_binder();
+                    work.extend(sig.inputs_and_output.iter().map(|c| self.mono(c)));
+                }
                 _ => {}
             }
             if let ty::Adt(adt, aargs) = t.peel_refs().kind() {
@@ -340,7 +398,7 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
                     for f in adt.all_fields() {
                         work.push(f.ty(tcx, aargs));
                     }
-                    self.impl_edges(t, did, span);
+                    self.impl_edges(t, did, span, traits);
                 }
             }
         }
@@ -348,11 +406,15 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
 
     /// The impls of core traits for user type `t` (ADT `did`): every function they define is called by
     /// core code, so each is an edge, at this level. A user `Iterator` is also flagged: core would loop.
-    fn impl_edges(&mut self, t: Ty<'tcx>, did: DefId, span: Span) {
+    fn impl_edges(&mut self, t: Ty<'tcx>, did: DefId, span: Span, traits: &FxHashSet<DefId>) {
         let tcx = self.tcx;
         let impls = self.impls;
         let Some(list) = impls.by_adt.get(&did) else { return };
         for imp in list {
+            let trait_id = tcx.impl_trait_ref(*imp).skip_binder().def_id;
+            if !traits.contains(&trait_id) {
+                continue;
+            }
             let args = match impl_args(tcx, *imp, t) {
                 Ok(Some(args)) => args,
                 Ok(None) => continue,
@@ -368,10 +430,16 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
                 if tcx.generics_of(*item).own_params.is_empty() {
                     self.push(span, What::Edge(Instance::new_raw(*item, args)));
                 } else {
-                    self.push(span, What::Unresolved(format!("`{}` has its own generics; the driver cannot read it", canon(tcx, *item))));
+                    self.push(
+                        span,
+                        What::Unresolved(format!(
+                            "`{}` has its own generics; the driver cannot read it",
+                            canon(tcx, *item)
+                        )),
+                    );
                 }
             }
-            let is_iter = Some(tcx.impl_trait_ref(*imp).skip_binder().def_id) == impls.iterator;
+            let is_iter = Some(trait_id) == impls.iterator;
             if is_iter {
                 self.push(span, What::Unbounded(canon(tcx, did)));
             }
@@ -418,7 +486,13 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
         }
     }
 
-    fn classify(&mut self, callee: Instance<'tcx>, def: rustc_span::def_id::DefId, args: GenericArgsRef<'tcx>, span: Span) {
+    fn classify(
+        &mut self,
+        callee: Instance<'tcx>,
+        def: rustc_span::def_id::DefId,
+        args: GenericArgsRef<'tcx>,
+        span: Span,
+    ) {
         let tcx = self.tcx;
         match callee.def {
             InstanceKind::Virtual(..) => self.push(span, What::Indirect("call of a trait object method".into())),
@@ -435,19 +509,22 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
                 } else if krate == "core" || krate == "alloc" {
                     // A core or alloc callee is a leaf, judged by the lists. Its generic arguments are
                     // walked: a closure or fn item among them is called by the leaf, so it is checked here.
-                    self.reach(args.types().collect(), span);
+                    let traits = self.callable_traits(def);
+                    self.reach(args.types().collect(), span, &traits);
                     let names = self.names_of(def, args);
                     self.push(span, What::Core { key: names[0].clone(), names, alloc: krate == "alloc" })
                 } else if krate == "trame" {
                     // Trame is the runtime and trusted at every level (driver/README.md). Its body is read
                     // for effects, edges and allocations only (`trust.rs`).
-                    self.reach(args.types().collect(), span);
+                    let traits = self.callable_traits(def);
+                    self.reach(args.types().collect(), span, &traits);
                     self.push(span, What::Edge(callee))
                 } else if !tcx.is_mir_available(d) {
                     // A user callee with no readable body fails closed: it is not listed, so it is refused.
                     let names = self.names_of(def, args);
                     self.push(span, What::Core { key: names[0].clone(), names, alloc: false })
-                } else if matches!(tcx.def_kind(d), rustc_hir::def::DefKind::Closure) || self.is_user_impl_item(callee) {
+                } else if matches!(tcx.def_kind(d), rustc_hir::def::DefKind::Closure) || self.is_user_impl_item(callee)
+                {
                     // The program's own code, reached through a dependency or trame: judged in full.
                     self.push(span, What::Own(callee))
                 } else {
@@ -495,6 +572,22 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
         }
     }
 
+    /// A for-loop source the spec counts: a range, a slice or an array iterator, or one of these reversed
+    /// (Definition (Counted loop)). `Rev` is the only adapter admitted.
+    fn counted_source(&self, ty: Ty<'tcx>) -> bool {
+        let tcx = self.tcx;
+        let ty::Adt(adt, args) = ty.kind() else { return false };
+        match canon(tcx, adt.did()).as_str() {
+            "core::ops::range::Range"
+            | "core::ops::range::RangeInclusive"
+            | "core::slice::iter::Iter"
+            | "core::slice::iter::IterMut"
+            | "core::array::iter::IntoIter" => true,
+            "core::iter::adapters::rev::Rev" => args.types().next().is_some_and(|inner| self.counted_source(inner)),
+            _ => false,
+        }
+    }
+
     fn counted(&self, header: BasicBlock, in_loop: &FxHashSet<BasicBlock>) -> (bool, String) {
         let tcx = self.tcx;
         let blocks = &self.body.basic_blocks;
@@ -514,21 +607,12 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
             return (false, "the loop does not start with a call to Iterator::next".into());
         }
         let self_ty = self.mono(fargs.type_at(0));
-        let counted_iter = match self_ty.kind() {
-            ty::Adt(adt, _) => matches!(
-                canon(tcx, adt.did()).as_str(),
-                "core::ops::range::Range"
-                    | "core::ops::range::RangeInclusive"
-                    | "core::slice::iter::Iter"
-                    | "core::slice::iter::IterMut"
-                    | "core::array::iter::IntoIter"
-            ),
-            _ => false,
-        };
-        if !counted_iter {
+        if !self.counted_source(self_ty) {
             return (
                 false,
-                format!("its back-edge is governed by Iterator::next on `{self_ty}`, not a Range, slice Iter or array IntoIter"),
+                format!(
+                    "its back-edge is governed by Iterator::next on `{self_ty}`, not a Range, slice Iter or array IntoIter"
+                ),
             );
         }
         // The iterator local: `_tmp = &mut iter` feeds the call.
@@ -539,7 +623,9 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
             StatementKind::Assign(bx) => {
                 let (lhs, rv) = &**bx;
                 match rv {
-                    Rvalue::Ref(_, BorrowKind::Mut { .. }, place) if lhs.local == arg.local && lhs.projection.is_empty() => {
+                    Rvalue::Ref(_, BorrowKind::Mut { .. }, place)
+                        if lhs.local == arg.local && lhs.projection.is_empty() =>
+                    {
                         Some(place.local)
                     }
                     _ => None,
@@ -571,6 +657,44 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
             }
         }
         (true, String::new())
+    }
+}
+
+impl<'a, 'tcx> Scanner<'a, 'tcx> {
+    /// Whether the raw pointer `local` (reached with no projection) is the one ElaborateBoxDerefs makes from a
+    /// Box: its only definition is `local = transmute(box.0.0)` (Unique, then NonNull), see `is_box_field_chain`.
+    /// The deref of such a pointer is the Box's own deref, which the program writes safely (`*b`, `vec![..]`).
+    fn box_pointer(&self, local: Local) -> bool {
+        let blocks = &self.body.basic_blocks;
+        let mut defs = blocks.iter().flat_map(|b| b.statements.iter()).filter_map(|st| match &st.kind {
+            StatementKind::Assign(bx) if bx.0.local == local && bx.0.projection.is_empty() => Some(&bx.1),
+            _ => None,
+        });
+        let calls_into = blocks.iter().any(
+            |b| matches!(&b.terminator().kind, TerminatorKind::Call { destination, .. } if destination.local == local),
+        );
+        match (defs.next(), defs.next(), calls_into) {
+            (Some(Rvalue::Cast(CastKind::Transmute, op, _)), None, false) => match op {
+                Operand::Copy(p) | Operand::Move(p) => self.is_box_field_chain(p),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// Whether `place` is `b.0.0` for a Box-typed `b` (possibly behind a field path): the two fields are Box's
+    /// `Unique` and `NonNull`, which only ElaborateBoxDerefs and the box initialiser reach.
+    fn is_box_field_chain(&self, place: &Place<'tcx>) -> bool {
+        let proj = place.projection;
+        let n = proj.len();
+        if n < 2 || !proj[n - 2..].iter().all(|e| matches!(e, ProjectionElem::Field(f, _) if f.as_usize() == 0)) {
+            return false;
+        }
+        let mut ty = rustc_middle::mir::PlaceTy::from_ty(self.mono(self.body.local_decls[place.local].ty));
+        for elem in &proj[..n - 2] {
+            ty = ty.projection_ty(self.tcx, *elem);
+        }
+        ty.ty.boxed_ty().is_some()
     }
 }
 
@@ -609,7 +733,8 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
                     if let Some((krate, shape)) = listed_drop {
                         let k = format!("{shape}::drop");
                         // The glue of the listed type's fields is inside its own drop: walk the type.
-                        self.reach(vec![ty], span);
+                        let traits = trait_closure(tcx, tcx.lang_items().drop_trait().into_iter().collect());
+                        self.reach(vec![ty], span, &traits);
                         if krate == "std" {
                             self.push(span, What::Std(k));
                         } else {
@@ -620,7 +745,9 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
                         let inst = ty::Instance::resolve_drop_in_place(tcx, ty);
                         match inst.def {
                             InstanceKind::DropGlue(_, None) => {}
-                            InstanceKind::Virtual(..) => self.push(span, What::Indirect("drop of a trait object".into())),
+                            InstanceKind::Virtual(..) => {
+                                self.push(span, What::Indirect("drop of a trait object".into()))
+                            }
                             _ => self.push(span, What::Own(inst)),
                         }
                     }
@@ -655,9 +782,19 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
                 // An unsizing cast to a trait object: core code calls the trait's methods through the
                 // vtable, so the impls of the source type are reached here (see `reach`).
                 let target = self.mono(*target);
-                if target.walk().any(|g| matches!(g.kind(), GenericArgKind::Type(t) if matches!(t.kind(), ty::Dynamic(..)))) {
+                let principal = target.walk().find_map(|g| match g.kind() {
+                    GenericArgKind::Type(t) => match t.kind() {
+                        ty::Dynamic(preds, ..) => Some(preds.principal_def_id()),
+                        _ => None,
+                    },
+                    _ => None,
+                });
+                if let Some(principal) = principal {
                     let src = self.mono(op.ty(self.body, self.tcx));
-                    self.reach(vec![src], span);
+                    let mut roots: Vec<DefId> = principal.into_iter().collect();
+                    roots.extend(self.tcx.lang_items().drop_trait());
+                    let traits = trait_closure(self.tcx, roots);
+                    self.reach(vec![src], span, &traits);
                 }
             }
             Rvalue::ThreadLocalRef(def) => {
@@ -681,7 +818,9 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
                 self.push(span, What::Static(canon(tcx, uv.def)));
             }
             Const::Val(ConstValue::Scalar(rustc_middle::mir::interpret::Scalar::Ptr(ptr, _)), _) => {
-                if let rustc_middle::mir::interpret::GlobalAlloc::Static(def) = tcx.global_alloc(ptr.provenance.alloc_id()) {
+                if let rustc_middle::mir::interpret::GlobalAlloc::Static(def) =
+                    tcx.global_alloc(ptr.provenance.alloc_id())
+                {
                     self.push(span, What::Static(canon(tcx, def)));
                 }
             }
@@ -692,12 +831,22 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, ctx: PlaceContext, loc: Location) {
         let span = self.body.source_info(loc).span;
         let mut ty = rustc_middle::mir::PlaceTy::from_ty(self.local_ty(&Place::from(place.local)));
-        for elem in place.projection {
+        // Set once the place has dereferenced a Box's pointer: the union fields after it are the Box's own
+        // (MaybeUninit, in the box initialiser), not the program's.
+        let mut in_box = false;
+        for (i, elem) in place.projection.iter().enumerate() {
             match elem {
                 ProjectionElem::Deref if ty.ty.is_raw_ptr() => {
-                    self.push(span, What::Unsafe("dereference of a raw pointer".into()));
+                    // A raw deref with no projection before it: the pointer is a local, and it may be a Box's.
+                    let boxed = i == 0 && self.box_pointer(place.local);
+                    in_box |= boxed;
+                    if !boxed && !self.shim {
+                        self.push(span, What::Unsafe("dereference of a raw pointer".into()));
+                    }
                 }
-                ProjectionElem::Field(..) if ty.ty.ty_adt_def().is_some_and(|a| a.is_union()) => {
+                ProjectionElem::Field(..)
+                    if !in_box && !self.shim && ty.ty.ty_adt_def().is_some_and(|a| a.is_union()) =>
+                {
                     self.push(span, What::Unsafe("access to a union field".into()));
                 }
                 _ => {}

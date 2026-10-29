@@ -33,11 +33,7 @@ struct Checker {
 }
 
 impl rustc_driver::Callbacks for Checker {
-    fn after_analysis<'tcx>(
-        &mut self,
-        _compiler: &interface::Compiler,
-        tcx: TyCtxt<'tcx>,
-    ) -> Compilation {
+    fn after_analysis<'tcx>(&mut self, _compiler: &interface::Compiler, tcx: TyCtxt<'tcx>) -> Compilation {
         if !self.enabled {
             return Compilation::Continue;
         }
@@ -53,7 +49,8 @@ fn rustc_arg(arg: &str) -> bool {
 
 /// Whether this invocation compiles a crate (as opposed to querying rustc).
 fn is_compile(args: &[String]) -> bool {
-    let queries = args.iter().any(|a| a == "--print" || a.starts_with("--print=") || a == "-vV" || a == "-V" || a == "--version");
+    let queries =
+        args.iter().any(|a| a == "--print" || a.starts_with("--print=") || a == "-vV" || a == "-V" || a == "--version");
     args.iter().any(|a| a == "--crate-name") && !queries
 }
 

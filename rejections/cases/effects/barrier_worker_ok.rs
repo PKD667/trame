@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Definition (Effect sets): Sigma_W contains barrier. This is the pair of barrier_step.rs: the same
 // barrier, in a worker.
 fn main() {

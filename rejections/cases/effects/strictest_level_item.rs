@@ -1,9 +1,12 @@
-//! expect: refused [allocation] item, [effects] item
-// spec: Section 3 (driver/README.md): a function is checked at the strictest level that reaches it. helper calls
-// barrier, which a worker may use but an item may not. The worker use is legal, the item use is not, so the
-// helper is refused. This is the over-refusal boundary: the matched pair is strictest_level_worker_ok.rs.
+// spec: Requirement (Item), Definition (Effect sets): an item performs no effect. helper calls barrier, a worker effect.
+// driver/README.md:21: a function reached from several roots is checked at the strictest level that reaches it.
+// helper is reached from an item (bump) and from a worker (main), so the item level applies, and helper is refused.
+// Refused [effects] item: the call to trame::barrier. [allocation] item: the Arc that barrier returns is dropped (Requirement (Item)).
+// The worker use alone is accepted: strictest_level_worker_ok.rs.
 fn helper() {
     let _ = trame::barrier();
+    //~^ ERROR: [effects] item
+    //~| ERROR: [allocation] item
 }
 
 struct Work {

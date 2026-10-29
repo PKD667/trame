@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Definition (Effect sets): Sigma_W contains concurrent. This is the pair of concurrent_step.rs: the same
 // concurrent!, in a worker.
 #[trame::message]

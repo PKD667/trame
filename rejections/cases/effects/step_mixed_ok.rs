@@ -1,6 +1,6 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (Step), Definition (Effect sets): a step may allocate with a fixed capacity, runs counted
-// loops, and performs Sigma_C effects (send, now). math::exp is trame's own function, trusted at every level.
+// loops, and performs Sigma_C effects (send, now). math::f32::exp is trame's own function, trusted at every level.
 // This is the old fixture step_ok, against the real surface.
 #[trame::message]
 struct Msg {
@@ -24,7 +24,7 @@ impl P {
         }
         let _ = trame::send(trame::LEADER, Msg { n: q.n });
         let _ = trame::now();
-        q.n = trame::math::exp(1.0) as u32 + sum[3] + buffer.len() as u32;
+        q.n = trame::math::f32::exp(1.0) as u32 + sum[3] + buffer.len() as u32;
         trame::Status::Done
     }
 }

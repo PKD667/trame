@@ -1,4 +1,3 @@
-//! expect: refused [effects] item
 // spec: Requirement (Item), Definition (Effect sets): an item performs no effect, and concurrent! is one. A
 // concurrent! in an item is refused by its effect. The driver reports only that rule here.
 #[trame::message]
@@ -28,7 +27,7 @@ struct Work {
 #[trame::item(key = x.index as usize)]
 fn run_one(x: &Work, slot: &mut u32, _cx: &()) {
     let mut q = Queue { n: x.by };
-    let _ = trame::concurrent!(Inner; q);
+    let _ = trame::concurrent!(Inner; q); //~ ERROR: [effects] item
     *slot = q.n;
 }
 

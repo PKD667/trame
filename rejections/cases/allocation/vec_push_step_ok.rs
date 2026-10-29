@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Requirement (Step): a step may allocate. This is the pair of vec_push_item.rs: the same push, in a step.
 #[trame::message]
 struct Job {

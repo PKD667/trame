@@ -1,4 +1,3 @@
-//! expect: refused [effects] item
 // spec: Requirement (Item), Definition (Effect sets): Sigma_I is empty. An item performs no effect; send is one.
 #[trame::message]
 struct Msg {
@@ -12,7 +11,7 @@ struct Work {
 
 #[trame::item(key = x.index as usize)]
 fn sending(x: &Work, slot: &mut u32, _cx: &()) {
-    let _ = trame::send(trame::LEADER, Msg { n: x.by });
+    let _ = trame::send(trame::LEADER, Msg { n: x.by }); //~ ERROR: [effects] item
     *slot = x.by;
 }
 

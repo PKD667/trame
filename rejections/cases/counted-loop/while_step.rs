@@ -1,4 +1,3 @@
-//! expect: refused [counted-loop] step
 // spec: Definition (Counted loop), Requirement (Step): every loop of a step is counted. A while loop is not.
 #[trame::message]
 struct Job {
@@ -15,7 +14,7 @@ struct P;
 impl P {
     fn step(&mut self, q: &mut Queue) -> trame::Status {
         let mut i = 0u32;
-        while i < 3 {
+        while i < 3 { //~ ERROR: [counted-loop] step
             i += 1;
         }
         q.n = i;

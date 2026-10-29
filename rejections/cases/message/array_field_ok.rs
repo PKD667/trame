@@ -1,4 +1,4 @@
-//! expect: accepted
+//@check-pass
 // spec: Section 3 (Compile time), Requirement (Messages): a plain-data type is a message, arrays included. A field
 // of [Spike; 4] (an array of a message struct) makes the outer struct a message, and the array is a message type.
 #[trame::message]

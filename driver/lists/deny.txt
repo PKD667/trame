@@ -1,4 +1,4 @@
-# deny.txt: refused at every level, and it overrides any allow. Format: a path, or `P::*` for every
+# deny.txt: refused at every level. Format: a path, or `P::*` for every
 # item under P (the type `P` itself included). The most specific match decides: an exact entry beats
 # a prefix, and a deny beats an allow of equal specificity. Denied types are also refused when they
 # appear in the generic arguments of a trusted call (`Option<Cell<u32>>` is refused at `Option::map`).

@@ -1,7 +1,6 @@
-//! expect: refused [recursion] item
 // spec: Requirement (Item): an item neither recurses. A function that calls itself is refused.
 fn down(n: u32) -> u32 {
-    if n == 0 { 0 } else { down(n - 1) }
+    if n == 0 { 0 } else { down(n - 1) } //~ ERROR: [recursion] item
 }
 
 struct Work {

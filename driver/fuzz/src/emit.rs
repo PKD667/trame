@@ -87,7 +87,7 @@ fn allow(a: Allow) -> &'static str {
         Allow::Arith => "let _ = x.wrapping_mul(3).wrapping_add(1);",
         Allow::OptMap => "let _ = Some(x).map(|y: u32| y.wrapping_add(2));",
         Allow::Index => "{ let arr = [1u32, 2, 3, 4]; let _ = arr[(x & 3) as usize]; }",
-        Allow::Exp => "let _ = trame::math::exp(x as f32);",
+        Allow::Exp => "let _ = trame::math::f32::exp(x as f32);",
         Allow::Min => "let _ = x.min(7);",
     }
 }

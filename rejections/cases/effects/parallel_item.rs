@@ -1,4 +1,3 @@
-//! expect: refused [effects] item
 // spec: Requirement (Item), Definition (Effect sets): Sigma_I is empty. An item may not run parallel!: that is an
 // effect, and an item is what parallel! runs, not what runs it.
 struct Work {
@@ -15,7 +14,7 @@ fn bump(x: &Work, slot: &mut u32, _cx: &()) {
 fn outer(x: &Work, slot: &mut u32, _cx: &()) {
     let items = [Work { index: 0, by: x.by }];
     let mut slots = [0_u32];
-    trame::parallel!(bump, &(), &items, &mut slots);
+    trame::parallel!(bump, &(), &items, &mut slots); //~ ERROR: [effects] item
     *slot = slots[0];
 }
 
