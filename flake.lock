@@ -25,16 +25,16 @@
       "locked": {
         "lastModified": 1793122347,
         "narHash": "sha256-0RKAX2rt0hfKiMt7YPv2l4WuXR/CLH+VosyZaO1fy7E=",
-        "ref": "validate",
+        "owner": "PKD667",
+        "repo": "nixsci",
         "rev": "eacbedb57226f821dc4ca42338f6924759b06e18",
-        "revCount": 151,
-        "type": "git",
-        "url": "file:///home/pkd/code/nixsci"
+        "type": "github"
       },
       "original": {
+        "owner": "PKD667",
         "ref": "validate",
-        "type": "git",
-        "url": "file:///home/pkd/code/nixsci"
+        "repo": "nixsci",
+        "type": "github"
       }
     },
     "root": {

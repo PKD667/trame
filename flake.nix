@@ -8,9 +8,9 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
   # The lab experiments (experiments/README.md) and their deployment to hosts. Pinned; nixsci's only input is nixpkgs.
-  # TEMPORARY: the validate branch of the local nixsci checkout (validate/README.md). Repinned to GitHub after the push.
+  # The validate branch: nixsci.lib.validate (validate/README.md) is not on main yet.
   inputs.nixsci = {
-    url = "git+file:///home/pkd/code/nixsci?ref=validate";
+    url = "github:PKD667/nixsci/validate";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
