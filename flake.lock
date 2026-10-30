@@ -23,18 +23,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1793275867,
-        "narHash": "sha256-4WVkjh14vNb3bDKbWxAPvsRieewfKAbcOa5/scVs1iI=",
-        "owner": "PKD667",
-        "repo": "nixsci",
-        "rev": "eddd15d37be4a9b655cdce256f4afc73ce61d6e7",
-        "type": "github"
+        "lastModified": 1793365255,
+        "narHash": "sha256-/R3cJXSLmMQHWhDvz0/lMwuLG2vC70mjvMH4jpsP8pQ=",
+        "ref": "g5k-fixes",
+        "rev": "da007921c0a208d83df3a675912efa042ceb0902",
+        "revCount": 178,
+        "type": "git",
+        "url": "file:///home/pkd/code/agents/trame-g5k-20261030/nixsci"
       },
       "original": {
-        "owner": "PKD667",
-        "ref": "validate",
-        "repo": "nixsci",
-        "type": "github"
+        "ref": "g5k-fixes",
+        "type": "git",
+        "url": "file:///home/pkd/code/agents/trame-g5k-20261030/nixsci"
       }
     },
     "root": {

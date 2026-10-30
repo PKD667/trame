@@ -10,7 +10,7 @@
   # The lab experiments (experiments/README.md) and their deployment to hosts. Pinned; nixsci's only input is nixpkgs.
   # The validate branch: nixsci.lib.validate (validate/README.md) is not on main yet.
   inputs.nixsci = {
-    url = "github:PKD667/nixsci/validate";
+    url = "git+file:///home/pkd/code/agents/trame-g5k-20261030/nixsci?ref=g5k-fixes";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
