@@ -138,6 +138,59 @@
         "path": "/nix/store/dfmz5dy326ngg047nn4kqyfk96rgnjyx-programs-seq-node-73b1af1b6633-r1",
         "sha256": "sha256-+OSbmEg2AK33N/2Jb7NokiuTKArrk2Vw1JlG87WINd4="
       }
+    ],
+    "transport-node": [
+      {
+        "facts": {
+          "closure": "/nix/store/67i07ij709mvma4kmxv0ysaf6g1kyfx5-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "879e347cb716b9df20d887a1a8aaf03135b3ad03e33087b850c86e28c4917a6c",
+          "params": {
+            "node_ranks": 0
+          },
+          "replicate": 1,
+          "run": "transport-node-879e347cb716-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-node-879e347cb716-r1",
+        "path": "/nix/store/6l8pwb52b4n5km7iqskmg8db70nd8zlz-transport-node-879e347cb716-r1",
+        "sha256": "sha256-2MbLFlDqSK7RRy3QSZBkbhDoFe+wEBi8PuEDEGfHuWg="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/67i07ij709mvma4kmxv0ysaf6g1kyfx5-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "e314468b30bd545a37f86b548ee477e64a0872b2f5b49e9a1d5c87915f6343aa",
+          "params": {
+            "node_ranks": 1
+          },
+          "replicate": 1,
+          "run": "transport-node-e314468b30bd-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-node-e314468b30bd-r1",
+        "path": "/nix/store/kqc4vrx5pqd02dm4nk7406ls26n44gkv-transport-node-e314468b30bd-r1",
+        "sha256": "sha256-sQfN5ugH8/mh1fbksknrY0eCKbwdhxcoxF4cKOVMK34="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/67i07ij709mvma4kmxv0ysaf6g1kyfx5-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "ec91417f65645935914bc8b5dd2aa483c589f9c951e5146ac82fb2d5b9553ace",
+          "params": {
+            "node_ranks": 2
+          },
+          "replicate": 1,
+          "run": "transport-node-ec91417f6564-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-node-ec91417f6564-r1",
+        "path": "/nix/store/f6hvbznw7qg2h5q06rlfpvs7mk44150i-transport-node-ec91417f6564-r1",
+        "sha256": "sha256-imXQ+sML/2X2jO+ZG2r+Y4SzJvBMqAQQh1NPxTesa3E="
+      }
     ]
   }
 }
