@@ -181,6 +181,25 @@
         "sha256": "sha256-+OSbmEg2AK33N/2Jb7NokiuTKArrk2Vw1JlG87WINd4="
       }
     ],
+    "transport-cluster": [
+      {
+        "facts": {
+          "closure": "/nix/store/6ha74naa54z8w8920xwg6vcwsmi9gn6m-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "5d704a55ab8cab3920435e5f43c1b5a602d534ab5b495a36be536d957382458c",
+          "params": {
+            "node_ranks": 0
+          },
+          "replicate": 1,
+          "run": "transport-cluster-5d704a55ab8c-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-cluster-5d704a55ab8c-r1",
+        "path": "/nix/store/x4wyrh3qaflvs5r2xasbs9bywiqqrwd0-transport-cluster-5d704a55ab8c-r1",
+        "sha256": "sha256-ltHjiMthv0SMLPWzD98G0hmMtk03sdXtjOK84K1S3N4="
+      }
+    ],
     "transport-node": [
       {
         "facts": {
