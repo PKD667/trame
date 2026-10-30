@@ -60,6 +60,65 @@
         "sha256": "sha256-cIGXQa4XEcYEB4YfXv5KWBLd8FhdvSVQ+4I3Do3XGWo="
       }
     ],
+    "programs-node": [
+      {
+        "facts": {
+          "closure": "/nix/store/7162rbplrmsl0n69vpg6g3mnppcc6m32-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "006fa84247221d13bd4b0630fd8aa9a8e98f6276be0c052ab3dcfac3757ce3c9",
+          "params": {
+            "backend": "mpi",
+            "node_ranks": 1,
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-node-006fa8424722-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-node-006fa8424722-r1",
+        "path": "/nix/store/fppbk7cys8qcwfi6xzxip8zswmjmfyhv-programs-node-006fa8424722-r1",
+        "sha256": "sha256-6zRPOnK6S3hNnyyla9WonwU9hcGBSmrTvkr7OHYZqdU="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/7162rbplrmsl0n69vpg6g3mnppcc6m32-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "0a3e4c7eddee564193030555966af8946348ffc42bcdcfbdd3b4899b13362ce1",
+          "params": {
+            "backend": "mpi",
+            "node_ranks": 0,
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-node-0a3e4c7eddee-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-node-0a3e4c7eddee-r1",
+        "path": "/nix/store/0173fc29grzygkc8q9f2424a21mvyigb-programs-node-0a3e4c7eddee-r1",
+        "sha256": "sha256-QrSEjcWEnBP55fs7ptw9fbmthlgQf/8R9TFOf5u8LtY="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/7162rbplrmsl0n69vpg6g3mnppcc6m32-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "0e0e879249dd40ba437d430216859e61c77b96116bcf56826a3726d721ee35cd",
+          "params": {
+            "backend": "mpi",
+            "node_ranks": 2,
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-node-0e0e879249dd-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-node-0e0e879249dd-r1",
+        "path": "/nix/store/c285ww7bxd369whfwg7rgz6yxi06sm8p-programs-node-0e0e879249dd-r1",
+        "sha256": "sha256-2BYY3f4Cw+4UZI5bEkv5aOP4deX3PfeSfdXJOnnO9+U="
+      }
+    ],
     "programs-seq-node": [
       {
         "facts": {
