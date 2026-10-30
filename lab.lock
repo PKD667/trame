@@ -60,6 +60,46 @@
         "sha256": "sha256-cIGXQa4XEcYEB4YfXv5KWBLd8FhdvSVQ+4I3Do3XGWo="
       }
     ],
+    "programs-node": [
+      {
+        "facts": {
+          "closure": "/nix/store/w0n6imj5wh3dfrl9z6il50xgq5rcjq1r-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "53f34f9a56e0d1112245b6ceacc015f54b3cb732c22017db8eb30dedf6fb49c7",
+          "params": {
+            "backend": "mpi",
+            "node_ranks": 0,
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-node-53f34f9a56e0-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-node-53f34f9a56e0-r1",
+        "path": "/nix/store/i146w2k0m0jmhrcr3wpfk33yyf5f54w2-programs-node-53f34f9a56e0-r1",
+        "sha256": "sha256-q6HfEUni5DnnWrC+l22upJyW3kiy3y6Ag/U8W3H04mE="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/w0n6imj5wh3dfrl9z6il50xgq5rcjq1r-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "937040f7cd2a9a292127c776feb0ad7db5bcc48477330d4a6b405608cb53fa04",
+          "params": {
+            "backend": "mpi",
+            "node_ranks": 2,
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-node-937040f7cd2a-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-node-937040f7cd2a-r1",
+        "path": "/nix/store/wlrjyl01b1psiivgcn3lnsinq0s7dw02-programs-node-937040f7cd2a-r1",
+        "sha256": "sha256-1kaS9FV2rtNQc8p5wg8ytJKEdFti75Mqy6MRZZts9K4="
+      }
+    ],
     "programs-seq-node": [
       {
         "facts": {
