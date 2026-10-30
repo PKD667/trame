@@ -22,6 +22,27 @@
         "sha256": "sha256-TjmmrhzmPIv2Uay42tLmgC+SbVsmaxXSEOsVMnrd+xI="
       }
     ],
+    "programs-cluster4": [
+      {
+        "facts": {
+          "closure": "/nix/store/1vkx39y09wixn7c18x2ari43fs8a149d-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "b03a873f0eea370989f5590c8fc9a77a9ca1ffdb5482beb518430021578f5b0d",
+          "params": {
+            "backend": "mpi",
+            "node_ranks": 0,
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-cluster4-b03a873f0eea-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-cluster4-b03a873f0eea-r1",
+        "path": "/nix/store/y2gvb3wxvh61ydmjjdgq319hq98xznsf-programs-cluster4-b03a873f0eea-r1",
+        "sha256": "sha256-o2HHSRFp11ghOmBaM6kEBCQDqTXuq3maRRtKDJQ8lzM="
+      }
+    ],
     "programs-mpi": [
       {
         "facts": {
