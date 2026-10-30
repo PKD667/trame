@@ -59,6 +59,26 @@
         "path": "/nix/store/mly13lxn6lnb4k4isqajqfqqz9m7chh2-programs-mpi-d4ef6c9a8ea6-r1",
         "sha256": "sha256-cIGXQa4XEcYEB4YfXv5KWBLd8FhdvSVQ+4I3Do3XGWo="
       }
+    ],
+    "programs-seq-node": [
+      {
+        "facts": {
+          "closure": "/nix/store/l21kdwx1vr57g98f1cmbcwsnkrzrfw96-experiment-programs-seq",
+          "format": "2.0",
+          "input_id": "73b1af1b6633ef8967c447c895200d863e69628efc2532777884581debaddb16",
+          "params": {
+            "backend": "seq",
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-seq-node-73b1af1b6633-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-seq-node-73b1af1b6633-r1",
+        "path": "/nix/store/dfmz5dy326ngg047nn4kqyfk96rgnjyx-programs-seq-node-73b1af1b6633-r1",
+        "sha256": "sha256-+OSbmEg2AK33N/2Jb7NokiuTKArrk2Vw1JlG87WINd4="
+      }
     ]
   }
 }
