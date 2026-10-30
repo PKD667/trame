@@ -164,8 +164,8 @@
         noisy.seconds = 1.0;
       };
       transportData = {
-        columns = { check = "str"; workers = "int"; seed = "int"; repeat = "int"; ok = "bool"; seconds = "float"; };
-        key = [ "check" "workers" "seed" "repeat" ];
+        columns = { check = "str"; workers = "int"; case_seed = "int"; repeat = "int"; ok = "bool"; seconds = "float"; };
+        key = [ "check" "workers" "case_seed" "repeat" ];
         noisy.seconds = 1.0;
       };
       scaleCols = { bench = "str"; impl = "str"; nodes = "int"; workers = "int"; per_node = "int"; };

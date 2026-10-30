@@ -8,9 +8,9 @@ node_ranks 1 and 2 are `multi 1` and `multi 2`. mpirun.argv sets TRAME_MPI_NODE_
 Parameters: repeats (default 1), timeout (seconds, default 120), and the mpirun parameters of
 mpirun.py. Environment: BIN (the check and latency binaries), NIX_LAB_DIR.
 
-Dataset `check`, one row per check run. `workers` and `seed` are the numbers run.sh gives each check:
+Dataset `check`, one row per check run. `workers` and `case_seed` are the numbers run.sh gives each check:
 the fifo checks start workers+1 ranks (the leader is the last); the checks without a --seed (fair,
-deadlock, publication) record seed 0. A fifo-verify row starts no ranks: it reads the directory of its
+deadlock, publication) record case_seed 0. A fifo-verify row starts no ranks: it reads the directory of its
 fifo run. latency is the release binary `latency`. Logs go to $NIX_LAB_DIR/logs.
 """
 
@@ -106,7 +106,7 @@ def main() -> None:
                 lab.record("check", {
                     "check": case.name,
                     "workers": case.workers,
-                    "seed": case.seed,
+                    "case_seed": case.seed,
                     "repeat": repeat,
                     "ok": ok,
                     "seconds": float(res.seconds),
