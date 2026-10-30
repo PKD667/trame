@@ -4,8 +4,8 @@ argv(ranks, params) returns the mpirun options. The caller appends the program a
 
 One host: `mpirun --oversubscribe -n RANKS`.
 Several hosts (nixsci.deploy sets NIX_DEPLOY_HOSTFILE for a job with span > 1): a hostfile of this
-run's slots, ranks placed by slot, and a launch agent that reaches the other hosts through
-NIX_DEPLOY_RSH and runs inside their store view with NIX_DEPLOY_ENTER (plm_ssh_agent).
+run's slots, ranks placed by slot, and nixsci's launch agent (NIX_DEPLOY_AGENT, the same path on every host,
+which reaches the other hosts and runs inside their store view) as plm_ssh_agent.
 
 Parameters read (all optional):
   per_node    slots per host (default: ceil(ranks / hosts))
@@ -32,11 +32,6 @@ import proc
 # host ssh, which fails inside the rootless store namespace (root-owned /etc/ssh files look owned by nobody).
 AGENT_MCA = "plm_ssh_agent"
 
-# The launch agent. NIX_DEPLOY_RSH and NIX_DEPLOY_ENTER are set by nixsci's deploy (deploy/group.py,
-# deploy/backend.py, in the nixsci repository); they are command prefixes, unquoted on purpose.
-AGENT_SCRIPT = '#!/bin/sh\nhost="$1"; shift; exec $NIX_DEPLOY_RSH "$host" $NIX_DEPLOY_ENTER "$@"\n'
-
-
 def _workdir() -> Path:
     return Path(os.environ.get("NIX_DEPLOY_WORKDIR") or os.getcwd())
 
@@ -49,10 +44,15 @@ def _hosts() -> list[str]:
 
 
 def _agent() -> str:
-    path = _workdir() / "rsh-agent"
-    path.write_text(AGENT_SCRIPT)
-    path.chmod(0o755)
-    return str(path)
+    """The launch agent: nixsci's NIX_DEPLOY_AGENT, which exists at one path on every host.
+
+    PRRTE forwards plm_ssh_agent to the daemons it starts, and a daemon whose node has no executable at that
+    path selects no launch component and dies on a NULL call (prted, node_regex_report). An agent written into
+    this host's workdir therefore cannot be used: it is the only host that has it."""
+    path = os.environ.get("NIX_DEPLOY_AGENT")
+    if not path:
+        raise SystemExit("NIX_DEPLOY_AGENT is not set: this nixsci predates the multi-host launch agent")
+    return path
 
 
 def _hostfile(hosts: list[str], ranks: int, params: dict) -> str:
