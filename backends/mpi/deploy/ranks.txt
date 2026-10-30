@@ -24,3 +24,7 @@ until_calls 2
 room_spin 2
 take_rotate 3
 leader_panics 2
+sum_squares 6
+halo_rule90 8
+fanin_fifo 7
+pipeline_chain 7

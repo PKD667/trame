@@ -164,3 +164,19 @@ path = "programs/leader_stuck.rs"
 [[example]]
 name = "leader_panics"
 path = "programs/leader_panics.rs"
+
+[[example]]
+name = "sum_squares"
+path = "programs/sum_squares.rs"
+
+[[example]]
+name = "halo_rule90"
+path = "programs/halo_rule90.rs"
+
+[[example]]
+name = "fanin_fifo"
+path = "programs/fanin_fifo.rs"
+
+[[example]]
+name = "pipeline_chain"
+path = "programs/pipeline_chain.rs"

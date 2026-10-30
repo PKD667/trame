@@ -152,6 +152,7 @@
         runtime = labRuntime;
       };
       programsMpiClosure = runnerClosure "programs-mpi" "programs.py" trameMpiBins;
+      programsSeqClosure = runnerClosure "programs-seq" "programs.py" trameSeqBins;
       transportClosure = runnerClosure "transport-mpi" "transport.py" trameMpiBins;
       scaleClosure = runnerClosure "scale-local" "scale.py" trameMpiBins;
       labLib = nixsci.lib.lab { inherit pkgs; project = self; };
@@ -214,6 +215,42 @@
           closures.${system} = programsMpiClosure;
           params = { backend = "mpi"; repeats = 3; node_ranks = 0; };
           resources = { provider = "cluster"; hosts = 2; walltime = 60; opts.stage = "fanout"; };
+          data.run = runData;
+          data.mpi_config = mpiConfigData;
+        };
+        # One host of the cluster reservation: the real hardware, the node layouts of NODES.md, no daemon tree.
+        programs-node = labLib.experiment {
+          name = "programs-node";
+          closures.${system} = programsMpiClosure;
+          params = { backend = "mpi"; repeats = 3; };
+          sweep.node_ranks = [ 0 1 2 ];
+          resources = { provider = "cluster"; hosts = 1; walltime = 60; };
+          data.run = runData;
+          data.mpi_config = mpiConfigData;
+        };
+        # The same programs on seq on the same hardware: equal stdout_sha256 per program is the equivalence.
+        programs-seq-node = labLib.experiment {
+          name = "programs-seq-node";
+          closures.${system} = programsSeqClosure;
+          params = { backend = "seq"; repeats = 3; };
+          resources = { provider = "cluster"; hosts = 1; walltime = 60; };
+          data.run = runData;
+        };
+        transport-node = labLib.experiment {
+          name = "transport-node";
+          closures.${system} = transportClosure;
+          sweep.node_ranks = [ 0 1 2 ];
+          resources = { provider = "cluster"; hosts = 1; walltime = 60; };
+          data.check = transportData;
+          data.mpi_config = mpiConfigData;
+        };
+        # Four hosts: a relay between nodes that is not the root's.
+        programs-cluster4 = labLib.experiment {
+          name = "programs-cluster4";
+          span = 4;
+          closures.${system} = programsMpiClosure;
+          params = { backend = "mpi"; repeats = 3; node_ranks = 0; };
+          resources = { provider = "cluster"; hosts = 4; walltime = 60; opts.stage = "fanout"; };
           data.run = runData;
           data.mpi_config = mpiConfigData;
         };

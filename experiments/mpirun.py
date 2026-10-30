@@ -5,7 +5,7 @@ argv(ranks, params) returns the mpirun options. The caller appends the program a
 One host: `mpirun --oversubscribe -n RANKS`.
 Several hosts (nixsci.deploy sets NIX_DEPLOY_HOSTFILE for a job with span > 1): a hostfile of this
 run's slots, ranks placed by slot, and a launch agent that reaches the other hosts through
-NIX_DEPLOY_RSH and runs inside their store view with NIX_DEPLOY_ENTER (OMPI_MCA_plm_rsh_agent).
+NIX_DEPLOY_RSH and runs inside their store view with NIX_DEPLOY_ENTER (plm_ssh_agent).
 
 Parameters read (all optional):
   per_node    slots per host (default: ceil(ranks / hosts))
@@ -27,8 +27,10 @@ from nixsci import lab
 
 import proc
 
-# The MCA parameter of OpenMPI's launch agent for remote daemons (rsh/ssh launch).
-AGENT_MCA = "plm_rsh_agent"
+# The MCA parameter of PRRTE's launch agent for remote daemons. PRRTE 4.1 (Open MPI 5.0.11) names it plm_ssh_agent;
+# plm_rsh_agent is the Open MPI 4 / PRRTE 3 spelling, and 4.1 ignores it without a warning, so mpirun runs the
+# host ssh, which fails inside the rootless store namespace (root-owned /etc/ssh files look owned by nobody).
+AGENT_MCA = "plm_ssh_agent"
 
 # The launch agent. NIX_DEPLOY_RSH and NIX_DEPLOY_ENTER are set by nixsci's deploy (deploy/group.py,
 # deploy/backend.py, in the nixsci repository); they are command prefixes, unquoted on purpose.
