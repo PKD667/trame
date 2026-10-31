@@ -130,6 +130,14 @@ The pool is read-only data of the host. `Run::publish` installs a new version; a
 version current at its start for its whole duration, and an old version is freed when its last
 reader ends (read-copy-update, McKenney and Slingwine 1998).
 
+The pool is not ordered with frames. A step that started before `publish` may take a frame the
+leader sent after it, and still read the old version: P1 holds, and so does P2, but nothing ties the
+two together. The barrier used to. `programs/pool_publish.rs` shows the pattern that restores it
+without new API: keep the round the frame names in the state, and while the pinned pool is older,
+return `Progress` so that the next start pins again. A causal rule (a frame sent after a publish is
+taken only by steps that started after it) or a lazily pinned pool are the alternatives; neither is
+built.
+
 After `stop()`, no ordinary step starts; the stop step, if the state has one, runs alone once no step
 runs, and the worker's outcome is `Stopped`. A stop step may send, so the leader keeps receiving
 until `join`.

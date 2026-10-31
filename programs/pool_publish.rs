@@ -2,9 +2,13 @@
 //! `Run::publish`, then sends `Go(r)` to every worker. A worker's step takes the `Go`, reads the pool
 //! (`pool: &Round`) and reports to the leader which round the pool named. The leader prints each round's
 //! reports in worker order, and does not publish round r + 1 until all three reports for round r have
-//! arrived. The order is forced: a step that starts after `publish` returns reads the new version (P2),
-//! and `Go(r)` is sent after publish r, so each worker sees exactly `Round(r)` at round r, on either
-//! backend.
+//! arrived.
+//!
+//! A step reads the pool version current at its start (P1), and a step that starts after `publish`
+//! returns reads the new one (P2). That alone does not order the pool with frames: a step may start
+//! before publish r and take `Go(r)`, sent after it, in the same run. So the step keeps the round it
+//! was told in its state, and while the pool it pinned is older it returns `Progress`, so that its next
+//! start pins again. Each worker then reports exactly `Round(r)` at round r, on any backend.
 
 use trame::{LEADER, Outcome, Status, Topology};
 
@@ -28,34 +32,45 @@ struct Report {
     seen: u32,
 }
 
-/// One worker: its index, and how many rounds it has reported.
+/// One worker: its index, how many rounds it has reported, and the round of a `Go` it took but has not
+/// reported yet.
 #[trame::state(steps(probe), pool = Round)]
 struct Probe {
     me: u32,
     done: u32,
+    told: Option<u32>,
 }
 
-/// Takes the `Go` of the next round and reports what the pool says.
+/// Takes the `Go` of the next round, and reports what the pool says once it is at least that round.
 #[trame::step(Probe, receives = Go)]
-fn probe(me: &u32, done: &mut u32, pool: &Round) -> Status {
+fn probe(me: &u32, done: &mut u32, told: &mut Option<u32>, pool: &Round) -> Status {
     if *done == ROUNDS {
         return Status::Done;
     }
-    match trame::recv::<Go>() {
-        Some(g) => {
-            assert_eq!(g.round, *done + 1, "a probe took the Go of another round");
-            let sent = trame::send(LEADER, Report { worker: *me, round: g.round, seen: pool.0 });
-            assert!(sent.is_ok(), "a report did not fit");
-            *done += 1;
-            Status::Progress
+    if told.is_none() {
+        match trame::recv::<Go>() {
+            Some(g) => {
+                assert_eq!(g.round, *done + 1, "a probe took the Go of another round");
+                *told = Some(g.round);
+            }
+            None => return Status::wait().frame(),
         }
-        None => Status::wait().frame(),
     }
+    let round = told.expect("set above");
+    if pool.0 < round {
+        // Pinned before the publish: start again, and pin the current version.
+        return Status::Progress;
+    }
+    let sent = trame::send(LEADER, Report { worker: *me, round, seen: pool.0 });
+    assert!(sent.is_ok(), "a report did not fit");
+    *done += 1;
+    *told = None;
+    Status::Progress
 }
 
 fn main() {
     let mut t = Topology::new();
-    let ws: Vec<_> = (0..WORKERS).map(|me| t.worker(Probe { me, done: 0 })).collect();
+    let ws: Vec<_> = (0..WORKERS).map(|me| t.worker(Probe { me, done: 0, told: None })).collect();
     t.pool(Round(0));
     for w in &ws {
         t.route::<Go>(LEADER, w.id(), 2);
