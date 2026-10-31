@@ -111,10 +111,10 @@ impl Topology {
         self.plan.pool_name = core::any::type_name::<P>();
     }
 
-    /// Run each worker with at most `n` agents (threads that take its steps); by default, as many as
-    /// the host has cores. Deployment, not meaning: a program's results may not depend on it. A
-    /// backend with one agent per worker (seq) ignores it.
-    pub fn agents(&mut self, n: usize) {
+    /// Test hook: run each worker with at most `n` agents; by default as many as the host has cores.
+    /// Not surface: deployment, not meaning. seq ignores it.
+    #[doc(hidden)]
+    pub fn __agents(&mut self, n: usize) {
         assert!(n >= 1, "trame: a worker needs at least one agent");
         self.plan.agents = Some(n);
     }

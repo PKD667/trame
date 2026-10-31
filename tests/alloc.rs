@@ -5,7 +5,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::thread;
-use trame::{Context, LEADER, Outcome, Topology};
+use trame::{Outcome, Topology};
 
 struct Counting;
 
@@ -68,59 +68,52 @@ fn parallel_allocates_on_the_first_call_of_a_size_and_never_after() {
 #[derive(Debug, PartialEq, Eq)]
 struct Tick(u32);
 
-/// What a worker measured: allocations in its send-and-receive loop and in its barrier loop.
-#[trame::message]
-#[derive(Debug, PartialEq, Eq)]
-struct Report {
-    frames: u64,
-    barriers: u64,
+const N: u32 = 1000;
+
+/// One step sends a frame to its own worker and takes it back, N times. It reads this thread's
+/// allocation count at its first and at its last run, so the difference covers N - 1 whole rounds of
+/// step and scheduler (D5: a step, and the scheduler between steps, allocate nothing).
+#[trame::state(steps(tick))]
+struct Ticker {
+    i: u32,
+    first: u64,
+    last: u64,
     /// One deliberate allocation: proves the counter sees this thread's allocations.
     control: u64,
 }
 
-const N: u32 = 1000;
-
-fn measure(cx: &Context) {
-    let me = cx.me();
-    let before = count();
-    for i in 0..N {
-        trame::send(me, Tick(i)).expect("the route is lossy, so it is never full");
-        assert_eq!(trame::recv::<Tick>(), Some(Tick(i)));
+#[trame::step(Ticker, receives = Tick)]
+fn tick(i: &mut u32, first: &mut u64, last: &mut u64, control: &mut u64) -> trame::Status {
+    if *i == 0 {
+        *first = count();
     }
-    let frames = count() - before;
-
-    let before = count();
-    for _ in 0..N {
-        let _publication = trame::barrier();
+    trame::send(trame::me(), Tick(*i)).expect("the route is lossy, so it is never full");
+    assert_eq!(trame::recv::<Tick>(), Some(Tick(*i)));
+    *i += 1;
+    if *i < N {
+        return trame::Status::Progress;
     }
-    let barriers = count() - before;
+    *last = count();
     let before = count();
     std::hint::black_box(Box::new(7_u8));
-    let control = count() - before;
-    while trame::send(LEADER, Report { frames, barriers, control }).is_err() {}
+    *control = count() - before;
+    trame::Status::Done
 }
 
 #[test]
-fn a_frame_and_a_barrier_allocate_nothing_in_a_worker() {
-    // A worker thread is a fresh thread: its counter starts at zero, and only its own work counts.
+fn steps_and_the_scheduler_allocate_nothing_per_step() {
+    // The leader runs on a fresh thread so its own counter is not the harness's.
     let handle = thread::spawn(|| {
         let mut g = Topology::new();
-        let w = g.worker(measure);
-        g.lossy::<Tick>(w, w, 4);
-        g.route::<Report>(w, LEADER, 1);
-        g.publish(b"init");
+        // One agent: the counts are per thread, so every step must run on the same one.
+        g.__agents(1);
+        let w = g.worker(Ticker { i: 0, first: 0, last: 0, control: 0 });
+        g.lossy::<Tick>(w.id(), w.id(), 4);
         let run = g.launch().expect("accepted");
-        // A worker that ends without its report leaves the leader stuck, and seq panics the wait.
-        let report = loop {
-            if let Some(r) = run.recv::<Report>() {
-                break r;
-            }
-            run.wait();
-        };
         assert_eq!(run.join(), [Outcome::Returned]);
-        report
+        w.take()
     });
-    let report = handle.join().expect("the test thread did not panic");
-    assert!(report.control >= 1, "the control allocation was counted: {report:?}");
-    assert_eq!((report.frames, report.barriers), (0, 0), "allocations in the worker: frames, barriers");
+    let t = handle.join().expect("the test thread did not panic");
+    assert!(t.control >= 1, "the control allocation was counted");
+    assert_eq!(t.last - t.first, 0, "allocations in {} rounds of step and scheduler", N - 1);
 }

@@ -165,7 +165,8 @@ flowchart LR
 ```
 
 `tests/conformance.rs` runs three shapes (a chain, a hot field, readers and a writer) over seeds; a
-failure prints the shape and seed, and `TRAME_SEED=n` reruns it. On seq, 300 seeds x 3 shapes replay
+failure prints the shape and seed; the seed then goes into the file's `REGRESSIONS` list, which every
+later run tries. On seq, 300 seeds x 3 shapes replay
 179 334 events exactly. A mutant that makes seq's join forget pending deadlines is caught on seed 0.
 
 The replay is not a proof. For the reference agent it is partly circular: the agent decides with the

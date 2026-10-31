@@ -3,8 +3,8 @@
 //! workers too. Each agent runs the reference scheduler (worker.rs `agent`); service is nanoseconds,
 //! so weights are shares of time (backend.rs, S6).
 //!
-//! The number of agents per worker is `Topology::agents`, or else the machine's parallelism; never
-//! more than the worker's steps. The routes are the shared-memory rings of
+//! The number of agents per worker is the machine's parallelism (a test may lower it), never more than
+//! the worker's steps. The routes are the shared-memory rings of
 //! backends/local/routes.rs, under one lock, and every act that can change a wait condition moves the
 //! run's counter `acts` and wakes every sleeper, as on seq.
 //!
