@@ -278,6 +278,17 @@
         trame-seq-bins = trameSeqBins;
       };
       lab.${system}.experiments = experiments;
+      # The mpi dev shell as a nixsci deployment, for `nixsci deploy shell ... dev -- CMD` on a cluster
+      # node: tests run there, not on a laptop. Same packages and env as devShells.mpi (one source:
+      # dependencies.nix). Stands in for a `deploy shell --devshell` (docs/nixsci-proposals.md).
+      deployments.${system}.dev =
+        let dependencies = import ./backends/mpi/dependencies.nix { inherit pkgs; };
+        in nixsci.lib.mkDeployment pkgs {
+          name = "trame-dev";
+          program = "${pkgs.bashInteractive}/bin/bash";
+          runtime = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt pkgs.gcc pkgs.git pkgs.gnumake pkgs.time pkgs.bashInteractive pkgs.gnugrep pkgs.gnused pkgs.gawk pkgs.findutils pkgs.diffutils ] ++ dependencies.packages;
+          env = dependencies.env;
+        };
       apps.${system} = builtins.mapAttrs (_: e: e.run) experiments;
       devShells.${system} = {
         default = pkgs.mkShell { packages = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt ]; };
