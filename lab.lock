@@ -200,6 +200,59 @@
         "sha256": "sha256-ltHjiMthv0SMLPWzD98G0hmMtk03sdXtjOK84K1S3N4="
       }
     ],
+    "transport-mpi": [
+      {
+        "facts": {
+          "closure": "/nix/store/40ppq0xxz7njh9q0hwb2ya6bbzm15ddf-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "3bb49d7595d190ee381f715c7c7cd11a2fd91468b3f9de1c56738c06187c7ec4",
+          "params": {
+            "node_ranks": 2
+          },
+          "replicate": 1,
+          "run": "transport-mpi-3bb49d7595d1-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-mpi-3bb49d7595d1-r1",
+        "path": "/nix/store/b150gvshsknqdcvq98iq35wrh141zbyw-transport-mpi-3bb49d7595d1-r1",
+        "sha256": "sha256-jYvEiHvl8JRUoTmA5GuVZbI0qYbLXKvaagyYMY3XBFA="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/40ppq0xxz7njh9q0hwb2ya6bbzm15ddf-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "95258257a99a2efa582edb4592d5007eed879f77e9ba74c60406d5e78200ab52",
+          "params": {
+            "node_ranks": 1
+          },
+          "replicate": 1,
+          "run": "transport-mpi-95258257a99a-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-mpi-95258257a99a-r1",
+        "path": "/nix/store/1jxj7zrlrayanmwiicibddvwg870w8sz-transport-mpi-95258257a99a-r1",
+        "sha256": "sha256-pygn6s/3RGi0PXFRASAZzOJ8T4o2iil+h5rreyF1NZI="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/40ppq0xxz7njh9q0hwb2ya6bbzm15ddf-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "f9caa77b2f8bcb130746fa35b35c022ed3f4b85144b79ee5bb0316b561863e49",
+          "params": {
+            "node_ranks": 0
+          },
+          "replicate": 1,
+          "run": "transport-mpi-f9caa77b2f8b-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-mpi-f9caa77b2f8b-r1",
+        "path": "/nix/store/3gw6yjp8rh0axnyj53hh6x1h88x4a8xs-transport-mpi-f9caa77b2f8b-r1",
+        "sha256": "sha256-GXrsApleUyoKSZC/A9i2g9rhQrC+Nh3E6oK0MwE25nM="
+      }
+    ],
     "transport-node": [
       {
         "facts": {

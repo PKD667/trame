@@ -59,6 +59,13 @@ impl Backend for Selected {
 
     fn agree(plan: &Plan) -> Result<(), Refused> {
         let ranks = plan.workers.len() as u32 + 1;
+        // `trame run` asks how many ranks the program needs: TRAME_PROBE=ranks prints the count and stops, on
+        // one rank, before any collective (so a world of one rank is enough to ask).
+        if std::env::var("TRAME_PROBE").as_deref() == Ok("ranks") {
+            std::println!("trame-ranks {ranks}");
+            finalize();
+            std::process::exit(0);
+        }
         agree(world(), &encode_plan(plan), ranks).map_err(refused)
     }
 

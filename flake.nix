@@ -298,6 +298,15 @@
             builtins.attrValues (builtins.mapAttrs (name: value: "export ${name}=${value}") dependencies.env)
           );
         };
+      # `trame build|run` (cli/trame): the backend as a flag, the rank count asked of the program, hosts from nixsci.
+      trameCli = pkgs.runCommand "trame-cli" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+        install -Dm755 ${./cli/trame} $out/bin/trame
+        patchShebangs $out/bin/trame
+        wrapProgram $out/bin/trame \
+          --prefix PYTHONPATH : ${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages} \
+          --prefix PATH : ${trameDriver}/bin \
+          --set TRAME_TOOLCHAIN ${driverToolchain}/bin
+      '';
     in {
       validate.${system} = suite;
       # The verdicts, and one style for the Rust sources (rustfmt.toml). rejections/ is left out: its cases
@@ -310,12 +319,15 @@
         '';
       };
       packages.${system} = {
+        trame = trameCli;
         trame-driver = trameDriver;
         trame-mpi-bins = trameMpiBins;
         trame-seq-bins = trameSeqBins;
       };
       lab.${system}.experiments = experiments;
-      apps.${system} = builtins.mapAttrs (_: e: e.run) experiments;
+      apps.${system} = builtins.mapAttrs (_: e: e.run) experiments // {
+        trame = { type = "app"; program = "${trameCli}/bin/trame"; };
+      };
       devShells.${system} = {
         default = pkgs.mkShell { packages = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt ]; };
         # GNU time: experiments/scale.py measures per-rank CPU with it.

@@ -25,12 +25,13 @@ struct Feeder {
 #[trame::process]
 impl Feeder {
     fn step(&mut self) -> Status {
-        while self.next < ITEMS {
-            let val = self.next as u64 * (self.from as u64 + 1) + 7;
-            if trame::send(LEADER, Item { seq: self.next, from: self.from, val }).is_err() {
+        // A step's loops are counted (spec.md, Definition (Counted loop)): a range from where the last step stopped.
+        for seq in self.next..ITEMS {
+            let val = seq as u64 * (self.from as u64 + 1) + 7;
+            if trame::send(LEADER, Item { seq, from: self.from, val }).is_err() {
                 return Status::wait().room::<Item>(LEADER);
             }
-            self.next += 1;
+            self.next = seq + 1;
         }
         Status::Done
     }

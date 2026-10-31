@@ -147,6 +147,16 @@ A program has four levels, each inside the one above it (spec.md, Section 1). Ea
 | step | `step` of a process in `concurrent!` | `send`, `recv`, `now`, `parallel!`; counted loops; allocation | recursion, uncounted loops, blocking: it returns a `Status` | 1, 3, 5.3 |
 | item | a function given to `parallel!` | arithmetic and listed core functions | every effect, allocation, recursion, uncounted loops | 1, 3, 5.4 |
 
+## Build and run: `trame`
+
+    nix run .#trame -- build [--mpi] [--check] [cargo args]     # e.g. --example ping_pong
+    nix run .#trame -- run   [--mpi] [-n RANKS] [--node-ranks K] PROGRAM [-- args]
+
+The backend is chosen at build time, so `--mpi` goes to both. `--check` builds with the compile-time checker
+(`cargo trame`, on the driver's own pinned rustc). `run --mpi` asks the program how many ranks it needs
+(`TRAME_PROBE=ranks`, which prints `trame-ranks N` and stops) and starts `mpirun` with that many. Inside a nixsci job
+on several hosts the hostfile, the placement and the launch agent come from `nixsci.lab.mpi`. `cli/check.sh` tests it.
+
 ## What is checked, and how
 
 | check | what it covers | explained in |
