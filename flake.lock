@@ -23,16 +23,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1793468928,
-        "narHash": "sha256-rl9RoUI8EWxBu4memqtSgSeInl0+3dnhKA38RiRmyJo=",
+        "lastModified": 1793469958,
+        "narHash": "sha256-4J+vPneQSZ+jSuV15rY05PF0Zw1Cty9CDz+hg3RQs0k=",
         "owner": "PKD667",
         "repo": "nixsci",
-        "rev": "4170633cba1f8ac89aba4e19a5687fcbed4d7b08",
+        "rev": "fff797708f5d07be224b78c35665b33432a305b9",
         "type": "github"
       },
       "original": {
         "owner": "PKD667",
-        "ref": "g5k-fixes",
+        "ref": "main",
         "repo": "nixsci",
         "type": "github"
       }

@@ -8,9 +8,9 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
   # The lab experiments (experiments/README.md) and their deployment to hosts. Pinned; nixsci's only input is nixpkgs.
-  # nixsci: the g5k-fixes branch (health check, MPI helper, target-side cache fetch, --hosts).
+  # nixsci main (health check, MPI helper, target-side cache fetch, --hosts).
   inputs.nixsci = {
-    url = "github:PKD667/nixsci/g5k-fixes";
+    url = "github:PKD667/nixsci/main";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
