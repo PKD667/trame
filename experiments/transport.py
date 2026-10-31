@@ -114,6 +114,7 @@ def main() -> None:
                     "workers": case.workers,
                     "case_seed": case.seed,
                     "repeat": repeat,
+                    "ran": ok or bool(res.stdout.strip()),  # a check that ran printed its lines; a dead launcher did not
                     "ok": ok,
                     "seconds": float(res.seconds),
                 })

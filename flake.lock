@@ -23,18 +23,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1793451755,
-        "narHash": "sha256-HFUsgsS7HV8+yoSlxPwXvVMvtLt3AdmD6Vmftrw80K0=",
-        "ref": "g5k-fixes",
-        "rev": "ce131ff4db963769c4b6e5f7f9ed5e1e71c06cf0",
-        "revCount": 183,
-        "type": "git",
-        "url": "file:///home/pkd/code/agents/trame-g5k-20261030/nixsci"
+        "lastModified": 1793468928,
+        "narHash": "sha256-rl9RoUI8EWxBu4memqtSgSeInl0+3dnhKA38RiRmyJo=",
+        "owner": "PKD667",
+        "repo": "nixsci",
+        "rev": "4170633cba1f8ac89aba4e19a5687fcbed4d7b08",
+        "type": "github"
       },
       "original": {
+        "owner": "PKD667",
         "ref": "g5k-fixes",
-        "type": "git",
-        "url": "file:///home/pkd/code/agents/trame-g5k-20261030/nixsci"
+        "repo": "nixsci",
+        "type": "github"
       }
     },
     "root": {

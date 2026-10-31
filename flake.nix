@@ -8,9 +8,9 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
   # The lab experiments (experiments/README.md) and their deployment to hosts. Pinned; nixsci's only input is nixpkgs.
-  # The validate branch: nixsci.lib.validate (validate/README.md) is not on main yet.
+  # nixsci: the g5k-fixes branch (health check, MPI helper, target-side cache fetch, --hosts).
   inputs.nixsci = {
-    url = "git+file:///home/pkd/code/agents/trame-g5k-20261030/nixsci?ref=g5k-fixes";
+    url = "github:PKD667/nixsci/g5k-fixes";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
@@ -159,12 +159,12 @@
       # MPI transport settings are machine configuration, recorded per job as mpi_config (experiments/mpirun.py).
       mpiConfigData = { columns = { source = "str"; text = "str"; }; };
       runData = {
-        columns = { program = "str"; repeat = "int"; ok = "bool"; verdict = "str"; seconds = "float"; stdout_sha256 = "str"; };
+        columns = { program = "str"; repeat = "int"; ran = "bool"; ok = "bool"; verdict = "str"; seconds = "float"; stdout_sha256 = "str"; };
         key = [ "program" "repeat" ];
         noisy.seconds = 1.0;
       };
       transportData = {
-        columns = { check = "str"; workers = "int"; case_seed = "int"; repeat = "int"; ok = "bool"; seconds = "float"; };
+        columns = { check = "str"; workers = "int"; case_seed = "int"; repeat = "int"; ran = "bool"; ok = "bool"; seconds = "float"; };
         key = [ "check" "workers" "case_seed" "repeat" ];
         noisy.seconds = 1.0;
       };
