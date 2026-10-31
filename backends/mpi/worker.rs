@@ -17,7 +17,11 @@ use std::panic::resume_unwind;
 use crate::io::Full;
 use crate::time::ClockId;
 use crate::topology::WorkerId;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::Ordering::{Acquire, SeqCst};
+use std::sync::atomic::{AtomicU32, AtomicU64};
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
+
+use super::layout::{ABORT_BIT, DONE, STOP};
 
 use super::plan::{self, Entry, rank_of};
 use super::state::local;
@@ -116,10 +120,34 @@ pub(super) fn room(route: usize) -> bool {
     }
 }
 
-/// The worker's epoch, widened to the surface's u64. Every value it returns is a u32 read from the window.
-pub(super) fn epoch() -> u64 {
+/// The window words an agent reads at every round, as raw addresses: its epoch, STOP and DONE. Set
+/// once by `fast_init` before any agent starts; the window lives until the process exits (state.rs),
+/// and these are atomic words, so reading them needs no transport lock.
+static FAST: OnceLock<(usize, usize, usize)> = OnceLock::new();
+
+/// Record this worker's round words (imp.rs, before the agents start).
+pub(super) fn fast_init() {
     let _x = xport();
-    u64::from(parts().0.epoch())
+    let (t, _) = parts();
+    let at = |off: usize| t.win().ptr(off, 8) as usize;
+    let (epoch, _) = t.words(t.me());
+    let _ = FAST.set((at(epoch), at(STOP), at(DONE)));
+}
+
+fn fast() -> (&'static AtomicU32, &'static AtomicU64, &'static AtomicU32) {
+    let &(e, s, d) = FAST.get().expect("trame: fast_init runs before the agents");
+    // SAFETY: addresses of aligned words inside the window, which outlives every agent (state.rs).
+    unsafe { (&*(e as *const AtomicU32), &*(s as *const AtomicU64), &*(d as *const AtomicU32)) }
+}
+
+/// The worker's epoch, widened to the surface's u64. Read without the transport lock (FAST); an
+/// aborted run unwinds here, as at every effect, so an agent whose steps make no effects still ends.
+pub(super) fn epoch() -> u64 {
+    let (e, _, d) = fast();
+    if d.load(SeqCst) & ABORT_BIT != 0 {
+        resume_unwind(Box::new(Aborted));
+    }
+    u64::from(e.load(SeqCst))
 }
 
 /// Sleep on the epoch `epoch` came from (see `epoch`). The narrowing is exact: the value was a u32.
@@ -135,10 +163,9 @@ pub(super) fn with_endpoint<R>(f: impl FnOnce(&Transport) -> R) -> R {
     f(l.endpoint.as_ref().expect("trame: a worker operation outside a worker"))
 }
 
-/// Whether the leader stopped the run.
+/// Whether the leader stopped the run. Without the transport lock (FAST).
 pub(super) fn stop_requested() -> bool {
-    let _x = xport();
-    parts().0.stop_requested()
+    fast().1.load(Acquire) != 0
 }
 
 /// This worker's rank.

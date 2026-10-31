@@ -162,3 +162,12 @@ path = "programs/leader_stuck.rs"
 [[example]]
 name = "leader_panics"
 path = "programs/leader_panics.rs"
+
+# Experiments of the worker model (docs/worker-model.md): measurements, not programs with an .expected.
+[[example]]
+name = "weights_time"
+path = "examples/weights_time.rs"
+
+[[example]]
+name = "overlap"
+path = "examples/overlap.rs"

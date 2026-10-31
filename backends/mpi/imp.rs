@@ -37,6 +37,7 @@ use crate::run::panic_message;
 /// Otherwise the worker's answer is its result. The result is recorded before anything waits on a
 /// peer: then MPI_Finalize (state.rs), which waits for every rank, and then the process ends.
 fn run_worker(obj: Arc<dyn Erased>, agents: usize) -> ! {
+    worker::fast_init();
     let slot = Slot::new(obj, false);
     let start = std::time::Instant::now();
     let clock = || u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);

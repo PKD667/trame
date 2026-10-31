@@ -27,7 +27,7 @@ use super::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADER_SLEEP, RELAY_EPOCH, R
 impl Transport {
     /// The epoch word and the sleep flag of agent `w`: a worker's, or the leader's when `w` is the
     /// leader's rank. An agent on another node is woken through this node's relay (NODES.md).
-    fn words(&self, w: u32) -> (usize, usize) {
+    pub(super) fn words(&self, w: u32) -> (usize, usize) {
         if self.nodes().node_of[w as usize] != self.nodes().me {
             (RELAY_EPOCH, RELAY_SLEEP)
         } else if w >= self.lay().workers {
