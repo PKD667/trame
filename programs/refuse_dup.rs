@@ -1,7 +1,7 @@
 //! refuse_dup: two routes with the same sender, receiver and tag. The launch checks refuse the topology
 //! before any worker starts (spec.md 4, Launch checks). Under MPI each rank refuses the same way.
 
-use trame::{Context, Topology};
+use trame::{Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -10,14 +10,20 @@ struct Dup {
 }
 
 /// Never runs: the launch is refused.
-fn idle(_cx: &Context) {}
+#[trame::state(steps(idle))]
+struct Idle {}
+
+#[trame::step(Idle)]
+fn idle() -> Status {
+    Status::Done
+}
 
 fn main() {
     let mut t = Topology::new();
-    let a = t.worker(idle);
-    let b = t.worker(idle);
-    t.route::<Dup>(a, b, 1);
-    t.route::<Dup>(a, b, 1);
+    let a = t.worker(Idle {});
+    let b = t.worker(Idle {});
+    t.route::<Dup>(a.id(), b.id(), 1);
+    t.route::<Dup>(a.id(), b.id(), 1);
     match t.launch() {
         Ok(_) => println!("launched"),
         Err(e) => println!("refused: {e:?}"),

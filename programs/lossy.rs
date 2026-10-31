@@ -1,9 +1,9 @@
 //! lossy: worker 0 sends ten frames on a lossy route of capacity 4, which never answers Full, then a
-//! lossless "done" token. Worker 1 waits for the token before it reads the lossy route, so every
-//! overwrite has already happened and the output does not depend on timing: the four newest frames
+//! lossless "done" token, all in one step. Worker 1 waits for the token before it reads the lossy route, so
+//! every overwrite has already happened and the output does not depend on timing: the four newest frames
 //! survive. Worker 1 reports them to the leader, which prints them and the outcomes.
 
-use trame::{Context, LEADER, Outcome, Status, Topology, WorkerId};
+use trame::{LEADER, Outcome, Status, Topology, WorkerId};
 
 const SENT: u32 = 10;
 
@@ -25,68 +25,66 @@ struct Ev {
     v: u32,
 }
 
-/// The cell the process shares. It holds nothing.
-struct Shared;
-
-/// Worker 1: waits for the token, then reports every lossy frame that is still there.
-struct Drain {
-    token: bool,
-    pending: Option<u32>,
+/// Worker 0: `to` is worker 1.
+#[trame::state(steps(sender))]
+struct Sender {
     to: WorkerId,
 }
 
-#[trame::process(receives = Done, Lossy)]
-impl Drain {
-    fn step(&mut self, _s: &mut Shared) -> Status {
-        if let Some(v) = self.pending {
-            return match trame::send(self.to, Ev { v }) {
-                Ok(()) => {
-                    self.pending = None;
-                    Status::Progress
-                }
-                Err(_) => Status::wait().room::<Ev>(self.to),
-            };
-        }
-        if !self.token {
-            return match trame::recv::<Done>() {
-                Some(_) => {
-                    self.token = true;
-                    Status::Progress
-                }
-                None => Status::wait().frame(),
-            };
-        }
-        match trame::recv::<Lossy>() {
-            Some(l) => {
-                self.pending = Some(l.n);
+#[trame::step(Sender)]
+fn sender(to: &WorkerId) -> Status {
+    for n in 0..SENT {
+        assert!(trame::send(*to, Lossy { n }).is_ok(), "a lossy send answered Full");
+    }
+    assert!(trame::send(*to, Done { token: 1 }).is_ok(), "the token did not fit");
+    Status::Done
+}
+
+/// Worker 1: whether the token came, and the report it still has to send.
+#[trame::state(steps(drain))]
+struct Drain {
+    token: bool,
+    pending: Option<u32>,
+}
+
+/// Waits for the token, then reports every lossy frame that is still there.
+#[trame::step(Drain, receives = Done, Lossy)]
+fn drain(token: &mut bool, pending: &mut Option<u32>) -> Status {
+    if let Some(v) = *pending {
+        return match trame::send(LEADER, Ev { v }) {
+            Ok(()) => {
+                *pending = None;
                 Status::Progress
             }
-            None => Status::Done,
+            Err(_) => Status::wait().room::<Ev>(LEADER),
+        };
+    }
+    if !*token {
+        return match trame::recv::<Done>() {
+            Some(_) => {
+                *token = true;
+                Status::Progress
+            }
+            None => Status::wait().frame(),
+        };
+    }
+    match trame::recv::<Lossy>() {
+        Some(l) => {
+            *pending = Some(l.n);
+            Status::Progress
         }
+        None => Status::Done,
     }
-}
-
-fn sender(cx: &Context) {
-    let to = cx.workers()[1];
-    for n in 0..SENT {
-        assert!(trame::send(to, Lossy { n }).is_ok(), "a lossy send answered Full");
-    }
-    assert!(trame::send(to, Done { token: 1 }).is_ok(), "the token did not fit");
-}
-
-fn receiver(_cx: &Context) {
-    let mut shared = Shared;
-    let r = trame::concurrent!(Drain { token: false, pending: None, to: LEADER }; shared);
-    assert_eq!(r, Ok(()));
 }
 
 fn main() {
     let mut t = Topology::new();
-    let a = t.worker(sender);
-    let b = t.worker(receiver);
-    t.lossy::<Lossy>(a, b, 4);
-    t.route::<Done>(a, b, 1);
-    t.route::<Ev>(b, LEADER, 8);
+    let ids = t.ids(2);
+    let a = t.worker(Sender { to: ids[1] });
+    let b = t.worker(Drain { token: false, pending: None });
+    t.lossy::<Lossy>(a.id(), b.id(), 4);
+    t.route::<Done>(a.id(), b.id(), 1);
+    t.route::<Ev>(b.id(), LEADER, 8);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

@@ -1,9 +1,9 @@
-//! wait_frame: a process waits with `Status::wait().frame()` for a frame of its own type, `Want`. The leader sends a
-//! `Noise` frame (a type the process does not own) and then a `Want`. The process must be called exactly
+//! wait_frame: a step waits with `Status::wait().frame()` for a frame of its own type, `Want`. The leader sends a
+//! `Noise` frame (a type the step does not receive) and then a `Want`. The step must be called exactly
 //! twice: once to say `Ready` and wait, and once when `Want` arrives. A call for `Noise` would show as a
 //! third call. The leader sends nothing until `Ready`, so the first call always comes before `Want`.
 
-use trame::{Context, LEADER, Outcome, Status, Topology};
+use trame::{LEADER, Outcome, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -23,39 +23,34 @@ struct Calls {
     n: u32,
 }
 
-/// Counts its calls. Owns `Want` only.
+/// The state: the call count of `picky`, and whether it said `Ready`.
+#[trame::state(steps(picky))]
 struct Picky {
     calls: u32,
     said_ready: bool,
 }
 
-#[trame::process(receives = Want)]
-impl Picky {
-    fn step(&mut self) -> Status {
-        self.calls += 1;
-        if !self.said_ready {
-            self.said_ready = true;
-            assert!(trame::send(LEADER, Ready).is_ok(), "ready did not fit");
-            return Status::wait().frame();
-        }
-        match trame::recv::<Want>() {
-            Some(Want) => {
-                assert!(trame::send(LEADER, Calls { n: self.calls }).is_ok(), "calls did not fit");
-                Status::Done
-            }
-            None => Status::wait().frame(),
-        }
+/// Counts its calls. Receives `Want` only.
+#[trame::step(Picky, receives = Want)]
+fn picky(calls: &mut u32, said_ready: &mut bool) -> Status {
+    *calls += 1;
+    if !*said_ready {
+        *said_ready = true;
+        assert!(trame::send(LEADER, Ready).is_ok(), "ready did not fit");
+        return Status::wait().frame();
     }
-}
-
-fn worker(_cx: &Context) {
-    let r = trame::concurrent!(Picky { calls: 0, said_ready: false };);
-    assert_eq!(r, Ok(()));
+    match trame::recv::<Want>() {
+        Some(Want) => {
+            assert!(trame::send(LEADER, Calls { n: *calls }).is_ok(), "calls did not fit");
+            Status::Done
+        }
+        None => Status::wait().frame(),
+    }
 }
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(worker);
+    let w = t.worker(Picky { calls: 0, said_ready: false }).id();
     t.route::<Ready>(w, LEADER, 2);
     t.route::<Calls>(w, LEADER, 2);
     t.route::<Noise>(LEADER, w, 2);

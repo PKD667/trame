@@ -1,13 +1,13 @@
-//! take_rotate: worker `Rx` takes `Item` frames from two routes with the same tag. Route 0 is fed by the
+//! take_rotate: worker 0 (`Rx`) takes `Item` frames from two routes with the same tag. Route 0 is fed by the
 //! leader and never drains: after each take `Rx` reports `Took` and waits for `Ack`, and the leader sends
 //! `Ack` only after a refill of route 0 was accepted. So `Rx` never takes twice without a refill between,
 //! and route 0 holds at least three of its four frames at every take, even if `Ack` arrives before the
-//! refill. Route 1 is fed once by worker `Tx` with `Item 2`. Spec.md 6, Progress: a frame that stays an
+//! refill. Route 1 is fed once by worker 1 (`Tx`) with `Item 2`. Spec.md 6, Progress: a frame that stays an
 //! offer while its receiver keeps receiving is eventually received, so `Rx` must reach `Item 2`. A take
 //! that always starts at route 0 takes `Item 1` forever: the run never ends, and a timeout reports it.
 //! Spec.md 5.2 allows any order across routes, so the program prints only that `Item 2` arrived.
 
-use trame::{Context, LEADER, Outcome, Status, Topology};
+use trame::{LEADER, Outcome, Status, Topology, WorkerId};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -34,54 +34,55 @@ enum Phase {
     AwaitAck,
 }
 
-/// Takes one `Item` per round. `Item 1` is reported with `Took`, then `Rx` waits for the leader's `Ack`;
-/// `Item 2` ends the program with `Got`.
+/// Worker 0: takes one `Item` per round. `Item 1` is reported with `Took`, then `Rx` waits for the
+/// leader's `Ack`; `Item 2` ends the program with `Got`.
+#[trame::state(steps(rx))]
 struct Rx {
     phase: Phase,
 }
 
-#[trame::process(receives = Item, Ack)]
-impl Rx {
-    fn step(&mut self) -> Status {
-        match self.phase {
-            Phase::Report => match trame::send(LEADER, Took) {
-                Ok(()) => {
-                    self.phase = Phase::AwaitAck;
-                    Status::Progress
-                }
-                Err(_) => Status::wait().room::<Took>(LEADER),
-            },
-            Phase::AwaitAck => match trame::recv::<Ack>() {
-                Some(Ack) => {
-                    self.phase = Phase::Take;
-                    Status::Progress
-                }
-                None => Status::wait().frame(),
-            },
-            Phase::Take => match trame::recv::<Item>() {
-                Some(Item { id: 2 }) => {
-                    assert!(trame::send(LEADER, Got).is_ok(), "got did not fit");
-                    Status::Done
-                }
-                Some(Item { id: 1 }) => {
-                    self.phase = Phase::Report;
-                    Status::Progress
-                }
-                Some(_) => panic!("an unknown item"),
-                None => Status::wait().frame(),
-            },
-        }
+#[trame::step(Rx, receives = Item, Ack)]
+fn rx(phase: &mut Phase) -> Status {
+    match *phase {
+        Phase::Report => match trame::send(LEADER, Took) {
+            Ok(()) => {
+                *phase = Phase::AwaitAck;
+                Status::Progress
+            }
+            Err(_) => Status::wait().room::<Took>(LEADER),
+        },
+        Phase::AwaitAck => match trame::recv::<Ack>() {
+            Some(Ack) => {
+                *phase = Phase::Take;
+                Status::Progress
+            }
+            None => Status::wait().frame(),
+        },
+        Phase::Take => match trame::recv::<Item>() {
+            Some(Item { id: 2 }) => {
+                assert!(trame::send(LEADER, Got).is_ok(), "got did not fit");
+                Status::Done
+            }
+            Some(Item { id: 1 }) => {
+                *phase = Phase::Report;
+                Status::Progress
+            }
+            Some(_) => panic!("an unknown item"),
+            None => Status::wait().frame(),
+        },
     }
 }
 
-fn rx(_cx: &Context) {
-    let r = trame::concurrent!(Rx { phase: Phase::Take };);
-    assert_eq!(r, Ok(()));
+/// Worker 1: sends `Item 2` to `to`, the receiver.
+#[trame::state(steps(tx))]
+struct Tx {
+    to: WorkerId,
 }
 
-fn tx(cx: &Context) {
-    // The receiver is the first worker declared (workers() lists them in declaration order).
-    assert!(trame::send(cx.workers()[0], Item { id: 2 }).is_ok(), "item 2 did not fit");
+#[trame::step(Tx)]
+fn tx(to: &WorkerId) -> Status {
+    assert!(trame::send(*to, Item { id: 2 }).is_ok(), "item 2 did not fit");
+    Status::Done
 }
 
 /// Send `m` to `to`, waiting while the route is full. Across nodes a credit can arrive after the `Took`
@@ -94,8 +95,9 @@ fn send_when_room<M: trame::Message>(run: &trame::Run, to: trame::WorkerId, m: M
 
 fn main() {
     let mut t = Topology::new();
-    let rx_id = t.worker(rx);
-    let tx_id = t.worker(tx);
+    let ids = t.ids(2);
+    let rx_id = t.worker(Rx { phase: Phase::Take }).id();
+    let tx_id = t.worker(Tx { to: ids[0] }).id();
     t.route::<Item>(LEADER, rx_id, 4);
     t.route::<Item>(tx_id, rx_id, 1);
     t.route::<Ack>(LEADER, rx_id, 1);
