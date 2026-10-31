@@ -23,7 +23,7 @@ from pathlib import Path
 from nixsci import lab
 
 import mpirun
-import proc
+from nixsci.lab import proc
 
 FAMILY = {"barrier": "barrier", "ring64": "ring", "ring4096": "ring", "idle": "idle", "fanin": "fanin",
           "graph64": "graph", "graph1024": "graph", "graph1024s": "graph"}

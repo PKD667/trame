@@ -26,7 +26,7 @@ from pathlib import Path
 from nixsci import lab
 
 import mpirun
-import proc
+from nixsci.lab import proc
 
 
 def programs() -> list[tuple[str, int]]:

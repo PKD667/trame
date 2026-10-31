@@ -25,7 +25,7 @@ from pathlib import Path
 from nixsci import lab
 
 import mpirun
-import proc
+from nixsci.lab import proc
 
 LATENCY = ["--samples", "6636", "--max-gap-ns", "500000", "--seed", "20261026"]
 
@@ -42,10 +42,16 @@ class Case:
 
 def fifo(root: Path, workers: int, seed: int) -> list[Case]:
     d = root / f"fifo-{workers}-{seed}"
-    return [
-        Case("fifo", workers, seed, workers + 1, ["fifo", "--seed", str(seed), "--dir", str(d)]),
-        Case("fifo-verify", workers, seed, None, ["verify", str(d)]),
-    ]
+    cases = [Case("fifo", workers, seed, workers + 1, ["fifo", "--seed", str(seed), "--dir", str(d)])]
+    # verify reads one log per rank from one directory and compares timestamps across ranks. Over several hosts
+    # that is wrong twice: each rank writes its log on its own host, and the timestamps come from different
+    # machines' CLOCK_MONOTONIC (spec 5.1: each node has its own clock), so "C was read before the consume began"
+    # compares two clocks. It is not run there. The fifo run itself still checks, at the receiver and without a
+    # clock, that every route delivers its frames in order, once, with their content. What stays unchecked over
+    # several hosts is the credit bound (Full exactly at cap), which needs a common clock.
+    if len(mpirun.hosts()) <= 1:
+        cases.append(Case("fifo-verify", workers, seed, None, ["verify", str(d)]))
+    return cases
 
 
 def first_part(root: Path) -> list[Case]:
