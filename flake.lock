@@ -23,11 +23,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1793366134,
-        "narHash": "sha256-EFTgnj1mkxBM/+Ea+R6o7rNjvcjAzKo0D7GKANZ35AU=",
+        "lastModified": 1793451755,
+        "narHash": "sha256-HFUsgsS7HV8+yoSlxPwXvVMvtLt3AdmD6Vmftrw80K0=",
         "ref": "g5k-fixes",
-        "rev": "535d204ea99471d160d5ae91c2bb4ef51ec5245f",
-        "revCount": 179,
+        "rev": "ce131ff4db963769c4b6e5f7f9ed5e1e71c06cf0",
+        "revCount": 183,
         "type": "git",
         "url": "file:///home/pkd/code/agents/trame-g5k-20261030/nixsci"
       },
