@@ -7,7 +7,7 @@
 //! wakes whom. Each run records its trace; `__check_traces` replays it against the model: exactly
 //! (choices included) on seq, safety only elsewhere (backend.rs, S1-S5, S7).
 //!
-//! A failure prints the shape and the seed: TRAME_SEED=<n> cargo test --test conformance reruns it.
+//! A failure prints the shape and the seed; add the seed to REGRESSIONS so every later run tries it.
 //! Shares (S6) are checked by `shares` below.
 #![cfg(trame_checked)]
 
@@ -110,11 +110,14 @@ shape!(Readers {
     w1(c4; read f2; write f1),
 });
 
-fn seeds() -> Vec<u64> {
-    match std::env::var("TRAME_SEED") {
-        Ok(s) => vec![s.parse().expect("TRAME_SEED is a number")],
-        Err(_) => (0..std::env::var("TRAME_SEEDS").map(|n| n.parse().unwrap()).unwrap_or(60)).collect(),
-    }
+/// Seeds every run tries: 0..SEEDS, then every seed in REGRESSIONS.
+const SEEDS: u64 = 300;
+
+/// Seeds that once failed: a failure prints its seed; add it here so it is tried on every run.
+const REGRESSIONS: &[u64] = &[];
+
+fn seeds() -> impl Iterator<Item = u64> {
+    (0..SEEDS).chain(REGRESSIONS.iter().copied())
 }
 
 /// Totals over every workload: (events replayed, returned, deadlocked).
@@ -170,28 +173,28 @@ struct Contended {
 
 #[trame::step(Contended, weight = 1.0)]
 fn s1(hot: &mut u64, n1: &mut u64) -> Status {
-    *hot += 1;
+    *hot += spin(2000);
     *n1 += 1;
     Status::Progress
 }
 
 #[trame::step(Contended, weight = 0.5)]
 fn s2(hot: &mut u64, n2: &mut u64) -> Status {
-    *hot += 1;
+    *hot += spin(2000);
     *n2 += 1;
     Status::Progress
 }
 
 #[trame::step(Contended, weight = 0.25)]
 fn s4(hot: &mut u64, n4: &mut u64) -> Status {
-    *hot += 1;
+    *hot += spin(2000);
     *n4 += 1;
     Status::Progress
 }
 
 #[trame::step(Contended)]
 fn s0(hot: &mut u64, n0: &mut u64) -> Status {
-    *hot += 1;
+    *hot += spin(2000);
     *n0 += 1;
     Status::Progress
 }
@@ -217,5 +220,71 @@ fn shares_follow_weights() {
     let tol = if cfg!(feature = "seq") { 3.0 / total } else { 0.02 };
     for (got, want) in [(share(c.n1), 4.0 / 7.0), (share(c.n2), 2.0 / 7.0), (share(c.n4), 1.0 / 7.0)] {
         assert!((got - want).abs() <= tol, "share {got:.4}, model {want:.4}, tolerance {tol:.4}");
+    }
+}
+
+/// About `n` cheap operations, so that a step takes measurable time.
+fn spin(n: u64) -> u64 {
+    std::hint::black_box((0..n).fold(1u64, |a, x| a.wrapping_mul(6364136223846793005).wrapping_add(x)) & 1)
+}
+
+static RUNNING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static MOST: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Count steps running at once (across the test's workers).
+fn enter() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let n = RUNNING.fetch_add(1, SeqCst) + 1;
+    MOST.fetch_max(n, SeqCst);
+}
+
+fn leave() {
+    RUNNING.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Eight steps on eight disjoint fields: on a backend with several agents they must overlap.
+#[trame::state(steps(d0, d1, d2, d3, d4, d5, d6, d7))]
+struct Disjoint {
+    x0: u64,
+    x1: u64,
+    x2: u64,
+    x3: u64,
+    x4: u64,
+    x5: u64,
+    x6: u64,
+    x7: u64,
+}
+
+macro_rules! disjoint_step {
+    ($($f:ident $x:ident),*) => {$(
+        #[trame::step(Disjoint)]
+        fn $f($x: &mut u64) -> Status {
+            enter();
+            *$x += 1 + spin(200_000);
+            leave();
+            if *$x >= 50 { Status::Done } else { Status::Progress }
+        }
+    )*};
+}
+disjoint_step!(d0 x0, d1 x1, d2 x2, d3 x3, d4 x4, d5 x5, d6 x6, d7 x7);
+
+#[test]
+fn disjoint_steps_overlap() {
+    let mut t = Topology::new();
+    t.__trace();
+    let w = t.worker(Disjoint { x0: 0, x1: 0, x2: 0, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0 });
+    let run = t.launch().expect("launch");
+    let start = std::time::Instant::now();
+    let (out, checked) = run.__join_checked(cfg!(feature = "seq"));
+    let took = start.elapsed();
+    assert_eq!(out, [Outcome::Returned]);
+    checked.expect("the trace follows the model");
+    let most = MOST.load(std::sync::atomic::Ordering::SeqCst);
+    let s = w.take();
+    eprintln!("overlap: steps={} most_at_once={most} wall_ms={:.1}", s.x0 + s.x1 + s.x2 + s.x3 + s.x4 + s.x5 + s.x6 + s.x7, took.as_secs_f64() * 1e3);
+    if cfg!(feature = "seq") {
+        assert_eq!(most, 1, "seq runs one step at a time");
+    } else if std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) >= 8 {
+        assert!(most >= 4, "eight disjoint steps on eight or more cores ran at most {most} at once");
     }
 }

@@ -111,6 +111,14 @@ impl Topology {
         self.plan.pool_name = core::any::type_name::<P>();
     }
 
+    /// Run each worker with at most `n` agents (threads that take its steps); by default, as many as
+    /// the host has cores. Deployment, not meaning: a program's results may not depend on it. A
+    /// backend with one agent per worker (seq) ignores it.
+    pub fn agents(&mut self, n: usize) {
+        assert!(n >= 1, "trame: a worker needs at least one agent");
+        self.plan.agents = Some(n);
+    }
+
     /// Record every worker's trace of starts, ends, stops and edits, for `Run::__check_traces`.
     #[doc(hidden)]
     pub fn __trace(&mut self) {

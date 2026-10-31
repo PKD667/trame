@@ -8,7 +8,8 @@ extern crate std;
 
 use super::Selected;
 use super::limit;
-use super::state::{Abandoned, Phase, Route, Shared, State};
+use super::state::{Abandoned, Phase, Shared, State};
+use crate::local_routes::Routes;
 use crate::backend::{Backend, PoolRef};
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
@@ -123,25 +124,7 @@ impl Backend for Selected {
 
     fn launch(plan: Plan) -> Result<Run, Refused> {
         let n = plan.workers.len();
-        let mut routes = Vec::with_capacity(plan.routes.len());
-        for r in &plan.routes {
-            let bytes = match r.cap.checked_mul(r.size) {
-                Some(bytes) => bytes,
-                None => return Err(Refused::Backend { reason: "a route's frames do not fit in memory" }),
-            };
-            routes.push(Route {
-                from: r.from,
-                to: r.to,
-                ty: r.ty,
-                cap: r.cap,
-                size: r.size,
-                lossy: r.lossy,
-                buf: vec![0; bytes],
-                head: 0,
-                len: 0,
-                taken: 0,
-            });
-        }
+        let routes = Routes::new(&plan.routes)?;
         let limit = limit::setting().map_err(|reason| Refused::Backend { reason })?;
         let state = State {
             phase: vec![Phase::Ready; n],
@@ -149,7 +132,6 @@ impl Backend for Selected {
             aborted: false,
             panic: None,
             routes,
-            takes: 0,
             pool: plan.pool,
             epoch: Instant::now(),
             acts: 0,
@@ -179,35 +161,35 @@ impl Backend for Selected {
     fn worker_send(to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
         effect(|st, me| {
             let from = WorkerId(me as u32);
-            match st.route(from, to, ty) {
-                Some(i) => st.push(i, bytes),
+            match st.routes.find(from, to, ty) {
+                Some(i) => st.routes.push(i, bytes),
                 None => panic!("trame: worker {from:?} has no route to {to:?} for {name}"),
             }
         })
     }
 
     fn worker_recv(ty: core::any::TypeId, out: &mut [u8]) -> bool {
-        effect(|st, me| st.take(WorkerId(me as u32), ty, out))
+        effect(|st, me| st.routes.take(WorkerId(me as u32), ty, out))
     }
 
     fn worker_offer(ty: core::any::TypeId) -> bool {
         let (shared, me) = current();
         let st = shared.lock();
-        st.routes.iter().any(|r| r.to == WorkerId(me as u32) && r.ty == ty && r.len > 0)
+        st.routes.all.iter().any(|r| r.to == WorkerId(me as u32) && r.ty == ty && r.len > 0)
     }
 
     fn worker_route(to: WorkerId, ty: core::any::TypeId) -> Option<usize> {
         let (shared, me) = current();
         let st = shared.lock();
         let from = WorkerId(me as u32);
-        st.routes.iter().filter(|r| r.from == from).position(|r| r.to == to && r.ty == ty)
+        st.routes.all.iter().filter(|r| r.from == from).position(|r| r.to == to && r.ty == ty)
     }
 
     fn worker_room(route: usize) -> bool {
         let (shared, me) = current();
         let st = shared.lock();
         let from = WorkerId(me as u32);
-        match st.routes.iter().filter(|r| r.from == from).nth(route) {
+        match st.routes.all.iter().filter(|r| r.from == from).nth(route) {
             Some(r) => r.lossy || r.len < r.cap,
             None => panic!("trame: worker {me} has no outgoing route {route} for this room check"),
         }
@@ -245,6 +227,10 @@ impl Backend for Selected {
         }
     }
 
+    fn worker_abandon() -> ! {
+        resume_unwind(Box::new(Abandoned))
+    }
+
     fn worker_now() -> (ClockId, u64) {
         turn_effect(
             |st, _| {
@@ -263,8 +249,8 @@ impl Backend for Selected {
         bytes: &[u8],
     ) -> Result<(), Full> {
         let mut st = leader_check(run.shared.lock());
-        let answer = match st.route(LEADER, to, ty) {
-            Some(i) => st.push(i, bytes),
+        let answer = match st.routes.find(LEADER, to, ty) {
+            Some(i) => st.routes.push(i, bytes),
             None => panic!("trame: the leader has no route to {to:?} for {name}"),
         };
         st.acts += 1;
@@ -275,7 +261,7 @@ impl Backend for Selected {
     fn leader_recv(run: &Run, ty: core::any::TypeId, out: &mut [u8]) -> bool {
         // A take frees room on a route, so it wakes a worker that waits for room.
         let mut st = leader_check(run.shared.lock());
-        let taken = st.take(LEADER, ty, out);
+        let taken = st.routes.take(LEADER, ty, out);
         if taken {
             st.acts += 1;
             run.shared.changed.notify_all();
@@ -308,10 +294,6 @@ impl Backend for Selected {
         let mut st = run.shared.lock();
         st.acts += 1;
         run.shared.changed.notify_all();
-    }
-
-    fn leader_trace(run: &Run, w: usize) -> Option<(Sched, Vec<Event>)> {
-        run.slots[w].trace()
     }
 
     fn leader_wait(run: &Run, seen: u64) -> u64 {

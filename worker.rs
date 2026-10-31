@@ -66,6 +66,10 @@ pub(crate) struct Core<S: State> {
     state: UnsafeCell<ManuallyDrop<S>>,
     taken: AtomicBool,
     error: Mutex<Option<S::Error>>,
+    /// Debug builds: the fields held by running steps, kept here apart from any scheduler, so S1 is
+    /// checked against what actually runs (backend.rs). Written fields, and readers per field.
+    #[cfg(debug_assertions)]
+    witness: Mutex<(u64, [u32; 64])>,
 }
 
 // SAFETY: steps reach the state only through `State::run`, under the field locks of the contract
@@ -77,7 +81,13 @@ unsafe impl<S: State> Send for Core<S> {}
 
 impl<S: State> Core<S> {
     pub(crate) fn new(state: S) -> Self {
-        Core { state: UnsafeCell::new(ManuallyDrop::new(state)), taken: AtomicBool::new(false), error: Mutex::new(None) }
+        Core {
+            state: UnsafeCell::new(ManuallyDrop::new(state)),
+            taken: AtomicBool::new(false),
+            error: Mutex::new(None),
+            #[cfg(debug_assertions)]
+            witness: Mutex::new((0, [0; 64])),
+        }
     }
 
     fn ptr(&self) -> *mut S {
@@ -108,6 +118,34 @@ impl<S: State> Core<S> {
 
     pub(crate) fn take_error(&self) -> Option<S::Error> {
         self.error.lock().unwrap_or_else(PoisonError::into_inner).take()
+    }
+}
+
+#[cfg(debug_assertions)]
+impl<S: State> Core<S> {
+    /// Take (`on`) or give back step i's fields in the witness; panics when S1 does not hold.
+    fn hold(&self, i: usize, on: bool) {
+        let info = S::STEPS[i];
+        let reads = info.reads & !info.writes;
+        let mut w = self.witness.lock().unwrap_or_else(PoisonError::into_inner);
+        if on {
+            let read_held = (0..64).filter(|&k| w.1[k] > 0).fold(0u64, |m, k| m | 1 << k);
+            assert!(
+                (info.reads | info.writes) & w.0 == 0 && info.writes & read_held == 0,
+                "trame: S1 violated: step `{}` started while a field it uses was held (written {:#x}, read {:#x})",
+                info.name,
+                w.0,
+                read_held
+            );
+            w.0 |= info.writes;
+        } else {
+            w.0 &= !info.writes;
+        }
+        for k in 0..64 {
+            if reads >> k & 1 == 1 {
+                if on { w.1[k] += 1 } else { w.1[k] -= 1 }
+            }
+        }
     }
 }
 
@@ -161,8 +199,13 @@ impl<S: State> Erased for Core<S> {
             Some(p) => p.downcast_ref::<S::Pool>().expect("trame: the launch checked the pool's type"),
             None => (&UNIT as &dyn Any).downcast_ref::<S::Pool>().expect("trame: a worker without a pool has Pool = ()"),
         };
+        #[cfg(debug_assertions)]
+        self.hold(i, true);
         // SAFETY: the caller holds step i's fields.
-        match unsafe { S::run(self.ptr(), pool, i) } {
+        let r = unsafe { S::run(self.ptr(), pool, i) };
+        #[cfg(debug_assertions)]
+        self.hold(i, false);
+        match r {
             Ok(s) => Ok(s),
             Err(e) => {
                 *self.error.lock().unwrap_or_else(PoisonError::into_inner) = Some(e);
@@ -327,6 +370,10 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: &dyn Fn() -> O
         // The conditions are read without the lock: they call the backend, which may yield.
         let now = conditions(obj, &snapshot, &waits[..snapshot.ps.len().min(waits.len())]);
         let mut g = slot.lock();
+        if g.dead {
+            drop(g);
+            Selected::worker_abandon();
+        }
         if let Some(a) = g.s.answer() {
             slot.changed.notify_all();
             return a;

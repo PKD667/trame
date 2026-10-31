@@ -50,6 +50,8 @@ pub(crate) struct Plan {
     pub pool_name: &'static str,
     /// Record each worker's trace (backend.rs, S7). For conformance; costs a lock and a push per event.
     pub trace: bool,
+    /// Agents per worker, at most; `None`: the host's parallelism. Never more than a worker's steps.
+    pub agents: Option<usize>,
 }
 
 impl Default for Plan {
@@ -61,6 +63,7 @@ impl Default for Plan {
             pool_type: TypeId::of::<()>(),
             pool_name: "()",
             trace: false,
+            agents: None,
         }
     }
 }

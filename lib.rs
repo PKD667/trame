@@ -75,12 +75,22 @@ pub use status::Status;
 pub use time::{Reading, now};
 pub use topology::{LEADER, Topology, Worker, WorkerId};
 
-#[cfg(all(feature = "seq", feature = "mpi"))]
-compile_error!("features `seq` and `mpi` are exclusive: one backend per build");
+#[cfg(any(all(feature = "seq", feature = "mpi"), all(feature = "seq", feature = "threads"), all(feature = "threads", feature = "mpi")))]
+compile_error!("features `seq`, `threads` and `mpi` are exclusive: one backend per build (threads: --no-default-features --features threads)");
+
+/// The threads backend: several agents per worker, steps truly in parallel (backends/threads).
+#[cfg(feature = "threads")]
+#[path = "backends/threads/mod.rs"]
+mod threads;
 
 #[cfg(feature = "seq")]
 #[path = "backends/seq/mod.rs"]
 mod seq;
+
+/// The routes of the backends whose agents share memory (seq, threads).
+#[cfg(any(feature = "seq", feature = "threads"))]
+#[path = "backends/local/routes.rs"]
+mod local_routes;
 
 /// The MPI backend: one rank per worker, the leader on the last rank (backends/mpi/README.md).
 /// Stop, edit and pools are not yet carried to other ranks: see docs/worker-model.md, stage 2.
@@ -110,15 +120,18 @@ mod worker;
 /// What a step returns, and the condition it waits for (spec.md 5.3).
 mod status;
 
-#[cfg(all(feature = "seq", not(feature = "mpi")))]
+#[cfg(all(feature = "seq", not(feature = "mpi"), not(feature = "threads")))]
 use seq as selected;
 
+#[cfg(all(feature = "threads", not(feature = "seq"), not(feature = "mpi")))]
+use threads as selected;
+
 // `self::`: the crate also depends on an external crate named `mpi`, and a bare `mpi` is ambiguous.
-#[cfg(all(feature = "mpi", not(feature = "seq")))]
+#[cfg(all(feature = "mpi", not(feature = "seq"), not(feature = "threads")))]
 use self::mpi as selected;
 
 /// Without a backend module, every launch is refused (see unselected.rs).
-#[cfg(not(any(feature = "seq", feature = "mpi")))]
+#[cfg(not(any(feature = "seq", feature = "mpi", feature = "threads")))]
 mod unselected;
-#[cfg(not(any(feature = "seq", feature = "mpi")))]
+#[cfg(not(any(feature = "seq", feature = "mpi", feature = "threads")))]
 use unselected as selected;

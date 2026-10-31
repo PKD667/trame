@@ -97,6 +97,10 @@ pub(crate) trait Backend {
     /// This worker's clock: its identity, and the nanoseconds since the run started.
     fn worker_now() -> (ClockId, u64);
 
+    /// Leave the worker without a result of this agent's own: another agent's step unwound mid-way
+    /// (the run aborts), so this agent must not run on. Unwinds with the backend's marker.
+    fn worker_abandon() -> !;
+
     /// Send from the leader to `to`. Panics when the topology has no such route.
     fn leader_send(run: &Self::Run, to: WorkerId, ty: TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full>;
 
@@ -113,9 +117,6 @@ pub(crate) trait Backend {
     /// Stop every worker (S5). Returns at once; `leader_join` waits for the results.
     fn leader_stop(run: &Self::Run);
 
-    /// The trace of worker `w`, with its initial model, if the launch asked for traces (S7).
-    fn leader_trace(run: &Self::Run, w: usize) -> Option<(Sched, Vec<Event>)>;
-
     /// Block until the leader's counter differs from `seen`, and answer the new value. It moves on
     /// every act that can change the leader's wait: a frame to the leader, a worker's result, an abort.
     fn leader_wait(run: &Self::Run, seen: u64) -> u64;
@@ -124,7 +125,8 @@ pub(crate) trait Backend {
     /// no step of the run runs again, so the leader may take the states.
     fn leader_join(run: Self::Run) -> Vec<Outcome>;
 
-    /// `leader_join`, then every worker's trace (`leader_trace`), complete since nothing runs.
+    /// `leader_join`, then every worker's trace with its initial model, if the launch asked for traces
+    /// (S7); complete, since nothing runs.
     fn leader_join_traced(run: Self::Run, workers: usize) -> (Vec<Outcome>, Vec<Option<(Sched, Vec<Event>)>>);
 }
 

@@ -14,10 +14,12 @@ mpi = { version = "=0.8.2", optional = true }
 libc = { version = "=0.2.191", optional = true }
 
 # A backend is chosen at compile time, one per build, so every participant agrees by construction.
-# `seq` and `mpi` are exclusive: lib.rs refuses a build that enables both.
+# `seq`, `threads` and `mpi` are exclusive: lib.rs refuses a build that enables two.
 [features]
 default = ["seq"]
 seq = []
+# Workers run by several agent threads each, steps of one worker truly in parallel (backends/threads).
+threads = []
 mpi = ["dep:mpi", "dep:libc"]
 
 # The MPI transport's checks and latency run (backends/mpi/tests/run.sh, backends/mpi/README.md).

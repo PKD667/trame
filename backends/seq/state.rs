@@ -4,11 +4,9 @@
 extern crate std;
 
 use super::limit;
+use crate::local_routes::Routes;
 use crate::backend::PoolRef;
-use crate::io::Full;
 use crate::run::Outcome;
-use crate::topology::WorkerId;
-use std::any::TypeId;
 use std::string::String;
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -25,29 +23,6 @@ pub(super) enum Phase {
     Done(Outcome),
 }
 
-/// A route with its frames. `from` sends, `to` receives; `ty` is its tag. The frames live in
-/// `buf`, a ring of `cap` slots of `size` bytes, allocated once at launch: a send copies into a
-/// slot and a receive copies out of one, so neither allocates. The oldest frame is at `head`.
-pub(super) struct Route {
-    pub from: WorkerId,
-    pub to: WorkerId,
-    pub ty: TypeId,
-    pub cap: usize,
-    pub size: usize,
-    pub lossy: bool,
-    pub buf: Vec<u8>,
-    pub head: usize,
-    pub len: usize,
-    /// The number of the take that last took a frame from this route; 0 before the first.
-    pub taken: u64,
-}
-
-impl Route {
-    fn slot(&self, at: usize) -> core::ops::Range<usize> {
-        at * self.size..(at + 1) * self.size
-    }
-}
-
 pub(super) struct State {
     pub phase: Vec<Phase>,
     /// The worker that holds the baton, or `None` when no worker can run.
@@ -56,9 +31,7 @@ pub(super) struct State {
     /// The first panic of the run: the worker's index and its message. Set with `aborted` by a panic;
     /// `None` when the run aborted without one (a worker thread that could not start).
     pub panic: Option<(usize, String)>,
-    pub routes: Vec<Route>,
-    /// The takes so far, numbering them for `Route::taken`.
-    pub takes: u64,
+    pub routes: Routes,
     /// The host's pool: the current version. A step pins it by a clone at its start (backend.rs, P1).
     pub pool: Option<PoolRef>,
     pub epoch: Instant,
@@ -128,49 +101,5 @@ impl State {
     /// Whether worker `i` must unwind rather than run on: the run was aborted, or it has a result.
     pub fn must_stop(&self, i: usize) -> bool {
         self.aborted || matches!(self.phase[i], Phase::Done(_))
-    }
-
-    /// The index of the route from `from` to `to` with tag `ty`, if the topology has one.
-    pub fn route(&self, from: WorkerId, to: WorkerId, ty: TypeId) -> Option<usize> {
-        self.routes.iter().position(|r| r.from == from && r.to == to && r.ty == ty)
-    }
-
-    /// Append a frame to route `i` (spec.md Send, Full, Overwrite). A lossy route at capacity
-    /// overwrites its oldest frame; any other route at capacity answers `Full`.
-    pub fn push(&mut self, i: usize, bytes: &[u8]) -> Result<(), Full> {
-        let r = &mut self.routes[i];
-        let at = if r.len < r.cap {
-            r.len += 1;
-            (r.head + r.len - 1) % r.cap
-        } else if r.lossy {
-            let at = r.head;
-            r.head = (r.head + 1) % r.cap;
-            at
-        } else {
-            return Err(Full);
-        };
-        let range = r.slot(at);
-        r.buf[range].copy_from_slice(bytes);
-        Ok(())
-    }
-
-    /// Copy the oldest frame of a route to `to` with tag `ty` into `out`, and drop it from the route.
-    /// Of the routes that have a frame, the one taken least recently is taken: a route that keeps a
-    /// frame is then taken within one round of its siblings, whatever is taken in between (spec.md 6,
-    /// Progress). A cursor shared by every route and tag is not enough: a periodic mix of takes can
-    /// bring it back to the same route each time. Answers `false` when no route has a frame.
-    pub fn take(&mut self, to: WorkerId, ty: TypeId, out: &mut [u8]) -> bool {
-        let next = self.takes + 1;
-        let Some(r) = self.routes.iter_mut().filter(|r| r.to == to && r.ty == ty && r.len > 0).min_by_key(|r| r.taken)
-        else {
-            return false;
-        };
-        let range = r.slot(r.head);
-        out.copy_from_slice(&r.buf[range]);
-        r.head = (r.head + 1) % r.cap;
-        r.len -= 1;
-        r.taken = next;
-        self.takes = next;
-        true
     }
 }
