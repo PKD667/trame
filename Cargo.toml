@@ -61,12 +61,8 @@ name = "refuse"
 path = "programs/refuse.rs"
 
 [[example]]
-name = "barrier_publish"
-path = "programs/barrier_publish.rs"
-
-[[example]]
-name = "barrier_deadlock"
-path = "programs/barrier_deadlock.rs"
+name = "pool_publish"
+path = "programs/pool_publish.rs"
 
 [[example]]
 name = "cells"

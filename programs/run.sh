@@ -5,7 +5,7 @@
 # The argument selects the backend (default: both). Exits non-zero on the first failure, and prints
 # "FAIL <backend> <program>" so conformance/mutate.sh can name the program that killed a mutant.
 # The programs are the files programs/*.rs (seq) and the rows of backends/mpi/deploy/ranks.txt (mpi).
-# Every program is built with --cfg trame_checked (concurrent! needs it). The MPI target directory is
+# Every program is built with --cfg trame_checked (#[trame::state] needs it). The MPI target directory is
 # target/mpi, as in backends/mpi/tests/run.sh. Programs run as built binaries, so a timeout kills them.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"

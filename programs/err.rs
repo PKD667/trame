@@ -1,48 +1,34 @@
-//! err: one worker runs two processes. `Fails` (priority 0) returns an error at its first step. `Idle`
-//! (priority 1) waits on a cell that nothing shares, so it could only be woken by a step that never runs.
-//! `concurrent!` must answer `Fails`'s error at once, and `Idle` must never step again. The worker reports
-//! the code it got back to the leader; the run returns normally.
+//! err: one worker with two steps. `fails` (declared first) returns an error at its first step. `idle`
+//! (declared second) waits with a bare `Status::wait()` and records that it ran. A step's error ends the
+//! worker: the outcome is `Failed`, not `Returned`, `Worker::error` answers the error, and no step starts
+//! after the failure, so `idle` never ran. The leader prints the error code and the outcomes. (Before the
+//! worker model a worker body could catch the error and return normally, so this printed `Returned`.)
 
-use trame::{Context, LEADER, Outcome, Status, Topology};
+use trame::{Outcome, Status, Topology};
 
 #[derive(Debug, PartialEq, Eq)]
 struct Boom(u32);
 
-#[trame::message]
-#[derive(Debug, PartialEq, Eq)]
-struct Report {
-    code: u32,
+/// The state: whether `idle` ever ran.
+#[trame::state(steps(fails, idle), error = Boom)]
+struct Pair {
+    idled: bool,
 }
 
-struct Fails;
-
-#[trame::process]
-impl Fails {
-    fn step(&mut self) -> Result<Status, Boom> {
-        Err(Boom(7))
-    }
+#[trame::step(Pair)]
+fn fails() -> Result<Status, Boom> {
+    Err(Boom(7))
 }
 
-struct Idle;
-
-#[trame::process]
-impl Idle {
-    fn step(&mut self) -> Result<Status, Boom> {
-        Ok(Status::wait())
-    }
-}
-
-fn worker(_cx: &Context) {
-    match trame::concurrent!(Fails, Idle;) {
-        Err(Boom(code)) => assert!(trame::send(LEADER, Report { code }).is_ok(), "report did not fit"),
-        Ok(()) => panic!("concurrent! answered Ok, but a process returned Err"),
-    }
+#[trame::step(Pair)]
+fn idle(idled: &mut bool) -> Result<Status, Boom> {
+    *idled = true;
+    Ok(Status::wait())
 }
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(worker);
-    t.route::<Report>(w, LEADER, 2);
+    let w = t.worker(Pair { idled: false });
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {
@@ -50,13 +36,9 @@ fn main() {
             return;
         }
     };
-    let report = loop {
-        if let Some(r) = run.recv::<Report>() {
-            break r;
-        }
-        run.wait();
-    };
-    println!("worker reports error {}", report.code);
     let outcomes: Vec<Outcome> = run.join();
+    let boom = w.error().expect("a failed worker keeps its error");
+    println!("worker reports error {}", boom.0);
     println!("outcomes: {outcomes:?}");
+    assert!(!w.take().idled, "a step started after another failed");
 }
