@@ -108,7 +108,8 @@ pub(crate) fn fair(world: &mpi::topology::SimpleCommunicator, args: &[String]) {
     // waits for each frame, and checks what the spec promises: every route is FIFO.
     // Several nodes: a split of one machine (TRAME_MPI_NODE_RANKS), or ranks on really different machines,
     // which share no memory, so the node communicator is smaller than the world.
-    let several = std::env::var_os("TRAME_MPI_NODE_RANKS").is_some() || world.split_shared(world.rank()).size() != world.size();
+    let several =
+        std::env::var_os("TRAME_MPI_NODE_RANKS").is_some() || world.split_shared(world.rank()).size() != world.size();
     let mut next = [0u64; 2];
     for _ in 0..2 * msgs {
         let id = loop {
