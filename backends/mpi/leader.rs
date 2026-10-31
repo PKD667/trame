@@ -13,7 +13,7 @@ use crate::io::Full;
 use crate::run::Outcome;
 use crate::topology::WorkerId;
 
-use super::layout::{OUT_DEADLOCK, OUT_RETURNED};
+use super::layout::{OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
 use super::plan::{self, Entry, rank_of};
 use super::state::{finalize, local};
 use super::types::{Answer, Received};
@@ -86,10 +86,10 @@ pub(super) fn recv(run: &Leader, ty: TypeId, out: &mut [u8]) -> bool {
     }
 }
 
-/// Deposit a publication (gate.rs `publish`). Never waits, so the leader's host code is not held up by workers.
-pub(super) fn publish(run: &Leader, bytes: &[u8]) {
+/// Stop the run: workers see STOP at their next scheduling round (results.rs `stop`).
+pub(super) fn stop(run: &Leader) {
     run.get().fail_if_aborted();
-    run.get().publish(bytes)
+    run.get().stop()
 }
 
 /// Block until the leader's epoch differs from `seen`, and answer the new value (epoch.rs).
@@ -110,6 +110,8 @@ pub(super) fn join(run: Leader) -> Vec<Outcome> {
         .map(|w| match w {
             OUT_RETURNED => Outcome::Returned,
             OUT_DEADLOCK => Outcome::Deadlock,
+            OUT_STOPPED => Outcome::Stopped,
+            OUT_FAILED => Outcome::Failed,
             other => panic!("trame: unknown outcome word {other}"),
         })
         .collect();

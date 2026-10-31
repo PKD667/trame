@@ -1,13 +1,13 @@
 //! Stand-in for a build that selects no backend module (the `mpi` feature, until it has one). It
 //! refuses every launch, so no worker starts and no other operation can be reached.
 
-use crate::backend::Backend;
+use crate::backend::{Backend, PoolRef};
+use crate::sched::{Event, Sched};
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
 use crate::run::Outcome;
 use crate::time::ClockId;
 use crate::topology::WorkerId;
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::any::TypeId;
 
@@ -55,7 +55,11 @@ impl Backend for Selected {
         unreachable!("no worker starts without a backend")
     }
 
-    fn worker_barrier() -> Arc<[u8]> {
+    fn worker_me() -> WorkerId {
+        unreachable!("no worker starts without a backend")
+    }
+
+    fn worker_abandon() -> ! {
         unreachable!("no worker starts without a backend")
     }
 
@@ -67,8 +71,20 @@ impl Backend for Selected {
         match *run {}
     }
 
-    fn leader_publish(run: &Run, _bytes: &[u8]) {
+    fn leader_pool(run: &Run, _pool: PoolRef) {
         match *run {}
+    }
+
+    fn leader_edit(run: &Run, _w: usize, _f: &mut dyn FnMut()) -> bool {
+        match *run {}
+    }
+
+    fn leader_stop(run: &Run) {
+        match *run {}
+    }
+
+    fn leader_join_traced(run: Run, _workers: usize) -> (Vec<Outcome>, Vec<Option<(Sched, Vec<Event>)>>) {
+        match run {}
     }
 
     fn leader_wait(run: &Run, _seen: u64) -> u64 {

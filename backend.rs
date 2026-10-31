@@ -52,6 +52,12 @@ pub(crate) trait Backend {
     /// The state of one launched run, owned by the leader.
     type Run;
 
+    /// Whether the workers' states live in the leader's process, so that `Worker::take` and
+    /// `Worker::error` read the real ones. False on a backend that runs workers in other processes
+    /// and does not ship states back (mpi, for now): the leader's copy is then stale, and the surface
+    /// refuses to answer from it.
+    const STATES_AT_LEADER: bool = true;
+
     /// Check that every process of the launch built the same plan, before the local checks run. A
     /// backend with one process has nothing to agree on. A backend with several processes makes this
     /// a collective: every process calls it, in the same order, and every process gets the same answer.
@@ -96,6 +102,12 @@ pub(crate) trait Backend {
 
     /// This worker's clock: its identity, and the nanoseconds since the run started.
     fn worker_now() -> (ClockId, u64);
+
+    /// Whether the leader stopped the run, for a backend whose leader cannot reach the worker's
+    /// scheduler directly (mpi: another process). The reference agent polls it at each round.
+    fn worker_stop_requested() -> bool {
+        false
+    }
 
     /// Leave the worker without a result of this agent's own: another agent's step unwound mid-way
     /// (the run aborts), so this agent must not run on. Unwinds with the backend's marker.

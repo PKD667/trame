@@ -23,7 +23,7 @@ use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 use std::vec::Vec;
 
 use super::Transport;
-use super::layout::{ABORT_BIT, ABORT_LEN, ABORT_WORKER, DONE, END, K_OUTCOME, OUT_ABORT, RESULT, START};
+use super::layout::{ABORT_BIT, ABORT_LEN, ABORT_WORKER, DONE, END, K_OUTCOME, OUT_ABORT, RESULT, START, STOP};
 use super::object;
 use super::state::finalize;
 
@@ -41,6 +41,18 @@ impl Transport {
         // Exit after the result: a waiter that sees the exit must also see the result (gate.rs).
         self.exit();
         true
+    }
+
+    /// Leader only: stop the run (Run::stop). Workers see it at their next scheduling round, and every
+    /// sleeping agent is woken to see it.
+    pub(crate) fn stop(&self) {
+        self.win().word(STOP).store(1, Release);
+        self.bump_all();
+    }
+
+    /// Whether the leader stopped the run.
+    pub(crate) fn stop_requested(&self) -> bool {
+        self.win().word(STOP).load(Acquire) != 0
     }
 
     /// Whether some agent panicked, which ends the run.

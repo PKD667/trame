@@ -369,6 +369,9 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: &dyn Fn() -> O
         };
         // The conditions are read without the lock: they call the backend, which may yield.
         let now = conditions(obj, &snapshot, &waits[..snapshot.ps.len().min(waits.len())]);
+        if Selected::worker_stop_requested() {
+            slot.stop();
+        }
         let mut g = slot.lock();
         if g.dead {
             drop(g);

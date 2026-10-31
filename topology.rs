@@ -40,6 +40,10 @@ impl<S: State> Worker<S> {
     /// The state, after `Run::join`. Panics before the join, or when the run aborted (the leader
     /// panicked then, so this is reached only by a leader that caught that panic).
     pub fn take(self) -> S {
+        assert!(
+            <Selected as Backend>::STATES_AT_LEADER,
+            "trame: Worker::take: this backend runs workers in other processes and does not ship states back yet"
+        );
         assert!(self.joined.load(Ordering::Acquire), "trame: Worker::take before Run::join; a running worker's state is not the leader's");
         // SAFETY: joined, so no step runs again (backend.rs, leader_join).
         unsafe { self.core.take() }
@@ -47,6 +51,10 @@ impl<S: State> Worker<S> {
 
     /// The error of the step that failed, after `Run::join`, when the worker's outcome is `Failed`.
     pub fn error(&self) -> Option<S::Error> {
+        assert!(
+            <Selected as Backend>::STATES_AT_LEADER,
+            "trame: Worker::error: this backend runs workers in other processes and does not ship errors back yet"
+        );
         assert!(self.joined.load(Ordering::Acquire), "trame: Worker::error before Run::join");
         self.core.take_error()
     }

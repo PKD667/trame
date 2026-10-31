@@ -18,7 +18,7 @@
 
 extern crate std;
 
-use std::sync::atomic::Ordering::{Relaxed, SeqCst};
+use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
 use super::Transport;
@@ -108,16 +108,18 @@ impl Transport {
             if left == Some(0) {
                 return;
             }
-            self.win().word(s).store(1, SeqCst);
+            // A count, not a flag: several agents of one worker may sleep on one epoch, and the first to
+            // wake must not hide the others from `bump` (backend.rs, S3).
+            self.win().word(s).fetch_add(1, SeqCst);
             // The Dekker check: an act between the test above and the store is seen here, without a
             // syscall. The model (proofs/mpi/Epoch.tla) needs it for no property, because it puts the
             // kernel's compare in the SeqCst order; the hardware argument for that read is not modelled.
             if self.win().word32(e).load(SeqCst) != seen {
-                self.win().word(s).store(0, Relaxed);
+                self.win().word(s).fetch_sub(1, SeqCst);
                 return;
             }
             self.win().wait_for(e, seen, left.map(Duration::from_nanos));
-            self.win().word(s).store(0, SeqCst);
+            self.win().word(s).fetch_sub(1, SeqCst);
         }
     }
 

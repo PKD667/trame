@@ -51,7 +51,7 @@ fn put_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
 pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(&(plan.workers.len() as u64).to_le_bytes());
-    put_bytes(&mut out, &plan.publication);
+    put_bytes(&mut out, &[]);
     out.extend_from_slice(&(plan.routes.len() as u64).to_le_bytes());
     for r in &plan.routes {
         out.extend_from_slice(&r.from.0.to_le_bytes());
@@ -90,7 +90,7 @@ pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
             lossy: r.lossy,
         });
     }
-    Ok(Topology { workers, routes, publication: plan.publication.clone() })
+    Ok(Topology { workers, routes, publication: Vec::new() })
 }
 
 /// One route as an endpoint looks it up: sender and receiver ranks, its message type, and its id.

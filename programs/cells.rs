@@ -76,6 +76,4 @@ fn main() {
     }
     let outcomes: Vec<Outcome> = run.join();
     println!("outcomes: {outcomes:?}");
-    let tally = w.take();
-    assert_eq!((tally.value, tally.n), (3, 3), "the state comes back to the leader");
 }

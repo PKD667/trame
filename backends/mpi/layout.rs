@@ -23,12 +23,14 @@
 //   ABORT_WORKER           the rank of the worker whose panic aborted the run (its first abort; the
 //                          message is the object `<window>-abort-0`, written before DONE's bit is set)
 //   ABORT_LEN              the length of that message
+//   STOP                   1 once the leader stopped the run (Run::stop); workers poll it (one node only:
+//                          the relay does not carry it yet)
 //   ARRIVE                 per worker, five lines each, kind k of worker w at ARRIVE + 64 (k W + w):
 //                            k=0 ARRIVE   last barrier generation it arrived at
 //                            k=1 EXITED   1 once the worker has returned (barrier, deadlock)
 //                            k=2 OUTCOME  its result, 0 until set
 //                            k=3 EPOCH    u32, moves on every act that can change its wait conditions
-//                            k=4 SLEEP    1 while the worker sleeps on EPOCH (results.rs, epoch.rs)
+//                            k=4 SLEEP    how many of the worker's agents sleep on EPOCH (epoch.rs)
 //   ROUTES                 per route, in rank order:
 //                            +0    P: frames ever sent on the route (written by the sender only)
 //                            +64   C: frames ever consumed (written by the receiver only; lossless)
@@ -55,7 +57,8 @@ pub(crate) const RELAY_SLEEP: usize = RELAY_EPOCH + LINE;
 pub(crate) const END: usize = RELAY_SLEEP + LINE;
 pub(crate) const ABORT_WORKER: usize = END + LINE;
 pub(crate) const ABORT_LEN: usize = ABORT_WORKER + LINE;
-pub(crate) const ARRIVE: usize = ABORT_LEN + LINE;
+pub(crate) const STOP: usize = ABORT_LEN + LINE;
+pub(crate) const ARRIVE: usize = STOP + LINE;
 /// Header lines per worker, one per kind listed above.
 pub(crate) const WORKER_LINES: usize = 5;
 pub(crate) const K_ARRIVE: usize = 0;
@@ -74,6 +77,10 @@ pub(crate) const OUT_RETURNED: u64 = 1;
 pub(crate) const OUT_ABORT: u64 = 2;
 /// The worker was stuck at a barrier and ended with Deadlock (spec.md 5, Deadlock).
 pub(crate) const OUT_DEADLOCK: u64 = 3;
+/// Every step of the worker ended after a stop (spec.md, Stop).
+pub(crate) const OUT_STOPPED: u64 = 4;
+/// A step of the worker failed.
+pub(crate) const OUT_FAILED: u64 = 5;
 
 /// A route as the host declares it: sender, receiver, tag, message size in bytes, capacity in
 /// frames, and whether it is lossy. A worker is named by its rank; the leader is `workers`.
