@@ -1,418 +1,535 @@
-//! Scheduling core of the sequential backend: spec.md section 5.3, rules Start, End, Done, Fail.
-//! Plain data and pure functions. No clocks, threads or I/O. The caller computes `Now` from the
-//! world, and applies the effect that Start prescribes: set `running` and add `cells` to `held`.
+//! The reference model of one worker's scheduler: field locks and weighted stride. Plain data and pure
+//! functions; no clock, thread or I/O. Every backend schedules steps; this file says what a schedule
+//! may be, and `check` (below) replays a backend's trace against it.
+//!
+//! A worker has steps 0..len and, optionally, a stop step at index `len`. Step i reads the fields
+//! R(i) and writes the fields W(i), as bitmasks over the state's fields (at most 64).
+//!
+//! Safety, which every backend keeps exactly and `check` verifies on every trace:
+//!   - Start(i) needs i enabled (Fresh, Progress, or a Wait that was woken or whose condition holds),
+//!     i not running, and its fields free: no field of R(i) ∪ W(i) written by a running step, and no
+//!     field of W(i) read by a running step. It takes them all at once; End(i) gives them back.
+//!   - End(i) records i's status and wakes every j ≠ i with W(i) ∩ (R(j) ∪ W(j)) ≠ ∅.
+//!   - After a step fails, no step starts. After a stop, no ordinary step starts, and the stop step
+//!     starts only when no step is running.
+//!
+//! Choice, which is the fairness model. Each step has a weight w in [0, 1] and a pass. Among the steps
+//! that may start, the least pass among positive weights wins (ties: the lower index); a weight-0 step
+//! starts only when no positive-weight step may, and then the least recently started (ties: the lower
+//! index). End(i) adds service(i) · 2^24/w to i's pass, where service is the backend's measure of what
+//! the step used (1 per step on seq, nanoseconds on a threaded backend). So, under contention, the
+//! service of positive-weight steps is shared in proportion to their weights (stride scheduling,
+//! Waldspurger and Weihl 1995). A step that was not ready does not bank its absence: when a step
+//! starts, every waiting step's pass is raised to at least the started step's pass.
+//!
+//! seq follows `choose` exactly, and `check` can verify that. A backend with several agents may start
+//! any step `may_start` allows; its weights are checked by measured shares (conformance), not by
+//! replaying choices.
 
-/// St(p): the status a process last returned. `Wait` carries its conditions Ω. `cells` is
-/// `Wait::cells()`, the empty Ω: it adds no condition, so such a wait is woken only by D(p).
+/// The most steps of one worker, the stop step included: masks are 64 bits.
+pub const MAX_STEPS: usize = 64;
+
+/// A weight in [0, 1], fixed point: 0 is 0, `Weight::MAX` is 1. Fixed point keeps seq deterministic.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Weight(pub u16);
+
+impl Weight {
+    pub const ZERO: Weight = Weight(0);
+    pub const MAX: Weight = Weight(u16::MAX);
+
+    /// The weight nearest to `w`. Panics outside [0, 1], or on NaN.
+    /// Const, so a step's static weight is checked at compile time.
+    pub const fn from_f64(w: f64) -> Weight {
+        assert!(w >= 0.0 && w <= 1.0, "trame: a weight is in [0, 1]");
+        Weight((w * 65535.0 + 0.5) as u16)
+    }
+
+    pub fn to_f64(self) -> f64 {
+        f64::from(self.0) / f64::from(u16::MAX)
+    }
+
+    /// The pass a step of this weight gains per unit of service; 0 for weight 0 (not counted).
+    pub fn stride(self) -> u64 {
+        if self.0 == 0 { 0 } else { (u64::from(u16::MAX) << 24) / u64::from(self.0) }
+    }
+}
+
+/// St(i): what step i last returned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum St {
     Fresh,
     Progress,
     Done,
-    Wait { frame: bool, room: bool, until: bool, cells: bool },
+    /// A wait, with which conditions it named. `fields` is the bare wait: no condition, woken only by
+    /// a write to one of its fields.
+    Wait { frame: bool, room: bool, until: bool },
     Err,
 }
 
-/// One process of a `concurrent!`. Its index in the slice is its priority π(p).
+/// One step, as the scheduler sees it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Proc {
-    /// L(p): the cells of p, as a bitmask over the concurrent!'s cells. At most 64 cells.
-    pub cells: u64,
-    /// St(p).
+    pub reads: u64,
+    pub writes: u64,
     pub st: St,
-    /// D(p): another process freed a cell of p since p last ended.
+    /// D(i): a step that writes one of i's fields ended since i last ended.
     pub d: bool,
-    /// Π(p) is not ⊥: a step of p is running.
     pub running: bool,
+    pub weight: Weight,
+    pub pass: u64,
+    /// The start count when i last started (0: never), for the weight-0 round robin.
+    pub last: u64,
 }
 
-/// Per-process bitmasks (bit p): which wait conditions hold now. Computed by the caller from the
-/// world. Bit p is only read for a process p whose wait has that condition, so at most 64
-/// processes can wait on a condition.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+impl Proc {
+    pub const fn new(reads: u64, writes: u64, weight: Weight) -> Proc {
+        Proc { reads, writes, st: St::Fresh, d: false, running: false, weight, pass: 0, last: 0 }
+    }
+
+    fn fields(&self) -> u64 {
+        self.reads | self.writes
+    }
+}
+
+/// Which wait conditions hold now, one bit per step (bit i). Computed by the backend; bit i is only
+/// read for a step whose wait names that condition.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Now {
     pub frame: u64,
     pub room: u64,
     pub until: u64,
 }
 
-fn bit(mask: u64, i: usize) -> bool {
-    assert!(i < 64, "a wait condition can only be read for process index < 64");
-    mask >> i & 1 == 1
+/// The fields held by running steps: written ones, and a reader count per field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Locks {
+    pub written: u64,
+    pub readers: [u16; 64],
 }
 
-/// Definition (Enabled): St(p) is fresh or progress, or St(p) is wait(Ω) and some condition in Ω
-/// holds or D(p) is true.
-pub fn enabled(p: &Proc, i: usize, now: &Now) -> bool {
-    match p.st {
-        St::Fresh | St::Progress => true,
-        St::Done | St::Err => false,
-        St::Wait { frame, room, until, cells: _ } => {
-            p.d || (frame && bit(now.frame, i)) || (room && bit(now.room, i)) || (until && bit(now.until, i))
+impl Default for Locks {
+    fn default() -> Self {
+        Locks { written: 0, readers: [0; 64] }
+    }
+}
+
+impl Locks {
+    pub fn read(&self) -> u64 {
+        (0..64).filter(|&k| self.readers[k] > 0).fold(0, |m, k| m | 1 << k)
+    }
+
+    /// Whether a step with these sets may take its fields now.
+    pub fn free(&self, reads: u64, writes: u64) -> bool {
+        (reads | writes) & self.written == 0 && writes & self.read() == 0
+    }
+
+    fn take(&mut self, p: &Proc) {
+        debug_assert!(self.free(p.reads, p.writes));
+        self.written |= p.writes;
+        for k in 0..64 {
+            // A field both read and written is held as written only.
+            if (p.reads & !p.writes) >> k & 1 == 1 {
+                self.readers[k] += 1;
+            }
+        }
+    }
+
+    fn give(&mut self, p: &Proc) {
+        self.written &= !p.writes;
+        for k in 0..64 {
+            if (p.reads & !p.writes) >> k & 1 == 1 {
+                self.readers[k] -= 1;
+            }
         }
     }
 }
 
-/// Start, for one process: not running, enabled, and its cells free.
-fn ready(ps: &[Proc], i: usize, held: u64, now: &Now) -> bool {
-    let p = &ps[i];
-    !p.running && enabled(p, i, now) && p.cells & held == 0
+/// One worker's scheduler state. `ps[..len]` are the ordinary steps; `ps[len]`, when `has_stop`, is
+/// the stop step.
+#[derive(Clone, Copy, Debug)]
+pub struct Sched {
+    pub ps: [Proc; MAX_STEPS],
+    pub len: usize,
+    pub has_stop: bool,
+    pub locks: Locks,
+    pub stopping: bool,
+    /// Starts so far.
+    pub starts: u64,
 }
 
-/// Start: the index of the process that may begin a step now, or None. No process may start if
-/// some process is err. Otherwise the lowest-index ready process starts: any lower-index ready
-/// process would block it. Pure: the caller applies the effect.
-pub fn start(ps: &[Proc], held: u64, now: &Now) -> Option<usize> {
-    if ps.iter().any(|p| p.st == St::Err) {
-        return None;
+/// A worker's result, once it has one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Answer {
+    /// Every ordinary step is done.
+    Returned,
+    /// Stopped: the stop step is done, or there is none, and nothing runs.
+    Stopped,
+    /// Step i failed and nothing runs.
+    Failed(usize),
+}
+
+/// What a step returned, as End takes it: its status, the weight for its next start (None: keep),
+/// and the service it used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Ended {
+    pub st: St,
+    pub weight: Option<Weight>,
+    pub service: u64,
+}
+
+impl Sched {
+    /// `steps[i]` = (R, W, initial weight); the stop step, when there is one, is last.
+    pub fn new(steps: &[(u64, u64, Weight)], has_stop: bool) -> Sched {
+        let total = steps.len();
+        assert!(total <= MAX_STEPS, "trame: a worker has at most {MAX_STEPS} steps, the stop step included");
+        assert!(!has_stop || total >= 1, "trame: a stop step was declared but no step was given");
+        let mut ps = [Proc::new(0, 0, Weight::ZERO); MAX_STEPS];
+        for (p, &(r, w, wt)) in ps.iter_mut().zip(steps) {
+            *p = Proc::new(r, w, wt);
+        }
+        Sched { ps, len: total - usize::from(has_stop), has_stop, locks: Locks::default(), stopping: false, starts: 0 }
     }
-    (0..ps.len()).find(|&i| ready(ps, i, held, now))
-}
 
-/// End: the step of process i returned s. Releases its cells, records s, and marks every other
-/// process that shares a cell with i, whatever s is. A waiter is woken even when s is a wait,
-/// because the step may have changed the cell before it waited.
-pub fn end(ps: &mut [Proc], i: usize, s: St, held: &mut u64) {
-    let cells = ps[i].cells;
-    *held &= !cells;
-    for (q, other) in ps.iter_mut().enumerate() {
-        if q != i && other.cells & cells != 0 {
-            other.d = true;
+    fn total(&self) -> usize {
+        self.len + usize::from(self.has_stop)
+    }
+
+    pub fn running(&self) -> bool {
+        self.ps[..self.total()].iter().any(|p| p.running)
+    }
+
+    fn failed(&self) -> bool {
+        self.ps[..self.total()].iter().any(|p| p.st == St::Err)
+    }
+
+    /// Whether step i's status lets it start now (not counting its fields).
+    pub fn enabled(&self, i: usize, now: &Now) -> bool {
+        let p = &self.ps[i];
+        let bit = |m: u64| m >> i & 1 == 1;
+        match p.st {
+            St::Fresh | St::Progress => true,
+            St::Done | St::Err => false,
+            St::Wait { frame, room, until } => {
+                p.d || (frame && bit(now.frame)) || (room && bit(now.room)) || (until && bit(now.until))
+            }
         }
     }
-    let p = &mut ps[i];
-    p.running = false;
-    p.st = s;
-    p.d = false;
-}
 
-/// Done: every process is done, answer Ok. Fail: some process is err and none is running, answer
-/// Err with the lowest such index. Otherwise the concurrent! has not answered yet: None.
-pub fn answer(ps: &[Proc]) -> Option<Result<(), usize>> {
-    if ps.iter().all(|p| p.st == St::Done) {
-        return Some(Ok(()));
-    }
-    if ps.iter().any(|p| p.running) {
-        return None;
-    }
-    ps.iter().position(|p| p.st == St::Err).map(Err)
-}
-
-#[cfg(test)]
-mod support {
-    use super::*;
-
-    pub const NOW0: Now = Now { frame: 0, room: 0, until: 0 };
-    pub const FRESH: Proc = Proc { cells: 0, st: St::Fresh, d: false, running: false };
-    pub const WAIT_ROOM: St = St::Wait { frame: false, room: true, until: false, cells: false };
-
-    /// A fresh process over the given cells.
-    pub fn at(cells: u64) -> Proc {
-        Proc { cells, ..FRESH }
-    }
-}
-
-#[cfg(test)]
-mod start_tests {
-    extern crate std;
-    use super::support::*;
-    use super::*;
-
-    #[test]
-    fn fresh_free_process_starts() {
-        assert_eq!(start(&[at(1)], 0, &NOW0), Some(0));
+    /// The safety premise of Start: whether i may start now. The choice among several is `choose`.
+    pub fn may_start(&self, i: usize, now: &Now) -> bool {
+        if i >= self.total() || self.failed() || self.ps[i].running || !self.enabled(i, now) {
+            return false;
+        }
+        let ordinary = i < self.len;
+        if self.stopping && (ordinary || self.running()) {
+            return false;
+        }
+        if !self.stopping && !ordinary {
+            return false;
+        }
+        self.locks.free(self.ps[i].reads, self.ps[i].writes)
     }
 
-    #[test]
-    fn premise_not_running() {
-        let ps = [Proc { running: true, ..at(1) }];
-        assert_eq!(start(&ps, 0, &NOW0), None);
+    /// The model's choice: stride among positive weights, else round robin among weight 0.
+    pub fn choose(&self, now: &Now) -> Option<usize> {
+        let can: [bool; MAX_STEPS] = core::array::from_fn(|i| self.may_start(i, now));
+        let ids = 0..self.total();
+        let positive = ids.clone().filter(|&i| can[i] && self.ps[i].weight.0 > 0).min_by_key(|&i| (self.ps[i].pass, i));
+        positive.or_else(|| ids.filter(|&i| can[i]).min_by_key(|&i| (self.ps[i].last, i)))
     }
 
-    #[test]
-    fn premise_enabled_done_is_not_enabled() {
-        let ps = [Proc { st: St::Done, ..at(1) }];
-        assert_eq!(start(&ps, 0, &NOW0), None);
+    /// Start(i): the caller checked `may_start`.
+    pub fn start(&mut self, i: usize) {
+        self.starts += 1;
+        let p = self.ps[i];
+        self.locks.take(&p);
+        let front = p.pass;
+        let total = self.total();
+        for q in self.ps[..total].iter_mut() {
+            if matches!(q.st, St::Wait { .. }) && q.pass < front {
+                q.pass = front;
+            }
+        }
+        let p = &mut self.ps[i];
+        p.running = true;
+        p.last = self.starts;
     }
 
-    #[test]
-    fn premise_enabled_wait_needs_condition_or_d() {
-        let waiting = [Proc { st: WAIT_ROOM, ..at(1) }];
-        assert_eq!(start(&waiting, 0, &NOW0), None, "no condition holds");
-        let holds = Now { room: 1, ..NOW0 };
-        assert_eq!(start(&waiting, 0, &holds), Some(0), "room(0) holds");
-        let woken = [Proc { st: WAIT_ROOM, d: true, ..at(1) }];
-        assert_eq!(start(&woken, 0, &NOW0), Some(0), "D(p) enables a wait");
+    /// End(i).
+    pub fn end(&mut self, i: usize, e: Ended) {
+        let p = self.ps[i];
+        assert!(p.running, "trame: End of a step that is not running");
+        self.locks.give(&p);
+        let total = self.total();
+        for (j, q) in self.ps[..total].iter_mut().enumerate() {
+            if j != i && p.writes & q.fields() != 0 {
+                q.d = true;
+            }
+        }
+        let p = &mut self.ps[i];
+        p.running = false;
+        p.st = e.st;
+        p.d = false;
+        if let Some(w) = e.weight {
+            p.weight = w;
+        }
+        p.pass = p.pass.saturating_add(e.service.saturating_mul(p.weight.stride()));
     }
 
-    #[test]
-    fn premise_cells_free() {
-        let ps = [at(0b10)];
-        assert_eq!(start(&ps, 0b10, &NOW0), None, "its cell is held");
-        assert_eq!(start(&ps, 0b01, &NOW0), Some(0), "held cell is not its cell");
+    /// A leader edit wrote every field: every step is woken (it is End of a step that writes all).
+    pub fn edited(&mut self) {
+        assert!(!self.running(), "trame: an edit runs only when no step does");
+        let total = self.total();
+        for q in self.ps[..total].iter_mut() {
+            q.d = true;
+        }
     }
 
-    #[test]
-    fn premise_no_err_anywhere() {
-        let ps = [at(1), Proc { st: St::Err, ..at(2) }];
-        assert_eq!(start(&ps, 0, &NOW0), None, "an err blocks a free process");
-        let only_err = [Proc { st: St::Err, ..at(1) }];
-        assert_eq!(start(&only_err, 0, &NOW0), None);
-    }
-
-    #[test]
-    fn premise_no_lower_index_ready_process() {
-        // Process 0 is ready, so process 1 must not start: 0 has priority.
-        let ps = [at(0b01), at(0b10)];
-        assert_eq!(start(&ps, 0, &NOW0), Some(0));
-        // Process 0 is not ready (its cell is held), so it does not block 1.
-        assert_eq!(start(&ps, 0b01, &NOW0), Some(1));
-        // Process 0 is running, so it does not block 1 either.
-        let running = [Proc { running: true, ..at(0b01) }, at(0b10)];
-        assert_eq!(start(&running, 0b01, &NOW0), Some(1));
-        // Process 0 is not enabled (done), so it does not block 1.
-        let done = [Proc { st: St::Done, ..at(0b01) }, at(0b10)];
-        assert_eq!(start(&done, 0, &NOW0), Some(1));
-    }
-
-    #[test]
-    fn running_process_without_cells_does_not_block() {
-        // Choice recorded in the report: the spec writes "H(L(q)) = bot", which a process with
-        // no cells satisfies even while it runs. The "not running" clause of the task excludes it.
-        let ps = [Proc { running: true, ..FRESH }, at(0b10)];
-        assert_eq!(start(&ps, 0, &NOW0), Some(1));
+    /// The worker's result, if it has one now.
+    pub fn answer(&self) -> Option<Answer> {
+        if self.running() {
+            return None;
+        }
+        if let Some(i) = self.ps[..self.total()].iter().position(|p| p.st == St::Err) {
+            return Some(Answer::Failed(i));
+        }
+        if self.stopping {
+            let stop_done = !self.has_stop || self.ps[self.len].st == St::Done;
+            return stop_done.then_some(Answer::Stopped);
+        }
+        self.ps[..self.len].iter().all(|p| p.st == St::Done).then_some(Answer::Returned)
     }
 }
 
-#[cfg(test)]
-mod end_answer_tests {
-    extern crate std;
-    use super::support::*;
-    use super::*;
+/// One event of a backend's trace of one worker.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Event {
+    /// Step i started; `now` is what the backend saw of the wait conditions.
+    Start { i: usize, now: Now },
+    End { i: usize, e: Ended },
+    Stop,
+    Edit,
+}
 
-    #[test]
-    fn end_releases_cells_and_records_status() {
-        let mut ps = [Proc { running: true, st: St::Progress, d: true, ..at(0b01) }, at(0b10)];
-        let mut held = 0b01;
-        end(&mut ps, 0, St::Done, &mut held);
-        assert_eq!(held, 0);
-        assert!(!ps[0].running);
-        assert_eq!(ps[0].st, St::Done);
-        assert!(!ps[0].d, "D(p) is reset by End");
-    }
+/// A violation of the model by a trace.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Violation {
+    /// Event n started a step that may not start.
+    Start { n: usize, i: usize },
+    /// Event n ended a step that is not running.
+    End { n: usize, i: usize },
+    /// Event n started step i where the model chooses another (only with `exact`).
+    Choice { n: usize, i: usize, model: Option<usize> },
+    /// Event n edited while a step runs.
+    Edit { n: usize },
+}
 
-    #[test]
-    fn end_wakes_cell_sharing_waiter_even_when_status_is_a_wait() {
-        let mut ps = [
-            Proc { running: true, st: St::Progress, ..at(0b01) },
-            Proc { st: WAIT_ROOM, ..at(0b01) },
-            Proc { st: WAIT_ROOM, ..at(0b10) },
-        ];
-        let mut held = 0b01;
-        end(&mut ps, 0, WAIT_ROOM, &mut held);
-        assert_eq!(ps[0].st, WAIT_ROOM, "the wait is recorded");
-        assert!(ps[1].d, "a cell-sharing waiter is woken");
-        assert!(!ps[2].d, "a waiter on other cells is not woken");
-        assert!(!enabled(&ps[2], 2, &NOW0));
-        assert!(enabled(&ps[1], 1, &NOW0), "D(q) makes the sharing waiter enabled");
-        assert_eq!(start(&ps, held, &NOW0), Some(1));
+/// Replay a trace against the model. `exact`: also require the model's choice at each start (seq).
+/// Answers the final state, for the result check.
+pub fn check(mut s: Sched, trace: &[Event], exact: bool) -> Result<Sched, Violation> {
+    for (n, ev) in trace.iter().enumerate() {
+        match *ev {
+            Event::Start { i, now } => {
+                if !s.may_start(i, &now) {
+                    return Err(Violation::Start { n, i });
+                }
+                if exact && s.choose(&now) != Some(i) {
+                    return Err(Violation::Choice { n, i, model: s.choose(&now) });
+                }
+                s.start(i);
+            }
+            Event::End { i, e } => {
+                if i >= s.total() || !s.ps[i].running {
+                    return Err(Violation::End { n, i });
+                }
+                s.end(i, e);
+            }
+            Event::Stop => s.stopping = true,
+            Event::Edit => {
+                if s.running() {
+                    return Err(Violation::Edit { n });
+                }
+                s.edited();
+            }
+        }
     }
-
-    #[test]
-    fn answer_done_when_all_done() {
-        let ps = [Proc { st: St::Done, ..at(1) }, Proc { st: St::Done, ..at(2) }];
-        assert_eq!(answer(&ps), Some(Ok(())));
-        assert_eq!(answer(&[]), Some(Ok(())));
-    }
-
-    #[test]
-    fn answer_fail_with_lowest_err_when_none_running() {
-        let ps = [Proc { st: St::Done, ..at(1) }, Proc { st: St::Err, ..at(2) }, Proc { st: St::Err, ..at(4) }];
-        assert_eq!(answer(&ps), Some(Err(1)));
-    }
-
-    #[test]
-    fn answer_waits_while_something_runs_or_is_pending() {
-        let running = [Proc { st: St::Err, ..at(1) }, Proc { running: true, ..at(2) }];
-        assert_eq!(answer(&running), None, "Fail needs no running process");
-        let pending = [Proc { st: St::Done, ..at(1) }, FRESH];
-        assert_eq!(answer(&pending), None, "a fresh process is neither done nor failed");
-    }
+    Ok(s)
 }
 
 #[cfg(test)]
-mod property_tests {
+mod tests {
     extern crate std;
     use super::*;
     use std::vec::Vec;
 
-    /// xorshift64, fixed seed: no crates, same states on every run.
-    struct Rng(u64);
+    const NOW0: Now = Now { frame: 0, room: 0, until: 0 };
+    const W1: Weight = Weight::MAX;
+    const PROGRESS: Ended = Ended { st: St::Progress, weight: None, service: 1 };
 
-    impl Rng {
-        fn word(&mut self) -> u64 {
-            let mut x = self.0;
-            x ^= x << 13;
-            x ^= x >> 7;
-            x ^= x << 17;
-            self.0 = x;
-            x
-        }
-        fn below(&mut self, n: u64) -> u64 {
-            self.word() % n
-        }
-        fn flag(&mut self) -> bool {
-            self.word() & 1 == 1
-        }
-    }
-
-    /// Literal transcription of the Start premises, with the quantifiers written out. Process p
-    /// may start when every premise holds. The rule implies at most one such p.
-    fn spec_start(ps: &[Proc], held: u64, now: &Now) -> Option<usize> {
-        let n = ps.len();
-        let free = |q: usize| ps[q].cells & held == 0; // H(L(q)) = bot
-        let ok: Vec<usize> = (0..n)
-            .filter(|&p| {
-                !ps[p].running                                   // Pi(p) = bot
-                    && enabled(&ps[p], p, now)                   // p enabled
-                    && free(p)                                   // H(L(p)) = bot
-                    && (0..n).all(|q| ps[q].st != St::Err)       // for all q: St(q) != err
-                    && !(0..n).any(|q| {                         // not exists q:
-                        enabled(&ps[q], q, now)                  //   q enabled
-                            && q < p                             //   and lower priority
-                            && !ps[q].running                    //   (not running, see test note)
-                            && free(q)                           //   and H(L(q)) = bot
-                    })
-            })
-            .collect();
-        assert!(ok.len() <= 1, "premises admit two processes: {ok:?}");
-        ok.first().copied()
-    }
-
-    fn random_state(rng: &mut Rng) -> (Vec<Proc>, u64, Now) {
-        let n = rng.below(7) as usize;
-        let ps = (0..n)
-            .map(|_| {
-                let cells = if rng.below(8) == 0 { 0 } else { rng.word() & rng.word() & 0xFF };
-                let st = match rng.below(7) {
-                    0 => St::Fresh,
-                    1 => St::Progress,
-                    2 => St::Done,
-                    3 => St::Err,
-                    _ => St::Wait { frame: rng.flag(), room: rng.flag(), until: rng.flag(), cells: rng.flag() },
-                };
-                Proc { cells, st, d: rng.flag(), running: rng.below(4) == 0 }
-            })
-            .collect();
-        let held = rng.word() & rng.word() & 0xFF;
-        let now = Now { frame: rng.word() & rng.word(), room: rng.word() & rng.word(), until: rng.word() & rng.word() };
-        (ps, held, now)
+    fn ended(st: St) -> Ended {
+        Ended { st, weight: None, service: 1 }
     }
 
     #[test]
-    fn start_matches_spec_rule_on_random_states() {
-        let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
-        let (mut some, mut none, mut later) = (0u32, 0u32, 0u32);
-        for case in 0..100_000 {
-            let (ps, held, now) = random_state(&mut rng);
-            let got = start(&ps, held, &now);
-            let want = spec_start(&ps, held, &now);
-            assert_eq!(got, want, "case {case}: held={held:#x} now={now:?} ps={ps:?}");
-            match got {
-                Some(0) => some += 1,
-                Some(_) => later += 1,
-                None => none += 1,
-            }
-        }
-        // The test must not be vacuous: every outcome must occur many times.
-        assert!(some > 1_000 && later > 1_000 && none > 1_000, "some={some} later={later} none={none}");
+    fn writers_of_one_field_exclude_each_other() {
+        let mut s = Sched::new(&[(0, 1, W1), (0, 1, W1)], false);
+        assert!(s.may_start(0, &NOW0) && s.may_start(1, &NOW0));
+        s.start(0);
+        assert!(!s.may_start(1, &NOW0), "field 0 is written by step 0");
+        s.end(0, PROGRESS);
+        assert!(s.may_start(1, &NOW0));
     }
 
-    // Bounded model check of the Rust functions against the spec rule, not a proof for all sizes.
     #[test]
-    fn start_and_end_exhaustive_up_to_bounds() {
-        // St values: fresh, progress, done, err, and the 16 flag combinations of wait(Omega).
-        fn st_of(k: usize) -> St {
-            match k {
-                0 => St::Fresh,
-                1 => St::Progress,
-                2 => St::Done,
-                3 => St::Err,
-                _ => {
-                    let w = k - 4;
-                    St::Wait { frame: w & 8 != 0, room: w & 4 != 0, until: w & 2 != 0, cells: w & 1 != 0 }
-                }
-            }
+    fn readers_share_and_exclude_a_writer() {
+        let mut s = Sched::new(&[(1, 0, W1), (1, 0, W1), (0, 1, W1)], false);
+        s.start(0);
+        assert!(s.may_start(1, &NOW0), "two readers share field 0");
+        s.start(1);
+        assert!(!s.may_start(2, &NOW0), "a writer waits for readers");
+        s.end(0, PROGRESS);
+        assert!(!s.may_start(2, &NOW0), "one reader remains");
+        s.end(1, PROGRESS);
+        assert!(s.may_start(2, &NOW0));
+        s.start(2);
+        assert!(!s.may_start(0, &NOW0), "a reader waits for the writer");
+    }
+
+    #[test]
+    fn disjoint_steps_run_together() {
+        let mut s = Sched::new(&[(0b01, 0b10, W1), (0b100, 0b1000, W1)], false);
+        s.start(0);
+        assert!(s.may_start(1, &NOW0));
+    }
+
+    #[test]
+    fn only_a_write_wakes() {
+        // 0 waits bare on field 0 (reads it); 1 reads field 0; 2 writes field 0.
+        let mut s = Sched::new(&[(1, 0, W1), (1, 0, W1), (0, 1, W1)], false);
+        s.start(0);
+        s.end(0, ended(St::Wait { frame: false, room: false, until: false }));
+        s.start(1);
+        s.end(1, PROGRESS);
+        assert!(!s.enabled(0, &NOW0), "a reader's end does not wake");
+        s.start(2);
+        s.end(2, PROGRESS);
+        assert!(s.enabled(0, &NOW0), "a writer's end wakes");
+    }
+
+    #[test]
+    fn a_condition_wakes_only_the_step_that_named_it() {
+        let mut s = Sched::new(&[(0, 1, W1), (0, 2, W1)], false);
+        s.start(0);
+        s.end(0, ended(St::Wait { frame: true, room: false, until: false }));
+        s.start(1);
+        s.end(1, ended(St::Wait { frame: false, room: false, until: true }));
+        let both = Now { frame: 0b11, room: 0, until: 0 };
+        assert!(s.enabled(0, &both));
+        assert!(!s.enabled(1, &both), "step 1 waits on the clock, not a frame");
+    }
+
+    #[test]
+    fn nothing_starts_after_a_failure_and_the_answer_waits_for_running_steps() {
+        let mut s = Sched::new(&[(0, 1, W1), (0, 2, W1), (0, 4, W1)], false);
+        s.start(0);
+        s.start(1);
+        s.end(0, ended(St::Err));
+        assert!(!s.may_start(2, &NOW0));
+        assert_eq!(s.answer(), None, "step 1 still runs");
+        s.end(1, PROGRESS);
+        assert_eq!(s.answer(), Some(Answer::Failed(0)));
+    }
+
+    #[test]
+    fn stop_runs_the_stop_step_alone() {
+        let mut s = Sched::new(&[(0, 1, W1), (0, 2, W1), (1, 0, W1)], true);
+        assert!(!s.may_start(2, &NOW0), "the stop step does not run before a stop");
+        s.start(0);
+        s.stopping = true;
+        assert!(!s.may_start(1, &NOW0), "no ordinary step after a stop");
+        assert!(!s.may_start(2, &NOW0), "the stop step waits for running steps");
+        s.end(0, PROGRESS);
+        assert_eq!(s.answer(), None);
+        assert_eq!(s.choose(&NOW0), Some(2));
+        s.start(2);
+        s.end(2, ended(St::Done));
+        assert_eq!(s.answer(), Some(Answer::Stopped));
+    }
+
+    #[test]
+    fn stop_without_stop_step_answers_when_idle() {
+        let mut s = Sched::new(&[(0, 1, W1)], false);
+        s.stopping = true;
+        assert_eq!(s.answer(), Some(Answer::Stopped));
+    }
+
+    /// Run the model alone, always choosing, for `n` starts; every step returns Progress with service 1.
+    fn shares(steps: &[(u64, u64, Weight)], n: u64) -> Vec<u64> {
+        let mut s = Sched::new(steps, false);
+        let mut got = std::vec![0; steps.len()];
+        for _ in 0..n {
+            let i = s.choose(&NOW0).expect("a step is always ready");
+            s.start(i);
+            got[i] += 1;
+            s.end(i, PROGRESS);
         }
-        const IDLE: Proc = Proc { cells: 0, st: St::Fresh, d: false, running: false };
-        let all_st: Vec<St> = (0..20).map(st_of).collect();
+        got
+    }
 
-        // (processes, cells) pairs, each enumerated completely.
-        for &(n, c) in &[(0usize, 3u32), (1, 3), (2, 3)] {
-            let m = 1usize << c; // cell masks 0..m
-            let per = 20 * 2 * 2 * m; // per-process codes: St, d, running, cells
-            let nows = 1usize << (3 * n); // frame/room/until bit for each process index < n
-            let (mut states, mut ends) = (0u64, 0u64);
-            for x in 0..per.pow(n as u32) {
-                let mut ps = [IDLE; 3];
-                let mut rest = x;
-                for slot in ps.iter_mut().take(n) {
-                    let k = rest % per;
-                    rest /= per;
-                    let q = k / m; // q = st + 20 * d + 40 * running
-                    *slot =
-                        Proc { cells: (k % m) as u64, st: st_of(q % 20), d: (q / 20) % 2 == 1, running: q / 40 == 1 };
-                }
-                let procs = &ps[..n];
-                // Consistent states only: running processes hold disjoint cells.
-                let mut held = 0u64;
-                let mut consistent = true;
-                for p in procs.iter().filter(|p| p.running) {
-                    consistent &= p.cells & held == 0;
-                    held |= p.cells;
-                }
-                if !consistent {
-                    continue;
-                }
-                for u in 0..nows {
-                    let mut now = Now { frame: 0, room: 0, until: 0 };
-                    for i in 0..n {
-                        let b = 3 * i;
-                        now.frame |= ((u >> b) as u64 & 1) << i;
-                        now.room |= ((u >> (b + 1)) as u64 & 1) << i;
-                        now.until |= ((u >> (b + 2)) as u64 & 1) << i;
-                    }
-                    states += 1;
-
-                    // (1), (2): start returns the unique process the literal premises pick, or None.
-                    // spec_start asserts that at most one process satisfies them.
-                    let got = start(procs, held, &now);
-                    let want = spec_start(procs, held, &now);
-                    assert_eq!(got, want, "n={n} c={c} ps={procs:?} held={held:#x} now={now:?}");
-
-                    // (3): End for each running i and each returned status s.
-                    for i in (0..n).filter(|&i| procs[i].running) {
-                        let cells_i = procs[i].cells;
-                        for s in &all_st {
-                            let mut after = ps;
-                            let mut h = held;
-                            end(&mut after[..n], i, *s, &mut h);
-                            ends += 1;
-                            let ctx = || std::format!("n={n} c={c} ps={procs:?} held={held:#x} i={i} s={s:?}");
-                            assert_eq!(h & cells_i, 0, "cells of i not free: {}", ctx());
-                            assert!(!after[i].d, "d[i] not false: {}", ctx());
-                            assert!(!after[i].running && after[i].st == *s, "record: {}", ctx());
-                            for j in (0..n).filter(|&j| j != i) {
-                                if procs[j].cells & cells_i != 0 {
-                                    assert!(after[j].d, "d[q] not true, q={j}: {}", ctx());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            std::println!("n={n} c={c}: {states} consistent states, {ends} end checks");
-            assert!(states > 0);
+    #[test]
+    fn contested_shares_follow_weights() {
+        for (a, b) in [(1.0, 1.0), (1.0, 0.5), (1.0, 0.25), (0.5, 0.1), (0.2, 0.8)] {
+            let got = shares(&[(0, 1, Weight::from_f64(a)), (0, 1, Weight::from_f64(b))], 10_000);
+            let share = got[0] as f64 / 10_000.0;
+            let want = a / (a + b);
+            assert!((share - want).abs() < 0.001, "weights {a}, {b}: share {share}, model {want}");
         }
+    }
+
+    #[test]
+    fn weight_zero_is_background_and_round_robin_among_itself() {
+        let got = shares(&[(0, 1, Weight::from_f64(0.1)), (0, 1, Weight::ZERO)], 1000);
+        assert_eq!(got, [1000, 0], "a weight-0 step never beats a ready positive one");
+        let got = shares(&[(0, 1, Weight::ZERO), (0, 1, Weight::ZERO), (0, 1, Weight::ZERO)], 999);
+        assert_eq!(got, [333, 333, 333]);
+    }
+
+    #[test]
+    fn a_woken_step_does_not_bank_its_absence() {
+        // Step 1 waits while step 0 runs 100 times, then is woken: it must not then run 100 times.
+        let mut s = Sched::new(&[(0, 1, W1), (1, 2, W1)], false);
+        s.start(1);
+        s.end(1, ended(St::Wait { frame: true, room: false, until: false }));
+        for _ in 0..100 {
+            let i = s.choose(&NOW0).unwrap();
+            s.start(i);
+            s.end(i, PROGRESS);
+        }
+        let mut run = [0; 2];
+        let all = Now { frame: 0b10, ..NOW0 };
+        for _ in 0..20 {
+            let i = s.choose(&all).unwrap();
+            s.start(i);
+            run[i] += 1;
+            s.end(i, PROGRESS);
+        }
+        assert!(run[0] >= 9 && run[1] <= 11, "{run:?}");
+    }
+
+    #[test]
+    fn check_accepts_the_models_own_trace_and_refuses_a_lock_violation() {
+        let s0 = Sched::new(&[(0, 1, W1), (0, 1, W1)], false);
+        let ok = [
+            Event::Start { i: 0, now: NOW0 },
+            Event::End { i: 0, e: PROGRESS },
+            Event::Start { i: 1, now: NOW0 },
+            Event::End { i: 1, e: PROGRESS },
+        ];
+        assert!(check(s0, &ok, true).is_ok());
+        let bad = [Event::Start { i: 0, now: NOW0 }, Event::Start { i: 1, now: NOW0 }];
+        assert_eq!(check(s0, &bad, false).unwrap_err(), Violation::Start { n: 1, i: 1 });
+        let wrong_choice = [Event::Start { i: 1, now: NOW0 }];
+        assert!(check(s0, &wrong_choice, false).is_ok(), "any allowed start is safe");
+        assert!(matches!(check(s0, &wrong_choice, true), Err(Violation::Choice { .. })));
     }
 }

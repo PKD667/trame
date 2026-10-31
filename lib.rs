@@ -35,29 +35,16 @@ pub use trame_macros::item;
 /// because doc tests are built without the flag.
 pub use trame_macros::parallel;
 
-/// `#[trame::process(receives = Job, ...)]` on `impl P { fn step(&mut self, a: &mut A, ...) -> Status }`
-/// (spec.md 5.2, 5.3). The parameters after `self` are the cells; each is `&mut T` for the program's
-/// own type `T`. A primitive or core/alloc type is refused, since it is not a type of the program
-/// (rejections/, process/). A cell of the program's own type is accepted:
-///
-/// ```
-/// #[trame::message]
-/// struct Job { id: u32 }
-/// struct Queue { jobs: u32 }
-/// struct P;
-/// #[trame::process(receives = Job)]
-/// impl P {
-///     fn step(&mut self, q: &mut Queue) -> trame::Status {
-///         let _ = q.jobs;
-///         trame::Status::Done
-///     }
-/// }
-/// ```
-pub use trame_macros::process;
+/// `#[trame::state(steps(a, b), stop = f, pool = P, error = E)]` on a struct: the struct is a
+/// worker's state, and the listed functions are its steps (spec.md 5.3). `stop`, `pool` and `error`
+/// are optional. The leader builds the state and declares the worker with `Topology::worker`.
+pub use trame_macros::state;
 
-/// `concurrent!(p0, p1; c0, c1)`: run the processes over the cells (spec.md 5.3). Answers `Result<(), E>`.
-/// Without `--cfg trame_checked` it is a compile error, so it has no doc test here.
-pub use trame_macros::concurrent;
+/// `#[trame::step(S, receives = Job, weight = 0.5)]` on a function: a step of the state `S`. Each
+/// parameter names a field of `S` and takes it as `&T` (read) or `&mut T` (write), or is `pool: &P`,
+/// the host's pool. `receives` and `weight` are optional. The step returns `Status` or
+/// `Result<Status, E>`.
+pub use trame_macros::step;
 
 /// The runtime the macros call (spec.md 5.3, 5.4). Not for direct use.
 #[doc(hidden)]
@@ -81,12 +68,12 @@ mod time;
 mod topology;
 
 /// The surface of spec.md 7: every public name of the crate, at the root and nowhere else.
-pub use io::{Full, Message, barrier, recv, send};
+pub use io::{Full, Message, me, recv, send};
 pub use launch::Refused;
 pub use run::{Outcome, Run};
 pub use status::Status;
 pub use time::{Reading, now};
-pub use topology::{Context, LEADER, Topology, WorkerId};
+pub use topology::{LEADER, Topology, Worker, WorkerId};
 
 #[cfg(all(feature = "seq", feature = "mpi"))]
 compile_error!("features `seq` and `mpi` are exclusive: one backend per build");
@@ -96,6 +83,7 @@ compile_error!("features `seq` and `mpi` are exclusive: one backend per build");
 mod seq;
 
 /// The MPI backend: one rank per worker, the leader on the last rank (backends/mpi/README.md).
+/// Stop, edit and pools are not yet carried to other ranks: see docs/worker-model.md, stage 2.
 #[cfg(feature = "mpi")]
 #[path = "backends/mpi/mod.rs"]
 mod mpi;
@@ -110,14 +98,14 @@ pub mod __mpi {
 /// Internal: the seam between the surface and the selected backend (see backend.rs).
 mod backend;
 
-/// Scheduling core, shared by every backend: spec.md 5.3 (sched.rs).
+/// The scheduling model every backend keeps: spec.md 5.3 (sched.rs).
 mod sched;
 
-/// The cells a step borrows, and the types a process owns (spec.md 5.2, 5.3). Re-exported by __rt.
+/// The message types a step receives (spec.md 5.2). Re-exported by __rt.
 mod cells;
 
-/// The runtime of `concurrent!` (spec.md 5.3). Re-exported by __rt.
-mod concurrent;
+/// A worker: its state, its steps, and the reference scheduler (spec.md 5.3). Re-exported by __rt.
+mod worker;
 
 /// What a step returns, and the condition it waits for (spec.md 5.3).
 mod status;

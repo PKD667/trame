@@ -3,7 +3,6 @@
 
 use crate::backend::{Backend, Selected};
 use crate::topology::WorkerId;
-use alloc::sync::Arc;
 use core::any::{TypeId, type_name};
 
 /// A message type: plain data, sent as its bytes. Every `Pod` type is one (bytemuck: no padding, no
@@ -35,19 +34,13 @@ pub fn send<M: Message>(to: WorkerId, msg: M) -> Result<(), Full> {
     Selected::worker_send(to, TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
 }
 
-/// The next message of type `M` addressed to this worker, or `None` when none is available. Inside a
-/// step of `concurrent!`, a type the process does not own answers `None` (spec.md 5.2, Ownership).
+/// The next message of type `M` addressed to this worker, or `None` when none is available. A type
+/// the running step does not receive answers `None` (spec.md 5.2, Ownership).
 pub fn recv<M: Message>() -> Option<M> {
     if !crate::cells::owns(TypeId::of::<M>()) {
         return None;
     }
     read(|out| Selected::worker_recv(TypeId::of::<M>(), out))
-}
-
-/// Wait until every worker is at a barrier, then return a snapshot of the host's publication (spec.md
-/// 5.5). The snapshot shares the bytes with the backend, and the worker may keep it.
-pub fn barrier() -> Arc<[u8]> {
-    Selected::worker_barrier()
 }
 
 /// One message of type `M`, read by `take` into a value of `M` that starts zeroed. `take` answers
@@ -56,4 +49,9 @@ pub fn barrier() -> Arc<[u8]> {
 pub(crate) fn read<M: Message>(take: impl FnOnce(&mut [u8]) -> bool) -> Option<M> {
     let mut out = <M as Message>::zeroed();
     if take(crate::__bytemuck::bytes_of_mut(&mut out)) { Some(out) } else { None }
+}
+
+/// This worker. Panics outside a worker.
+pub fn me() -> crate::topology::WorkerId {
+    Selected::worker_me()
 }

@@ -8,10 +8,17 @@
 
 extern crate std;
 
-// The runtime of `concurrent!` is `concurrent.rs`; its items are re-exported here so every
-// runtime entry is `trame::__rt::...`, as the driver's effects.txt names it.
-pub use crate::cells::{Cells, MAX_OWNED, Owning, Pick, Tags, cell_ty, owns};
-pub use crate::concurrent::{MAX_PROCESSES, Process, Set, concurrent, offered};
+// The runtime of workers is worker.rs; its items are re-exported here so every runtime entry is
+// `trame::__rt::...`, as the driver's effects.txt names it.
+pub use crate::cells::{MAX_OWNED, Owning, Tags, owns};
+pub use crate::sched::Weight;
+pub use crate::worker::{State, StepInfo};
+
+/// Whether a frame of type `ty` is available to this worker. `#[trame::state]` calls it.
+pub fn offered(ty: core::any::TypeId) -> bool {
+    use crate::backend::Backend;
+    crate::backend::Selected::worker_offer(ty)
+}
 
 use core::cell::RefCell;
 use core::mem::take;

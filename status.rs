@@ -1,23 +1,41 @@
-//! What a process's `step` returns: spec.md 5.3, Definition (Status). `Progress` and `Done` carry no
-//! condition. `Status::wait()` is wait(∅), and each builder method adds one condition to it. The
-//! scheduler (sched.rs) takes the conditions as flags per process, so this file only builds them.
+//! What a step returns: spec.md 5.3, Definition (Status). `Progress` and `Done` carry no condition.
+//! `Status::wait()` is wait(∅), and each builder method adds one condition to it. Any status but
+//! `Done` may also carry a weight for the step's next start (`.weight(w)`, sched.rs). The scheduler
+//! takes the conditions as flags per step, so this file only builds them.
 
 use crate::backend::{Backend, Selected};
 use crate::io::Message;
+use crate::sched::Weight;
 use crate::time::Reading;
 use crate::topology::WorkerId;
 use core::any::{TypeId, type_name};
 
 /// The status a step returns (spec.md 5.3). A failing step answers `Err(e)` from a step that returns
-/// `Result<Status, E>`, which is the spec's `err(e)`.
+/// `Result<Status, E>`, which is the spec's `err(e)`. Build it with `Status::Progress`, `Status::Done`
+/// or `Status::wait()`, and optionally `.weight(w)`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Status {
-    /// The step did work and the process can run again.
+pub struct Status {
+    kind: Kind,
+    weight: Option<Weight>,
+}
+
+/// What a status says about the step's next start.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    /// The step did work and can run again.
     Progress,
-    /// The process is finished. It is not run again.
+    /// The step is finished. It is not run again.
     Done,
-    /// The process waits for the conditions in `Waits`. Built by `Status::wait()`.
+    /// The step waits for the conditions in `Waits`.
     Wait(Waits),
+}
+
+#[allow(non_upper_case_globals)]
+impl Status {
+    /// The step did work and can run again.
+    pub const Progress: Status = Status { kind: Kind::Progress, weight: None };
+    /// The step is finished. It is not run again.
+    pub const Done: Status = Status { kind: Kind::Done, weight: None };
 }
 
 /// The conditions Ω of a wait. Users never name this type: they build it with `Status::wait()`, then
@@ -46,18 +64,29 @@ impl Waits {
     pub(crate) const fn deadline(self) -> Option<Reading> {
         self.until
     }
-
-    /// The empty set: no condition, so only a step sharing a cell wakes the process.
-    pub(crate) const fn is_empty(self) -> bool {
-        !self.frame && self.rooms == 0 && self.until.is_none()
-    }
 }
 
 impl Status {
-    /// The wait with no condition (spec.md 5.3, wait(∅)): only a step that shares a cell with this
-    /// process wakes it. Add conditions with the methods below.
+    /// The wait with no condition (spec.md 5.3, wait(∅)): only the end of a step that writes a field
+    /// this step takes wakes it. Add conditions with the methods below.
     pub const fn wait() -> Status {
-        Status::Wait(Waits { frame: false, rooms: 0, until: None })
+        Status { kind: Kind::Wait(Waits { frame: false, rooms: 0, until: None }), weight: None }
+    }
+
+    /// Set the step's weight in [0, 1] from its next start on (sched.rs): under contention, steps of
+    /// positive weight share the worker in proportion to their weights, and a step of weight 0 runs only
+    /// when no step of positive weight can. Panics outside [0, 1] or on `Done`, which has no next start.
+    pub fn weight(self, w: f64) -> Status {
+        assert!(self.kind != Kind::Done, "trame: .weight on Status::Done: a done step does not start again");
+        Status { weight: Some(Weight::from_f64(w)), ..self }
+    }
+
+    pub(crate) const fn kind(self) -> Kind {
+        self.kind
+    }
+
+    pub(crate) const fn new_weight(self) -> Option<Weight> {
+        self.weight
     }
 
     /// Add the condition: a frame of a type this process owns is available to this worker.
@@ -99,12 +128,12 @@ impl Status {
     /// Apply a condition to a wait. Only `Status::wait()` and its methods carry conditions, so any other
     /// status aborts here, naming the method and the status.
     fn with_condition(self, method: &str, add: impl FnOnce(Waits) -> Waits) -> Status {
-        match self {
-            Status::Wait(w) => Status::Wait(add(w)),
-            Status::Progress => {
+        match self.kind {
+            Kind::Wait(w) => Status { kind: Kind::Wait(add(w)), ..self },
+            Kind::Progress => {
                 panic!("trame: {method} adds a wait condition, but this Status is Progress; start from Status::wait()")
             }
-            Status::Done => {
+            Kind::Done => {
                 panic!("trame: {method} adds a wait condition, but this Status is Done; start from Status::wait()")
             }
         }

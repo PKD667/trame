@@ -1,4 +1,5 @@
-//! `#[message]`, `#[item]` and `parallel!`: the macros of trame's surface (spec.md 3, 5.4). Every
+//! `#[message]`, `#[state]`, `#[step]`, `#[item]` and `parallel!`: the macros of trame's surface
+//! (spec.md 3, 5.3, 5.4). Every
 //! expansion names `::trame` and `::trame::__bytemuck`, so a user depends on trame alone. Only
 //! the grammar accepted here is the surface; the driver checks what the expansions call.
 
@@ -185,21 +186,20 @@ fn expand_parallel(input: TokenStream2) -> syn::Result<TokenStream2> {
     })
 }
 
-mod concurrent;
-mod process;
+mod state;
 
-/// Marks an inherent `impl P` whose `step` is a `concurrent!` step (spec.md 5.2, 5.3):
-/// `#[trame::process(receives = Job, Other)]`. Cell parameters are `&mut T` for the step's own types.
+/// `#[trame::state(steps(a, b), stop = f, pool = P, error = E)]` on a struct with named fields: the
+/// struct is a worker's state (spec.md 5.3). Without `--cfg trame_checked` it is a compile error.
 #[proc_macro_attribute]
-pub fn process(attr: TokenStream, item: TokenStream) -> TokenStream {
-    process::expand(attr.into(), item.into()).unwrap_or_else(|e| e.to_compile_error()).into()
+pub fn state(attr: TokenStream, item: TokenStream) -> TokenStream {
+    state::expand_state(attr.into(), item.into()).unwrap_or_else(|e| e.to_compile_error()).into()
 }
 
-/// `concurrent!(p0, p1; c0, c1)`: runs the processes over the cells (spec.md 5.3). Without
-/// `--cfg trame_checked` (set by `cargo trame`) it is a compile error.
-#[proc_macro]
-pub fn concurrent(input: TokenStream) -> TokenStream {
-    concurrent::expand(input.into()).unwrap_or_else(|e| e.to_compile_error()).into()
+/// `#[trame::step(S, receives = A, B, weight = 0.5)]` on a function whose parameters are fields of
+/// `S`, as `&T` or `&mut T`, or `pool: &P`.
+#[proc_macro_attribute]
+pub fn step(attr: TokenStream, item: TokenStream) -> TokenStream {
+    state::expand_step(attr.into(), item.into()).unwrap_or_else(|e| e.to_compile_error()).into()
 }
 
 /// The hidden key function of item `f`.

@@ -1,18 +1,22 @@
-//! Operations of the sequential backend. Each worker is an OS thread. Exactly one agent runs at a
-//! time: the holder of the baton. A worker keeps the baton between its effects and hands it on at
-//! each effect; the leader runs outside the baton, under the same Mutex.
+//! Operations of the sequential backend. Each worker is one OS thread, its one agent, running the
+//! reference scheduler (worker.rs `agent`) with service 1 per step: so seq follows `Sched::choose`
+//! exactly (backend.rs, S6). Exactly one agent runs at a time: the holder of the baton. A worker keeps
+//! the baton between its effects and hands it on at each effect; the leader runs outside the baton,
+//! under the same Mutex.
 
 extern crate std;
 
 use super::Selected;
 use super::limit;
 use super::state::{Abandoned, Phase, Route, Shared, State};
-use crate::backend::Backend;
+use crate::backend::{Backend, PoolRef};
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
 use crate::run::{Outcome, panic_message};
+use crate::sched::{Answer, Event, Sched};
 use crate::time::ClockId;
-use crate::topology::{Context, LEADER, WorkerId};
+use crate::topology::{LEADER, WorkerId};
+use crate::worker::{Slot, agent};
 use std::boxed::Box;
 use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
@@ -25,6 +29,7 @@ use std::vec::Vec;
 /// One launched run, as the leader holds it.
 pub struct Run {
     shared: Arc<Shared>,
+    slots: Vec<Arc<Slot>>,
 }
 
 thread_local! {
@@ -83,17 +88,23 @@ fn leader_check(st: MutexGuard<'_, State>) -> MutexGuard<'_, State> {
     st
 }
 
-/// The body of a worker's thread. A worker that returns hands the baton on. A panic aborts the run.
-fn worker_main(shared: Arc<Shared>, me: usize, f: Box<dyn Fn(&Context) + Send>, ctx: Context) {
+/// The body of a worker's thread: its one agent. A worker with a result hands the baton on. A panic
+/// aborts the run.
+fn worker_main(shared: Arc<Shared>, me: usize, slot: Arc<Slot>) {
     CURRENT.with(|c| *c.borrow_mut() = Some((shared.clone(), me)));
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         drop(wait_turn(&shared, shared.lock(), me));
-        f(&ctx);
+        let pool = || shared.lock().pool.clone();
+        agent(&slot, &|| 0, &pool)
     }));
     let mut st = shared.lock();
     match outcome {
-        Ok(()) => {
-            st.phase[me] = Phase::Done(Outcome::Returned);
+        Ok(answer) => {
+            st.phase[me] = Phase::Done(match answer {
+                Answer::Returned => Outcome::Returned,
+                Answer::Stopped => Outcome::Stopped,
+                Answer::Failed(_) => Outcome::Failed,
+            });
             st.advance(me);
             // A result is an act the leader waits for (leader_wait).
             st.acts += 1;
@@ -112,7 +123,6 @@ impl Backend for Selected {
 
     fn launch(plan: Plan) -> Result<Run, Refused> {
         let n = plan.workers.len();
-        let ids: Vec<WorkerId> = (0..n).map(|i| WorkerId(i as u32)).collect();
         let mut routes = Vec::with_capacity(plan.routes.len());
         for r in &plan.routes {
             let bytes = match r.cap.checked_mul(r.size) {
@@ -140,18 +150,17 @@ impl Backend for Selected {
             panic: None,
             routes,
             takes: 0,
-            publication: Arc::from(plan.publication),
-            pending: None,
+            pool: plan.pool,
             epoch: Instant::now(),
             acts: 0,
             steps: 0,
             limit,
         };
         let shared = Arc::new(Shared { state: Mutex::new(state), changed: Condvar::new() });
-        for (i, f) in plan.workers.into_iter().enumerate() {
-            let ctx = Context::new(WorkerId(i as u32), ids.clone());
-            let sh = shared.clone();
-            if std::thread::Builder::new().spawn(move || worker_main(sh, i, f, ctx)).is_err() {
+        let slots: Vec<Arc<Slot>> = plan.workers.into_iter().map(|w| Arc::new(Slot::new(w, plan.trace))).collect();
+        for (i, slot) in slots.iter().enumerate() {
+            let (sh, slot) = (shared.clone(), slot.clone());
+            if std::thread::Builder::new().spawn(move || worker_main(sh, i, slot)).is_err() {
                 shared.lock().abort_all(None);
                 shared.changed.notify_all();
                 return Err(Refused::Backend { reason: "could not start a worker thread" });
@@ -160,7 +169,11 @@ impl Backend for Selected {
         // Every thread exists; only now may the first worker run.
         shared.lock().turn = (n > 0).then_some(0);
         shared.changed.notify_all();
-        Ok(Run { shared })
+        Ok(Run { shared, slots })
+    }
+
+    fn worker_me() -> WorkerId {
+        WorkerId(current().1 as u32)
     }
 
     fn worker_send(to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
@@ -242,18 +255,6 @@ impl Backend for Selected {
         )
     }
 
-    fn worker_barrier() -> Arc<[u8]> {
-        effect(|st, me| {
-            st.phase[me] = Phase::Blocked;
-            if st.phase.iter().all(|p| *p == Phase::Blocked) {
-                st.fire();
-            }
-        });
-        // Read after the wait: the publication changes only when the barrier fires, and no worker
-        // can reach the next barrier before this one has read it. The clone shares the bytes.
-        current().0.lock().publication.clone()
-    }
-
     fn leader_send(
         run: &Run,
         to: WorkerId,
@@ -282,11 +283,35 @@ impl Backend for Selected {
         taken
     }
 
-    fn leader_publish(run: &Run, bytes: &[u8]) {
+    fn leader_pool(run: &Run, pool: PoolRef) {
         let mut st = leader_check(run.shared.lock());
-        st.pending = Some(Arc::from(bytes));
+        st.pool = Some(pool);
         st.acts += 1;
         run.shared.changed.notify_all();
+    }
+
+    fn leader_edit(run: &Run, w: usize, f: &mut dyn FnMut()) -> bool {
+        drop(leader_check(run.shared.lock()));
+        // Outside the run's Mutex: the edit waits for the worker's running step, which needs the baton.
+        let done = run.slots[w].edit(f);
+        let mut st = leader_check(run.shared.lock());
+        st.acts += 1;
+        run.shared.changed.notify_all();
+        done
+    }
+
+    fn leader_stop(run: &Run) {
+        drop(leader_check(run.shared.lock()));
+        for slot in &run.slots {
+            slot.stop();
+        }
+        let mut st = run.shared.lock();
+        st.acts += 1;
+        run.shared.changed.notify_all();
+    }
+
+    fn leader_trace(run: &Run, w: usize) -> Option<(Sched, Vec<Event>)> {
+        run.slots[w].trace()
     }
 
     fn leader_wait(run: &Run, seen: u64) -> u64 {
@@ -326,7 +351,7 @@ impl Backend for Selected {
                 };
                 continue;
             }
-            for p in st.phase.iter_mut().filter(|p| matches!(p, Phase::Blocked | Phase::Idle(..))) {
+            for p in st.phase.iter_mut().filter(|p| matches!(p, Phase::Idle(..))) {
                 *p = Phase::Done(Outcome::Deadlock);
             }
             shared.changed.notify_all();

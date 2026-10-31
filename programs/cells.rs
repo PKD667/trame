@@ -1,10 +1,11 @@
-//! cells: one worker runs a reader and a writer over one shared cell, `Tally`. The reader is declared
-//! first, so it has priority 0. It waits on the cell (`Status::wait()`) until the writer has raised the tally
-//! to 3. A step takes its cells before it starts and gives them back when it returns, so the reader's
-//! step never runs inside a writer's step: each writer step ends, the reader wakes, and it checks again.
-//! The worker logs each step to the leader, and the leader prints the log in arrival order.
+//! cells: one worker whose state has a tally, read by `reader` and written by `writer`. The reader is
+//! declared first, so it starts first; it waits (`Status::wait()`) until the tally reaches 3. A step
+//! holds its fields from start to return, and the reader takes `value` as `&`, the writer as `&mut`,
+//! so the reader never runs inside a writer step: each writer step ends, writes `value`, wakes the
+//! reader, and the reader checks again. The worker logs each step to the leader, which prints the log
+//! in arrival order.
 
-use trame::{Context, LEADER, Outcome, Status, Topology};
+use trame::{LEADER, Outcome, Status, Topology};
 
 const READER: u32 = 0;
 const WRITER: u32 = 1;
@@ -16,57 +17,43 @@ struct Log {
     n: u32,
 }
 
-/// The cell both processes share.
+/// The state: the shared tally, and the writer's count.
+#[trame::state(steps(reader, writer))]
 struct Tally {
     value: u32,
+    n: u32,
 }
 
 fn log(who: u32, n: u32) {
     assert!(trame::send(LEADER, Log { who, n }).is_ok(), "a log did not fit");
 }
 
-/// Priority 0: waits until the tally reaches 3, then logs it.
-struct Reader;
-
-#[trame::process]
-impl Reader {
-    fn step(&mut self, t: &mut Tally) -> Status {
-        if t.value < 3 {
-            return Status::wait();
-        }
-        log(READER, t.value);
-        Status::Done
+/// Waits until the tally reaches 3, then logs it.
+#[trame::step(Tally)]
+fn reader(value: &u32) -> Status {
+    if *value < 3 {
+        return Status::wait();
     }
+    log(READER, *value);
+    Status::Done
 }
 
-/// Priority 1: three steps, each raising the tally by one.
-struct Writer {
-    n: u32,
-}
-
-#[trame::process]
-impl Writer {
-    fn step(&mut self, t: &mut Tally) -> Status {
-        if self.n == 3 {
-            return Status::Done;
-        }
-        self.n += 1;
-        t.value += 1;
-        log(WRITER, self.n);
-        Status::Progress
+/// Three steps, each raising the tally by one.
+#[trame::step(Tally)]
+fn writer(value: &mut u32, n: &mut u32) -> Status {
+    if *n == 3 {
+        return Status::Done;
     }
-}
-
-fn worker(_cx: &Context) {
-    let mut tally = Tally { value: 0 };
-    let r = trame::concurrent!(Reader, Writer { n: 0 }; tally);
-    assert_eq!(r, Ok(()));
+    *n += 1;
+    *value += 1;
+    log(WRITER, *n);
+    Status::Progress
 }
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(worker);
-    t.route::<Log>(w, LEADER, 8);
+    let w = t.worker(Tally { value: 0, n: 0 });
+    t.route::<Log>(w.id(), LEADER, 8);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {
@@ -89,4 +76,6 @@ fn main() {
     }
     let outcomes: Vec<Outcome> = run.join();
     println!("outcomes: {outcomes:?}");
+    let tally = w.take();
+    assert_eq!((tally.value, tally.n), (3, 3), "the state comes back to the leader");
 }

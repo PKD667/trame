@@ -1,24 +1,23 @@
-//! State of one sequential run: the baton, the phases of the workers, the routes and the
-//! publication. Every function here runs with the Mutex held; ops.rs does the locking.
+//! State of one sequential run: the baton, the phases of the workers, the routes, the workers'
+//! schedulers and the pool. Every function here runs with the Mutex held; ops.rs does the locking.
 
 extern crate std;
 
 use super::limit;
+use crate::backend::PoolRef;
 use crate::io::Full;
 use crate::run::Outcome;
 use crate::topology::WorkerId;
 use std::any::TypeId;
 use std::string::String;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 use std::vec::Vec;
 
-/// Where a worker stands. Only the holder of the baton runs. `Blocked` waits at the barrier, and
-/// `Done` has a result.
+/// Where a worker stands. Only the holder of the baton runs. `Done` has a result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Phase {
     Ready,
-    Blocked,
     /// Idle: waiting for a change of `acts` (or the deadline, in nanoseconds since `epoch`) before it
     /// can run again. The first value is `acts` when it went idle, so `join` can tell whether a
     /// change happened since. A deadline means the worker moves when time passes, so it is not stuck.
@@ -60,12 +59,10 @@ pub(super) struct State {
     pub routes: Vec<Route>,
     /// The takes so far, numbering them for `Route::taken`.
     pub takes: u64,
-    /// The publication of the host, shared with the guards workers hold (see io::Publication).
-    pub publication: Arc<[u8]>,
-    /// A publication the leader made, installed when the barrier next fires.
-    pub pending: Option<Arc<[u8]>>,
+    /// The host's pool: the current version. A step pins it by a clone at its start (backend.rs, P1).
+    pub pool: Option<PoolRef>,
     pub epoch: Instant,
-    /// Counts every effect a worker finished and every leader send or publication. An idle worker
+    /// Counts every effect a worker finished and every leader act (send, take, pool, edit, stop). An idle worker
     /// waits for this to change (see `worker_idle` in ops.rs).
     pub acts: u64,
     /// Scheduler steps taken: one per hand-off of the baton (`advance`).
@@ -109,31 +106,13 @@ impl State {
         (1..=n).map(|k| (from + k) % n).find(|&i| self.phase[i] == Phase::Ready)
     }
 
-    /// Hand the baton on from `from`. If no worker can move, the run is stuck. The barrier fires
-    /// as soon as every worker is at it, so a stuck run has a worker that returned, and the workers
-    /// at the barrier can never be released: they get `Deadlock`.
+    /// Hand the baton on from `from`, to the next worker that can move, if any.
     pub fn advance(&mut self, from: usize) {
         self.steps += 1;
         if let Some(n) = self.limit.filter(|&n| self.steps > n) {
             limit::exceeded(n);
         }
-        // An idle worker can still be woken by the leader, so the run is not stuck while one exists.
-        if !self.phase.iter().any(|p| matches!(p, Phase::Ready | Phase::Idle(..))) {
-            for p in self.phase.iter_mut().filter(|p| **p == Phase::Blocked) {
-                *p = Phase::Done(Outcome::Deadlock);
-            }
-        }
         self.turn = self.next_ready(from);
-    }
-
-    /// Every worker is at the barrier: install the pending publication, release everyone.
-    pub fn fire(&mut self) {
-        if let Some(bytes) = self.pending.take() {
-            self.publication = bytes;
-        }
-        for p in self.phase.iter_mut() {
-            *p = Phase::Ready;
-        }
     }
 
     /// The run aborted: no baton is held, and every agent unwinds at its next effect. The first panic
