@@ -123,6 +123,9 @@ pub(crate) trait Backend {
     /// Wait until every worker has a result, and return them in declaration order. After it returns,
     /// no step of the run runs again, so the leader may take the states.
     fn leader_join(run: Self::Run) -> Vec<Outcome>;
+
+    /// `leader_join`, then every worker's trace (`leader_trace`), complete since nothing runs.
+    fn leader_join_traced(run: Self::Run, workers: usize) -> (Vec<Outcome>, Vec<Option<(Sched, Vec<Event>)>>);
 }
 
 /// The backend this build selected.

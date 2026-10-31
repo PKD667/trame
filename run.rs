@@ -82,19 +82,39 @@ impl Run {
         Selected::leader_stop(&self.inner)
     }
 
-    /// Replay every worker's trace against the model (sched.rs `check`); `exact` also checks each
-    /// choice. Answers the first violation, with the worker's index. Needs `Topology::__trace`.
+    /// Join, then replay every worker's trace against the model (sched.rs `check`); `exact` also
+    /// checks each choice. Answers the outcomes and the number of events replayed, or the first
+    /// violation with the worker's index. Needs `Topology::__trace`.
     #[doc(hidden)]
-    pub fn __check_traces(&self, exact: bool) -> Result<usize, (usize, String)> {
+    pub fn __join_checked(self, exact: bool) -> (Vec<Outcome>, Result<usize, (usize, String)>) {
+        let workers = self.workers;
+        let (out, traces) = Selected::leader_join_traced(self.inner, workers);
+        self.joined.store(true, Ordering::Release);
         let mut events = 0;
-        for w in 0..self.workers {
-            let (model, trace) = Selected::leader_trace(&self.inner, w).expect("trame: the launch did not ask for traces");
+        for (w, t) in traces.into_iter().enumerate() {
+            let (model, trace) = t.expect("trame: the launch did not ask for traces");
             events += trace.len();
-            if let Err(v) = crate::sched::check(model, &trace, exact) {
-                return Err((w, alloc::format!("{v:?}")));
+            let end = match crate::sched::check(model, &trace, exact) {
+                Ok(end) => end,
+                Err(v) => return (out, Err((w, alloc::format!("{v:?}")))),
+            };
+            // The outcome must be the model's: a result it reached, or a deadlock in which no step
+            // could start even if every deadline passed (else a wake-up was lost, backend.rs S3).
+            let agrees = match out[w] {
+                Outcome::Returned => end.answer() == Some(crate::sched::Answer::Returned),
+                Outcome::Stopped => end.answer() == Some(crate::sched::Answer::Stopped),
+                Outcome::Failed => matches!(end.answer(), Some(crate::sched::Answer::Failed(_))),
+                Outcome::Deadlock => {
+                    let late = crate::sched::Now { until: u64::MAX, ..Default::default() };
+                    end.answer().is_none() && (0..crate::sched::MAX_STEPS).all(|i| !end.may_start(i, &late))
+                }
+            };
+            if !agrees {
+                let msg = alloc::format!("outcome {:?} disagrees with the model's final state {:?}", out[w], end.answer());
+                return (out, Err((w, msg)));
             }
         }
-        Ok(events)
+        (out, Ok(events))
     }
 
     /// Wait until every worker has a result, and return them in declaration order. A panic in a

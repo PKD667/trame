@@ -329,6 +329,12 @@ impl Backend for Selected {
         st.acts
     }
 
+    fn leader_join_traced(run: Run, workers: usize) -> (Vec<Outcome>, Vec<Option<(Sched, Vec<Event>)>>) {
+        let slots = run.slots.clone();
+        let out = Self::leader_join(run);
+        (out, (0..workers).map(|w| slots[w].trace()).collect())
+    }
+
     fn leader_join(run: Run) -> Vec<Outcome> {
         let shared = run.shared;
         let mut st = leader_check(shared.lock());
