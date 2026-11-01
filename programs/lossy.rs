@@ -1,7 +1,16 @@
-//! lossy: worker 0 sends ten frames on a lossy route of capacity 4, which never answers Full, then a
-//! lossless "done" token. Worker 1 waits for the token before it reads the lossy route, so every
-//! overwrite has already happened and the output does not depend on timing: the four newest frames
-//! survive. Worker 1 reports them to the leader, which prints them and the outcomes.
+//! lossy: worker 0 sends ten frames, 0 to 9, on a lossy route of capacity 4, which never answers Full, then a
+//! lossless token. Worker 1 reads the lossy route only after it has the token. The token is sent after the
+//! last lossy send, so when worker 1 has it, every overwrite has been made (spec 5.2: sends on one worker
+//! happen in program order). Worker 1 then reads until it sees frame 9, the newest. Overwrite never removes
+//! the newest frame, so that frame arrives. Worker 1 does not stop at an empty answer: a frame that has been
+//! sent may not yet have arrived, and `recv` answers empty until it has (spec 5.2, Empty). The leader prints
+//! the four frames that remain: 6 7 8 9.
+//!
+//! What this does not guarantee: spec 5.2 (Drop) lets the transport lose any frame except the newest, at any
+//! time. Then the frames left are not necessarily 6 7 8 9; the spec allows 74 sets of frames that end in 9
+//! (a brute-force count of the Overwrite and Drop rules, not a proof). This program expects 6 7 8 9, which is
+//! the output of every run without Drop. The backends here never drop. A backend that does drop would
+//! fail this program and still follow the spec, so a failure here is not yet a proof of a violation.
 
 use trame::{Context, LEADER, Outcome, Status, Topology, WorkerId};
 
@@ -31,6 +40,7 @@ struct Shared;
 /// Worker 1: waits for the token, then reports every lossy frame that is still there.
 struct Drain {
     token: bool,
+    last: bool,
     pending: Option<u32>,
     to: WorkerId,
 }
@@ -38,6 +48,9 @@ struct Drain {
 #[trame::process(receives = Done, Lossy)]
 impl Drain {
     fn step(&mut self, _s: &mut Shared) -> Status {
+        if self.last && self.pending.is_none() {
+            return Status::Done;
+        }
         if let Some(v) = self.pending {
             return match trame::send(self.to, Ev { v }) {
                 Ok(()) => {
@@ -59,9 +72,10 @@ impl Drain {
         match trame::recv::<Lossy>() {
             Some(l) => {
                 self.pending = Some(l.n);
+                self.last = l.n == SENT - 1;
                 Status::Progress
             }
-            None => Status::Done,
+            None => Status::wait().frame(),
         }
     }
 }
@@ -76,7 +90,7 @@ fn sender(cx: &Context) {
 
 fn receiver(_cx: &Context) {
     let mut shared = Shared;
-    let r = trame::concurrent!(Drain { token: false, pending: None, to: LEADER }; shared);
+    let r = trame::concurrent!(Drain { token: false, last: false, pending: None, to: LEADER }; shared);
     assert_eq!(r, Ok(()));
 }
 
