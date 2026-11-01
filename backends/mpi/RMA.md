@@ -1,92 +1,112 @@
 # Small cross-node frames over RMA
 
-Status: design, written before the code. `TRAME_MPI_SMALL=rma` selects it; the default is `p2p`,
-which is today's transport and must stay byte for byte as it is.
+`TRAME_MPI_SMALL=rma` selects this path. The default is `p2p`, today's transport, unchanged.
 
 ## What changes
 
-A **small route** is a route with `from` and `to` on different nodes, `lossy` false, and
-`size <= SMALL_BYTES` (4096, a constant in `relay_rma.rs`). Only small routes take the RMA path. A
-route keeps its path for its whole life, so no route mixes RMA and p2p frames. Same-node routes,
-lossy routes and large routes stay on p2p. Credits, barriers, results, aborts and END stay on p2p.
+A **small route** has `from` and `to` on different nodes, `lossy` false, and `size <= SMALL_BYTES`
+(4096, in `small.rs`). Only small routes take the RMA path. A route keeps its path for its whole life.
+Same-node routes, lossy routes and large routes stay on p2p. Credits, barriers, results, aborts and END
+stay on p2p.
 
 Where it plugs in:
 
-- `open.rs`: after the node table and the window, every rank computes the same lane list from the
-  topology and the node table. If the list is not empty, every rank calls `Ring::raw` on the world
-  communicator (collective). Ranks agree on success, and a failure is refused on all ranks.
-- `relay_out.rs` `frames()`: a frame of a small route is sent with `Ring::send` instead of being
-  queued in `bufs`. The frame is `route (u32) | index (u64) | payload`, 12 bytes of head.
-- `relay_rma.rs` (new): the rma-in thread. It polls the incoming lanes with `Ring::poll` and applies
-  each frame with the code `relay_in.rs` already has (`put`, store P, bump the receiver).
-- `relay.rs`: the rma-in thread is started and joined with the other two, only in rma mode.
+- `open.rs`: after the window, every rank computes the same lane list from the topology and the node table
+  (`small.rs` `lanes`). If the list is not empty, every rank calls `Ring::raw` on the world communicator.
+  The call is collective. A failure on any rank is a refusal on every rank.
+- `relay_routes.rs` `frames()`: a small route's frames go to `Out::send_lane` (`relay_rma.rs`), one
+  `Ring::send` per frame, instead of being queued for MPI_Send. The lane message is a 12-byte head
+  (route u32, index u64) and the payload.
+- `relay_rma.rs` `run_in`: the `rma-in` thread polls the lanes that end here and applies each frame with
+  `relay_in.rs` `apply_frame`, the code the p2p `in` thread uses.
+- `relay.rs`: `rma-in` is started and joined with the other threads, only when the launch has lanes.
 
-Lanes are per ordered node pair, between the relay ranks. Depth is the sum of the capacities of the
-small routes on the lane. Capacity is the largest frame on the lane (12 + size).
+A lane is per ordered node pair. Its depth is the sum of the capacities of the small routes on it. Its
+slot is the largest frame on it plus the head.
 
-## Why the lane cannot overwrite or lap
+## Why a lane cannot overwrite or lap
 
-Let `held(r) = P_A(r) - C_A(r)` on the sending node (spec 5.2). A worker's send needs
-`held(r) < cap(r)`, so before the relay pushes frame `i` of route `r`, `held(r) <= cap(r) - 1`.
+Let `held(r) = P_A(r) - C_A(r)` on the sending node (spec 5.2). A worker's send needs `held(r) < cap(r)`.
 
-- `R_r` = frames of `r` that the receiving relay has read from the lane. `R_r >= C_B(r) >= C_A(r)`,
-  because the receiver stores `C_B` only after it has written the frame into the route ring, and
-  the credit it sends carries a value `C_B` had at that time.
-- So unread frames on the lane, summed over lane routes, are at most `sum_r (held(r)) <= depth - 1`
-  before the push. The slot the push overwrites was read. Its read is ordered before the receiver's
-  credit, and the credit before the sender's load of `C_A`, so the overwrite is after the read.
-- The route ring on the receiver cannot overflow: `P_B - C_B <= P_A - C_A`, both sides move at most
-  as the spec allows.
+- `R_r` = frames of `r` that the receiving relay has read from the lane. The receiver writes a frame into
+  the route ring before it counts it consumed, so `R_r >= C_B(r) >= C_A(r)`. C_A is a credit the sender has
+  seen, and a credit is never ahead of C_B.
+- Unread frames on the lane are `P_A(r) - R_r <= P_A(r) - C_A(r) = held(r) <= cap(r) - 1`, per route, when
+  the relay pushes. Summed over the lane's routes that is below the depth. The slot a push writes was read.
+- The receiver's route ring cannot overflow for the same reason as on p2p.
 
-So `Ring::raw` never laps, `Ring::send` never refuses, and `lost()` must stay 0. The lane's `Full`
-is never answered. `Full` on a route is still decided only by the sender's `held` (Full, spec 5.2).
+So `Ring::raw` does not lap, `Ring::send` does not refuse, and `lost()` must be 0. The check in
+`relay_rma.rs` asserts it. This argument holds if the relay pushes each frame once, in index order, which
+`relay_routes.rs` does.
 
 ## FIFO and the spec
 
-- Route order: the relay pushes a route's frames in index order, the lane is FIFO for one origin
-  (each `Ring::send` completes its Put and flush before the next), and rma-in applies in lane order.
-  One route, one lane, one path: FIFO per route holds (spec 5.2, Queues).
-- Frames against control records: a frame on the lane may arrive after a release, a result or
-  END. The spec lets a frame arrive late (its arrival time is chosen by the environment). The p2p
-  path already reorders a frame against a barrier record within one scan, so this is not new.
-  If a test shows a worker that cannot receive a frame it was owed, that is a stop (below).
-- Late frames after END: rma-in stops when `in` has seen END. A frame still on a lane then is not
-  applied. Every worker has returned and the leader has joined, so nothing can observe it, as on
-  p2p. This is stated, not argued from the spec.
-- Lossy routes and Overwrite/Drop: not on this path. Nothing changes for them.
+- One route, one lane, one origin: a `Ring::send` completes (Put and flush) before the next one starts, and
+  `rma-in` applies in lane order. FIFO per route holds (spec 5.2, Queues).
+- A frame can reach the receiver after a control record (release, result, END), as on p2p. The spec lets a
+  frame arrive late. Nothing in the code waits for a frame the receiver is not owed.
+- Stop order at END: `out` makes its last scan and sets `out_done`. `rma-in` stops when `out_done` is set and
+  the lanes are empty. So every frame `out` sent is applied before the thread stops, and no frame is sent
+  after the lane stopped being read.
+- Lossy routes, Overwrite and Drop: not on this path. Nothing changes for them.
 
 ## Progress
 
-Puts must land without the receiver making an MPI call, because rma-in makes none. Measured here:
-Open MPI selects `osc sm`, and the probe in `/tmp/rma-probe` (not in the repo) gets 8 of 8 frames by
-polling memory with no MPI call. `osc rdma` gives the same on one node. Across real nodes the
-one-sided component is `rdma` or `ucx`, and whether a Put needs target progress there is not
-tested. If it does, rma-in stalls. The fix would be an `MPI_Iprobe` in rma-in's idle loop. Not added
-yet, because it costs MPI lock time on a path that has no measurement.
+`rma-in` makes no MPI call, so a Put must land without target progress. On this machine Open MPI selects
+`osc sm`, and a probe in `/tmp/rma-probe` (outside the repo) gets 8 of 8 frames by polling memory. Across
+nodes the component would be `rdma` or `ucx`. Whether a Put there needs target progress is not tested here.
+If it does, `rma-in` stalls on a real network. That is the largest open risk.
+
+## Measured here
+
+`backends/mpi/tests/latency-sizes.tsv`, made by `latency_sizes.sh`: median and p99 round trip per probe size,
+3 runs per cell, 6636 samples per run, one machine. Summary (median over 3 runs, range in brackets, ns):
+
+    bytes  split-one-machine p2p      split-one-machine rma        same-node p2p   same-node rma
+      64   26079 [25999..26881]       24105 [24066..27652]           470            1042
+     256   30006 [25679..30578]       29015 [26219..29305]           932             842
+    1024   27983 [25268..30978]       32822 [30537..33383]          4288            2224
+    4096   51206 [49293..52899]       62257 [57839..62397]          7094           14347
+    8192*  93947 [85301..103685]      75762 [74911..80822]         26239           28664
+
+`*` 8192 bytes is over SMALL_BYTES: both labels are p2p, so this row is a control for the run-to-run spread.
+
+What the table says:
+- A split costs about 25 us on either path, against under 1 us on one node. The cost is the relay hop
+  (wake, scan, the second thread), and the RMA lane does not remove it.
+- Below 4 KiB the two paths overlap within their spreads. 4096 looks about 20% slower on rma. The 8192 control
+  differs by about 20% with the same code on both sides, so that size of gap is inside this machine's noise.
+  No slowdown is established.
+- The p99 is 70 us to 1.4 ms on the split rows and does not improve on rma.
+
+Command: `TRAME_MPI_NODE_RANKS=1 TRAME_MPI_SMALL=<p2p|rma> mpirun --oversubscribe -n 3 latency --bytes <B>`,
+Open MPI 5.0.11, AMD Ryzen 5 PRO 4650U, 12 CPUs, Linux 7.2.7. The `route` column says `node-split-one-machine`:
+a split on one machine is not a cross-node route.
 
 ## Cost, stated before measuring
 
-- The sender pays one `MPI_Put` and one `MPI_Win_flush` per frame, on the out thread (mpi-rma
-  `Window::put`, unchanged). That is a round trip per frame to the target, not a batch.
-- Each receiving node gets one more thread, which spins when idle. The p2p `in` already spins
-  inside `MPI_Recv`, so the node's cost is about the same.
-- A lane's slot is sized to its largest frame. Mixed sizes on one lane waste space.
-- Lane memory is depth times slot, per receiving relay. A route with a large cap makes a deep lane.
-- On this machine both paths are a memory copy in shared memory. I expect RMA to be no faster here,
-  possibly slower. The case for RMA is a network where `MPI_Send` costs a message round trip. That
-  is not measured by this machine.
+- Sender: one `MPI_Put` and one `MPI_Win_flush` per frame (mpi-rma `Window::put` and `Ring::send`). A round
+  trip per frame, not a batch. Not measured on a network.
+- Receiver: one more thread, which spins while idle and yields after 1000 empty polls.
+- Lane memory: depth times slot, per receiving relay. A large cap makes a deep lane.
 
 ## Stop, and report, if
 
-- Any `fifo` or `overwrite` check fails in rma mode, or `lost()` is not 0. Do not weaken a test.
-- A launch that cannot use RMA is not refused silently: the refusal names the reason, once.
-- The latency table shows rma slower here. Report the numbers. Do not change the default from them.
-- A choice of `SMALL_BYTES` is taken from a measurement here. It stays a constant until a
-  measurement says otherwise.
+- Any check fails in rma mode, or `lost()` is not 0. Do not weaken a test.
+- The latency table shows rma slower beyond the run-to-run spread. Report the numbers. Do not change the
+  default from them. `SMALL_BYTES` stays a constant until a measurement on a network says otherwise.
 
 ## Setting
 
-`TRAME_MPI_SMALL` is unset (p2p) or `p2p` or `rma`. Any other value, including an empty string, is
-refused on every rank before any split, with the value named, as `TRAME_MPI_NODE_RANKS` is. With one
-node there are no small cross-node routes, so `rma` launches no `Ring` and makes no extra MPI call:
-it is the p2p launch.
+`TRAME_MPI_SMALL` unset or `p2p`: p2p. `rma`: this path. Any other value, including empty, is refused on every
+rank before any split, with the reason `TRAME_MPI_SMALL is not p2p or rma` and the value. A `Ring::raw` failure
+is refused on every rank with its error, and no worker starts. With one node there are no lanes and no extra
+MPI call: `rma` is then the p2p launch.
+
+## Not verified
+
+- Real network, Grid'5000, UCX, and any Put that needs target progress.
+- Behaviour of `Ring::raw` when it fails on some ranks and not others (it is collective inside, and I have not
+  tested a partial failure).
+- Whether the relay hop, not the transport, is the cost on a network. The measurement here says it is on one
+  machine only.

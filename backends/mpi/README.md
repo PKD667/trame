@@ -64,7 +64,11 @@ A failing check is named at the end, and the script exits non-zero.
 
 `latency` writes raw round trips to `$D/records.jsonl` (nixsci record format). It computes no
 verdict: an importer states its claim with nixsci.stats. Only release builds give timings, and a
-record names the binary, toolchain, host, load and placement.
+record names the binary, toolchain, host, load and placement. `--bytes B` sets the probe size (8 to
+65536). `route_class` names the small-frame path and the placement (RMA.md, Measured here).
+`tests/latency_sizes.sh` makes `tests/latency-sizes.tsv`, median and p99 per size for p2p and rma.
+
+Small cross-node frames take the RMA path with `TRAME_MPI_SMALL=rma`; the default is `p2p`. See RMA.md.
 
 ## Not checked
 

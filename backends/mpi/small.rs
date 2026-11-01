@@ -14,7 +14,7 @@ use super::layout::Route;
 
 /// The largest route size, in bytes, that takes the RMA path. A constant, not a setting: a route's path is
 /// chosen by its size alone, and a measured choice belongs in the code, not in a launch variable.
-pub(crate) const SMALL_BYTES: usize = 4096;
+pub const SMALL_BYTES: usize = 4096;
 
 /// What a lane frame carries before its payload: the route (u32) and the frame's index (u64).
 pub(crate) const LANE_HEAD: usize = 12;
