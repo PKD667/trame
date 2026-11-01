@@ -103,6 +103,46 @@ rank before any split, with the reason `TRAME_MPI_SMALL is not p2p or rma` and t
 is refused on every rank with its error, and no worker starts. With one node there are no lanes and no extra
 MPI call: `rma` is then the p2p launch.
 
+## Stop reached: the `lossy` program hangs under rma
+
+The programs suite (`programs/run.sh mpi`) stops at `lossy` with `TRAME_MPI_NODE_RANKS=1` and
+`TRAME_MPI_SMALL=rma` (exit 124, the timeout). This is a stop condition of this document, and it is open.
+
+Mechanism. `programs/lossy.rs`: worker 0 sends ten lossy frames on route L, then a lossless token T on
+route T. Worker 1 waits for T before it reads L. The leader waits for four `Ev` values. The program's
+comment says the output does not depend on timing, because every overwrite has happened before worker 1
+reads.
+
+- On p2p, L and T go in one batch per node pair, and `in` applies a batch in order. So T is applied after
+  L. That order is what the program relies on.
+- On rma, T is on a lane and L is on p2p. The lane and p2p are two channels, and nothing orders them against
+  each other. T can be applied first. Worker 1 then reads fewer than four frames of L, and the leader waits
+  for the fourth `Ev` forever.
+- spec.md 5 (Queues) says so: "nothing orders the two routes against each other ... Ordering frames across
+  routes would need one clock that every sender agrees on, which trame does not have." The program is
+  therefore correct only for the order p2p happens to give. Its comment claims more than the spec gives.
+
+Evidence (`lossy`, `TRAME_MPI_NODE_RANKS=1`, one machine, 12 s or 8 s timeout per run):
+
+    rma   9 hangs in 25 runs, 5 in 25, 0 in 60, and 1 hang in the programs suite run
+    p2p   0 in 25, 0 in 25, 0 in 60
+    rma, token padded to 5000 bytes (so T is p2p, same batch as L): 0 in 25
+
+The hang rate is not stable across sessions. The hang is real and intermittent, and the padded run shows
+that the channel split causes it.
+
+Not fixed. Options, for the user to choose:
+
+1. The spec is right and the program over-specifies. Change `lossy.rs` so worker 1 does not depend on the
+   order of L against T. This changes a conformance program, so it is not my decision.
+2. Keep one channel per node pair. Use lanes only for node pairs whose cross-node traffic is all small and
+   lossless. This keeps the order p2p gives by accident, and RMA then applies to few pairs. Control records
+   (barrier, credit, END) still travel on p2p and could reorder against lane frames. Not tested.
+3. Drop the RMA path.
+
+Until one of these is chosen, `TRAME_MPI_SMALL=rma` is not conformant with the programs suite. The default
+is unchanged.
+
 ## Not verified
 
 - Real network, Grid'5000, UCX, and any Put that needs target progress.
