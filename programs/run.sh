@@ -5,6 +5,7 @@
 # The argument selects the backend (default: both). Exits non-zero on the first failure, and prints
 # "FAIL <backend> <program>" so conformance/mutate.sh can name the program that killed a mutant.
 # The programs are the files programs/*.rs (seq) and the rows of backends/mpi/deploy/ranks.txt (mpi).
+# The mpi runs are made for TRAME_MPI_SMALL=p2p and =rma (RMA.md), each with the node splits.
 # Every program is built with --cfg trame_checked (concurrent! needs it). The MPI target directory is
 # target/mpi, as in backends/mpi/tests/run.sh. Programs run as built binaries, so a timeout kills them.
 set -euo pipefail
@@ -13,6 +14,12 @@ cd "$root"
 which_backend="${1:-both}"
 case "$which_backend" in seq|mpi|both) ;; *) echo "usage: $0 [seq|mpi|both]" >&2; exit 2 ;; esac
 export RUSTFLAGS='--cfg trame_checked'
+# A build that fails stops the script: a stale binary would otherwise pass the checks.
+build_or_die() {
+  local out
+  if ! out="$(cargo build -q "$@" 2>&1)"; then echo "$out" >&2; echo "FAIL build: cargo build -q $*" >&2; exit 1; fi
+  grep -v 'Git tree' <<<"$out" >&2 || true
+}
 # seq: every programs/*.rs. Each needs its [[example]] in Cargo.toml, checked here.
 seq_programs=()
 for f in "$root"/programs/*.rs; do
@@ -58,7 +65,7 @@ emit() { if [[ -n "$1" ]]; then echo "$1"; fi; }
 
 if [[ "$which_backend" != mpi ]]; then
   # seq: the default build, one process per run.
-  cargo build -q --examples 2>&1 | grep -v 'Git tree' || true
+  build_or_die --examples
   B="${CARGO_TARGET_DIR:-$root/target}/debug/examples"
   for p in "${seq_programs[@]}"; do
     rc=0
@@ -71,19 +78,23 @@ if [[ "$which_backend" != seq ]]; then
   # mpi: W + 1 ranks, the leader last. Every rank runs the program's host code, so refuse prints once per
   # rank: the lines are collapsed to one. The exit status of mpirun is the program's, and must be 0.
   export CARGO_TARGET_DIR="$root/target/mpi"
-  cargo build -q --no-default-features --features mpi --examples 2>&1 | grep -v 'Git tree' || true
+  build_or_die --no-default-features --features mpi --examples
   B="$CARGO_TARGET_DIR/debug/examples"
   # Every program also runs with TRAME_MPI_NODE_RANKS = 1 and 2: the node split of NODES.md, on one
-  # machine. The output must not change with the split.
+  # machine. The output must not change with the split. Each of those runs is made with the small-frame
+  # path p2p and with rma (RMA.md): the output must not change with the path either.
+  for s in p2p rma; do
   for k in "" 1 2; do
     for p in "${mpi_programs[@]}"; do
       # `env -u` leaves the variable unset for the first pass: an empty value is refused (nodes.rs).
       if [[ -n "$k" ]]; then set_k=(env "TRAME_MPI_NODE_RANKS=$k"); else set_k=(env -u TRAME_MPI_NODE_RANKS); fi
+      set_k+=("TRAME_MPI_SMALL=$s")
       rc=0
       out="$("${set_k[@]}" timeout -k 5 "$T" mpirun --oversubscribe -n "${RANKS[$p]:-3}" "$B/$p" 2>"$errf")" || rc=$?
       out="$(echo "$out" | uniq)"
-      verify "mpi ${k:+k=$k }$p" "$p" "$rc" "$out"
+      verify "mpi ${k:+k=$k }$p small=$s" "$p" "$rc" "$out"
     done
+  done
   done
 fi
 echo "all programs passed on $which_backend"
