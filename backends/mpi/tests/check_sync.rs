@@ -76,6 +76,12 @@ pub(crate) fn fair(world: &mpi::topology::SimpleCommunicator, args: &[String]) {
     let msgs = arg_num(args, "--msgs", 16);
     let me = world.rank() as u32;
     assert!(world.size() == 4, "fair wants two senders, a receiver and the leader: four ranks");
+    // Several nodes: a split of one machine (TRAME_MPI_NODE_RANKS), or ranks on really different machines,
+    // which share no memory, so the node communicator is smaller than the world. split_shared is a collective
+    // over the world, so every rank calls it here, before any rank-specific branch: a call reached by rank 2
+    // alone hangs the other ranks.
+    let several =
+        std::env::var_os("TRAME_MPI_NODE_RANKS").is_some() || world.split_shared(world.rank()).size() != world.size();
     let route = |from| Route { from, to: 2, tag: 0, size: 64, cap: msgs as u32, lossy: false };
     let topo = Topology { workers: 3, routes: vec![route(0), route(1)], publication: Vec::new() };
     let mut t = match worker(world, &topo) {
@@ -106,10 +112,6 @@ pub(crate) fn fair(world: &mpi::topology::SimpleCommunicator, args: &[String]) {
     // start and the rotation is checked. Several nodes: a frame may still be in transit, which the
     // spec allows (a frame is available only from its arrival time, spec 5.2). Then the receiver
     // waits for each frame, and checks what the spec promises: every route is FIFO.
-    // Several nodes: a split of one machine (TRAME_MPI_NODE_RANKS), or ranks on really different machines,
-    // which share no memory, so the node communicator is smaller than the world.
-    let several =
-        std::env::var_os("TRAME_MPI_NODE_RANKS").is_some() || world.split_shared(world.rank()).size() != world.size();
     let mut next = [0u64; 2];
     for _ in 0..2 * msgs {
         let id = loop {
