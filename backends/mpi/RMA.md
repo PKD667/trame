@@ -103,45 +103,47 @@ rank before any split, with the reason `TRAME_MPI_SMALL is not p2p or rma` and t
 is refused on every rank with its error, and no worker starts. With one node there are no lanes and no extra
 MPI call: `rma` is then the p2p launch.
 
-## Stop reached: the `lossy` program hangs under rma
+## Resolved: the `lossy` program hung under rma (fixed in the program)
 
-The programs suite (`programs/run.sh mpi`) stops at `lossy` with `TRAME_MPI_NODE_RANKS=1` and
-`TRAME_MPI_SMALL=rma` (exit 124, the timeout). This is a stop condition of this document, and it is open.
+The programs suite stopped at `lossy` with `TRAME_MPI_NODE_RANKS=1` and `TRAME_MPI_SMALL=rma` (exit 124).
 
-Mechanism. `programs/lossy.rs`: worker 0 sends ten lossy frames on route L, then a lossless token T on
-route T. Worker 1 waits for T before it reads L. The leader waits for four `Ev` values. The program's
-comment says the output does not depend on timing, because every overwrite has happened before worker 1
-reads.
+Cause, as found. `programs/lossy.rs` drained the lossy route until `recv` answered empty. The spec says
+`recv` answers empty when no frame is an offer (spec 5.2, Empty), and a frame that is sent but not yet arrived
+is not an offer. So on a route whose frames arrive late, the drain ended early and the leader waited for a
+fourth `Ev` that never came. The token gave the right order only for the sends (spec 5.2: one worker's
+sends are in program order), not for the arrival of the frames. On p2p, the token and the lossy frames shared
+a batch, so the frames had arrived by the time the token was applied. On rma they were on different channels,
+and the frames could arrive after the drain had stopped. The spec does not order the two routes (5.2, Queues),
+so the old program relied on the timing of p2p.
 
-- On p2p, L and T go in one batch per node pair, and `in` applies a batch in order. So T is applied after
-  L. That order is what the program relies on.
-- On rma, T is on a lane and L is on p2p. The lane and p2p are two channels, and nothing orders them against
-  each other. T can be applied first. Worker 1 then reads fewer than four frames of L, and the leader waits
-  for the fourth `Ev` forever.
-- spec.md 5 (Queues) says so: "nothing orders the two routes against each other ... Ordering frames across
-  routes would need one clock that every sender agrees on, which trame does not have." The program is
-  therefore correct only for the order p2p happens to give. Its comment claims more than the spec gives.
+Fix (commit 8f9e668, `programs/lossy.rs`). The drain runs after the token, as before, and ends on frame 9, the
+newest frame. Overwrite keeps the newest frame and Drop may not remove it (spec 5.2), so frame 9 always arrives
+(spec, Progress: every frame becomes available unless a lossy route removes it first). The output stays
+`6 7 8 9`. Sound under any arrival order of the frames that are still in the queue: the queue after the sends is
+6 7 8 9 (no Drop), and the receiver reads only after the token, so no frame is read before its overwrite.
 
-Evidence (`lossy`, `TRAME_MPI_NODE_RANKS=1`, one machine, 12 s or 8 s timeout per run):
+Evidence (`lossy`, `TRAME_MPI_NODE_RANKS=1`, 3 ranks on one machine, 15 s timeout per run, `mpirun --oversubscribe`,
+Open MPI 5.0.11, AMD Ryzen 5 PRO 4650U; 60 runs per row):
 
-    rma   9 hangs in 25 runs, 5 in 25, 0 in 60, and 1 hang in the programs suite run
-    p2p   0 in 25, 0 in 25, 0 in 60
-    rma, token padded to 5000 bytes (so T is p2p, same batch as L): 0 in 25
+    binary                  small=rma              small=p2p
+    before (b95f98f)        16 hangs in 60        0 in 60
+    after  (8f9e668)        0 in 60               0 in 60
 
-The hang rate is not stable across sessions. The hang is real and intermittent, and the padded run shows
-that the channel split causes it.
+Earlier, before the loop script, the same binary gave 9 hangs in 25 and 5 in 25 under rma, and 0 in 25 and 0 in
+25 under p2p. After the fix: `programs/run.sh both` passes (190 lines `ok`, every program on seq and on mpi at
+splits unset, 1 and 2, with `TRAME_MPI_SMALL=p2p` and `rma`). `cli/trame build --check --example lossy` passes
+the checker. `conformance/mutate.sh seq '^m0[1-9]$'`: every mutant killed on the first run; `m03` killed by
+`lossy` (stdout differs). `conformance/mutate.sh mpi '^m03$'`: killed by `lossy` (hang under p2p, exit 124).
 
-Not fixed. Options, for the user to choose:
+What the fix does not cover. spec 5.2 (Drop) lets the transport lose any frame except the newest. Then the frames
+that remain need not be 6 7 8 9, and the program would fail. That is allowed by the spec and by no backend here.
+A failure of this program under Drop would not prove a violation. The program's comment says so.
 
-1. The spec is right and the program over-specifies. Change `lossy.rs` so worker 1 does not depend on the
-   order of L against T. This changes a conformance program, so it is not my decision.
-2. Keep one channel per node pair. Use lanes only for node pairs whose cross-node traffic is all small and
-   lossless. This keeps the order p2p gives by accident, and RMA then applies to few pairs. Control records
-   (barrier, credit, END) still travel on p2p and could reorder against lane frames. Not tested.
-3. Drop the RMA path.
-
-Until one of these is chosen, `TRAME_MPI_SMALL=rma` is not conformant with the programs suite. The default
-is unchanged.
+Why a simple print does not kill m03. A variant that prints only "frames increasing, last is 9, 1 to 4 frames"
+prints `true` on the seq m03 mutant. That mutant writes each overwrite into the newest slot, so it keeps
+0, 1, 2, 9: frame 9 arrives, and the facts hold. So those facts do not kill it; the kill is the printed set
+`0 1 2 9` against `6 7 8 9`. The mpi m03 mutant does not store the overwrite at all, so 9 never arrives and the
+drain waits (exit 124 on p2p): a kill by hang.
 
 ## Not verified
 
