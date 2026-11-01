@@ -1,0 +1,2 @@
+# cargo oxide intermediates (LLVM IR); the PTX next to them is kept as the build record
+*.ll
