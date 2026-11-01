@@ -64,7 +64,7 @@ done
 refused_small() { # value
   local rc=0 out
   out="$(env TRAME_MPI_SMALL="$1" timeout "$T" mpirun --oversubscribe -n 3 "$B/check" fifo --seed 1 --dir "$OUT/refused" 2>&1)" || rc=$?
-  [[ $rc -ne 0 ]] && grep -qF "TRAME_MPI_SMALL must be p2p or rma, got \"$1\"" <<<"$out"
+  [[ $rc -ne 0 ]] && grep -qF "TRAME_MPI_SMALL is not p2p or rma: \"$1\"" <<<"$out"
 }
 check "small: TRAME_MPI_SMALL=bogus refused" refused_small bogus
 check "small: TRAME_MPI_SMALL= (empty) refused" refused_small ""

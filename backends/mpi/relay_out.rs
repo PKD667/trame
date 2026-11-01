@@ -8,7 +8,7 @@
 
 extern crate std;
 
-use std::sync::atomic::Ordering::Acquire;
+use std::sync::atomic::Ordering::{Acquire, Release};
 use std::vec;
 use std::vec::Vec;
 
@@ -39,6 +39,10 @@ pub(super) struct Out<'a> {
     pub(super) inbound: Vec<u32>,
     /// One frame's payload, sized to the largest route, allocated once. A route uses its first `size` bytes.
     pub(super) scratch: Vec<u8>,
+    /// Per route: the frames go over a lane, not MPI_Send (small.rs `is_small`, RMA.md).
+    pub(super) lane: Vec<bool>,
+    /// One lane message (head and payload), sized to the largest lane route, allocated once.
+    pub(super) lane_buf: Vec<u8>,
 }
 
 /// The thread's body. Returns when the run has ended (`Ctx::ended`) and the last scan is sent.
@@ -57,6 +61,14 @@ pub(super) fn run(ctx: &Ctx) {
         }
     }
     let largest = t.lay().routes.iter().map(|r| r.size).max().unwrap_or(0);
+    let rma = ctx.ring.is_some();
+    let lane: Vec<bool> = t
+        .lay()
+        .routes
+        .iter()
+        .map(|r| super::small::is_small(rma, r.from, r.to, r.size, r.lossy, &nodes.node_of))
+        .collect();
+    let largest_lane = t.lay().routes.iter().zip(&lane).filter(|(_, l)| **l).map(|(r, _)| r.size).max().unwrap_or(0);
     let mut out = Out {
         ctx,
         next: vec![0; routes],
@@ -70,6 +82,8 @@ pub(super) fn run(ctx: &Ctx) {
         outbound,
         inbound,
         scratch: vec![0; largest],
+        lane,
+        lane_buf: vec![0; super::small::LANE_HEAD + largest_lane],
     };
     loop {
         let seen = t.relay_epoch();
@@ -79,6 +93,8 @@ pub(super) fn run(ctx: &Ctx) {
         }
         t.relay_sleep(seen);
     }
+    // The last scan has sent the last lane frame. `rma-in` may now stop once the lanes are drained.
+    ctx.out_done.store(true, Release);
 }
 
 impl Out<'_> {

@@ -27,6 +27,9 @@ impl Out<'_> {
 
     /// Frames F..P of an outbound route (lossy: from the newest `cap`, skipping the overwritten ones).
     fn frames(&mut self, id: usize, r: RouteLayout) {
+        if self.lane[id] {
+            return self.send_lane(id, r);
+        }
         let ctx = self.ctx;
         let t = &ctx.port;
         let p = t.win().word(r.base).load(Acquire);

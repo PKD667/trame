@@ -40,15 +40,7 @@ fn apply(ctx: &Ctx, rec: Record, round: &mut (u64, u32)) -> bool {
     let t: &Transport = &ctx.port;
     let workers = t.lay().workers;
     match rec {
-        Record::Frames { route, index, bytes } => {
-            let r = t.lay().routes[route as usize];
-            t.put(&r, index, bytes).unwrap_or_else(|e| panic!("trame: relay frame {index} of route {route}: {e}"));
-            let p = t.win().word(r.base);
-            if p.load(Relaxed) < index + 1 {
-                p.store(index + 1, Ordering::Release);
-            }
-            t.bump(r.to);
-        }
+        Record::Frames { route, index, bytes } => apply_frame(t, route, index, bytes),
         Record::Credit { route, c } => {
             let r = t.lay().routes[route as usize];
             let consumed = t.win().word(r.base + LINE);
@@ -116,6 +108,18 @@ fn apply(ctx: &Ctx, rec: Record, round: &mut (u64, u32)) -> bool {
         }
     }
     false
+}
+
+/// Apply frame `index` of route `route` to this node's replica: the slot, then P, then the bump of the
+/// receiver. Shared by the p2p `in` thread and by the RMA lanes (relay_rma.rs), which carry the same frames.
+pub(super) fn apply_frame(t: &Transport, route: u32, index: u64, bytes: &[u8]) {
+    let r = t.lay().routes[route as usize];
+    t.put(&r, index, bytes).unwrap_or_else(|e| panic!("trame: relay frame {index} of route {route}: {e}"));
+    let p = t.win().word(r.base);
+    if p.load(Relaxed) < index + 1 {
+        p.store(index + 1, Ordering::Release);
+    }
+    t.bump(r.to);
 }
 
 /// Bump every local agent among ranks `0..upto` (workers, then the leader's rank W). Walks the node's

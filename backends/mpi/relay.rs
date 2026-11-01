@@ -15,8 +15,10 @@ use std::thread::{Builder, JoinHandle};
 use std::vec::Vec;
 
 use mpi::ffi;
+use mpi_rma::Ring;
 
 use super::Transport;
+use super::relay_rma::RingRef;
 use super::state::local;
 
 /// A release the root's `in` has decided and `out` must send: barrier generation `generation`, with
@@ -40,6 +42,11 @@ pub(super) struct Ctx {
     pub aborted: AtomicBool,
     /// Root only: the release `in` decided. `out` takes it and sends it to every node.
     pub release: Mutex<Option<Release>>,
+    /// The small-frame lanes, when this launch has any and runs with TRAME_MPI_SMALL=rma (RMA.md).
+    pub ring: Option<RingRef>,
+    /// Set by `out` after its last scan, which is the last send on a lane. `rma-in` stops only after this,
+    /// so no frame is sent after the lane has stopped being read.
+    pub out_done: AtomicBool,
 }
 
 /// The node's transport copy, shared by the two threads.
@@ -69,10 +76,12 @@ pub(super) struct Comm(pub ffi::MPI_Comm);
 unsafe impl Send for Comm {}
 unsafe impl Sync for Comm {}
 
-/// The two threads of a node's relay. `state::finalize` joins them.
+/// The threads of a node's relay: two, and a third (`rma-in`) when the launch has lanes. `state::finalize`
+/// joins them.
 pub(super) struct Relay {
     out: JoinHandle<()>,
     inn: JoinHandle<()>,
+    rma_in: Option<JoinHandle<()>>,
     /// The shared state, kept so the node's objects can be unlinked once both threads have stopped.
     ctx: Arc<Ctx>,
 }
@@ -83,13 +92,16 @@ impl Relay {
     pub(super) fn join(self) {
         self.out.join().expect("trame: the relay's out thread panicked");
         self.inn.join().expect("trame: the relay's in thread panicked");
+        if let Some(rma_in) = self.rma_in {
+            rma_in.join().expect("trame: the relay's rma-in thread panicked");
+        }
         self.ctx.port.unlink_publication();
     }
 }
 
 /// Start this node's relay threads, on the relay host, before the launch barrier. `t` is the host's
-/// own endpoint, and `comm` the world communicator.
-pub(super) fn start(t: &Transport, comm: ffi::MPI_Comm) {
+/// own endpoint, and `comm` the world communicator. `ring` is the launch's lanes, if it has any.
+pub(super) fn start(t: &Transport, comm: ffi::MPI_Comm, ring: Option<&'static Ring>) {
     let copy = Transport::new(t.me, t.win.alias(), t.lay.clone(), t.nodes.clone());
     let ctx = Arc::new(Ctx {
         port: Port(ManuallyDrop::new(copy)),
@@ -97,8 +109,17 @@ pub(super) fn start(t: &Transport, comm: ffi::MPI_Comm) {
         ended: AtomicBool::new(false),
         aborted: AtomicBool::new(false),
         release: Mutex::new(None),
+        ring: ring.map(RingRef),
+        out_done: AtomicBool::new(false),
     });
-    let (for_out, for_in, keep) = (ctx.clone(), ctx.clone(), ctx);
+    let (for_out, for_in, keep) = (ctx.clone(), ctx.clone(), ctx.clone());
+    let rma_in = ring.is_some().then(|| {
+        let for_rma = ctx.clone();
+        Builder::new()
+            .name("trame-relay-rma-in".into())
+            .spawn(move || super::relay_rma::run_in(&for_rma))
+            .expect("trame: could not start the relay's rma-in thread")
+    });
     let out = Builder::new()
         .name("trame-relay-out".into())
         .spawn(move || super::relay_out::run(&for_out))
@@ -107,7 +128,7 @@ pub(super) fn start(t: &Transport, comm: ffi::MPI_Comm) {
         .name("trame-relay-in".into())
         .spawn(move || super::relay_in::run(&for_in))
         .expect("trame: could not start the relay's in thread");
-    local().relay = Some(Relay { out, inn, ctx: keep });
+    local().relay = Some(Relay { out, inn, rma_in, ctx: keep });
 }
 
 /// Send `bytes` to world rank `dest` as one message, with tag 0. Blocking. Never MPI_Bsend.

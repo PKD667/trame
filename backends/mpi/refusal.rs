@@ -30,12 +30,19 @@ pub enum Refusal {
     NotUnified,
     /// An MPI call failed. The string names the call.
     Mpi(&'static str),
+    /// TRAME_MPI_SMALL is set to something other than `p2p` or `rma` (RMA.md, Setting).
+    SmallSetting(String),
+    /// The launch has small cross-node routes on RMA lanes, and the lanes could not be made. The string
+    /// is the error of `Ring::raw`.
+    Rma(String),
 }
 
 impl fmt::Display for Refusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Refusal::Topology(why) => write!(f, "topology refused: {why}"),
+            Refusal::SmallSetting(text) => write!(f, "TRAME_MPI_SMALL is not p2p or rma: {text:?}"),
+            Refusal::Rma(why) => write!(f, "the RMA lanes could not be made: {why}"),
             Refusal::Inconsistent => write!(f, "ranks were given different topologies"),
             Refusal::Ranks { workers, ranks } => {
                 write!(f, "{workers} workers need {} ranks, the world has {ranks}", workers + 1)

@@ -4,6 +4,7 @@
 
 extern crate std;
 
+use std::boxed::Box;
 use std::format;
 use std::mem::ManuallyDrop;
 use std::string::{String, ToString};
@@ -23,7 +24,9 @@ use super::refusal::Refusal;
 use super::relay;
 use super::shape::{encode, plan};
 use super::shm::Window;
+use super::small::{Path, lanes, small_setting};
 use super::types::{Role, clock};
+use mpi_rma::Ring;
 
 /// Every rank of the launch checks that it was given the same bytes. Collective over `world`: every
 /// rank calls it, and every rank gets the same answer. The bytes of the last rank (the leader, when
@@ -65,6 +68,15 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
         Ok(_) => return Err(Refusal::NodeRanks("set to a bad value on another rank".to_string())),
         Err(text) => return Err(Refusal::NodeRanks(text)),
     };
+    // TRAME_MPI_SMALL is checked the same way, on every rank, before any split.
+    let small = small_setting();
+    let here = i32::from(small.is_ok());
+    world.all_reduce_into(&here, &mut all, SystemOperation::min());
+    let path = match small {
+        Ok(p) if all == 1 => p,
+        Ok(_) => return Err(Refusal::SmallSetting("set to a bad value on another rank".to_string())),
+        Err(text) => return Err(Refusal::SmallSetting(text)),
+    };
     // The shared communicator is kept for as long as the window exists. It is never freed: a
     // communicator free is a point where a rank could wait for others, so this leaks it instead.
     let shared = world.split_shared(world.rank());
@@ -93,6 +105,22 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
     let leader = me == topo.workers;
     // The lowest rank of each node initialises that node's window: a replica of the whole layout.
     let host = host_rank == world.rank();
+    // The small-frame lanes (RMA.md). Every rank has the same topology and node table, so every rank makes the
+    // same `Ring::raw` call, or none. The ring is leaked with the window: it is never freed (NODES.md).
+    let plan_lanes = lanes(&topo.routes, &nodes.node_of, &nodes.relay_rank, path == Path::Rma);
+    let ring: Option<&'static Ring> = if plan_lanes.is_empty() {
+        None
+    } else {
+        let made = Ring::raw(world, &plan_lanes);
+        let here = i32::from(made.is_ok());
+        let mut every = 0;
+        world.all_reduce_into(&here, &mut every, SystemOperation::min());
+        match made {
+            Ok(r) if every == 1 => Some(Box::leak(Box::new(r))),
+            Ok(_) => return Err(Refusal::Rma("another rank could not make its lanes".to_string())),
+            Err(e) => return Err(Refusal::Rma(e.to_string())),
+        }
+    };
     let t = Transport::new(me, win, lay, Arc::new(nodes));
     // The initial publication is a POSIX object, so its creation can fail on the host. Every rank
     // refuses together, with the host's error where the host has one.
@@ -116,7 +144,7 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
     }
     if host && t.nodes().count > 1 {
         // Several nodes: the relay runs before the launch barrier, so every rank's first act can reach it.
-        relay::start(&t, world.as_raw());
+        relay::start(&t, world.as_raw(), ring);
     }
     world.barrier();
     Ok(if leader { Role::Leader(t) } else { Role::Worker(t) })

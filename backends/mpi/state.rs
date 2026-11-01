@@ -101,6 +101,8 @@ pub(super) fn refused(r: Refusal) -> Refused {
         Refusal::Threads => "a launch over several nodes needs MPI_THREAD_MULTIPLE",
         Refusal::NotUnified => "the MPI window is not in the unified memory model",
         Refusal::Mpi(_) => "an MPI call failed",
+        Refusal::SmallSetting(_) => "TRAME_MPI_SMALL is not p2p or rma",
+        Refusal::Rma(_) => "the RMA lanes could not be made (MPI_THREAD_MULTIPLE and a unified window are needed)",
     };
     Refused::Backend { reason }
 }
