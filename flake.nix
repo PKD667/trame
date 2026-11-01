@@ -49,7 +49,7 @@
           ./scale
           ./examples
           ./backends/mpi
-          (pkgs.lib.fileset.difference ./mpi-rma (pkgs.lib.fileset.unions [ ./mpi-rma/.git (pkgs.lib.fileset.maybeMissing ./mpi-rma/target) ]))
+          (pkgs.lib.fileset.difference ./mpi-rma (pkgs.lib.fileset.unions [ (pkgs.lib.fileset.maybeMissing ./mpi-rma/.git) (pkgs.lib.fileset.maybeMissing ./mpi-rma/target) ]))
         ] ++ map (n: ./. + "/${n}") (
           builtins.filter (n: pkgs.lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ./.))
         ));
