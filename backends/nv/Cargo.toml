@@ -1,0 +1,22 @@
+[package]
+name = "trame-nv"
+version = "0.0.0"
+edition = "2024"
+description = "Host-side spike for the NVIDIA backend: a representability check over launch plans, and the programs that test it (backends/nv/PLAN.md)"
+publish = false
+# Own workspace, like rejections/: this crate is not a member of the trame root.
+[workspace]
+
+[dependencies]
+# The surface, for the programs. The library below does not use it.
+trame = { path = "../..", default-features = false, features = ["seq"] }
+
+[[example]]
+name = "post_parallel_pod"
+path = "programs/post_parallel_pod.rs"
+test = false
+
+[[example]]
+name = "post_parallel_heap"
+path = "programs/post_parallel_heap.rs"
+test = false

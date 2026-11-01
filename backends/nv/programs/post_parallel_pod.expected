@@ -1,0 +1,5 @@
+slot 0 acc 60 branch 2
+slot 1 acc 88 branch 1
+slot 2 acc 116 branch 2
+slot 3 acc 144 branch 1
+outcomes: [Returned]
