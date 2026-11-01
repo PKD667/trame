@@ -121,7 +121,9 @@ flowchart LR
   classDef default fill:#ffffff,stroke:#000000,color:#000000;
 ```
 
-Status: gate A fails on the measured toolchain for `sm_61` (evidence table); no gate has a device result. Gate D is decisive: use a slot whose post-item value changes a later branch or effect, and compare the complete observable trace with `seq`. Also test a non-`Copy` slot and captured state. If the implementation cannot preserve those cases, it must identify them before launch and return `Refused`; it may not partially start workers.
+Status: gate A fails on the measured toolchain for `sm_61` (evidence table); no gate has a device result.
+
+**Status after step 5 (sm_80 prototype, `gpu/`).** Gate A passes for `sm_80` at compile level: cargo-oxide builds `post_parallel` (one block of 32 threads, `gpu/nv_post_parallel_gpu.ptx`), and `ptxas` assembles it for sm_80 and sm_86 (CUDA 13.2.51). Gate D is not run: no GPU is on this machine, and no node was held. Gate E (the one-worker trace) is not reached. The heap variant of the device kernel is refused by the toolchain itself, "heap allocation is not supported in kernels", so state that owns memory cannot be a device slot; this answers the heap question at compile level, not at run level. The host harness and the nixsci experiment (`gpu/README.md`) are built and were run locally with no driver (`no-driver`, three rows) and with a C stand-in driver (CPU code, a wiring test only, not a GPU result). Phase B (a held node, three runs of `nix run .#post-parallel-gpu`) is blocked: the reserve loop requested upper-case names, which `reserve` rejects, so no node was held; and an earlier request left OAR job 6998376 on nancy (gres) whose release failed. That job needs a person to check it. Gate D is decisive: use a slot whose post-item value changes a later branch or effect, and compare the complete observable trace with `seq`. Also test a non-`Copy` slot and captured state. If the implementation cannot preserve those cases, it must identify them before launch and return `Refused`; it may not partially start workers.
 
 ### Integration boundary
 
