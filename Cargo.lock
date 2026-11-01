@@ -111,6 +111,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc32fast"
+version = "1.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ba106e844045ddc02c20768ac4b0b7cb45f2cc2ecbd833ac9f5dacb183c2055"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "custom_derive"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -203,6 +212,15 @@ dependencies = [
  "once_cell",
  "smallvec",
  "thiserror",
+]
+
+[[package]]
+name = "mpi-rma"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "libc",
+ "mpi",
 ]
 
 [[package]]
@@ -364,6 +382,7 @@ dependencies = [
  "bytemuck",
  "libc",
  "mpi",
+ "mpi-rma",
  "trame-macros",
 ]
 

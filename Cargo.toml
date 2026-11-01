@@ -11,6 +11,8 @@ path = "lib.rs"
 bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 trame-macros = { path = "macros" }
 mpi = { version = "=0.8.2", optional = true }
+# One-sided communication (backends/mpi); the crate is a submodule so it can change with trame.
+mpi-rma = { path = "mpi-rma", optional = true }
 libc = { version = "=0.2.191", optional = true }
 
 # A backend is chosen at compile time, one per build, so every participant agrees by construction.
@@ -18,7 +20,7 @@ libc = { version = "=0.2.191", optional = true }
 [features]
 default = ["seq"]
 seq = []
-mpi = ["dep:mpi", "dep:libc"]
+mpi = ["dep:mpi", "dep:libc", "dep:mpi-rma"]
 
 # The MPI transport's checks and latency run (backends/mpi/tests/run.sh, backends/mpi/README.md).
 [[bin]]

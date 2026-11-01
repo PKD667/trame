@@ -1,0 +1,3 @@
+[submodule "mpi-rma"]
+	path = mpi-rma
+	url = https://github.com/PKD667/mpi-rma.git

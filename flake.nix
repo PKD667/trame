@@ -1,5 +1,7 @@
 {
   description = "Backend-local trame development environments";
+  # mpi-rma is a git submodule of this repository: a flake source includes submodules only when asked.
+  inputs.self.submodules = true;
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   # Nightly toolchains by date, for the driver only (see driver/rust-toolchain.toml).
@@ -34,7 +36,7 @@
         doCheck = false;
       };
       # The root crate with the MPI backend, its examples and the check and latency bins. Only the
-      # files the build reads: never driver/ or target/, and not the mpi-rma submodule.
+      # files the build reads: never driver/ or target/. mpi-rma is a submodule (inputs.self.submodules), without its .git or target.
       trameFiles = pkgs.lib.fileset.unions ([
           ./Cargo.toml
           ./Cargo.lock
@@ -46,7 +48,8 @@
           ./tests
           ./scale
           ./examples
-          (pkgs.lib.fileset.difference ./backends/mpi (pkgs.lib.fileset.maybeMissing ./backends/mpi/mpi-rma))
+          ./backends/mpi
+          (pkgs.lib.fileset.difference ./mpi-rma (pkgs.lib.fileset.unions [ ./mpi-rma/.git (pkgs.lib.fileset.maybeMissing ./mpi-rma/target) ]))
         ] ++ map (n: ./. + "/${n}") (
           builtins.filter (n: pkgs.lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ./.))
         ));
@@ -63,7 +66,7 @@
           (pkgs.lib.fileset.difference (pkgs.lib.fileset.fileFilter (f: f.hasExt "rs") ./.) (pkgs.lib.fileset.unions [
             ./rejections
             (pkgs.lib.fileset.maybeMissing ./backends/nv)
-            (pkgs.lib.fileset.maybeMissing ./backends/mpi/mpi-rma)
+            ./mpi-rma
           ]))
         ];
       };

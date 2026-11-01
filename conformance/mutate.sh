@@ -18,12 +18,12 @@ backends=(seq mpi)
 out="$(mktemp -d)"
 scratch="${TRAME_MUTATE_DIR:-/tmp/trame-mutate}"
 
-# Restore the copy from the working tree, without its target directory or the mpi-rma submodule.
+# Restore the copy from the working tree, without its target directories or the mpi-rma submodule's .git (the crate itself is a path dependency).
 sync_copy() {
   local work="$1"
   mkdir -p "$work"
   rsync -rlD --delete --no-times --checksum \
-    --exclude=/target/ --exclude=/.git --exclude=/backends/mpi/mpi-rma/ \
+    --exclude=/target/ --exclude=/.git --exclude=/mpi-rma/.git --exclude=/mpi-rma/target/ \
     "$root/" "$work/"
 }
 
