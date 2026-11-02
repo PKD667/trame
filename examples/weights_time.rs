@@ -65,7 +65,8 @@ fn report(na: &[u64; 2], nb: &[u64; 2], nc: &[u64; 2]) -> Status {
 fn main() {
     let secs: f64 = std::env::args().nth(1).map(|s| s.parse().expect("seconds")).unwrap_or(2.0);
     let mut t = Topology::new();
-    let w = t.worker(Contended { hot: 0, na: [0; 2], nb: [0; 2], nc: [0; 2] });
+    let w = t.worker();
+    t.set(&w, move || Contended { hot: 0, na: [0; 2], nb: [0; 2], nc: [0; 2] });
     t.route::<Totals>(w.id(), LEADER, 1);
     let run = t.launch().expect("launch");
     std::thread::sleep(Duration::from_secs_f64(secs));

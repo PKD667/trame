@@ -107,7 +107,8 @@ fn steps_and_the_scheduler_allocate_nothing_per_step() {
         let mut g = Topology::new();
         // One agent: the counts are per thread, so every step must run on the same one.
         g.__agents(1);
-        let w = g.worker(Ticker { i: 0, first: 0, last: 0, control: 0 });
+        let w = g.worker();
+        g.set(&w, move || Ticker { i: 0, first: 0, last: 0, control: 0 });
         g.lossy::<Tick>(w.id(), w.id(), 4);
         let run = g.launch().expect("accepted");
         assert_eq!(run.join(), [Outcome::Returned]);

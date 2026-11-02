@@ -89,7 +89,9 @@ fn ticker(ticks: &mut Option<u32>) -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Pair { sent: 0, failed: 0, reported: false, ticks: None }).id();
+    let w_worker = t.worker();
+    t.set(&w_worker, || Pair { sent: 0, failed: 0, reported: false, ticks: None });
+    let w = w_worker.id();
     t.route::<Item>(w, LEADER, 1);
     t.route::<Blocked>(w, LEADER, 2);
     t.route::<Go>(LEADER, w, 1);

@@ -21,6 +21,8 @@ pub enum Refused {
     TwoOwners { worker: WorkerId, name: &'static str },
     /// A worker's steps read a pool of type `want`, and the host's pool is `have` (`()`: none).
     PoolType { worker: WorkerId, want: &'static str, have: &'static str },
+    /// A worker was declared but its state was never set (`Topology::set`).
+    Unset { worker: WorkerId },
     /// The backend could not allocate what the topology needs.
     Backend { reason: &'static str },
 }
@@ -43,6 +45,9 @@ pub(crate) struct Route {
 pub(crate) struct Plan {
     /// Each worker: its state and steps, without their type (worker.rs).
     pub workers: Vec<Arc<dyn Erased>>,
+    /// Each worker's builder (`Topology::set`): builds the state and puts it in place. The backend
+    /// runs it at launch, in the worker's domain (backend.rs, M1). `None`: never set, refused.
+    pub builders: Vec<Option<Builder>>,
     pub routes: Vec<Route>,
     /// The host's pool, its type and the type's name. `None` with `()`: no pool.
     pub pool: Option<PoolRef>,
@@ -58,6 +63,7 @@ impl Default for Plan {
     fn default() -> Self {
         Plan {
             workers: Vec::new(),
+            builders: Vec::new(),
             routes: Vec::new(),
             pool: None,
             pool_type: TypeId::of::<()>(),
@@ -65,6 +71,17 @@ impl Default for Plan {
             trace: false,
             agents: None,
         }
+    }
+}
+
+/// Builds one worker's state and puts it in place (worker.rs `Core::fill`).
+pub(crate) type Builder = alloc::boxed::Box<dyn FnOnce() + Send>;
+
+/// Run every builder: the backends whose leader builds every state in its own memory (seq, threads)
+/// call this at launch.
+pub(crate) fn build_all(plan: &mut Plan) {
+    for b in plan.builders.iter_mut() {
+        (b.take().expect("trame: the launch checked that every worker was set"))();
     }
 }
 
@@ -87,6 +104,9 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
     }
     for (k, w) in plan.workers.iter().enumerate() {
         let worker = WorkerId(k as u32);
+        if plan.builders[k].is_none() {
+            return Err(Refused::Unset { worker });
+        }
         if w.pool_type() != TypeId::of::<()>() && w.pool_type() != plan.pool_type {
             return Err(Refused::PoolType { worker, want: w.pool_name(), have: plan.pool_name });
         }

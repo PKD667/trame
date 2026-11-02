@@ -60,7 +60,7 @@ fn worker(cx: &Context) {
 
 fn main() {
     let mut topo = Topology::new();
-    let ws: Vec<WorkerId> = (0..W).map(|_| topo.worker(worker)).collect();
+    let ws: Vec<WorkerId> = (0..W).map(|_| { let w = topo.worker(); topo.set(&w, move || worker); w }).collect();
     for i in 0..W {
         topo.route::<Token>(ws[i], ws[(i + 1) % W], 1);
         topo.route::<Report>(ws[i], LEADER, 1);

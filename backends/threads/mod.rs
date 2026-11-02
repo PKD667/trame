@@ -163,7 +163,8 @@ fn agent_main(shared: Arc<Shared>, w: usize, a: usize, slot: Arc<Slot>) {
 impl Backend for Selected {
     type Run = Run;
 
-    fn launch(plan: Plan) -> Result<Run, Refused> {
+    fn launch(mut plan: Plan) -> Result<Run, Refused> {
+        crate::launch::build_all(&mut plan);
         let routes = Routes::new(&plan.routes)?;
         let per = plan.agents.unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1));
         let slots: Vec<Arc<Slot>> = plan.workers.into_iter().map(|w| Arc::new(Slot::new(w, plan.trace))).collect();

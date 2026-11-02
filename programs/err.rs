@@ -28,7 +28,8 @@ fn idle(idled: &mut bool) -> Result<Status, Boom> {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Pair { idled: false });
+    let w = t.worker();
+    t.set(&w, move || Pair { idled: false });
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

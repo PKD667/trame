@@ -7,7 +7,6 @@ use crate::launch::{Plan, Refused, Route, check};
 use crate::run::Run;
 use crate::worker::{Core, State};
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::any::{TypeId, type_name};
 use core::mem::size_of;
@@ -73,20 +72,25 @@ impl Topology {
         Topology::default()
     }
 
-    /// Declare a worker whose state is `state`: its steps are those of `#[trame::state]` on `S`.
-    /// Workers are numbered in declaration order.
-    pub fn worker<S: State>(&mut self, state: S) -> Worker<S> {
+    /// Declare a worker of state type `S`. Its state is given later with `set`, so a state can name
+    /// workers declared after it. Workers have no order a program may rely on.
+    pub fn worker<S: State>(&mut self) -> Worker<S> {
         let index = u32::try_from(self.plan.workers.len()).expect("more workers than WorkerId can name");
-        let core = Arc::new(Core::new(state));
+        let core = Arc::new(Core::empty());
         self.plan.workers.push(core.clone());
+        self.plan.builders.push(None);
         Worker { id: WorkerId(index), core, joined: self.joined.clone() }
     }
 
-    /// The identities the next `n` calls of `worker` will answer, in order: a state can then name
-    /// workers declared after it.
-    pub fn ids(&self, n: usize) -> Vec<WorkerId> {
-        let first = self.plan.workers.len();
-        (first..first + n).map(|k| WorkerId(u32::try_from(k).expect("more workers than WorkerId can name"))).collect()
+    /// Give worker `w` its state: `build` makes it. The backend calls `build` at launch, in the memory
+    /// where the worker runs (backend.rs, M1), so every allocation the state owns lands there; a value
+    /// built outside `build` and moved in does not. A second `set` replaces the first.
+    pub fn set<S: State>(&mut self, w: &Worker<S>, build: impl FnOnce() -> S + Send + 'static) {
+        let k = w.id.0 as usize;
+        let ours = self.plan.workers.get(k).is_some_and(|c| core::ptr::addr_eq(Arc::as_ptr(c), Arc::as_ptr(&w.core)));
+        assert!(ours, "trame: Topology::set of a worker declared by another topology");
+        let core = w.core.clone();
+        self.plan.builders[k] = Some(alloc::boxed::Box::new(move || core.fill(build())));
     }
 
     /// A route from `from` to `to` carrying messages of type `M`, with room for `cap` frames.

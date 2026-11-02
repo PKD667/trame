@@ -35,8 +35,10 @@ fn waits() -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let a = t.worker(Fails {});
-    let b = t.worker(Waiter {});
+    let a = t.worker();
+    t.set(&a, move || Fails {});
+    let b = t.worker();
+    t.set(&b, move || Waiter {});
     t.route::<Never>(a.id(), b.id(), 1);
     let run = match t.launch() {
         Ok(run) => run,

@@ -47,7 +47,9 @@ fn sender(sent: &mut u32, reported: &mut bool) -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Sender { sent: 0, reported: false }).id();
+    let w_worker = t.worker();
+    t.set(&w_worker, || Sender { sent: 0, reported: false });
+    let w = w_worker.id();
     t.route::<Item>(w, LEADER, 1);
     t.route::<Blocked>(w, LEADER, 2);
     let run = match t.launch() {

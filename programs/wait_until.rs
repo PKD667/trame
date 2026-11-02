@@ -32,7 +32,9 @@ fn sleeper(deadline: &mut Option<Reading>) -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Sleeper { deadline: None }).id();
+    let w_worker = t.worker();
+    t.set(&w_worker, || Sleeper { deadline: None });
+    let w = w_worker.id();
     t.route::<Woke>(w, LEADER, 2);
     let run = match t.launch() {
         Ok(run) => run,

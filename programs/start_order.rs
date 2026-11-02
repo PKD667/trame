@@ -28,7 +28,8 @@ fn second() -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Pair {});
+    let w = t.worker();
+    t.set(&w, move || Pair {});
     t.route::<Started>(w.id(), LEADER, 2);
     let run = match t.launch() {
         Ok(run) => run,

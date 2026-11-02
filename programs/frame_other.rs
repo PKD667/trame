@@ -65,7 +65,9 @@ fn taker() -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Pair { calls: 0, said_ready: false }).id();
+    let w_worker = t.worker();
+    t.set(&w_worker, || Pair { calls: 0, said_ready: false });
+    let w = w_worker.id();
     t.route::<Ready>(w, LEADER, 2);
     t.route::<Took>(w, LEADER, 2);
     t.route::<Calls>(w, LEADER, 2);

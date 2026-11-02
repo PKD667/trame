@@ -70,7 +70,7 @@ fn probe(me: &u32, done: &mut u32, told: &mut Option<u32>, pool: &Round) -> Stat
 
 fn main() {
     let mut t = Topology::new();
-    let ws: Vec<_> = (0..WORKERS).map(|me| t.worker(Probe { me, done: 0, told: None })).collect();
+    let ws: Vec<_> = (0..WORKERS).map(|me| { let w = t.worker(); t.set(&w, move || Probe { me, done: 0, told: None }); w }).collect();
     t.pool(Round(0));
     for w in &ws {
         t.route::<Go>(LEADER, w.id(), 2);

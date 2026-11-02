@@ -94,7 +94,10 @@ impl Backend for Selected {
         agree(world(), &encode_plan(plan), ranks).map_err(refused)
     }
 
-    fn launch(plan: Plan) -> Result<Leader, Refused> {
+    fn launch(mut plan: Plan) -> Result<Leader, Refused> {
+        // Every rank builds every state in its own heap, for now: a worker rank uses its own copy.
+        // (The machine segment, where the leader builds and workers map, replaces this: M1.)
+        crate::launch::build_all(&mut plan);
         let topo = topology(&plan)?;
         let role = open(world(), &topo).map_err(refused)?;
         let table = entries(&plan);

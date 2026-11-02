@@ -103,9 +103,11 @@ fn ponger(next: &mut u32, reply: &mut Option<u32>, to: &WorkerId) -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let ids = t.ids(2);
-    let a = t.worker(Pinger { next: 0, waiting: false, reported: false, to: ids[1] });
-    let b = t.worker(Ponger { next: 0, reply: None, to: ids[0] });
+    let a = t.worker();
+    let b = t.worker();
+    let (to_a, to_b) = (a.id(), b.id());
+    t.set(&a, move || Pinger { next: 0, waiting: false, reported: false, to: to_b });
+    t.set(&b, move || Ponger { next: 0, reply: None, to: to_a });
     t.route::<Ping>(a.id(), b.id(), 1);
     t.route::<Pong>(b.id(), a.id(), 1);
     t.route::<Count>(a.id(), LEADER, 1);

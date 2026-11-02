@@ -129,7 +129,8 @@ static DEADLOCKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsi
 fn one<S: trame::__rt::State>(name: &str, seed: u64, state: S, exact: bool) {
     let mut t = Topology::new();
     t.__trace();
-    let w = t.worker(state);
+    let w = t.worker();
+    t.set(&w, move || state);
     let run = t.launch().expect("launch");
     // A run that deadlocks is still a valid run; join says so.
     let (out, checked) = run.__join_checked(exact);
@@ -202,7 +203,8 @@ fn s0(hot: &mut u64, n0: &mut u64) -> Status {
 #[test]
 fn shares_follow_weights() {
     let mut t = Topology::new();
-    let w = t.worker(Contended { hot: 0, n1: 0, n2: 0, n4: 0, n0: 0 });
+    let w = t.worker();
+    t.set(&w, move || Contended { hot: 0, n1: 0, n2: 0, n4: 0, n0: 0 });
     let run = t.launch().expect("launch");
     std::thread::sleep(Duration::from_millis(200));
     run.stop();
@@ -272,7 +274,8 @@ disjoint_step!(d0 x0, d1 x1, d2 x2, d3 x3, d4 x4, d5 x5, d6 x6, d7 x7);
 fn disjoint_steps_overlap() {
     let mut t = Topology::new();
     t.__trace();
-    let w = t.worker(Disjoint { x0: 0, x1: 0, x2: 0, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0 });
+    let w = t.worker();
+    t.set(&w, move || Disjoint { x0: 0, x1: 0, x2: 0, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0 });
     let run = t.launch().expect("launch");
     let start = std::time::Instant::now();
     let (out, checked) = run.__join_checked(cfg!(feature = "seq"));

@@ -52,7 +52,8 @@ fn writer(value: &mut u32, n: &mut u32) -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Tally { value: 0, n: 0 });
+    let w = t.worker();
+    t.set(&w, move || Tally { value: 0, n: 0 });
     t.route::<Log>(w.id(), LEADER, 8);
     let run = match t.launch() {
         Ok(run) => run,

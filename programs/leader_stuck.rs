@@ -22,8 +22,10 @@ fn quick() -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let a = t.worker(Quick {});
-    let _b = t.worker(Quick {});
+    let a = t.worker();
+    t.set(&a, move || Quick {});
+    let _b = t.worker();
+    t.set(&_b, move || Quick {});
     t.route::<Never>(a.id(), LEADER, 1);
     let run = match t.launch() {
         Ok(run) => run,

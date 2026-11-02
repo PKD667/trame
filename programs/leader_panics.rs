@@ -29,7 +29,8 @@ fn waiter() -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Waiter {});
+    let w = t.worker();
+    t.set(&w, move || Waiter {});
     t.route::<Never>(LEADER, w.id(), 1);
     let _run = match t.launch() {
         Ok(run) => run,

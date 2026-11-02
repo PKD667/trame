@@ -19,7 +19,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::any::{Any, TypeId};
 use core::cell::UnsafeCell;
-use core::mem::ManuallyDrop;
+use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 
@@ -63,7 +63,9 @@ pub unsafe trait State: Send + Sync + Sized + 'static {
 /// The state of one worker and, once a step failed, its error. Shared by the leader's `Worker<S>`
 /// handle and the backend.
 pub(crate) struct Core<S: State> {
-    state: UnsafeCell<ManuallyDrop<S>>,
+    /// Uninitialised until the backend runs the leader's builder (`Topology::set`) at launch.
+    state: UnsafeCell<MaybeUninit<S>>,
+    filled: AtomicBool,
     taken: AtomicBool,
     error: Mutex<Option<S::Error>>,
     /// Debug builds: the fields held by running steps, kept here apart from any scheduler, so S1 is
@@ -80,9 +82,11 @@ unsafe impl<S: State> Sync for Core<S> {}
 unsafe impl<S: State> Send for Core<S> {}
 
 impl<S: State> Core<S> {
-    pub(crate) fn new(state: S) -> Self {
+    /// A worker whose state is not built yet.
+    pub(crate) fn empty() -> Self {
         Core {
-            state: UnsafeCell::new(ManuallyDrop::new(state)),
+            state: UnsafeCell::new(MaybeUninit::uninit()),
+            filled: AtomicBool::new(false),
             taken: AtomicBool::new(false),
             error: Mutex::new(None),
             #[cfg(debug_assertions)]
@@ -91,9 +95,18 @@ impl<S: State> Core<S> {
     }
 
     fn ptr(&self) -> *mut S {
+        assert!(self.filled.load(Ordering::Acquire), "trame: the state was never built");
         assert!(!self.taken.load(Ordering::Acquire), "trame: the state was already taken");
-        // ManuallyDrop<S> is repr(transparent) over S.
+        // MaybeUninit<S> is repr(transparent) over S, and it is initialised (`filled`).
         self.state.get().cast::<S>()
+    }
+
+    /// Put the built state in place. Once: the backend runs each builder once, before any step.
+    pub(crate) fn fill(&self, s: S) {
+        assert!(!self.filled.load(Ordering::Acquire), "trame: a state was built twice");
+        // SAFETY: not filled yet, and no step runs before the launch has built every state.
+        unsafe { (*self.state.get()).write(s) };
+        self.filled.store(true, Ordering::Release);
     }
 
     /// The leader's edit: `f` gets the whole state.
@@ -151,9 +164,9 @@ impl<S: State> Core<S> {
 
 impl<S: State> Drop for Core<S> {
     fn drop(&mut self) {
-        if !*self.taken.get_mut() {
-            // SAFETY: not taken, and `&mut self` is the only access.
-            unsafe { ManuallyDrop::drop(self.state.get_mut()) }
+        if *self.filled.get_mut() && !*self.taken.get_mut() {
+            // SAFETY: filled and not taken, and `&mut self` is the only access.
+            unsafe { self.state.get_mut().assume_init_drop() }
         }
     }
 }

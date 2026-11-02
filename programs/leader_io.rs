@@ -90,8 +90,12 @@ fn echo1(got: &mut u32, pending: &mut Option<u32>) -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let a = t.worker(Echo0 { got: 0, pending: None }).id();
-    let b = t.worker(Echo1 { got: 0, pending: None }).id();
+    let a_worker = t.worker();
+    t.set(&a_worker, || Echo0 { got: 0, pending: None });
+    let a = a_worker.id();
+    let b_worker = t.worker();
+    t.set(&b_worker, || Echo1 { got: 0, pending: None });
+    let b = b_worker.id();
     t.route::<Cmd>(LEADER, a, 4);
     t.route::<Cmd>(LEADER, b, 4);
     t.route::<Reply0>(a, LEADER, 4);

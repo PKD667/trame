@@ -95,9 +95,11 @@ fn send_when_room<M: trame::Message>(run: &trame::Run, to: trame::WorkerId, m: M
 
 fn main() {
     let mut t = Topology::new();
-    let ids = t.ids(2);
-    let rx_id = t.worker(Rx { phase: Phase::Take }).id();
-    let tx_id = t.worker(Tx { to: ids[0] }).id();
+    let rx = t.worker();
+    let tx = t.worker();
+    let (rx_id, tx_id) = (rx.id(), tx.id());
+    t.set(&rx, || Rx { phase: Phase::Take });
+    t.set(&tx, move || Tx { to: rx_id });
     t.route::<Item>(LEADER, rx_id, 4);
     t.route::<Item>(tx_id, rx_id, 1);
     t.route::<Ack>(LEADER, rx_id, 1);

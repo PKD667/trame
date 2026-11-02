@@ -25,7 +25,8 @@ fn fails() -> Result<Status, Boom> {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Pair {});
+    let w = t.worker();
+    t.set(&w, move || Pair {});
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

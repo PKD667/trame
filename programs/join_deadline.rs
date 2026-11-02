@@ -26,7 +26,8 @@ fn sleeper(deadline: &mut Option<Reading>) -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    t.worker(Sleeper { deadline: None });
+    let w = t.worker();
+    t.set(&w, || Sleeper { deadline: None });
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

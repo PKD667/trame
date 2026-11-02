@@ -50,7 +50,9 @@ fn picky(calls: &mut u32, said_ready: &mut bool) -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let w = t.worker(Picky { calls: 0, said_ready: false }).id();
+    let w_worker = t.worker();
+    t.set(&w_worker, || Picky { calls: 0, said_ready: false });
+    let w = w_worker.id();
     t.route::<Ready>(w, LEADER, 2);
     t.route::<Calls>(w, LEADER, 2);
     t.route::<Noise>(LEADER, w, 2);

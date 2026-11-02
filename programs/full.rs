@@ -102,9 +102,11 @@ fn consumer(seen: &mut u32, pending: &mut Option<u32>, start: &mut Option<Readin
 
 fn main() {
     let mut t = Topology::new();
-    let ids = t.ids(2);
-    let a = t.worker(Source { open: false, next: 0, to: ids[1] });
-    let b = t.worker(Sink { seen: 0, pending: None, start: None });
+    let a = t.worker();
+    let b = t.worker();
+    let to = b.id();
+    t.set(&a, move || Source { open: false, next: 0, to });
+    t.set(&b, || Sink { seen: 0, pending: None, start: None });
     t.route::<Go>(LEADER, a.id(), 1);
     t.route::<Job>(a.id(), b.id(), 2);
     t.route::<Ev>(b.id(), LEADER, 8);

@@ -20,8 +20,10 @@ fn idle() -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let a = t.worker(Idle {});
-    let b = t.worker(Idle {});
+    let a = t.worker();
+    t.set(&a, move || Idle {});
+    let b = t.worker();
+    t.set(&b, move || Idle {});
     t.route::<Dup>(a.id(), b.id(), 1);
     t.route::<Dup>(a.id(), b.id(), 1);
     match t.launch() {

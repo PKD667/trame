@@ -79,9 +79,11 @@ fn drain(token: &mut bool, pending: &mut Option<u32>) -> Status {
 
 fn main() {
     let mut t = Topology::new();
-    let ids = t.ids(2);
-    let a = t.worker(Sender { to: ids[1] });
-    let b = t.worker(Drain { token: false, pending: None });
+    let a = t.worker();
+    let b = t.worker();
+    let to = b.id();
+    t.set(&a, move || Sender { to });
+    t.set(&b, || Drain { token: false, pending: None });
     t.lossy::<Lossy>(a.id(), b.id(), 4);
     t.route::<Done>(a.id(), b.id(), 1);
     t.route::<Ev>(b.id(), LEADER, 8);

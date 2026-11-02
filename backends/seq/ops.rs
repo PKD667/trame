@@ -122,7 +122,8 @@ fn worker_main(shared: Arc<Shared>, me: usize, slot: Arc<Slot>) {
 impl Backend for Selected {
     type Run = Run;
 
-    fn launch(plan: Plan) -> Result<Run, Refused> {
+    fn launch(mut plan: Plan) -> Result<Run, Refused> {
+        crate::launch::build_all(&mut plan);
         let n = plan.workers.len();
         let routes = Routes::new(&plan.routes)?;
         let limit = limit::setting().map_err(|reason| Refused::Backend { reason })?;
