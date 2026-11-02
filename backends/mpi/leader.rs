@@ -13,7 +13,9 @@ use crate::io::Full;
 use crate::run::Outcome;
 use crate::topology::WorkerId;
 
-use super::layout::{OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
+use super::layout::{K_EDIT, K_HELD, K_OUTCOME, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
+use crate::backend::Target;
+use std::sync::atomic::Ordering::SeqCst;
 use super::plan::{self, Entry, rank_of};
 use super::state::{finalize, local};
 use super::types::{Answer, Received};
@@ -90,6 +92,68 @@ pub(super) fn recv(run: &Leader, ty: TypeId, out: &mut [u8]) -> bool {
 pub(super) fn stop(run: &Leader) {
     run.get().fail_if_aborted();
     run.get().stop()
+}
+
+/// The workers on the leader's node: their states and the pool are in its segment (segment.rs).
+pub(super) fn local_workers(run: &Leader) -> Vec<u32> {
+    let t = run.get();
+    let n = t.nodes();
+    (0..t.lay().workers).filter(|&w| n.node_of[w as usize] == n.me).collect()
+}
+
+/// A leader edit (CONTRACT.md, S4, P2), by the handshake of layout.rs: ask each worker concerned to
+/// hold the fields (EDIT) and wake it; wait until each holds them (HELD) or has a result; run `f` in
+/// this process, on the segment; withdraw the request and wait until each gave them back or has a
+/// result. A worker edit answers false, without running `f`, when the worker has a result before it
+/// holds. Panics for a worker on another node, or a pool over several nodes: their segment has no
+/// leader in it.
+pub(super) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
+    let t = run.get();
+    t.fail_if_aborted();
+    let here = local_workers(run);
+    let (ws, fields): (Vec<u32>, u64) = match target {
+        Target::Worker(w) => {
+            let w = w as u32;
+            assert!(
+                here.contains(&w),
+                "trame: Run::edit of worker {w}, on another node: its state is in that node's segment, which has no leader"
+            );
+            (std::vec![w], crate::sched::STATE)
+        }
+        Target::Pool => {
+            assert!(t.nodes().count == 1, "trame: a pool edit over several nodes needs a leader on each node");
+            (here, crate::sched::POOL)
+        }
+    };
+    let word = |k: usize, w: u32| t.win().word(t.lay().per_worker(k, w));
+    let ended = |w: u32| word(K_OUTCOME, w).load(SeqCst) != 0;
+    let wait_all = |done: &dyn Fn(u32) -> bool| loop {
+        let e = t.leader_epoch();
+        if ws.iter().all(|&w| done(w) || ended(w)) {
+            break;
+        }
+        t.fail_if_aborted();
+        t.leader_wait(e);
+    };
+    for &w in &ws {
+        word(K_EDIT, w).store(fields, SeqCst);
+        t.bump(w);
+    }
+    wait_all(&|w| word(K_HELD, w).load(SeqCst) == 1);
+    let run_it = match target {
+        Target::Worker(w) => !ended(w as u32),
+        Target::Pool => true,
+    };
+    if run_it {
+        f();
+    }
+    for &w in &ws {
+        word(K_EDIT, w).store(0, SeqCst);
+        t.bump(w);
+    }
+    wait_all(&|w| word(K_HELD, w).load(SeqCst) == 0);
+    t.fail_if_aborted();
+    run_it
 }
 
 /// Block until the leader's epoch differs from `seen`, and answer the new value (epoch.rs).

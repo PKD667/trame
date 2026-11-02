@@ -1,9 +1,11 @@
 // The Backend trait on the MPI transport (spec.md 6). Rank i < W is worker i; rank W is the leader.
-// Every rank runs the host's code up to `launch`, so every rank builds every state; a worker rank keeps
-// its own and runs it here with several agents, and never returns to the host: it records its outcome
-// in the window and ends the process. The leader rank returns the Run, and the host talks to the
-// workers through it. The leader does not hold the workers' states, so Run::edit, pools and
-// Worker::take are not built here yet (they need the state shipped between ranks).
+// Every rank runs the host's code up to `launch`. Each node has a segment (segment.rs), its workers'
+// domain: the leader builds the states of the workers on its node, and the pool, in its node's
+// segment; the host rank of another node builds that node's. Every other rank adopts the addresses
+// from the segment's table. A worker rank runs its state in place with several agents, and never
+// returns to the host: it records its outcome in the window and ends the process. The leader rank
+// returns the Run; `Run::edit`, `Worker::take` and `Worker::error` act on the segment, for the workers
+// on the leader's node.
 
 extern crate std;
 
@@ -13,7 +15,7 @@ use std::process;
 use std::sync::Arc;
 use std::vec::Vec;
 
-use crate::backend::{Backend, Target};
+use crate::backend::{Backend, PoolRef, Target};
 use crate::sched::{Answer, Event, Sched};
 use crate::worker::{Erased, Slot, agent};
 use crate::io::Full;
@@ -28,7 +30,7 @@ use super::open::{agree, open};
 use super::plan::{encode_plan, entries, inbox, topology};
 use super::state::{finalize, local, refused, world};
 use super::types::Role;
-use super::{Selected, Transport, worker};
+use super::{Selected, Transport, segment, worker};
 use crate::run::panic_message;
 
 /// Run this worker: `agents` agents of the reference scheduler (worker.rs), the main thread one of
@@ -36,13 +38,14 @@ use crate::run::panic_message;
 /// agent of the run so it unwinds; an abort that reached this worker first records only its own result.
 /// Otherwise the worker's answer is its result. The result is recorded before anything waits on a
 /// peer: then MPI_Finalize (state.rs), which waits for every rank, and then the process ends.
-fn run_worker(obj: Arc<dyn Erased>, agents: usize) -> ! {
+fn run_worker(obj: Arc<dyn Erased>, agents: usize, pool: Option<PoolRef>, trace: bool) -> ! {
     worker::fast_init();
-    let slot = Slot::new(obj, false);
+    let slot = Slot::new(obj, trace);
+    let pool = pool.as_deref().map(|p| p.any());
     let start = std::time::Instant::now();
     let clock = || u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);
     let one = || {
-        let r = catch_unwind(AssertUnwindSafe(|| agent(&slot, &clock, None)));
+        let r = catch_unwind(AssertUnwindSafe(|| agent(&slot, &clock, pool)));
         if let Err(p) = &r
             && !p.is::<worker::Aborted>()
         {
@@ -64,9 +67,54 @@ fn run_worker(obj: Arc<dyn Erased>, agents: usize) -> ! {
         Some(Answer::Failed(_)) => OUT_FAILED,
         None => OUT_ABORT,
     };
+    // The trace goes to the segment before the result, so the leader finds it once it sees the result
+    // (CONTRACT.md, S9).
+    if let Some(tr) = slot.trace() {
+        let at = crate::domain::arena(|| std::boxed::Box::into_raw(std::boxed::Box::new(tr)));
+        segment::trace_slot(with_endpoint(|t| t.me())).store(at as u64, std::sync::atomic::Ordering::Release);
+    }
     with_endpoint(|t| t.finish(word));
     finalize();
     process::exit(0)
+}
+
+/// Put this node's states and pool in its segment (CONTRACT.md, L3, M1). The node's builder is the
+/// leader on the leader's node, and the host rank elsewhere: it runs the builders of the workers on
+/// its node and the pool's, in arena mode, and writes their addresses to the segment's table. After
+/// a world barrier, every other rank of the node adopts them. Builders of workers on other nodes are
+/// dropped unrun. Collective over the world.
+fn build_or_adopt(plan: &mut Plan, t: &Transport) {
+    use std::sync::atomic::Ordering::{Acquire, Release};
+    let nodes = t.nodes();
+    let me = t.me();
+    let leader = t.lay().workers;
+    let here = |rank: u32| nodes.node_of[rank as usize] == nodes.me;
+    let builder = if here(leader) { me == leader } else { i32::try_from(me).is_ok_and(|m| nodes.relay_rank[nodes.me as usize] == m) };
+    let mine: Vec<usize> = (0..plan.workers.len()).filter(|&w| here(w as u32)).collect();
+    if builder {
+        for &w in &mine {
+            let b = plan.builders[w].take().expect("trame: the launch checked that every worker was set");
+            crate::domain::arena(b);
+            segment::state_slot(w as u32).store(plan.workers[w].addr() as u64, Release);
+        }
+        if let Some(b) = plan.pool_builder.take() {
+            crate::domain::arena(b);
+            let pool = plan.pool.as_ref().expect("trame: a pool builder belongs to a declared pool");
+            segment::pool_slot().store(pool.addr() as u64, Release);
+        }
+    }
+    mpi::traits::CommunicatorCollectives::barrier(world());
+    if !builder {
+        for &w in &mine {
+            // SAFETY: the node's builder filled a Core of the same type at this address, in the
+            // segment this rank maps at the same address (segment.rs; CONTRACT.md, M1).
+            unsafe { plan.workers[w].adopt(segment::state_slot(w as u32).load(Acquire) as usize) };
+        }
+        if let Some(pool) = &plan.pool {
+            // SAFETY: as above, for the pool.
+            unsafe { pool.adopt(segment::pool_slot().load(Acquire) as usize) };
+        }
+    }
 }
 
 /// Run `f` on this rank's endpoint, under the rank's transport lock.
@@ -92,11 +140,12 @@ impl Backend for Selected {
     }
 
     fn launch(mut plan: Plan) -> Result<Leader, Refused> {
-        // Every rank builds every state in its own heap, for now: a worker rank uses its own copy.
-        // (The machine segment, where the leader builds and workers map, replaces this: M1.)
-        crate::launch::build_all(&mut plan);
         let topo = topology(&plan)?;
         let role = open(world(), &topo).map_err(refused)?;
+        let t = match &role {
+            Role::Leader(t) | Role::Worker(t) => t,
+        };
+        build_or_adopt(&mut plan, t);
         let table = entries(&plan);
         let l = local();
         l.entries = table;
@@ -111,7 +160,7 @@ impl Backend for Selected {
                 let obj = plan.workers[me as usize].clone();
                 let agents = agents_for(&*obj, &t, plan.agents);
                 l.endpoint = Some(t);
-                run_worker(obj, agents)
+                run_worker(obj, agents, plan.pool.clone(), plan.trace)
             }
         }
     }
@@ -168,8 +217,8 @@ impl Backend for Selected {
         leader::recv(run, ty, out)
     }
 
-    fn leader_edit(_run: &Leader, _target: Target, _f: &mut dyn FnMut()) -> bool {
-        panic!("trame: Run::edit needs the state shipped between ranks, not built on mpi yet (docs/worker-model.md, MPI)")
+    fn leader_edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
+        leader::edit(run, target, f)
     }
 
     fn leader_stop(run: &Leader) {
@@ -177,7 +226,39 @@ impl Backend for Selected {
     }
 
     fn leader_join_traced(run: Leader, workers: usize) -> (Vec<Outcome>, Vec<Option<(Sched, Vec<Event>)>>) {
-        (leader::join(run), (0..workers).map(|_| None).collect())
+        let here = leader::local_workers(&run);
+        let out = leader::join(run);
+        let traces = (0..workers as u32)
+            .map(|w| {
+                let at = segment::trace_slot(w).load(std::sync::atomic::Ordering::Acquire);
+                (here.contains(&w) && at != 0).then(|| {
+                    // SAFETY: the worker wrote a boxed trace there before its result, and only this
+                    // rank reads it, once (CONTRACT.md, S9).
+                    *unsafe { std::boxed::Box::from_raw(at as *mut (Sched, Vec<Event>)) }
+                })
+            })
+            .collect();
+        (out, traces)
+    }
+
+    fn worker_edit_request() -> u64 {
+        worker::edit_request()
+    }
+
+    fn worker_edit_held(held: bool) {
+        worker::edit_held(held)
+    }
+
+    fn domain_alloc(layout: core::alloc::Layout) -> Option<*mut u8> {
+        segment::mapped().then(|| segment::alloc(layout))
+    }
+
+    fn domain_contains(p: *mut u8) -> bool {
+        segment::contains(p)
+    }
+
+    unsafe fn domain_dealloc(p: *mut u8, layout: core::alloc::Layout) {
+        segment::free(p, layout)
     }
 
     fn leader_wait(run: &Leader, seen: u64) -> u64 {

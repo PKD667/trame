@@ -98,6 +98,12 @@ impl Transport {
         }
     }
 
+    /// The leader's epoch now: read before checking a condition the leader waits for, then pass it
+    /// to `leader_wait`, so an act after the read is not missed.
+    pub(crate) fn leader_epoch(&self) -> u64 {
+        u64::from(self.win().word32(LEADER_EPOCH).load(SeqCst))
+    }
+
     fn sleep_on(&self, e: usize, s: usize, seen: u32, until: Option<u64>) {
         loop {
             if self.win().word32(e).load(SeqCst) != seen {
