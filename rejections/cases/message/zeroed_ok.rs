@@ -8,8 +8,7 @@ struct Msg {
 }
 
 fn main() {
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let m = <Msg as trame::Message>::zeroed();
         let _ = trame::send(trame::LEADER, m);
     });

@@ -4,8 +4,7 @@ fn apply(f: &dyn Fn(u32) -> u32, x: u32) -> u32 {
 }
 
 fn main() {
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let _ = apply(&|x| x + 1, 3);
     });
 }

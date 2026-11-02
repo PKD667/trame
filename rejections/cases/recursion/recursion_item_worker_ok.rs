@@ -6,8 +6,7 @@ fn down(n: u32) -> u32 {
 }
 
 fn main() {
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let _ = down(3);
     });
 }

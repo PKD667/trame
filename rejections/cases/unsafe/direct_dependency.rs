@@ -18,8 +18,7 @@
 //@error-in-other-file: [allow-list] worker
 //@error-in-other-file: [unsafe] worker
 fn main() {
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let x = 1_u32;
         let _ = trame::__bytemuck::bytes_of(&x);
     });

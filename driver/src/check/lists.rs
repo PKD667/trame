@@ -22,8 +22,6 @@ pub enum Effect {
     Recv,
     Now,
     Parallel,
-    Concurrent,
-    Barrier,
 }
 
 impl Effect {
@@ -33,8 +31,6 @@ impl Effect {
             "recv" => Effect::Recv,
             "now" => Effect::Now,
             "parallel" => Effect::Parallel,
-            "concurrent" => Effect::Concurrent,
-            "barrier" => Effect::Barrier,
             _ => return None,
         })
     }

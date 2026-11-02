@@ -20,20 +20,18 @@ struct Queue {
     n: u32,
 }
 
-struct P;
-
-#[trame::process(receives = Msg)]
-impl P {
-    fn step(&mut self, q: &mut Queue) -> trame::Status {
-        let items = [Work { index: 0, by: 1 }];
-        let mut slots = [0_u32];
-        trame::parallel!(bump, &(), &items, &mut slots);
-        q.n = slots[0];
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Queue,
 }
 
-fn main() {
-    let mut q = Queue { n: 0 };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = Msg)]
+fn step(q: &mut Queue) -> trame::Status {
+    let items = [Work { index: 0, by: 1 }];
+    let mut slots = [0_u32];
+    trame::parallel!(bump, &(), &items, &mut slots);
+    q.n = slots[0];
+    trame::Status::Done
 }
+
+fn main() {}

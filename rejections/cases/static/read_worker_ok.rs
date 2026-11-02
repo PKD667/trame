@@ -4,8 +4,7 @@
 const COUNT: u32 = 7;
 
 fn main() {
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let _ = COUNT + 1;
     });
 }

@@ -3,10 +3,12 @@
 //! Roots are the monomorphized instances of the markers in trame's `check.rs`
 //! (`trame::__check::{item, step, worker}`) that this crate codegens. Each root and everything
 //! reachable from it is checked at the strictest level that reaches it. Facts about a body are
-//! gathered by `scan`; `judge` decides what each fact means at a level.
+//! gathered by `scan`; `judge` decides what each fact means at a level. The type markers
+//! (`trame::__check::{state, pool}`) are read by `state`: the types a state holds.
 
 mod lists;
 mod scan;
+mod state;
 mod trust;
 
 use std::collections::VecDeque;
@@ -15,7 +17,7 @@ use std::sync::OnceLock;
 
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mono::MonoItem;
-use rustc_middle::ty::{self, GenericArg, Instance, InstanceKind, TyCtxt, TypingEnv};
+use rustc_middle::ty::{self, Instance, InstanceKind, TyCtxt, TypingEnv};
 use rustc_span::Span;
 
 use lists::{Effect, Lists, Verdict};
@@ -101,15 +103,24 @@ pub fn run(tcx: TyCtxt<'_>) -> usize {
         }
     }
     let mut roots: Vec<(Level, Instance<'_>, Instance<'_>)> = Vec::new();
+    let mut types: Vec<(state::Held, Instance<'_>)> = Vec::new();
     for marker in instances {
         let InstanceKind::Item(def) = marker.def else { continue };
         let level = match canon(tcx, def).as_str() {
             "trame::__check::item" => Level::Item,
             "trame::__check::step" => Level::Step,
             "trame::__check::worker" => Level::Worker,
+            "trame::__check::state" => {
+                types.push((state::Held::State, marker));
+                continue;
+            }
+            "trame::__check::pool" => {
+                types.push((state::Held::Pool, marker));
+                continue;
+            }
             _ => continue,
         };
-        match root_target(tcx, level, marker) {
+        match root_target(tcx, marker) {
             Ok(target) => roots.push((level, marker, target)),
             Err(msg) => {
                 tcx.dcx().struct_span_err(tcx.def_span(def), format!("[root] {msg}")).emit();
@@ -149,6 +160,11 @@ pub fn run(tcx: TyCtxt<'_>) -> usize {
     }
     if debug {
         eprintln!("trame-driver: {} functions checked", order.len());
+    }
+
+    // State memory: what a state and its pool hold (state.rs).
+    for (held, marker) in &types {
+        errors += state::check(tcx, *held, marker.args.type_at(0));
     }
 
     // Trust: a body reached only by trusted edges is read for effects, edges and allocations (trust.rs).
@@ -233,9 +249,9 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> O
     let lvl = level.name();
     if trusted {
         match &site.what {
-            What::Core { key, alloc: true, .. } => {
-                return (level == Level::Item).then(|| {
-                    ("allocation", format!("{subj} reaches {key} through trusted code, which allocates: items neither allocate nor call alloc (spec.md, Requirement (Item))"))
+            What::Core { key, names, alloc: true } => {
+                return allocates(lists, level, names).then(|| {
+                    ("allocation", format!("{subj} reaches {key} through trusted code, which allocates: {}", no_alloc(level)))
                 });
             }
             What::Effect(..) | What::Unbounded(_) => {}
@@ -259,10 +275,15 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> O
             }
         }
         What::Core { key, names, alloc } => match lists.verdict(level, names) {
+            // A call into alloc that only a trait path allows (`Extend::extend`, `Clone::clone`) may
+            // grow or make a buffer: it is allowed only where the list names the alloc type's own key.
+            Verdict::Allow if *alloc && allocates(lists, level, names) => {
+                Some(("allocation", format!("{subj} calls {key}: {}", no_alloc(level))))
+            }
             Verdict::Allow => None,
             Verdict::Deny(entry) => Some(("deny", format!("{subj} calls {key}: denied by `{entry}` (driver/lists/deny.txt, {}.txt) ({})", level.list_file(), deny_clause(lists, level, &entry)))),
-            Verdict::Refuse if *alloc && level == Level::Item => {
-                Some(("allocation", format!("{subj} calls {key}: items neither allocate nor call alloc (spec.md, Requirement (Item))")))
+            Verdict::Refuse if *alloc && level != Level::Worker => {
+                Some(("allocation", format!("{subj} calls {key}: {}", no_alloc(level))))
             }
             Verdict::Refuse => Some((
                 "allow-list",
@@ -286,6 +307,21 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> O
     }
 }
 
+/// Whether a call into alloc is refused as an allocation at `level`: below Worker, unless the list names
+/// the call by its alloc key (`alloc::vec::Vec::len`), which is how a non-allocating alloc call is allowed.
+/// The key is `names[0]` (scan.rs, `names_of`); a trait path in `names[1]` alone does not allow it.
+fn allocates(lists: &Lists, level: Level, names: &[String]) -> bool {
+    level != Level::Worker && !matches!(lists.verdict(level, &names[..1]), Verdict::Allow)
+}
+
+/// Why a step or an item may not allocate, for the message.
+fn no_alloc(level: Level) -> &'static str {
+    match level {
+        Level::Item => "items neither allocate nor call alloc (spec.md, Requirement (Item))",
+        _ => "steps neither allocate nor free; only a builder or an edit does (backend.rs M4, D5)",
+    }
+}
+
 /// The clause of spec.md that a deny entry enforces: deny.txt's entries are the All-levels rules (no UnsafeCell,
 /// no locks, no raw pointers); a per-level deny is an infinite source, which is a loop the counted-loop rule
 /// does not bound (the level files say so).
@@ -298,40 +334,17 @@ fn deny_clause(lists: &Lists, level: Level, entry: &str) -> String {
     }
 }
 
-/// The instance a marker's argument names: the closure or fn item, or for a step the process's
-/// inherent `step` method.
-fn root_target<'tcx>(tcx: TyCtxt<'tcx>, level: Level, marker: Instance<'tcx>) -> Result<Instance<'tcx>, String> {
+/// The instance a marker's argument names: the closure or fn item it is called with.
+fn root_target<'tcx>(tcx: TyCtxt<'tcx>, marker: Instance<'tcx>) -> Result<Instance<'tcx>, String> {
     let arg = marker.args.type_at(0);
     let name = canon(tcx, marker.def_id());
-    match (level, arg.kind()) {
-        (Level::Item | Level::Worker, ty::Closure(def, args)) => Ok(Instance::new_raw(*def, args)),
-        (Level::Item | Level::Worker, ty::FnDef(def, args)) => {
-            match Instance::try_resolve(tcx, TypingEnv::fully_monomorphized(), *def, args) {
-                Ok(Some(inst)) => Ok(inst),
-                _ => Err(format!("{name}: cannot resolve the function {}", canon(tcx, *def))),
-            }
-        }
-        (Level::Step, ty::Adt(adt, pargs)) => {
-            for imp in tcx.inherent_impls(adt.did()) {
-                let Some(step) =
-                    tcx.associated_items(*imp).in_definition_order().find(|a| a.name().as_str() == "step" && a.is_fn())
-                else {
-                    continue;
-                };
-                let imp_self = tcx.type_of(*imp).skip_binder();
-                let ty::Adt(_, imp_args) = imp_self.kind() else { continue };
-                // `impl<T..> P<T..>`: the impl's parameters are the ADT's arguments in order.
-                let in_order = imp_args.iter().enumerate().all(|(i, a)| matches!(a.kind(), rustc_middle::ty::GenericArgKind::Type(t) if matches!(t.kind(), ty::Param(p) if p.index as usize == i))
-                    || matches!(a.kind(), rustc_middle::ty::GenericArgKind::Lifetime(_)));
-                if !in_order || tcx.generics_of(step.def_id).count() != pargs.len() {
-                    return Err(format!("{name}: cannot map the arguments of `{}::step`", canon(tcx, adt.did())));
-                }
-                let args: Vec<GenericArg<'tcx>> = pargs.iter().collect();
-                return Ok(Instance::new_raw(step.def_id, tcx.mk_args(&args)));
-            }
-            Err(format!("{name}: `{}` has no inherent `step` method", canon(tcx, adt.did())))
-        }
-        _ => Err(format!("{name}: expected a closure, a fn item, or a process type, found `{arg}`")),
+    match arg.kind() {
+        ty::Closure(def, args) => Ok(Instance::new_raw(*def, args)),
+        ty::FnDef(def, args) => match Instance::try_resolve(tcx, TypingEnv::fully_monomorphized(), *def, args) {
+            Ok(Some(inst)) => Ok(inst),
+            _ => Err(format!("{name}: cannot resolve the function {}", canon(tcx, *def))),
+        },
+        _ => Err(format!("{name}: expected a closure or a fn item, found `{arg}`")),
     }
 }
 

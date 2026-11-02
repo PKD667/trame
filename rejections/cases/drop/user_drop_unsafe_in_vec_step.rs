@@ -18,17 +18,16 @@ struct Q {
     v: Vec<X>,
 }
 
-struct P;
-
-#[trame::process(receives = M)]
-impl P {
-    fn step(&mut self, q: &mut Q) -> trame::Status {
-        q.v = Vec::new();
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Q,
 }
 
-fn main() {
-    let mut q = Q { v: vec![X(1)] };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = M)]
+fn step(q: &mut Q) -> trame::Status {
+    q.v = Vec::new(); //~ ERROR: [allocation] step
+    //~^ ERROR: [allocation] step
+    trame::Status::Done
 }
+
+fn main() {}

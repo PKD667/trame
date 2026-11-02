@@ -20,18 +20,16 @@ struct Q {
     a: [X; 2],
 }
 
-struct P;
-
-#[trame::process(receives = M)]
-impl P {
-    fn step(&mut self, q: &mut Q) -> trame::Status {
-        let b = q.a.clone();
-        q.a = b;
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Q,
 }
 
-fn main() {
-    let mut q = Q { a: [X(1), X(2)] };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = M)]
+fn step(q: &mut Q) -> trame::Status {
+    let b = q.a.clone();
+    q.a = b;
+    trame::Status::Done
 }
+
+fn main() {}

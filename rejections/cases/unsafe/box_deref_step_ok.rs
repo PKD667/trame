@@ -1,5 +1,6 @@
 //@check-pass
-// spec: Requirement (All levels) forbids unsafe code, not Box. Box<u32> is an owning pointer; `*b` is a safe read.
+// spec: Requirement (All levels) forbids unsafe code, not Box. Box<u32> is an owning pointer; `*b` is a safe read
+// and write through it, and does not allocate. The Box is allocated by the builder.
 #[trame::message]
 struct M {
     n: u32,
@@ -9,18 +10,16 @@ struct Q {
     hand: Box<u32>,
 }
 
-struct P;
-
-#[trame::process(receives = M)]
-impl P {
-    fn step(&mut self, q: &mut Q) -> trame::Status {
-        let x = *q.hand + 1;
-        q.hand = Box::new(x);
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Q,
 }
 
-fn main() {
-    let mut q = Q { hand: Box::new(1) };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = M)]
+fn step(q: &mut Q) -> trame::Status {
+    let x = *q.hand + 1;
+    *q.hand = x;
+    trame::Status::Done
 }
+
+fn main() {}

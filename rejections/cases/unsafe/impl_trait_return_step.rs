@@ -14,17 +14,15 @@ struct Q {
     n: u32,
 }
 
-struct P;
-
-#[trame::process(receives = M)]
-impl P {
-    fn step(&mut self, q: &mut Q) -> trame::Status {
-        q.n = make(1)(q.n);
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Q,
 }
 
-fn main() {
-    let mut q = Q { n: 1 };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = M)]
+fn step(q: &mut Q) -> trame::Status {
+    q.n = make(1)(q.n);
+    trame::Status::Done
 }
+
+fn main() {}

@@ -10,6 +10,10 @@
 //! `state` keeps the struct, gives each field a bit (`S::__trame_f_<field>`), and implements
 //! `trame::__rt::State` by dispatching on the step index with a `match`. No trait object and no
 //! function pointer reaches a step.
+//!
+//! Both also emit the markers the driver reads (check.rs): `step` a hidden function of its struct that
+//! calls `__check::step(&f)`, and `state` one that calls `__check::state::<S>()` and, for `pool = P`,
+//! `__check::pool::<P>()`. They are non-generic and never called; a checked build collects them.
 
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
@@ -81,8 +85,10 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
     let all: Vec<&Path> = args.steps.iter().chain(args.stop.iter()).collect();
     let idx: Vec<usize> = (0..all.len()).collect();
     let error = args.error.map(|e| quote! { #e }).unwrap_or(quote! { ::core::convert::Infallible });
-    let pool = args.pool.map(|p| quote! { #p }).unwrap_or(quote! { () });
+    let pool_ty = args.pool;
+    let pool = pool_ty.as_ref().map(|p| quote! { #p }).unwrap_or(quote! { () });
     let has_stop = args.stop.is_some();
+    let pool_marker = pool_ty.map(|p| quote! { ::trame::__check::pool::<#p>(); });
     Ok(quote! {
         #s
         #[cfg(not(trame_checked))]
@@ -90,6 +96,12 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
         #[allow(non_upper_case_globals)]
         impl #name {
             #(#consts)*
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            pub fn __trame_check() {
+                ::trame::__check::state::<#name>();
+                #pool_marker
+            }
         }
         // SAFETY: each step's StepInfo is generated from its own parameters by #[trame::step], and its
         // __trame_run touches exactly those fields.
@@ -257,6 +269,10 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
                 tags
             }
             #run
+            #[allow(dead_code)]
+            pub fn __trame_check() {
+                ::trame::__check::step(&#name);
+            }
         }
         const _: () = ::core::assert!(#n_recv <= ::trame::__rt::MAX_OWNED, "#[trame::step] receives more message types than MAX_OWNED (16)");
     })
