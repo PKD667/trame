@@ -6,12 +6,22 @@ the code has it.
 
 ## Models (`mpi/`)
 
-- **Epoch** (`Epoch.tla`, `MCEpoch.cfg`). The wait protocol of one worker or the leader: `backends/mpi/epoch.rs` 40-119 and
-  `futex.rs` 17-27. Properties: `NoLostWakeup`, `Live` (a true condition is eventually seen), under weak fairness.
-  Bounds: epoch word modulo 16, 3 bumps. Holds, 109 states.
-- **Epoch wrap** (`MCEpochWrap.cfg`). Same model at modulus 2, 2 bumps. Expected to fail `NoLostWakeup`. The trace
-  is `counterexamples/epoch-wrap.txt`, step by step against the code. A miss needs a multiple of W bumps between
-  the waiter's read and the kernel's compare. Also run at W=3, K=2 (holds) and W=3, K=3 (fails).
+- **Epoch** (`Epoch.tla`, `MCEpoch*.cfg`). The wait protocol of one worker rank or the leader: `backends/mpi/epoch.rs`
+  (`sleep_on`, `bump_word`) and `futex.rs` `wait_for`, `wake`. N sleepers (the k agents of a worker rank, `worker.rs`)
+  share one epoch word and one SLEEP word; one bumper acts K times. SLEEP is a count: `fetch_add` before the futex wait,
+  `fetch_sub` after it, and a bumper wakes when it loads a non-zero count (`COUNTED = TRUE`). `COUNTED = FALSE` is the
+  earlier flag (store 1, store 0). `LOCKED = TRUE` adds `XPORT` (`worker.rs` 32), held from `idle` until `sleep_on`
+  returns, so one agent of a rank sleeps at a time; `LOCKED = FALSE` is the word's protocol alone, which is what
+  `epoch.rs` argues and what k agents see if the lock is ever narrowed. Properties: `NoLostWakeup`, `Live` (every
+  sleeper sees a true condition), under weak fairness; `Announced` (SLEEP is non-zero while any sleeper has added and
+  not subtracted, the fact `bump_word` relies on); `CountExact` (SLEEP equals that number).
+  Configurations, all W = 16, K = 3 bumps: `MCEpoch` N=1, `MCEpoch2` N=2, `MCEpoch3` N=3, `MCEpochXport` N=3 with
+  `XPORT`; all count, all expected to hold.
+- **Flag** (`MCEpochFlag.cfg`, N=2, `COUNTED = FALSE`). Expected to fail `NoLostWakeup`: agent A sleeps; agent B adds
+  itself, and A's wake-up clears the flag while B still sleeps; the next bump loads 0 and does not wake B.
+  `MCEpochFlagAnnounced.cfg` fails `Announced` (the cause, a few steps sooner). `MCEpochFlagXport.cfg` (flag, N=2, with
+  `XPORT`) is expected to hold: the lock alone hid the flag's fault when only one agent sleeps at a time.
+  Trace: `counterexamples/epoch-flag-k2.txt`.
 - **Credit** (`Credit.tla`, `MCCredit.cfg`). One lossless route, capacity 2, 4 frames, from `relay_out.rs` and
   `relay_routes.rs`, with `NODES.md` "A route between nodes". Properties: occupancy at most C, no over-send, FIFO
   order, every frame eventually credited. Holds, 168 states. Also holds at C=1 N=3 and C=3 N=5.
@@ -26,12 +36,12 @@ the code has it.
 
 ## Not modelled
 
-Memory orderings weaker than SeqCst (`epoch.rs` 113 is Relaxed), timeouts of `sleep_on`, the kernel beyond
+Memory orderings weaker than SeqCst, timeouts of `sleep_on`, spurious futex returns, a bumper on the same rank that needs `XPORT` while an agent sleeps holding it, the kernel beyond
 compare-and-sleep, MPI's progress beyond weak fairness, two routes per node (so no scan that sends frames and
 credits of different routes), lossy routes, process exit and `MPI_Finalize`, the leader's normal end.
 
 ## Run
 
 `sh proofs/mpi/run.sh OUTDIR` with `TLC` set to a tlc binary, or `nix build .#checks.x86_64-linux.protocol-mpi`.
-The check runs all six MC configs and writes `outcome.json`, `results.txt` and the logs. Numbers of distinct
+The check runs all the MC configs and writes `outcome.json`, `results.txt` and the logs. Numbers of distinct
 states for failing runs vary between runs (TLC stops at the first violation with 4 workers).

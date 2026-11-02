@@ -28,6 +28,12 @@ while IFS=: read -r name mod expect; do
   fi
 done <<'MODELS'
 Epoch:MCEpoch:No error has been found
+Epoch2:MCEpoch2:No error has been found
+Epoch3:MCEpoch3:No error has been found
+EpochXport:MCEpochXport:No error has been found
+EpochFlag:MCEpochFlag:Invariant NoLostWakeup is violated
+EpochFlagAnnounced:MCEpochFlagAnnounced:Invariant Announced is violated
+EpochFlagXport:MCEpochFlagXport:No error has been found
 EpochWrap:MCEpochWrap:Invariant NoLostWakeup is violated
 Credit:MCCredit:No error has been found
 CreditStale:MCCreditFull:Invariant StaleFull is violated
