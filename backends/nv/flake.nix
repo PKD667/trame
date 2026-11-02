@@ -37,8 +37,8 @@
       expected = ./programs/post_parallel_pod.expected;
       # nixsci's driver.sh: binds the host's libcuda.so.1 to one command (gpu/driver.sh in nixsci).
       driver = (nixsci.lib.gpuProbe pkgs).driver;
-      gpuClosure = nixsci.lib.mkExperiment pkgs {
-        name = "post-parallel-gpu";
+      mkGpu = { name, ptx, expected }: nixsci.lib.mkExperiment pkgs {
+        inherit name;
         program = "${pkgs.python3}/bin/python3";
         args = [ "${./gpu/experiment.py}" ];
         env = {
@@ -51,8 +51,9 @@
         runtime = [ pkgs.coreutils ];
         # a target must declare driver = "nvidia" to take this job (nixsci deploy Backend._admit)
         resources.driver = "nvidia";
-        metadata.post-parallel-gpu = { ptx_sha256 = builtins.hashFile "sha256" ptx; };
+        metadata.${name} = { ptx_sha256 = builtins.hashFile "sha256" ptx; };
       };
+      gpuClosure = mkGpu { name = "post-parallel-gpu"; inherit ptx expected; };
       labLib = nixsci.lib.lab { inherit pkgs; project = self; };
       experiments = {
         post-parallel-gpu = labLib.experiment {
