@@ -23,11 +23,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1793469958,
-        "narHash": "sha256-4J+vPneQSZ+jSuV15rY05PF0Zw1Cty9CDz+hg3RQs0k=",
+        "lastModified": 1793580585,
+        "narHash": "sha256-gHx06+hNgYrSLLlOuPSlwXUhnUE2TfqCygcuftCwkKc=",
         "owner": "PKD667",
         "repo": "nixsci",
-        "rev": "fff797708f5d07be224b78c35665b33432a305b9",
+        "rev": "63e3e7bb6ae788521fee81a404e9ffc0922432f7",
         "type": "github"
       },
       "original": {
