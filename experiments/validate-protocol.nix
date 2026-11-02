@@ -8,7 +8,7 @@ v.check {
   subject = ../proofs/mpi;
   checker = pkgs.tlaplus;
   runtime = [ pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.gnused ];
-  scope = { models = 6; epoch = "W=16 K=3 holds; W=2 K=2 counterexample"; credit = "C=2 N=4 holds; stale Full counterexample"; abort = "3 nodes holds; the early return before the repair violates Live"; tool = "tlaplus 1.7.4, TLC2 Version 2.19"; };
+  scope = { models = 12; epoch = "count N=1,2,3 and with XPORT hold (W=16 K=3); flag N=2 counterexample, holds under XPORT; W=2 K=2 counterexample"; credit = "C=2 N=4 holds; stale Full counterexample"; abort = "3 nodes holds; the early return before the repair violates Live"; tool = "tlaplus 1.7.4, TLC2 Version 2.19"; };
   command = ''
     # run.sh writes outcome.json itself; a model that fails is a verdict, not a build error.
     TLC=${pkgs.tlaplus}/bin/tlc sh ${../proofs/mpi}/run.sh $out || true
