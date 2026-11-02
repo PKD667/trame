@@ -94,7 +94,7 @@ Accepted: `read_step_ok`, `read_worker_ok`.
 
 ## std (12)
 
-Refused: `abort_item` [std], `drop_glue_item` [std], `foreach_step` [std], `foreach_worker` [std], `println_item` [std,unsafe], `println_step` [std,unsafe], `println_worker` [std], `thread_spawn_item` [allocation,std], `thread_spawn_step` [allocation,std], `thread_spawn_worker` [std].
+Refused: `abort_item` [std], `drop_glue_item` [std], `foreach_step` [std], `foreach_worker` [std], `println_item` [std,unsafe], `println_step` [std,unsafe], `println_worker` [std], `thread_spawn_item` [allocation,std], `thread_spawn_step` [std], `thread_spawn_worker` [std].
 
 Accepted: `foreach_worker_ok`, `option_expect_step_ok`.
 
