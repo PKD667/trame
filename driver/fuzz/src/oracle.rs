@@ -227,7 +227,7 @@ mod tests {
     fn strictest_level_wins() {
         // f is reached from a worker and from an item root: judged at item, attributed to the item.
         let p = prog(
-            vec![vec![Stmt::Forb(Forb::Barrier)]],
+            vec![vec![Stmt::Forb(Forb::Send)]],
             vec![(Level::Worker, vec![Stmt::Call(0)]), (Level::Item, vec![Stmt::Call(0)])],
         );
         let e = expect(&p);

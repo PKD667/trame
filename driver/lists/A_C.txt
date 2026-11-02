@@ -107,3 +107,9 @@ alloc::boxed::Box::eq
 alloc::boxed::Box::ne
 alloc::boxed::Box::cmp
 alloc::boxed::Box::partial_cmp
+# An Arc reaches a step only inside trame's own code (the backend's handles): a step cannot make one (Arc::new is
+# refused) and cannot hold one (an Arc in a state is refused, backend.rs M2). Clone and drop of a handle that
+# the backend keeps alive neither allocate nor free.
+alloc::sync::Arc::deref
+alloc::sync::Arc::clone
+alloc::sync::Arc::drop

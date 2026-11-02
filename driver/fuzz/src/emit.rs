@@ -32,12 +32,7 @@ pub fn source(prog: &Prog) -> String {
     }
     for (k, r) in prog.roots.iter().enumerate() {
         let body = list(&r.body, &mut e);
-        match r.level {
-            Level::Step => out.push_str(&format!(
-                "pub struct P{k} {{ pub x: u32 }}\nimpl P{k} {{ pub fn step(&mut self) {{\nlet x = self.x;\n{body}}} }}\n"
-            )),
-            _ => out.push_str(&format!("fn r{k}(x: u32) {{\n{body}}}\n")),
-        }
+        out.push_str(&format!("fn r{k}(x: u32) {{\n{body}}}\n"));
     }
     for item in &e.items {
         out.push_str(item);
@@ -47,7 +42,7 @@ pub fn source(prog: &Prog) -> String {
         out.push_str(&match r.level {
             Level::Item => format!("    trame::__check::item(&r{k});\n"),
             Level::Worker => format!("    trame::__check::worker(&r{k});\n"),
-            Level::Step => format!("    let p{k} = P{k} {{ x: 1 }};\n    trame::__check::step(&p{k});\n"),
+            Level::Step => format!("    trame::__check::step(&r{k});\n"),
         });
     }
     out.push_str("}\n");
@@ -75,8 +70,6 @@ fn forb(c: Forb) -> &'static str {
         Forb::Send => "trame::io::send(x);",
         Forb::Recv => "let _ = trame::io::recv();",
         Forb::Now => "let _ = trame::time::now();",
-        Forb::Barrier => "trame::io::barrier();",
-        Forb::Concurrent => "trame::concurrent::concurrent();",
         Forb::VecPush => "{ let mut v: Vec<u32> = Vec::new(); v.push(x); }",
         Forb::RangeFromForEach => "(x..).for_each(|_i: u32| {});",
     }
