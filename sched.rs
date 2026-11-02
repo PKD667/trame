@@ -224,8 +224,9 @@ impl Sched {
         }
     }
 
-    /// The safety premise of Start: whether i may start now. The choice among several is `choose`.
-    pub fn may_start(&self, i: usize, now: &Now) -> bool {
+    /// Whether i wants to start: every premise of Start but the fields (enabled, not running, the
+    /// stop and failure rules).
+    pub fn wants(&self, i: usize, now: &Now) -> bool {
         if i >= self.total() || self.failed() || self.ps[i].running || !self.enabled(i, now) {
             return false;
         }
@@ -233,11 +234,35 @@ impl Sched {
         if self.stopping && (ordinary || self.running()) {
             return false;
         }
-        if !self.stopping && !ordinary {
+        self.stopping || ordinary
+    }
+
+    /// Who gets a contended field first (S6a): positive weights before weight 0; among positive
+    /// weights the lowest pass, among weight 0 the earliest last start; then the index.
+    pub fn rank(&self, i: usize) -> (bool, u64, usize) {
+        let p = &self.ps[i];
+        (p.weight.0 == 0, if p.weight.0 > 0 { p.pass } else { p.last }, i)
+    }
+
+    /// Whether step a's fields conflict with the sets (r, w): one of them writes what the other uses.
+    fn conflicts(a: &Proc, r: u64, w: u64) -> bool {
+        (a.reads | a.writes) & w != 0 || a.writes & r != 0
+    }
+
+    /// The safety premise of Start: whether i may start now. Its fields are free (no running step
+    /// and no edit holds them), and no step ranked above it that wants to start uses them: lock
+    /// access goes by rank (S6a), so a step that waits for a field is not overtaken by a lower one
+    /// that would hold it longer. The choice among several is `choose`.
+    pub fn may_start(&self, i: usize, now: &Now) -> bool {
+        if !self.wants(i, now) {
             return false;
         }
         let p = &self.ps[i];
-        (p.reads | p.writes) & self.editing == 0 && self.locks.free(p.reads, p.writes)
+        if (p.reads | p.writes) & self.editing != 0 || !self.locks.free(p.reads, p.writes) {
+            return false;
+        }
+        let me = self.rank(i);
+        !(0..self.total()).any(|j| j != i && self.rank(j) < me && self.wants(j, now) && Sched::conflicts(p, self.ps[j].reads, self.ps[j].writes))
     }
 
     /// Whether a running step touches one of `fields`: an edit of them waits until none does.
@@ -247,10 +272,28 @@ impl Sched {
 
     /// The model's choice: stride among positive weights, else round robin among weight 0.
     pub fn choose(&self, now: &Now) -> Option<usize> {
-        let can: [bool; MAX_STEPS] = core::array::from_fn(|i| self.may_start(i, now));
-        let ids = 0..self.total();
-        let positive = ids.clone().filter(|&i| can[i] && self.ps[i].weight.0 > 0).min_by_key(|&i| (self.ps[i].pass, i));
-        positive.or_else(|| ids.filter(|&i| can[i]).min_by_key(|&i| (self.ps[i].last, i)))
+        // The startable step of the best rank. Equal to filtering by `may_start`, in one pass: walk
+        // the steps that want to start in rank order, and keep the fields of those passed over.
+        let mut order: [usize; MAX_STEPS] = [0; MAX_STEPS];
+        let mut n = 0;
+        for i in 0..self.total() {
+            if self.wants(i, now) {
+                order[n] = i;
+                n += 1;
+            }
+        }
+        order[..n].sort_unstable_by_key(|&i| self.rank(i));
+        let (mut r, mut w) = (0u64, 0u64);
+        for &i in &order[..n] {
+            let p = &self.ps[i];
+            let free = (p.reads | p.writes) & self.editing == 0 && self.locks.free(p.reads, p.writes);
+            if free && !Sched::conflicts(p, r, w) {
+                return Some(i);
+            }
+            r |= p.reads;
+            w |= p.writes;
+        }
+        None
     }
 
     /// Start(i): the caller checked `may_start`.
@@ -397,7 +440,8 @@ mod tests {
     #[test]
     fn writers_of_one_field_exclude_each_other() {
         let mut s = Sched::new(&[(0, 1, W1), (0, 1, W1)], false);
-        assert!(s.may_start(0, &NOW0) && s.may_start(1, &NOW0));
+        assert!(s.may_start(0, &NOW0), "step 0 ranks first");
+        assert!(!s.may_start(1, &NOW0), "step 0 ranks above step 1 and writes its field (S6a)");
         s.start(0);
         assert!(!s.may_start(1, &NOW0), "field 0 is written by step 0");
         s.end(0, PROGRESS);
@@ -552,9 +596,14 @@ mod tests {
         assert!(check(s0, &ok, true).is_ok());
         let bad = [Event::Start { i: 0, now: NOW0 }, Event::Start { i: 1, now: NOW0 }];
         assert_eq!(check(s0, &bad, false).unwrap_err(), Violation::Start { n: 1, i: 1 });
-        let wrong_choice = [Event::Start { i: 1, now: NOW0 }];
-        assert!(check(s0, &wrong_choice, false).is_ok(), "any allowed start is safe");
-        assert!(matches!(check(s0, &wrong_choice, true), Err(Violation::Choice { .. })));
+        // Step 1 overtaking step 0, which ranks above it and writes the same field: refused (S6a).
+        let overtake = [Event::Start { i: 1, now: NOW0 }];
+        assert_eq!(check(s0, &overtake, false).unwrap_err(), Violation::Start { n: 0, i: 1 });
+        // On disjoint fields, another choice than the model's is safe, and only the exact replay refuses it.
+        let s1 = Sched::new(&[(0, 1, W1), (0, 2, W1)], false);
+        let other_choice = [Event::Start { i: 1, now: NOW0 }];
+        assert!(check(s1, &other_choice, false).is_ok(), "a start that overtakes no conflicting step is safe");
+        assert!(matches!(check(s1, &other_choice, true), Err(Violation::Choice { .. })));
     }
 
     /// Lock-access priority (S6): with two agents, two light readers of f0 that keep overlapping
@@ -580,5 +629,41 @@ mod tests {
             }
         }
         assert!(writer_starts > 0, "the writer of weight 1 never started in 1000 rounds");
+    }
+
+    /// `choose` is the best-ranked step that `may_start` admits, over random schedules: random read
+    /// and write sets over 3 fields, weights (some 0), and runs of random starts and ends. Seeds
+    /// 0..2000, xorshift; a failure names its seed.
+    #[test]
+    fn choose_is_the_best_ranked_step_may_start_admits() {
+        for seed in 0..2000u64 {
+            let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+            let mut next = move || {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                x
+            };
+            let n = 2 + (next() % 5) as usize;
+            let steps: std::vec::Vec<(u64, u64, Weight)> = (0..n)
+                .map(|_| {
+                    let w = next() % 8;
+                    let r = next() % 8 & !w;
+                    (r, w, Weight::from_f64((next() % 5) as f64 / 4.0))
+                })
+                .collect();
+            let mut s = Sched::new(&steps, false);
+            let now = Now::default();
+            for _ in 0..40 {
+                let model = (0..s.total()).filter(|&i| s.may_start(i, &now)).min_by_key(|&i| s.rank(i));
+                assert_eq!(s.choose(&now), model, "seed {seed}");
+                let running: std::vec::Vec<usize> = (0..s.total()).filter(|&i| s.ps[i].running).collect();
+                if model.is_some() && (running.is_empty() || next() % 2 == 0) {
+                    s.start(model.unwrap());
+                } else if let Some(&i) = running.get((next() as usize) % running.len().max(1)) {
+                    s.end(i, Ended { st: St::Progress, weight: None, service: 1 + next() % 4 });
+                }
+            }
+        }
     }
 }

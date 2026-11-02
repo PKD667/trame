@@ -19,9 +19,15 @@
 //!      untouched.
 //!   S5 Stop. After `leader_stop`, no ordinary step starts; the stop step starts only when no step
 //!      runs; the worker's result is `Stopped` when the stop step is done (or there is none).
-//!   S6 Shares. Under contention, the service of positive-weight steps follows their weights, and a
-//!      weight-0 step starts only when no positive-weight step may. seq follows `Sched::choose`
-//!      exactly; other backends are held to measured shares within a stated tolerance.
+//!   S6a Lock-access priority. A step starts only if no step ranked above it that wants to start
+//!      (`Sched::wants`) uses a field it writes, or writes a field it uses (`Sched::may_start`, rank
+//!      `Sched::rank`: positive weights first, by pass; weight 0 after, by last start). So a step
+//!      waiting for a field is overtaken by no conflicting step of lower rank: it waits only for the
+//!      holders of that moment, and its rank only rises meanwhile. A weight-0 step may wait for ever
+//!      behind positive ones: that is what weight 0 means. Checked on every trace, as S2 is.
+//!   S6b Shares. Under contention, the service of positive-weight steps follows their weights. seq
+//!      follows `Sched::choose` exactly; other backends are held to measured shares within a stated
+//!      tolerance.
 //!   S7 Trace. When the launch asks for a trace, the backend records each worker's Start, End, Stop,
 //!      Hold and Edit events in an order consistent with the run; `sched::check` must accept it.
 //!
