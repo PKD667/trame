@@ -13,15 +13,17 @@
 //!      named; a woken step whose fields are free starts unless the worker stops, fails or another
 //!      step takes the fields first. No wake is lost: an agent that finds nothing to start sleeps
 //!      only until the next change of its worker (an End, a frame, room, its clock, a leader act).
-//!   S4 Edit. `leader_edit` runs its function while no step of that worker runs and none starts,
-//!      then wakes every step of the worker. Queued frames are untouched.
+//!   S4 Edit. `leader_edit` holds a set of fields (a worker's: all of them; the pool: the POOL bit
+//!      in every worker): from the hold, no step touching one starts; the function runs once none
+//!      runs; then the fields are given back and every step touching one is woken. Queued frames are
+//!      untouched.
 //!   S5 Stop. After `leader_stop`, no ordinary step starts; the stop step starts only when no step
 //!      runs; the worker's result is `Stopped` when the stop step is done (or there is none).
 //!   S6 Shares. Under contention, the service of positive-weight steps follows their weights, and a
 //!      weight-0 step starts only when no positive-weight step may. seq follows `Sched::choose`
 //!      exactly; other backends are held to measured shares within a stated tolerance.
-//!   S7 Trace. When the launch asks for a trace, the backend records each worker's Start, End, Stop
-//!      and Edit events in an order consistent with the run; `sched::check` must accept it.
+//!   S7 Trace. When the launch asks for a trace, the backend records each worker's Start, End, Stop,
+//!      Hold and Edit events in an order consistent with the run; `sched::check` must accept it.
 //!
 //! Transport (spec.md 5.2, unchanged):
 //!   T1 FIFO per route. T2 `Full` only on a non-lossy route at capacity; a lossy route replaces its
@@ -31,6 +33,30 @@
 //!   P1 Only the leader writes the pool, in `leader_edit(Target::Pool)`: steps read it.
 //!   P2 A pool edit is S4 over the POOL bit (sched.rs) in every worker: it runs while no step that
 //!      reads the pool runs, no such step starts until it returns, and those steps are woken after.
+//!
+//! Memory. Each worker runs in a *domain*: memory that the leader that built its state and the
+//! worker's agents address at the same addresses (a process heap; a machine's shared segment at one
+//! address; a device's memory with addresses shared with its host). A state and the pool are used in
+//! place there; nothing is encoded to cross a domain except frames. These clauses are what lets one
+//! value be built by the leader and used by steps without a copy, on any backend, a GPU's included:
+//!   M1 Placement. Every byte a state (or the pool) owns, its fields and every buffer behind them, lies
+//!      in the domain where it is used. The backend runs the `Topology::set` builder there at launch,
+//!      and runs `leader_edit`'s function there, so their allocations land in the domain.
+//!   M2 No process meaning. A state holds no value whose meaning depends on the process or device that
+//!      made it (references to leader memory, handles such as files or sockets, `Rc`). Code addresses
+//!      (`fn`, vtables) are allowed only where every user of the domain runs the same code at the
+//!      same addresses; a backend that cannot promise it refuses them.
+//!   M3 No interior mutability. A state's fields change only through the steps that write them and
+//!      through edits: field locks are the only synchronisation, and a `&` field does not change
+//!      while a step reads it.
+//!   M4 Steps neither allocate nor free in a domain (D5): only builders and edits do, holding the
+//!      fields concerned.
+//!   M5 Visibility. What a builder or an edit wrote is visible to every step that starts after it
+//!      returns (S4 orders them), and to no step during it.
+//!   M6 Bounded. A domain's size is fixed at launch. A builder that does not fit refuses the launch;
+//!      an edit that does not fit fails, and allocates nothing outside the domain.
+//! seq and threads: the domain is the process heap, and M1, M5, M6 hold trivially. M2 and M3 are not
+//! checked by the compiler yet; where a backend relies on them it says how it checks them.
 //!
 //! Worker operations act for the calling thread, which must be an agent of a worker. Leader
 //! operations act for the `Run` they are given. Bytes cross this seam; typed messages are encoded in
