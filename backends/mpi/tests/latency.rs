@@ -61,7 +61,6 @@ fn main() {
             Route { from: 0, to: 1, tag: 0, size: BYTES, cap: 8, lossy: false },
             Route { from: 1, to: 0, tag: 0, size: BYTES, cap: 8, lossy: false },
         ],
-        publication: Vec::new(),
     };
     let mut t = match launch(&world, &topo).unwrap_or_else(|e| panic!("refused: {e}")) {
         Role::Worker(t) => t,

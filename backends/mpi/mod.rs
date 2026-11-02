@@ -13,14 +13,12 @@
 //!   is the linearization point of the answer.
 //! - A lossy send never reads C. A slot is a seqlock, so a receiver that reads a slot the sender
 //!   is overwriting detects it and skips the frame.
-//! - Results and aborts are futex words (results.rs). The barrier is rootless (gate.rs): workers
-//!   sleep on their epochs (epoch.rs), a releaser bumps every epoch, and a deposit from the leader is
-//!   installed by the releaser under a seqlock. Every epoch and futex word is 32 bits. No MPI call after
-//!   launch.
+//! - Results and aborts are futex words (results.rs). Agents sleep on their worker's epoch (epoch.rs), and
+//!   every act that can change what an agent waits for bumps it. Every epoch and futex word is 32 bits. No
+//!   MPI call after launch.
 
 mod epoch;
 mod futex;
-mod gate;
 mod harness;
 mod imp;
 mod layout;
@@ -30,7 +28,6 @@ mod object;
 mod open;
 mod plan;
 mod poll;
-mod publish;
 mod recv;
 mod refusal;
 mod relay;
@@ -61,7 +58,7 @@ pub use refusal::Refusal;
 pub use shape::encode;
 pub use state::finalize;
 
-pub use harness::{deadlocked, leader_join, returned};
+pub use harness::{leader_join, returned};
 pub use types::{Answer, Error, Event, Received, Role, RouteId, clock};
 
 use layout::{Layout, RouteLayout};
@@ -77,24 +74,18 @@ pub struct Transport {
     lay: Layout,
     /// The node table: which node each rank is on (nodes.rs).
     nodes: Arc<Nodes>,
-    /// The number of barrier calls this endpoint has made.
-    generation: u64,
     /// Lossy routes: the next index this endpoint will read. Local, because the receiver of a
     /// lossy route never publishes progress.
     cursor: Vec<u64>,
     /// Per owned route set, where `recv` starts its scan (recv.rs). Indexed by the set's first route.
     rr: Vec<usize>,
     trace: Option<Vec<Event>>,
-    /// A worker's last publication: its number and the snapshot (gate.rs `snapshot`).
-    publication: Option<(u64, std::sync::Arc<[u8]>)>,
 }
 
 impl Drop for Transport {
-    /// Dropped without a result: a worker exits (gate.rs); a leader dropped by a panic ends the run (leader.rs).
+    /// A leader dropped by a panic ends the run (leader.rs). A worker needs nothing: its result is its exit.
     fn drop(&mut self) {
-        if self.me < self.lay.workers {
-            self.exit();
-        } else if std::thread::panicking() {
+        if self.me >= self.lay.workers && std::thread::panicking() {
             self.leader_panicked();
         }
     }
@@ -108,11 +99,9 @@ impl Transport {
             win,
             lay,
             nodes,
-            generation: 0,
             cursor: vec![0; routes],
             rr: vec![0; routes],
             trace: None,
-            publication: None,
         }
     }
 

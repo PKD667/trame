@@ -13,13 +13,13 @@ workers: tens to a hundred nodes of 16 to 64 cores.
   wherever `mpirun` puts them.
 - **Every node holds a replica of the whole layout.** Each node allocates its own window with the
   layout every rank computes, so every offset means the same thing on every node. `send`, `recv`,
-  the barrier and the results run unchanged on each node. A node touches only the lines of its own
+  the results run unchanged on each node. A node touches only the lines of its own
   agents and the rings of routes with an end on it.
 - **A bump to a remote agent wakes the relay.** `bump(w)` for an agent on another node bumps the
   node's relay epoch instead (`RELAY_EPOCH`, `RELAY_SLEEP`, same sleep protocol as a worker).
 - **The relay** runs in the process of the node's lowest world rank, as two threads:
   - `out` sleeps on the relay epoch. When woken it scans the node's outbound routes, credits,
-    barrier count, results, exits and abort bit, and sends what is new, one `MPI_Send` per
+    results and abort bit, and sends what is new, one `MPI_Send` per
     destination node per scan, so small frames travel in batches.
   - `in` blocks in `MPI_Recv(ANY_SOURCE)` and applies each record to the local replica, then bumps
     the local agents it concerns.
@@ -55,14 +55,11 @@ read. A frame overwritten before it is read is a **Drop**, and B's ring overwrit
 
 The relay of the leader's node is the root.
 
-- **Barrier.** Local workers add to the node's COUNT as on one node. The arrival that brings
-  `COUNT mod W` to the node's worker count bumps the relay, and `out` sends `ARRIVED(g)` to the root.
-  When all N nodes have arrived, the root reads the leader's deposit once and sends
-  `RELEASE(g, number, bytes)` to every node, itself included. Each relay installs that publication
-  and adds W minus its local workers to COUNT, which makes it the releaser of its node. Every node
-  therefore installs the same publication at the same generation.
-- **Results and exits.** `out` sends each new local outcome and each new exit to every other node.
-  `in` stores them, so `join` on the leader's node and the barrier's Deadlock check see every worker.
+- **Barrier and publication.** Removed in the worker model (2026-11-02): the `ARRIVED` and `RELEASE` records,
+  the arrival count and the leader's deposit are gone, and so is the `EXITED` record, which only the
+  barrier's Deadlock check read. The root sends only `END`.
+- **Results.** `out` sends each new local outcome to every other node. `in` stores it, so `join` on the
+  leader's node sees every worker.
 - **Abort.** `out` sends the abort record once (the panicking worker's rank and its message), and `in` records it locally, sets the bit and wakes every local agent.
   An abort that arrived is not sent again.
 - **End.** After `join`, the leader sets END and bumps the relay, and the root sends END to every node.
@@ -82,7 +79,6 @@ every program with k = 1 and k = 2 as well. It is a test setting and never a def
 | quantity | per node | root |
 |---|---|---|
 | window | the whole layout (only local parts touched) | same |
-| messages per barrier | 2 | 2N |
 | messages per result | N − 1 | |
 | `out` scan | outbound and inbound lossless routes of this node (precomputed) | |
 | control scan | local workers | |

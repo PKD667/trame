@@ -33,11 +33,6 @@ pub enum Received {
 /// A failure the program must handle. None of these is a Full or an Empty, which are answers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    /// The barrier can never complete: a worker returned while others wait at it (spec.md 5,
-    /// Deadlock). The waiter ends with `Outcome::Deadlock`.
-    Deadlock,
-    /// The run aborted while this worker waited at the barrier. The waiter unwinds; its run is aborted.
-    Aborted,
     /// The endpoint sends on a route it does not send on, or receives on one it does not receive.
     NotYours(RouteId),
     /// The message is not the route's size, or the buffer is shorter than it.
@@ -51,8 +46,6 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Deadlock => write!(f, "barrier can never complete: a worker returned"),
-            Error::Aborted => write!(f, "the run aborted at a barrier"),
             Error::NotYours(r) => write!(f, "route {} is not this endpoint's", r.0),
             Error::BadSize { route, expected, got } => {
                 write!(f, "route {} takes {expected} bytes, got {got}", route.0)

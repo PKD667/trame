@@ -90,7 +90,7 @@ pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
             lossy: r.lossy,
         });
     }
-    Ok(Topology { workers, routes, publication: Vec::new() })
+    Ok(Topology { workers, routes })
 }
 
 /// One route as an endpoint looks it up: sender and receiver ranks, its message type, and its id.

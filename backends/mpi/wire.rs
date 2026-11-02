@@ -7,18 +7,15 @@ extern crate std;
 use std::vec::Vec;
 
 /// The batching target, in bytes: the relay sends a buffer once it would pass this. It is not a limit. A
-/// record larger than BATCH (a big frame, a big publication) is sent alone, and the receiver sizes its
+/// record larger than BATCH (a big frame) is sent alone, and the receiver sizes its
 /// buffer from the probed message (relay.rs `recv`).
 pub(super) const BATCH: usize = 1 << 20;
 
 const FRAMES: u8 = 1;
 const CREDIT: u8 = 2;
-const ARRIVED: u8 = 3;
-const RELEASE: u8 = 4;
-const RESULT: u8 = 5;
-const EXITED: u8 = 6;
-const ABORT: u8 = 7;
-const END: u8 = 8;
+const RESULT: u8 = 3;
+const ABORT: u8 = 4;
+const END: u8 = 5;
 
 /// One record. Byte slices borrow from the message they were parsed from, or from the caller's buffer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,14 +24,8 @@ pub(super) enum Record<'a> {
     Frames { route: u32, index: u64, bytes: &'a [u8] },
     /// The receiver of route `route` has consumed `c` frames.
     Credit { route: u32, c: u64 },
-    /// This node's workers have all arrived at barrier generation `generation`.
-    Arrived { generation: u64 },
-    /// Barrier generation `generation` is released, with publication number `no` and its bytes.
-    Release { generation: u64, no: u64, bytes: &'a [u8] },
     /// Worker `worker` has its result: `outcome` is its outcome word.
     Result { worker: u32, outcome: u64 },
-    /// Worker `worker` has returned; `arrive` is its last barrier generation.
-    Exited { worker: u32, arrive: u64 },
     /// The run aborted: worker `worker` panicked with `bytes`, its message (results.rs `record_abort`).
     Abort { worker: u32, bytes: &'a [u8] },
     /// The leader has joined: no more records follow from the root.
@@ -55,25 +46,10 @@ pub(super) fn put(buf: &mut Vec<u8>, r: &Record) {
             buf.extend_from_slice(&route.to_le_bytes());
             buf.extend_from_slice(&c.to_le_bytes());
         }
-        Record::Arrived { generation } => {
-            buf.push(ARRIVED);
-            buf.extend_from_slice(&generation.to_le_bytes());
-        }
-        Record::Release { generation, no, bytes } => {
-            buf.push(RELEASE);
-            buf.extend_from_slice(&generation.to_le_bytes());
-            buf.extend_from_slice(&no.to_le_bytes());
-            put_bytes(buf, bytes);
-        }
         Record::Result { worker, outcome } => {
             buf.push(RESULT);
             buf.extend_from_slice(&worker.to_le_bytes());
             buf.extend_from_slice(&outcome.to_le_bytes());
-        }
-        Record::Exited { worker, arrive } => {
-            buf.push(EXITED);
-            buf.extend_from_slice(&worker.to_le_bytes());
-            buf.extend_from_slice(&arrive.to_le_bytes());
         }
         Record::Abort { worker, bytes } => {
             buf.push(ABORT);
@@ -98,10 +74,7 @@ pub(super) fn next(buf: &[u8]) -> Option<(Record<'_>, usize)> {
     let rec = match kind {
         FRAMES => Record::Frames { route: r.u32(), index: r.u64(), bytes: r.bytes() },
         CREDIT => Record::Credit { route: r.u32(), c: r.u64() },
-        ARRIVED => Record::Arrived { generation: r.u64() },
-        RELEASE => Record::Release { generation: r.u64(), no: r.u64(), bytes: r.bytes() },
         RESULT => Record::Result { worker: r.u32(), outcome: r.u64() },
-        EXITED => Record::Exited { worker: r.u32(), arrive: r.u64() },
         ABORT => Record::Abort { worker: r.u32(), bytes: r.bytes() },
         END => Record::End,
         other => panic!("trame: MPI relay record of unknown kind {other}"),

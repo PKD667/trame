@@ -10,7 +10,7 @@ use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread::{Builder, JoinHandle};
 use std::vec::Vec;
 
@@ -18,14 +18,6 @@ use mpi::ffi;
 
 use super::Transport;
 use super::state::local;
-
-/// A release the root's `in` has decided and `out` must send: barrier generation `generation`, with
-/// publication `no` and its bytes.
-pub(super) struct Release {
-    pub generation: u64,
-    pub no: u64,
-    pub bytes: Vec<u8>,
-}
 
 /// What both relay threads share.
 pub(super) struct Ctx {
@@ -38,8 +30,6 @@ pub(super) struct Ctx {
     /// Set by `in` when ABORT arrives, before it sets the abort bit: the abort came from the network,
     /// so `out` does not send it back.
     pub aborted: AtomicBool,
-    /// Root only: the release `in` decided. `out` takes it and sends it to every node.
-    pub release: Mutex<Option<Release>>,
 }
 
 /// The node's transport copy, shared by the two threads.
@@ -47,8 +37,8 @@ pub(super) struct Port(ManuallyDrop<Transport>);
 
 // SAFETY: the window outlives the process (shm.rs never frees it), and every word the relay threads
 // touch is an atomic in it, or a futex word used through atomics. The layout and the node table are
-// read-only after launch. The fields that change (cursor, rr, trace, publication, generation) are never
-// used by a relay thread, and `ManuallyDrop` keeps `Transport::drop` from signalling an exit.
+// read-only after launch. The fields that change (cursor, rr, trace) are never
+// used by a relay thread, and `ManuallyDrop` keeps `Transport::drop` from ending the run.
 unsafe impl Send for Port {}
 unsafe impl Sync for Port {}
 
@@ -83,7 +73,7 @@ impl Relay {
     pub(super) fn join(self) {
         self.out.join().expect("trame: the relay's out thread panicked");
         self.inn.join().expect("trame: the relay's in thread panicked");
-        self.ctx.port.unlink_publication();
+        self.ctx.port.unlink_abort();
     }
 }
 
@@ -96,7 +86,6 @@ pub(super) fn start(t: &Transport, comm: ffi::MPI_Comm) {
         comm: Comm(comm),
         ended: AtomicBool::new(false),
         aborted: AtomicBool::new(false),
-        release: Mutex::new(None),
     });
     let (for_out, for_in, keep) = (ctx.clone(), ctx.clone(), ctx);
     let out = Builder::new()

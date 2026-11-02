@@ -3,8 +3,8 @@
 // destination node, then sends each non-empty buffer as one MPI message. Only this thread sends (relay.rs).
 //
 // Order within a scan. Records to one node leave in the order they were queued, and MPI keeps one pair's
-// messages in order. The spec promises no delivery time across a barrier (a frame is available from its
-// arrival time, spec 5.2), so a barrier record may overtake a frame of the same scan: that is allowed.
+// messages in order. The spec promises no delivery time (a frame is available from its arrival time,
+// spec 5.2), so a result or abort record may overtake a frame of the same scan: that is allowed.
 
 extern crate std;
 
@@ -22,11 +22,8 @@ pub(super) struct Out<'a> {
     pub(super) next: Vec<u64>,
     /// Per route, inbound lossless: the last credit sent.
     pub(super) credited: Vec<u64>,
-    /// Per worker: its result is sent, and its exit is sent.
+    /// Per worker: its result is sent.
     pub(super) result_sent: Vec<bool>,
-    pub(super) exit_sent: Vec<bool>,
-    /// The last barrier generation this node has reported to the root.
-    pub(super) reported: u64,
     /// This node has sent the abort bit.
     pub(super) abort_sent: bool,
     /// The root has sent END to every node.
@@ -62,8 +59,6 @@ pub(super) fn run(ctx: &Ctx) {
         next: vec![0; routes],
         credited: vec![0; routes],
         result_sent: vec![false; workers],
-        exit_sent: vec![false; workers],
-        reported: 0,
         abort_sent: false,
         end_sent: false,
         bufs: vec![Vec::new(); nodes.count as usize],

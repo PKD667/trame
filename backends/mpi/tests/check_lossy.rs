@@ -1,4 +1,4 @@
-// The overwrite and deadlock checks.
+// The overwrite check.
 
 #![allow(unused_imports)]
 
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
 use trame::__mpi::{
-    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, deadlocked, launch, leader_join,
+    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, launch, leader_join,
     returned,
 };
 
@@ -24,7 +24,6 @@ pub(crate) fn overwrite(world: &mpi::topology::SimpleCommunicator, args: &[Strin
     let topo = Topology {
         workers: n,
         routes: vec![Route { from: 0, to: 1, tag: 0, size: 64, cap, lossy: true }],
-        publication: Vec::new(),
     };
     let mut t = match worker(world, &topo) {
         Ok(t) => t,
@@ -92,37 +91,4 @@ pub(crate) fn overwrite(world: &mpi::topology::SimpleCommunicator, args: &[Strin
         world.barrier();
     }
     returned(&t);
-}
-
-pub(crate) fn deadlock(world: &mpi::topology::SimpleCommunicator) {
-    let me = world.rank() as u32;
-    let n = world.size() as u32 - 1;
-    assert!(n >= 2, "deadlock wants two workers");
-    let topo = Topology { workers: n, routes: Vec::new(), publication: Vec::new() };
-    let t = match worker(world, &topo) {
-        Ok(t) => t,
-        Err(l) => return leader_join(&l),
-    };
-    if me == 0 {
-        // Return while the others wait at the barrier. Dropping the transport must not wait.
-        println!("deadlock rank 0: returned at {}", clock());
-        returned(&t);
-        drop(t);
-        return;
-    }
-    if me == 1 {
-        // Keep working for two seconds first, so the barrier is still waited on when rank 0 leaves.
-        let until = clock() + 2_000_000_000;
-        while clock() < until {
-            std::hint::spin_loop();
-        }
-    }
-    let mut t = t;
-    match t.barrier() {
-        Err(Error::Deadlock) => {
-            println!("deadlock rank {me}: Deadlock at {}", clock());
-            deadlocked(&t);
-        }
-        other => panic!("rank {me}: expected Deadlock, got {other:?}"),
-    }
 }

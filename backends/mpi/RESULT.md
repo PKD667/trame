@@ -12,6 +12,11 @@ Command: `OUT=<dir> backends/mpi/tests/run.sh` inside `nix develop .#mpi`. Last 
 
 ## Checks
 
+2026-11-02: the `barrier` and `deadlock` checks below, and the publication check, were removed with the barrier
+and the publication in the worker model (README.md, Mechanism). The rows and the notes that name them
+are the measured record of the old model and are not rewritten. A `bigroute` check (a 256 KiB route)
+replaced the publication check's route part.
+
 | check | command | what it shows | result |
 |---|---|---|---|
 | FIFO per route | `check fifo --seed S` then `check verify DIR`, n = 3, 4, 6, S = 1..5 | seeded interleavings; each route in FIFO order; every Full has exactly `cap` outstanding | 15 of 15 pass |

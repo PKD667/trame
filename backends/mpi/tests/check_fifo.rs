@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
 use trame::__mpi::{
-    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, deadlocked, launch, leader_join,
+    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, launch, leader_join,
     returned,
 };
 

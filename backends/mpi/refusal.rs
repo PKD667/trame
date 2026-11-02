@@ -18,7 +18,7 @@ pub enum Refusal {
     Inconsistent,
     /// The launch needs one process per worker plus the leader; the world has another count.
     Ranks { workers: u32, ranks: u32 },
-    /// Shared memory the launch needs (the window, or the initial publication) could not be made.
+    /// Shared memory the launch needs (the window) could not be made.
     /// `need` is the size asked for; `why` is the OS or MPI error, or that another rank failed.
     Memory { need: usize, why: String },
     /// TRAME_MPI_NODE_RANKS is set to something other than a number of ranks per node, 1 or more.
