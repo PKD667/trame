@@ -1,0 +1,308 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 2 and seed 8350206428360107991 with 8 workers on 64 cores with 27305MB heap and 64MB offheap memory (Linux 6.12.111+deb13-amd64 amd64, Oracle Corporation 1.8.0_504 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /tmp/pkronlun-nix/wt-tla/proofs/mpi/MCEpochFlag.tla
+Parsing file /tmp/pkronlun-nix/wt-tla/proofs/mpi/Epoch.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module Epoch
+Semantic processing of module MCEpochFlag
+Starting... (2026-11-02 15:48:07)
+Implied-temporal checking--satisfiability problem has 2 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 15:48:07.
+Error: Invariant NoLostWakeup is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"r1", "r1">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 2: <W1 line 60, col 10 to line 63, col 62 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"r1", "r2">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 3: <W1 line 60, col 10 to line 63, col 62 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"r2", "r2">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 4: <W2 line 65, col 10 to line 67, col 68 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"acq", "r2">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 5: <Acq line 69, col 11 to line 73, col 63 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"r2b", "r2">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 6: <W2b line 75, col 11 to line 79, col 63 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"r3", "r2">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 7: <W3 line 81, col 10 to line 84, col 61 of module Epoch>
+/\ sleep = 1
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"r4", "r2">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 8: <W4 line 86, col 10 to line 90, col 55 of module Epoch>
+/\ sleep = 1
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"kern", "r2">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 9: <Kern line 93, col 12 to line 95, col 70 of module Epoch>
+/\ sleep = 1
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r2">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 10: <W2 line 65, col 10 to line 67, col 68 of module Epoch>
+/\ sleep = 1
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "acq">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 11: <Acq line 69, col 11 to line 73, col 63 of module Epoch>
+/\ sleep = 1
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r2b">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 12: <W2b line 75, col 11 to line 79, col 63 of module Epoch>
+/\ sleep = 1
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r3">>
+/\ cond = FALSE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 13: <B1 line 109, col 7 to line 112, col 59 of module Epoch>
+/\ sleep = 1
+/\ ld = FALSE
+/\ pcb = "b2"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r3">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 0
+/\ bumps = 0
+
+State 14: <B2 line 114, col 7 to line 118, col 55 of module Epoch>
+/\ sleep = 1
+/\ ld = FALSE
+/\ pcb = "b3"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r3">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 1
+/\ bumps = 1
+
+State 15: <W3 line 81, col 10 to line 84, col 61 of module Epoch>
+/\ sleep = 1
+/\ ld = FALSE
+/\ pcb = "b3"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r4">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 1
+/\ bumps = 1
+
+State 16: <W4 line 86, col 10 to line 90, col 55 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b3"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 1
+/\ bumps = 1
+
+State 17: <B3 line 120, col 7 to line 123, col 61 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b4"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 1
+/\ bumps = 1
+
+State 18: <B4 line 125, col 7 to line 128, col 60 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 1
+/\ bumps = 1
+
+State 19: <B1 line 109, col 7 to line 112, col 59 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b2"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 1
+/\ bumps = 1
+
+State 20: <B2 line 114, col 7 to line 118, col 55 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b3"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 2
+/\ bumps = 2
+
+State 21: <B3 line 120, col 7 to line 123, col 61 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b4"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 2
+/\ bumps = 2
+
+State 22: <B4 line 125, col 7 to line 128, col 60 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b1"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 2
+/\ bumps = 2
+
+State 23: <B1 line 109, col 7 to line 112, col 59 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b2"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 2
+/\ bumps = 2
+
+State 24: <B2 line 114, col 7 to line 118, col 55 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b3"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 3
+/\ bumps = 3
+
+State 25: <B3 line 120, col 7 to line 123, col 61 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "b4"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 3
+/\ bumps = 3
+
+State 26: <B4 line 125, col 7 to line 128, col 60 of module Epoch>
+/\ sleep = 0
+/\ ld = FALSE
+/\ pcb = "done"
+/\ seen = <<0, 0>>
+/\ pcw = <<"fw", "r1">>
+/\ cond = TRUE
+/\ lock = 0
+/\ E = 3
+/\ bumps = 3
+
+9373 states generated, 3936 distinct states found, 125 states left on queue.
+The depth of the complete state graph search is 26.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 2).
+Finished in 01s at (2026-11-02 15:48:08)
