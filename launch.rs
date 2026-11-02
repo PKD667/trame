@@ -21,6 +21,8 @@ pub enum Refused {
     TwoOwners { worker: WorkerId, name: &'static str },
     /// A worker's steps read a pool of type `want`, and the host's pool is `have` (`()`: none).
     PoolType { worker: WorkerId, want: &'static str, have: &'static str },
+    /// `trame::Alloc` is not the program's global allocator (domain.rs).
+    Alloc,
     /// The pool was declared but never set (`Topology::set`).
     PoolUnset,
     /// A worker was declared but its state was never set (`Topology::set`).
@@ -86,10 +88,10 @@ pub(crate) type Builder = alloc::boxed::Box<dyn FnOnce() + Send>;
 /// call this at launch.
 pub(crate) fn build_all(plan: &mut Plan) {
     if let Some(b) = plan.pool_builder.take() {
-        b();
+        crate::domain::arena(b);
     }
     for b in plan.builders.iter_mut() {
-        (b.take().expect("trame: the launch checked that every worker was set"))();
+        crate::domain::arena(b.take().expect("trame: the launch checked that every worker was set"));
     }
 }
 
@@ -109,6 +111,9 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
         if dup {
             return Err(Refused::Duplicate { from: r.from, to: r.to, name: r.name });
         }
+    }
+    if !crate::domain::installed() {
+        return Err(Refused::Alloc);
     }
     if plan.pool.is_some() && plan.pool_builder.is_none() {
         return Err(Refused::PoolUnset);

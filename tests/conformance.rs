@@ -378,3 +378,7 @@ fn disjoint_steps_overlap() {
         assert!(most >= 4, "eight disjoint steps on eight or more cores ran at most {most} at once");
     }
 }
+
+/// Every trame program installs trame's allocator wrapper (domain.rs): a launch refuses otherwise.
+#[global_allocator]
+static ALLOC: trame::Alloc = trame::Alloc::new(std::alloc::System);

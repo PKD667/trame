@@ -94,6 +94,26 @@ pub(crate) trait Backend {
     /// refuses to answer from it.
     const STATES_AT_LEADER: bool = true;
 
+    /// M1: `layout.size()` bytes of the domain of this process's launch, for a builder or an edit
+    /// (alloc.rs, arena mode). `None`: this process's heap is the domain (seq, threads; or no launch
+    /// yet). A full domain answers a null pointer, which the allocation reports (M6).
+    fn domain_alloc(_layout: core::alloc::Layout) -> Option<*mut u8> {
+        None
+    }
+
+    /// Whether `p` lies in a domain of this process, so `domain_dealloc` frees it.
+    fn domain_contains(_p: *mut u8) -> bool {
+        false
+    }
+
+    /// Free a block `domain_alloc` answered.
+    ///
+    /// # Safety
+    /// `p` came from `domain_alloc` with `layout`, and is freed once.
+    unsafe fn domain_dealloc(_p: *mut u8, _layout: core::alloc::Layout) {
+        unreachable!("trame: a heap domain owns no block")
+    }
+
     /// Check that every process of the launch built the same plan, before the local checks run. A
     /// backend with one process has nothing to agree on. A backend with several processes makes this
     /// a collective: every process calls it, in the same order, and every process gets the same answer.

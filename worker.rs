@@ -19,8 +19,8 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::any::{Any, TypeId};
 use core::cell::UnsafeCell;
-use core::mem::MaybeUninit;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::mem::ManuallyDrop;
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 
 /// One step of a state, as `#[trame::step]` describes it.
@@ -60,14 +60,20 @@ pub unsafe trait State: Send + Sync + Sized + 'static {
     unsafe fn run(this: *mut Self, pool: &Self::Pool, i: usize) -> Result<Status, Self::Error>;
 }
 
-/// The state of one worker and, once a step failed, its error. Shared by the leader's `Worker<S>`
-/// handle and the backend.
+/// What a worker's domain holds for it (backend.rs, M1): its state and, once a step failed, its
+/// error. The leader builds it there at launch; a worker in another process adopts its address.
+struct Block<S: State> {
+    state: ManuallyDrop<S>,
+    /// Set by the first step that fails; it alone writes `error`.
+    failed: AtomicBool,
+    error: UnsafeCell<Option<S::Error>>,
+}
+
+/// One worker's state, as the leader's `Worker<S>` handle and the backend share it: the address of
+/// its block, null until the builder ran (or the worker process adopted it).
 pub(crate) struct Core<S: State> {
-    /// Uninitialised until the backend runs the leader's builder (`Topology::set`) at launch.
-    state: UnsafeCell<MaybeUninit<S>>,
-    filled: AtomicBool,
+    block: AtomicPtr<Block<S>>,
     taken: AtomicBool,
-    error: Mutex<Option<S::Error>>,
     /// Debug builds: the fields held by running steps, kept here apart from any scheduler, so S1 is
     /// checked against what actually runs (backend.rs). Written fields, and readers per field.
     #[cfg(debug_assertions)]
@@ -76,37 +82,71 @@ pub(crate) struct Core<S: State> {
 
 // SAFETY: steps reach the state only through `State::run`, under the field locks of the contract
 // (backend.rs, S1), and the leader only through `edit` and `take`, when no step runs. `S: Sync` makes
-// two steps reading one field sound; `S: Send` lets the state move to an agent's thread.
+// two steps reading one field sound; `S: Send` lets the state move to an agent's thread. The error is
+// written once, by the step that set `failed`, and read by the leader after the run.
 unsafe impl<S: State> Sync for Core<S> {}
-// SAFETY: as above; the error crosses threads once, to the leader.
+// SAFETY: as above.
 unsafe impl<S: State> Send for Core<S> {}
 
 impl<S: State> Core<S> {
     /// A worker whose state is not built yet.
     pub(crate) fn empty() -> Self {
         Core {
-            state: UnsafeCell::new(MaybeUninit::uninit()),
-            filled: AtomicBool::new(false),
+            block: AtomicPtr::new(core::ptr::null_mut()),
             taken: AtomicBool::new(false),
-            error: Mutex::new(None),
             #[cfg(debug_assertions)]
             witness: Mutex::new((0, [0; 64])),
         }
     }
 
-    fn ptr(&self) -> *mut S {
-        assert!(self.filled.load(Ordering::Acquire), "trame: the state was never built");
-        assert!(!self.taken.load(Ordering::Acquire), "trame: the state was already taken");
-        // MaybeUninit<S> is repr(transparent) over S, and it is initialised (`filled`).
-        self.state.get().cast::<S>()
+    fn block(&self) -> &Block<S> {
+        let b = self.block.load(Ordering::Acquire);
+        assert!(!b.is_null(), "trame: the state was never built");
+        // SAFETY: non-null blocks are built by `fill` (or adopted from it) and freed only by drop.
+        unsafe { &*b }
     }
 
-    /// Put the built state in place. Once: the backend runs each builder once, before any step.
+    fn ptr(&self) -> *mut S {
+        assert!(!self.taken.load(Ordering::Acquire), "trame: the state was already taken");
+        // ManuallyDrop<S> is repr(transparent) over S.
+        (&raw const self.block().state).cast::<S>().cast_mut()
+    }
+
+    /// Put the built state in its block. Once, before any step; the caller is in arena mode
+    /// (alloc.rs), so the block lands in the domain with everything the state owns.
     pub(crate) fn fill(&self, s: S) {
-        assert!(!self.filled.load(Ordering::Acquire), "trame: a state was built twice");
-        // SAFETY: not filled yet, and no step runs before the launch has built every state.
-        unsafe { (*self.state.get()).write(s) };
-        self.filled.store(true, Ordering::Release);
+        let b = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Block {
+            state: ManuallyDrop::new(s),
+            failed: AtomicBool::new(false),
+            error: UnsafeCell::new(None),
+        }));
+        let was = self.block.swap(b, Ordering::AcqRel);
+        assert!(was.is_null(), "trame: a state was built twice");
+    }
+
+    /// The address of the block, for a worker in another process to adopt (`adopt`).
+    pub(crate) fn addr(&self) -> usize {
+        self.block.load(Ordering::Acquire) as usize
+    }
+
+    /// Use the block another process built at `addr`, in a domain this process maps at the same
+    /// address (backend.rs, M1). This process never frees it.
+    ///
+    /// # Safety
+    /// `addr` is the `addr()` of a `Core<S>` of the same type, filled, in a mapped domain.
+    pub(crate) unsafe fn adopt(&self, addr: usize) {
+        let was = self.block.swap(addr as *mut Block<S>, Ordering::AcqRel);
+        assert!(was.is_null(), "trame: a worker adopted a state it already had");
+        self.taken.store(false, Ordering::Release);
+    }
+
+    /// Keep the first failure's error; a later one is dropped.
+    fn fail(&self, e: S::Error) {
+        let b = self.block();
+        if !b.failed.swap(true, Ordering::AcqRel) {
+            // SAFETY: only the step that set `failed` writes, and the leader reads after the run.
+            unsafe { *b.error.get() = Some(e) };
+        }
     }
 
     /// The leader's edit: `f` gets the whole state.
@@ -129,8 +169,11 @@ impl<S: State> Core<S> {
         unsafe { core::ptr::read(p) }
     }
 
+    /// The error of the failed step, once. The worker has a result.
     pub(crate) fn take_error(&self) -> Option<S::Error> {
-        self.error.lock().unwrap_or_else(PoisonError::into_inner).take()
+        let b = self.block();
+        // SAFETY: the run is over, so no step writes it.
+        b.failed.load(Ordering::Acquire).then(|| unsafe { (*b.error.get()).take() }).flatten()
     }
 }
 
@@ -165,57 +208,83 @@ impl<S: State> Core<S> {
 /// The pool: read-only shared data. Steps that take `pool: &P` read it under the `POOL` bit
 /// (sched.rs); only the leader writes it, in an edit holding that bit in every worker (backend.rs, S4).
 pub(crate) struct PoolCore<P> {
-    value: UnsafeCell<MaybeUninit<P>>,
-    filled: AtomicBool,
+    /// The pool's block in the domain (backend.rs, M1); null until built or adopted.
+    value: AtomicPtr<P>,
 }
 
 // SAFETY: steps share `&P` (P: Sync) and the leader writes only while it holds the POOL bit everywhere.
 unsafe impl<P: Send + Sync> Sync for PoolCore<P> {}
+// SAFETY: as above.
+unsafe impl<P: Send + Sync> Send for PoolCore<P> {}
 
 impl<P> PoolCore<P> {
     pub(crate) fn empty() -> Self {
-        PoolCore { value: UnsafeCell::new(MaybeUninit::uninit()), filled: AtomicBool::new(false) }
+        PoolCore { value: AtomicPtr::new(core::ptr::null_mut()) }
     }
 
-    /// Put the built pool in place. Once, at launch, before any step.
+    /// Put the built pool in its block. Once, at launch, before any step, in arena mode.
     pub(crate) fn fill(&self, p: P) {
-        assert!(!self.filled.load(Ordering::Acquire), "trame: the pool was built twice");
-        // SAFETY: not filled yet, and no step runs before the launch has built it.
-        unsafe { (*self.value.get()).write(p) };
-        self.filled.store(true, Ordering::Release);
+        let b = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(p));
+        let was = self.value.swap(b, Ordering::AcqRel);
+        assert!(was.is_null(), "trame: the pool was built twice");
+    }
+
+    pub(crate) fn addr(&self) -> usize {
+        self.value.load(Ordering::Acquire) as usize
+    }
+
+    /// As `Core::adopt`.
+    ///
+    /// # Safety
+    /// `addr` is the `addr()` of a filled `PoolCore<P>`, in a mapped domain.
+    pub(crate) unsafe fn adopt(&self, addr: usize) {
+        let was = self.value.swap(addr as *mut P, Ordering::AcqRel);
+        assert!(was.is_null(), "trame: a worker adopted a pool it already had");
+    }
+
+    fn at(&self) -> *mut P {
+        let p = self.value.load(Ordering::Acquire);
+        assert!(!p.is_null(), "trame: the pool was never built");
+        p
     }
 
     /// # Safety
     /// The caller holds the POOL bit for reading (a step that takes the pool).
     pub(crate) unsafe fn get(&self) -> &P {
-        assert!(self.filled.load(Ordering::Acquire), "trame: the pool was never built");
-        // SAFETY: filled; no writer while the caller reads.
-        unsafe { (*self.value.get()).assume_init_ref() }
+        // SAFETY: built, and no writer while the caller reads.
+        unsafe { &*self.at() }
     }
 
     /// # Safety
     /// The caller holds the POOL bit in every worker for writing (backend.rs, S4).
     pub(crate) unsafe fn edit_with<R>(&self, f: impl FnOnce(&mut P) -> R) -> R {
-        assert!(self.filled.load(Ordering::Acquire), "trame: the pool was never built");
-        // SAFETY: filled; the caller excludes every reader.
-        f(unsafe { (*self.value.get()).assume_init_mut() })
+        // SAFETY: built; the caller excludes every reader.
+        f(unsafe { &mut *self.at() })
     }
 }
 
 impl<P> Drop for PoolCore<P> {
     fn drop(&mut self) {
-        if *self.filled.get_mut() {
-            // SAFETY: filled, and `&mut self` is the only access.
-            unsafe { self.value.get_mut().assume_init_drop() }
+        let p = *self.value.get_mut();
+        if !p.is_null() {
+            // SAFETY: built by `fill` in this process (an adopting worker process never drops).
+            drop(unsafe { alloc::boxed::Box::from_raw(p) });
         }
     }
 }
 
 impl<S: State> Drop for Core<S> {
     fn drop(&mut self) {
-        if *self.filled.get_mut() && !*self.taken.get_mut() {
-            // SAFETY: filled and not taken, and `&mut self` is the only access.
-            unsafe { self.state.get_mut().assume_init_drop() }
+        let b = *self.block.get_mut();
+        if b.is_null() {
+            return;
+        }
+        // SAFETY: built by `fill` in this process (a worker process that adopted never drops: it
+        // ends with process::exit), and `&mut self` is the only access.
+        let mut b = unsafe { alloc::boxed::Box::from_raw(b) };
+        if !*self.taken.get_mut() {
+            // SAFETY: not taken, so the state is still there.
+            unsafe { ManuallyDrop::drop(&mut b.state) }
         }
     }
 }
@@ -227,6 +296,11 @@ pub(crate) trait Erased: Send + Sync {
     fn pool_type(&self) -> TypeId;
     fn pool_name(&self) -> &'static str;
     fn frame_offered(&self, i: usize) -> bool;
+    /// The state block's address (`Core::addr`), and its adoption by a worker in another process.
+    fn addr(&self) -> usize;
+    /// # Safety
+    /// As `Core::adopt`.
+    unsafe fn adopt(&self, addr: usize);
     fn tags(&self, i: usize) -> Tags;
     /// Run step i. A failure is kept here for the leader, and answered as `Err(())`.
     ///
@@ -252,6 +326,13 @@ impl<S: State> Erased for Core<S> {
     fn frame_offered(&self, i: usize) -> bool {
         S::frame_offered(i)
     }
+    fn addr(&self) -> usize {
+        Core::addr(self)
+    }
+    unsafe fn adopt(&self, addr: usize) {
+        // SAFETY: the caller's.
+        unsafe { Core::adopt(self, addr) }
+    }
     fn tags(&self, i: usize) -> Tags {
         S::tags(i)
     }
@@ -271,7 +352,7 @@ impl<S: State> Erased for Core<S> {
         match r {
             Ok(s) => Ok(s),
             Err(e) => {
-                *self.error.lock().unwrap_or_else(PoisonError::into_inner) = Some(e);
+                self.fail(e);
                 Err(())
             }
         }

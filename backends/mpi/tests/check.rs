@@ -55,3 +55,7 @@ fn main() {
     trame::__mpi::finalize();
     std::mem::forget(universe);
 }
+
+/// Every trame program installs trame's allocator wrapper (domain.rs): a launch refuses otherwise.
+#[global_allocator]
+static ALLOC: trame::Alloc = trame::Alloc::new(std::alloc::System);

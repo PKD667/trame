@@ -89,6 +89,10 @@ fn main() {
     }
     println!("outcomes: {:?}", run.join());
 }
+
+/// Every trame program installs trame's allocator wrapper (domain.rs): a launch refuses otherwise.
+#[global_allocator]
+static ALLOC: trame::Alloc = trame::Alloc::new(std::alloc::System);
 ```
 
 Output, on seq and on MPI (five ranks), and on MPI with `TRAME_MPI_NODE_RANKS` set to 1 and to 2.

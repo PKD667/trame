@@ -107,3 +107,7 @@ fn items_of_one_key_run_in_input_order() {
     let in_order = [1_u64, 2, 3].iter().fold(0_u64, |s, v| s.wrapping_mul(MUL).wrapping_add(*v));
     assert_eq!(slots, [in_order]);
 }
+
+/// Every trame program installs trame's allocator wrapper (domain.rs): a launch refuses otherwise.
+#[global_allocator]
+static ALLOC: trame::Alloc = trame::Alloc::new(std::alloc::System);

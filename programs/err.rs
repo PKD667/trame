@@ -43,3 +43,7 @@ fn main() {
     println!("outcomes: {outcomes:?}");
     assert!(!w.take().idled, "a step started after another failed");
 }
+
+/// Every trame program installs trame's allocator wrapper (domain.rs): a launch refuses otherwise.
+#[global_allocator]
+static ALLOC: trame::Alloc = trame::Alloc::new(std::alloc::System);

@@ -33,7 +33,7 @@ unsafe impl GlobalAlloc for Counting {
 }
 
 #[global_allocator]
-static GLOBAL: Counting = Counting;
+static GLOBAL: trame::Alloc<Counting> = trame::Alloc::new(Counting);
 
 #[derive(Clone, Copy)]
 struct Work {

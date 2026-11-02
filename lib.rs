@@ -62,6 +62,7 @@ pub mod math;
 // The modules are private: the surface is the root re-exports below (spec.md 7). Their definition
 // paths (`trame::io::send`, `trame::time::now`, ...) are what the driver's effects.txt names.
 mod io;
+mod domain;
 mod launch;
 mod run;
 mod time;
@@ -69,6 +70,7 @@ mod topology;
 
 /// The surface of spec.md 7: every public name of the crate, at the root and nowhere else.
 pub use io::{Full, Message, me, recv, send};
+pub use domain::Alloc;
 pub use launch::Refused;
 pub use run::{Outcome, Run};
 pub use status::Status;
@@ -135,3 +137,10 @@ use self::mpi as selected;
 mod unselected;
 #[cfg(not(any(feature = "seq", feature = "mpi", feature = "threads")))]
 use unselected as selected;
+
+// The lib's own test binary installs the wrapper like any trame program (domain.rs).
+#[cfg(test)]
+extern crate std;
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOC: Alloc = Alloc::new(std::alloc::System);

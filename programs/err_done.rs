@@ -39,3 +39,7 @@ fn main() {
     println!("worker reports error {}", boom.0);
     println!("outcomes: {outcomes:?}");
 }
+
+/// Every trame program installs trame's allocator wrapper (domain.rs): a launch refuses otherwise.
+#[global_allocator]
+static ALLOC: trame::Alloc = trame::Alloc::new(std::alloc::System);
