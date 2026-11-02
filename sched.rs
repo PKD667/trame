@@ -556,4 +556,29 @@ mod tests {
         assert!(check(s0, &wrong_choice, false).is_ok(), "any allowed start is safe");
         assert!(matches!(check(s0, &wrong_choice, true), Err(Violation::Choice { .. })));
     }
+
+    /// Lock-access priority (S6): with two agents, two light readers of f0 that keep overlapping
+    /// must not keep the heavy writer of f0 from ever starting. Each step costs 1; an agent that ends
+    /// a step chooses again at once.
+    #[test]
+    fn a_heavy_writer_is_not_starved_by_overlapping_light_readers() {
+        let f0 = 1u64;
+        let light = Weight::from_f64(0.1);
+        let mut s = Sched::new(&[(f0, 0, light), (f0, 0, light), (0, f0, Weight::from_f64(1.0))], false);
+        let now = Now::default();
+        let mut running: [Option<usize>; 2] = [None, None];
+        let mut writer_starts = 0;
+        for round in 0..1000 {
+            let agent = round % 2;
+            if let Some(i) = running[agent].take() {
+                s.end(i, Ended { st: St::Progress, weight: None, service: 1 });
+            }
+            if let Some(i) = s.choose(&now) {
+                s.start(i);
+                running[agent] = Some(i);
+                writer_starts += usize::from(i == 2);
+            }
+        }
+        assert!(writer_starts > 0, "the writer of weight 1 never started in 1000 rounds");
+    }
 }

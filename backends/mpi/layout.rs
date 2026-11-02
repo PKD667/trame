@@ -18,10 +18,14 @@
 //   ABORT_LEN              the length of that message
 //   STOP                   1 once the leader stopped the run (Run::stop); workers poll it (one node only:
 //                          the relay does not carry it yet)
-//   PER_WORKER             per worker, three lines each, kind k of worker w at PER_WORKER + 64 (k W + w):
+//   PER_WORKER             per worker, five lines each, kind k of worker w at PER_WORKER + 64 (k W + w):
 //                            k=0 OUTCOME  its result, 0 until set
 //                            k=1 EPOCH    u32, moves on every act that can change its wait conditions
 //                            k=2 SLEEP    how many of the worker's agents sleep on EPOCH (epoch.rs)
+//                            k=3 EDIT     the fields the leader asks the worker to hold for an edit, 0
+//                                         if none (written by the leader; leader.rs `edit`)
+//                            k=4 HELD     1 while the worker holds them for the leader (written by
+//                                         the worker; worker.rs `edit_held`)
 //   ROUTES                 per route, in rank order:
 //                            +0    P: frames ever sent on the route (written by the sender only)
 //                            +64   C: frames ever consumed (written by the receiver only; lossless)
@@ -44,10 +48,12 @@ pub(crate) const ABORT_LEN: usize = ABORT_WORKER + LINE;
 pub(crate) const STOP: usize = ABORT_LEN + LINE;
 pub(crate) const PER_WORKER: usize = STOP + LINE;
 /// Header lines per worker, one per kind listed above.
-pub(crate) const WORKER_LINES: usize = 3;
+pub(crate) const WORKER_LINES: usize = 5;
 pub(crate) const K_OUTCOME: usize = 0;
 pub(crate) const K_EPOCH: usize = 1;
 pub(crate) const K_SLEEP: usize = 2;
+pub(crate) const K_EDIT: usize = 3;
+pub(crate) const K_HELD: usize = 4;
 pub(crate) const SLOT_HEAD: usize = 8;
 /// Bit 0 of DONE: some agent panicked, and the run is aborted.
 pub(crate) const ABORT_BIT: u32 = 1;

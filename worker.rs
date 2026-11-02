@@ -99,17 +99,30 @@ impl<S: State> Core<S> {
         }
     }
 
-    fn block(&self) -> &Block<S> {
+    /// The block. Never turned into a `&Block<S>`: steps hold `&mut` to fields of the state while
+    /// other agents use the block, so every access projects a field from this raw pointer.
+    fn raw(&self) -> *mut Block<S> {
         let b = self.block.load(Ordering::Acquire);
-        assert!(!b.is_null(), "trame: the state was never built");
-        // SAFETY: non-null blocks are built by `fill` (or adopted from it) and freed only by drop.
-        unsafe { &*b }
+        assert!(
+            !b.is_null(),
+            "trame: this worker's state is not in this process: never built, or (on mpi) built on another machine, whose leader is not built yet"
+        );
+        b
     }
 
     fn ptr(&self) -> *mut S {
         assert!(!self.taken.load(Ordering::Acquire), "trame: the state was already taken");
-        // ManuallyDrop<S> is repr(transparent) over S.
-        (&raw const self.block().state).cast::<S>().cast_mut()
+        // SAFETY: a live block (`raw`); a field projection creates no reference. ManuallyDrop<S> is
+        // repr(transparent) over S.
+        unsafe { (&raw mut (*self.raw()).state).cast::<S>() }
+    }
+
+    /// The block's `failed` flag and error cell, as references to those fields alone.
+    fn failure(&self) -> (&AtomicBool, &UnsafeCell<Option<S::Error>>) {
+        let b = self.raw();
+        // SAFETY: a live block; references to two fields the state does not contain, shared only
+        // through atomics and the write-once rule of `fail`.
+        unsafe { (&*(&raw const (*b).failed), &*(&raw const (*b).error)) }
     }
 
     /// Put the built state in its block. Once, before any step; the caller is in arena mode
@@ -142,10 +155,10 @@ impl<S: State> Core<S> {
 
     /// Keep the first failure's error; a later one is dropped.
     fn fail(&self, e: S::Error) {
-        let b = self.block();
-        if !b.failed.swap(true, Ordering::AcqRel) {
+        let (failed, error) = self.failure();
+        if !failed.swap(true, Ordering::AcqRel) {
             // SAFETY: only the step that set `failed` writes, and the leader reads after the run.
-            unsafe { *b.error.get() = Some(e) };
+            unsafe { *error.get() = Some(e) };
         }
     }
 
@@ -171,9 +184,9 @@ impl<S: State> Core<S> {
 
     /// The error of the failed step, once. The worker has a result.
     pub(crate) fn take_error(&self) -> Option<S::Error> {
-        let b = self.block();
+        let (failed, error) = self.failure();
         // SAFETY: the run is over, so no step writes it.
-        b.failed.load(Ordering::Acquire).then(|| unsafe { (*b.error.get()).take() }).flatten()
+        failed.load(Ordering::Acquire).then(|| unsafe { (*error.get()).take() }).flatten()
     }
 }
 
@@ -260,6 +273,29 @@ impl<P> PoolCore<P> {
     pub(crate) unsafe fn edit_with<R>(&self, f: impl FnOnce(&mut P) -> R) -> R {
         // SAFETY: built; the caller excludes every reader.
         f(unsafe { &mut *self.at() })
+    }
+}
+
+/// The pool as a backend sees it, without its type.
+pub(crate) trait ErasedPool: Send + Sync {
+    /// For a step's downcast to `PoolCore<P>` (`Erased::run`).
+    fn any(&self) -> &(dyn Any + Send + Sync);
+    fn addr(&self) -> usize;
+    /// # Safety
+    /// As `PoolCore::adopt`.
+    unsafe fn adopt(&self, addr: usize);
+}
+
+impl<P: Send + Sync + 'static> ErasedPool for PoolCore<P> {
+    fn any(&self) -> &(dyn Any + Send + Sync) {
+        self
+    }
+    fn addr(&self) -> usize {
+        PoolCore::addr(self)
+    }
+    unsafe fn adopt(&self, addr: usize) {
+        // SAFETY: the caller's.
+        unsafe { PoolCore::adopt(self, addr) }
     }
 }
 
@@ -372,6 +408,10 @@ pub(crate) struct Inner {
     pub waits: [Waits; crate::sched::MAX_STEPS],
     /// The trace, when the launch asked for one (`Topology::__trace`).
     pub trace: Option<Vec<Event>>,
+    /// The fields a leader in another process asked this worker to hold (`remote_edit`), 0 if none;
+    /// and whether this worker told it they are held.
+    pub remote: u64,
+    pub acked: bool,
     /// A step unwound mid-way (the run aborted): its fields are never given back.
     pub dead: bool,
 }
@@ -387,7 +427,7 @@ pub(crate) struct Slot {
 impl Slot {
     pub(crate) fn new(obj: Arc<dyn Erased>, trace: bool) -> Slot {
         let s = model(&*obj);
-        let inner = Inner { s, waits: [Waits::default(); crate::sched::MAX_STEPS], trace: trace.then(Vec::new), dead: false };
+        let inner = Inner { s, waits: [Waits::default(); crate::sched::MAX_STEPS], trace: trace.then(Vec::new), dead: false, remote: 0, acked: false };
         Slot { obj, inner: Mutex::new(inner), changed: Condvar::new() }
     }
 
@@ -451,6 +491,31 @@ impl Slot {
     pub(crate) fn trace(&self) -> Option<(Sched, Vec<Event>)> {
         let g = self.lock();
         g.trace.clone().map(|t| (model(&*self.obj), t))
+    }
+}
+
+/// A leader in another process edits this worker (backend.rs, `worker_edit_request`): `req` is the
+/// fields it asks for, 0 when it asks none. Hold them once; tell it once no step touching them runs;
+/// once it withdraws the request (it wrote them), give them back, waking the steps that touch them.
+fn remote_edit(slot: &Slot, g: &mut Inner, req: u64) {
+    if req != 0 && g.remote == 0 {
+        g.s.editing |= req;
+        g.remote = req;
+        g.acked = false;
+        Slot::record(g, Event::Hold { fields: req });
+    }
+    if g.remote != 0 && !g.acked && !g.s.touching(g.remote) {
+        Selected::worker_edit_held(true);
+        g.acked = true;
+    }
+    if g.remote != 0 && g.acked && req == 0 {
+        let fields = g.remote;
+        g.s.edited(fields);
+        Slot::record(g, Event::Edit { fields });
+        g.remote = 0;
+        g.acked = false;
+        Selected::worker_edit_held(false);
+        slot.changed.notify_all();
     }
 }
 
@@ -555,6 +620,7 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn A
             slot.changed.notify_all();
             return a;
         }
+        remote_edit(slot, &mut g, Selected::worker_edit_request());
         let pick = g.s.choose(&now);
         match pick {
             Some(i) => {

@@ -97,7 +97,7 @@ fn worker_main(shared: Arc<Shared>, me: usize, slot: Arc<Slot>) {
         drop(wait_turn(&shared, shared.lock(), me));
         // Fixed for the launch: an edit writes it in place (backend.rs, P2).
         let pool = shared.lock().pool.clone();
-        agent(&slot, &|| 0, pool.as_deref())
+        agent(&slot, &|| 0, pool.as_deref().map(|p| p.any()))
     }));
     let mut st = shared.lock();
     match outcome {

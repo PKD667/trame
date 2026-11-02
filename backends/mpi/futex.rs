@@ -30,8 +30,12 @@ impl Window {
 
     /// Wake every sleeper on the futex word at `off`.
     pub(crate) fn wake(&self, off: usize) {
-        let at = self.ptr(off, 4) as *mut u32;
-        let op = libc::FUTEX_WAKE as libc::c_long;
-        assert!(unsafe { libc::syscall(libc::SYS_futex, at, op, i32::MAX as libc::c_long) } >= 0, "futex wake");
+        wake_addr(self.ptr(off, 4) as usize);
     }
+}
+
+/// Wake every sleeper on the futex word at address `at`, an aligned u32 of a mapped window.
+pub(crate) fn wake_addr(at: usize) {
+    let op = libc::FUTEX_WAKE as libc::c_long;
+    assert!(unsafe { libc::syscall(libc::SYS_futex, at as *mut u32, op, i32::MAX as libc::c_long) } >= 0, "futex wake");
 }

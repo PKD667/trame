@@ -21,7 +21,7 @@ use std::sync::atomic::Ordering::{Acquire, SeqCst};
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
-use super::layout::{ABORT_BIT, DONE, STOP};
+use super::layout::{ABORT_BIT, DONE, K_EDIT, K_HELD, STOP};
 
 use super::plan::{self, Entry, rank_of};
 use super::state::local;
@@ -120,10 +120,22 @@ pub(super) fn room(route: usize) -> bool {
     }
 }
 
-/// The window words an agent reads at every round, as raw addresses: its epoch, STOP and DONE. Set
-/// once by `fast_init` before any agent starts; the window lives until the process exits (state.rs),
-/// and these are atomic words, so reading them needs no transport lock.
-static FAST: OnceLock<(usize, usize, usize)> = OnceLock::new();
+/// The window words an agent uses without the transport lock, as raw addresses: its epoch, STOP,
+/// DONE, its EDIT and HELD lines, and the leader's epoch and sleep count (to wake it). Set once by
+/// `fast_init` before any agent starts; the window lives until the process exits (state.rs), and these
+/// are atomic words. The edit handshake must not take the lock: an idle agent holds it through its
+/// futex sleep, and the agent that answers the leader may be another one.
+static FAST: OnceLock<Fast> = OnceLock::new();
+
+struct Fast {
+    epoch: usize,
+    stop: usize,
+    done: usize,
+    edit: usize,
+    held: usize,
+    leader_epoch: usize,
+    leader_sleep: usize,
+}
 
 /// Record this worker's round words (imp.rs, before the agents start).
 pub(super) fn fast_init() {
@@ -131,13 +143,46 @@ pub(super) fn fast_init() {
     let (t, _) = parts();
     let at = |off: usize| t.win().ptr(off, 8) as usize;
     let (epoch, _) = t.words(t.me());
-    let _ = FAST.set((at(epoch), at(STOP), at(DONE)));
+    let (leader_epoch, leader_sleep) = t.words(t.lay().workers);
+    let _ = FAST.set(Fast {
+        epoch: at(epoch),
+        stop: at(STOP),
+        done: at(DONE),
+        edit: at(t.lay().per_worker(K_EDIT, t.me())),
+        held: at(t.lay().per_worker(K_HELD, t.me())),
+        leader_epoch: at(leader_epoch),
+        leader_sleep: at(leader_sleep),
+    });
 }
 
 fn fast() -> (&'static AtomicU32, &'static AtomicU64, &'static AtomicU32) {
-    let &(e, s, d) = FAST.get().expect("trame: fast_init runs before the agents");
+    let f = FAST.get().expect("trame: fast_init runs before the agents");
     // SAFETY: addresses of aligned words inside the window, which outlives every agent (state.rs).
-    unsafe { (&*(e as *const AtomicU32), &*(s as *const AtomicU64), &*(d as *const AtomicU32)) }
+    unsafe { (&*(f.epoch as *const AtomicU32), &*(f.stop as *const AtomicU64), &*(f.done as *const AtomicU32)) }
+}
+
+fn word64(addr: usize) -> &'static AtomicU64 {
+    // SAFETY: as `fast`.
+    unsafe { &*(addr as *const AtomicU64) }
+}
+
+/// The fields the leader asks this worker to hold, 0 if none (layout.rs EDIT). Without the lock.
+pub(super) fn edit_request() -> u64 {
+    let f = FAST.get().expect("trame: fast_init runs before the agents");
+    word64(f.edit).load(SeqCst)
+}
+
+/// Answer the leader's edit request (layout.rs HELD), and wake it: the same protocol as
+/// `Transport::bump` on the leader's epoch (epoch.rs), on raw addresses, without the lock.
+pub(super) fn edit_held(held: bool) {
+    let f = FAST.get().expect("trame: fast_init runs before the agents");
+    word64(f.held).store(u64::from(held), SeqCst);
+    // SAFETY: the leader's epoch is an aligned u32 of the window (as `fast`).
+    let e = unsafe { &*(f.leader_epoch as *const AtomicU32) };
+    e.fetch_add(1, SeqCst);
+    if word64(f.leader_sleep).load(SeqCst) != 0 {
+        super::futex::wake_addr(f.leader_epoch);
+    }
 }
 
 /// The worker's epoch, widened to the surface's u64. Read without the transport lock (FAST); an

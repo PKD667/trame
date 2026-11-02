@@ -136,7 +136,7 @@ fn agent_main(shared: Arc<Shared>, w: usize, a: usize, slot: Arc<Slot>) {
         // Fixed for the launch: an edit writes it in place (backend.rs, P2).
         let pool = shared.lock().pool.clone();
         let clock = || shared.nanos();
-        agent(&slot, &clock, pool.as_deref())
+        agent(&slot, &clock, pool.as_deref().map(|p| p.any()))
     }));
     let mut g = shared.lock();
     g.workers[w].finished += 1;

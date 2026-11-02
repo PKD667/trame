@@ -22,6 +22,7 @@ use super::nodes::{discover, node_ranks_setting, split_groups};
 use super::refusal::Refusal;
 use super::relay;
 use super::shape::{encode, plan};
+use super::segment;
 use super::shm::Window;
 use super::types::{Role, clock};
 
@@ -85,6 +86,7 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
     }
     let host_rank = nodes.relay_rank[nodes.me as usize];
     let name = window_name(world, host_rank);
+    let seg = format!("{name}-seg");
     let win = Window::allocate(&node, lay.total, name)?;
     if win.len() != lay.total {
         return Err(Refusal::Mpi("window size"));
@@ -93,6 +95,22 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
     let leader = me == topo.workers;
     // The lowest rank of each node initialises that node's window: a replica of the whole layout.
     let host = host_rank == world.rank();
+    // The node's segment (segment.rs): the host creates it, then every other rank of the node maps it.
+    // Refused on every rank if one rank of any node could not map it; the name is removed once the
+    // node's ranks have all tried, mapped or not.
+    let created = if host { segment::map(&seg, true, topo.workers) } else { Ok(()) };
+    node.barrier();
+    let mapped = if host { created } else { segment::map(&seg, false, topo.workers) };
+    let here = i32::from(mapped.is_ok());
+    world.all_reduce_into(&here, &mut all, SystemOperation::min());
+    node.barrier();
+    if host {
+        segment::unlink(&seg);
+    }
+    if all == 0 {
+        let why = mapped.err().unwrap_or_else(|| "a rank of another node could not map its segment".to_string());
+        return Err(Refusal::Memory { need: segment::LEN, why });
+    }
     let t = Transport::new(me, win, lay, Arc::new(nodes));
     if host {
         // No worker has run yet. The launch barrier below keeps every worker out until this is written.

@@ -86,8 +86,6 @@ fn agents_for(obj: &dyn Erased, t: &Transport, cap: Option<usize>) -> usize {
 impl Backend for Selected {
     type Run = Leader;
 
-    const STATES_AT_LEADER: bool = false;
-
     fn agree(plan: &Plan) -> Result<(), Refused> {
         let ranks = plan.workers.len() as u32 + 1;
         agree(world(), &encode_plan(plan), ranks).map_err(refused)

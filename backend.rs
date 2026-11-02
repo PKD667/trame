@@ -70,10 +70,10 @@ use crate::time::ClockId;
 use crate::topology::WorkerId;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::any::{Any, TypeId};
+use core::any::TypeId;
 
 /// The launch's pool, a `PoolCore<P>` (worker.rs), as the backend holds it.
-pub(crate) type PoolRef = Arc<dyn Any + Send + Sync>;
+pub(crate) type PoolRef = Arc<dyn crate::worker::ErasedPool>;
 
 /// What a leader edit writes.
 #[derive(Clone, Copy, Debug)]
@@ -88,11 +88,19 @@ pub(crate) trait Backend {
     /// The state of one launched run, owned by the leader.
     type Run;
 
-    /// Whether the workers' states live in the leader's process, so that `Worker::take` and
-    /// `Worker::error` read the real ones. False on a backend that runs workers in other processes
-    /// and does not ship states back (mpi, for now): the leader's copy is then stale, and the surface
-    /// refuses to answer from it.
-    const STATES_AT_LEADER: bool = true;
+    /// S4 for a leader in another process (the handshake): the fields it asks this worker to hold,
+    /// 0 when it asks none. The agent loop holds them (`Event::Hold`), answers
+    /// `worker_edit_held(true)` once no step touching them runs, and, once the request is 0 again,
+    /// gives them back (`Event::Edit`) and answers `worker_edit_held(false)`. A backend whose leader
+    /// edits in the workers' process (seq, threads) never asks.
+    fn worker_edit_request() -> u64 {
+        0
+    }
+
+    /// Tell the leader this worker holds (true) or gave back (false) the fields it asked for.
+    fn worker_edit_held(_held: bool) {
+        unreachable!("trame: no remote edit was asked")
+    }
 
     /// M1: `layout.size()` bytes of the domain of this process's launch, for a builder or an edit
     /// (alloc.rs, arena mode). `None`: this process's heap is the domain (seq, threads; or no launch

@@ -37,6 +37,7 @@ mod relay_out;
 mod relay_routes;
 mod results;
 mod ring;
+mod segment;
 mod shape;
 mod shm;
 mod state;
