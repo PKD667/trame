@@ -137,7 +137,11 @@ Each run's stdout equals `programs/post_parallel_pod.expected` (four lines: `slo
 
 This shows that the one-warp kernel, with global-memory slots and plain-data state, gives the seq result on this A40 with driver 580.178.04. It does not show lane-replica semantics for body-created state: the case is 4 keys, and the fold is not order-dependent across lanes. No timing was taken.
 
-Not done in Phase B: the health check on a dead launch (the local no-driver run in Phase A is the only dead-launch evidence); the second, larger case; the heap variant re-run. Nixsci note: the first attempts failed for three reasons, all in the apparatus: nixpkgs 2.34.9 against nixsci's nix-2.34.8 assertion (fixed by following nixsci's lock, commit c946e76); the hosts form of the static provider has no `driver` option, so the target needed the targets-file form (commit 8df6373); and nixsci refuses a dirty tree.
+Second case (100 keys, 300 items, order-dependent fold, CPU reference): source and CPU reference committed in `gpu/case2/` (`expected.txt`, sha256 `4c3277…`, from the independent `cpu_fold.py`, which reproduces the first case's expected text). Not run on the device: its PTX needs the cuda-oxide devShell, which rebuilt the CUDA toolkit and rust from source (store paths had gone), and that build was stopped at the deadline. Not run and not claimed.
+
+Health: the three rows say `ran=true`; the manifests say `ok`. A dead launch was not made on the node, so the FAILED path is not measured here (Phase A's no-driver run is the only dead-launch evidence, and it did not go through the lab's health check on a node). After the flake refactor (`mkGpu`, commit cb3aafe) nixsci reported the same inputs as already run and skipped them, so no fourth run was made.
+
+Not done in Phase B: the health check on a dead launch; the second case on the device; the heap variant re-run. Nixsci note: the first attempts failed for three reasons, all in the apparatus: nixpkgs 2.34.9 against nixsci's nix-2.34.8 assertion (fixed by following nixsci's lock, commit c946e76); the hosts form of the static provider has no `driver` option, so the target needed the targets-file form (commit 8df6373); and nixsci refuses a dirty tree.
 
 ### Integration boundary
 
