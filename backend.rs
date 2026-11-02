@@ -55,8 +55,9 @@
 //!      returns (S4 orders them), and to no step during it.
 //!   M6 Bounded. A domain's size is fixed at launch. A builder that does not fit refuses the launch;
 //!      an edit that does not fit fails, and allocates nothing outside the domain.
-//! seq and threads: the domain is the process heap, and M1, M5, M6 hold trivially. M2 and M3 are not
-//! checked by the compiler yet; where a backend relies on them it says how it checks them.
+//! seq and threads: the domain is the process heap, and M1, M5, M6 hold trivially. The driver checks M2
+//! and M3 on the field types of each state and pool (driver/README.md, State memory), and M4 on each
+//! step; a build without the driver does not.
 //!
 //! Worker operations act for the calling thread, which must be an agent of a worker. Leader
 //! operations act for the `Run` they are given. Bytes cross this seam; typed messages are encoded in

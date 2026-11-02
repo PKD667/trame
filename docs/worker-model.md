@@ -183,6 +183,5 @@ tests of `sched.rs`; a TLA+ model of field locks and weights is still to be writ
 
 - MPI and threaded backends: the MPI backend compiles against the new seam, but stop, edit, pool and
   traces are not carried to other ranks, and steps of one worker do not yet run on several threads.
-- The driver's checks (no allocation in a step, D5) still look for the old markers.
 - spec.md has not been rewritten.
 - Hosts, leaders per host, agreement, Relay or Direct per host pair, and the bulk log route.

@@ -121,8 +121,13 @@ items, so these lists are trusted.
 > use any loop and may recurse. It may allocate. It writes only its own state.
 
 > **Requirement (Step).** A step calls only items of $A_C$ and effects of $\Sigma_C$. Every loop is
-> counted, and it does not recurse. It may allocate. It writes only its own state and its cells
+> counted, and it does not recurse. It neither allocates nor frees (backend.rs M4, D5): it rewrites
+> in place the buffers its state holds. It writes only its own state and its cells
 > $L(p)$ (Section 5.3).
+
+> **Requirement (State memory).** No field of a `#[trame::state]` struct, and nothing in its pool
+> type, holds a function pointer, a closure, a trait object, a reference, a raw pointer, an `Rc`,
+> an `Arc`, a cell, an atomic or a lock, at any depth of its layout (backend.rs M2, M3).
 
 > **Requirement (Item).** An item calls only items of $A_I$. Every loop is counted, and it neither
 > recurses nor allocates. It writes only its slot.
@@ -165,7 +170,7 @@ only on its inputs, so items stay deterministic.
 > portable code with no backend-specific version.
 
 > **Requirement (Checked builds).** The driver compiles with `--cfg trame_checked`. Without this
-> flag, `concurrent!` and `parallel!` expand to `compile_error!`.
+> flag, `#[trame::state]` and `parallel!` expand to `compile_error!`.
 
 The flag prevents accidental unchecked builds. It does not prevent deliberate ones.
 
