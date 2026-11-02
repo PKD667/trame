@@ -280,7 +280,7 @@
       lab.${system}.experiments = experiments;
       # The mpi dev shell as a nixsci deployment, for `nixsci deploy shell ... dev -- CMD` on a cluster
       # node: tests run there, not on a laptop. Same packages and env as devShells.mpi (one source:
-      # dependencies.nix). Stands in for a `deploy shell --devshell` (docs/nixsci-proposals.md).
+      # dependencies.nix). Stands in for a `deploy shell --devshell` (a proposal to nixsci).
       deployments.${system}.dev =
         let dependencies = import ./backends/mpi/dependencies.nix { inherit pkgs; };
         in nixsci.lib.mkDeployment pkgs {

@@ -55,9 +55,7 @@ read. A frame overwritten before it is read is a **Drop**, and B's ring overwrit
 
 The relay of the leader's node is the root.
 
-- **Barrier and publication.** Removed in the worker model (2026-11-02): the `ARRIVED` and `RELEASE` records,
-  the arrival count and the leader's deposit are gone, and so is the `EXITED` record, which only the
-  barrier's Deadlock check read. The root sends only `END`.
+- **Root.** The root sends only `END`. Every other record is a frame, a credit, a result or an abort.
 - **Results.** `out` sends each new local outcome to every other node. `in` stores it, so `join` on the
   leader's node sees every worker.
 - **Abort.** `out` sends the abort record once (the panicking worker's rank and its message), and `in` records it locally, sets the bit and wakes every local agent.
@@ -65,8 +63,8 @@ The relay of the leader's node is the root.
 - **End.** After `join`, the leader sets END and bumps the relay, and the root sends END to every node.
   Each relay stops, and its process calls `MPI_Finalize` only after both threads have stopped.
 
-Not built yet: detecting that nothing can move after `join` (counting waves over the relays). The
-one-node backend lacks it as well.
+The backend does not detect that nothing can move after `join`, on one node or across nodes, and never
+reports `Deadlock`.
 
 ## Testing on one machine
 
