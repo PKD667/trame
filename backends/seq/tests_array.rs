@@ -5,7 +5,8 @@ extern crate std;
 
 use super::tests::{await_frame, within_10s};
 use crate::io;
-use crate::topology::{Context, LEADER, Topology};
+use crate::status::Status;
+use crate::topology::{LEADER, Topology};
 
 #[crate::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -21,22 +22,31 @@ struct Burst {
     spikes: [Spike; 4],
 }
 
-fn burst(_cx: &Context) {
+/// Sends one `Burst` to the leader.
+#[crate::state(steps(send_burst))]
+struct Sender {}
+
+#[crate::step(Sender)]
+fn send_burst() -> Status {
     let spikes = [
         Spike { neuron: 1, t: 10 },
         Spike { neuron: 2, t: 11 },
         Spike { neuron: 3, t: 12 },
         Spike { neuron: 4, t: 13 },
     ];
-    while io::send(LEADER, Burst { id: 9, spikes }).is_err() {}
+    match io::send(LEADER, Burst { id: 9, spikes }) {
+        Ok(()) => Status::Done,
+        Err(_) => Status::wait().room::<Burst>(LEADER),
+    }
 }
 
 #[test]
 fn a_message_with_an_array_field_round_trips() {
     within_10s(|| {
         let mut g = Topology::new();
-        let w = g.worker(burst);
-        g.route::<Burst>(w, LEADER, 1);
+        let w = g.worker::<Sender>();
+        g.set(&w, || Sender {});
+        g.route::<Burst>(w.id(), LEADER, 1);
         let run = g.launch().expect("accepted");
         let got: Burst = await_frame(&run);
         assert_eq!(got.id, 9);

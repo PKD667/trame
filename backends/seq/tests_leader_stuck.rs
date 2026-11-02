@@ -3,20 +3,25 @@
 
 extern crate std;
 
-use super::tests::{Ping, panic_text, within_10s};
+use super::tests::{Ping, Quick, Stuck, panic_text, within_10s};
 use crate::io;
-use crate::topology::{Context, LEADER, Topology};
+use crate::status::Status;
+use crate::time::Reading;
+use crate::topology::{LEADER, Topology};
+use core::time::Duration;
 
 const STUCK: &str = "trame: deadlock: the leader waits and nothing can arrive";
 
-fn quick(_cx: &Context) {}
+/// Sends `Ping(7)` to the leader, once.
+#[crate::state(steps(sends))]
+struct Sender {}
 
-fn wait_at_barrier(_cx: &Context) {
-    io::barrier();
-}
-
-fn sends(_cx: &Context) {
-    let _ = io::send(LEADER, Ping(7));
+#[crate::step(Sender)]
+fn sends() -> Status {
+    match io::send(LEADER, Ping(7)) {
+        Ok(()) => Status::Done,
+        Err(_) => Status::wait().room::<Ping>(LEADER),
+    }
 }
 
 /// Two workers return and nothing is sent to the leader: its wait can never return.
@@ -24,9 +29,11 @@ fn sends(_cx: &Context) {
 fn wait_after_every_worker_returned_panics() {
     within_10s(|| {
         let mut g = Topology::new();
-        let a = g.worker(quick);
-        let _b = g.worker(quick);
-        g.route::<Ping>(a, LEADER, 1);
+        let a = g.worker::<Quick>();
+        g.set(&a, || Quick {});
+        let b = g.worker::<Quick>();
+        g.set(&b, || Quick {});
+        g.route::<Ping>(a.id(), LEADER, 1);
         let run = g.launch().expect("accepted");
         let text = panic_text(move || {
             loop {
@@ -37,13 +44,16 @@ fn wait_after_every_worker_returned_panics() {
     });
 }
 
-/// A worker waits at the barrier that the other worker can never reach, since it returned.
+/// A worker waits for a write to a field that no step of its worker writes, and the other worker
+/// has returned: nothing can move.
 #[test]
-fn wait_with_a_worker_blocked_at_a_barrier_panics() {
+fn wait_with_a_worker_that_waits_for_a_write_nothing_makes_panics() {
     within_10s(|| {
         let mut g = Topology::new();
-        g.worker(quick);
-        g.worker(wait_at_barrier);
+        let a = g.worker::<Quick>();
+        g.set(&a, || Quick {});
+        let b = g.worker::<Stuck>();
+        g.set(&b, || Stuck { never: false });
         let run = g.launch().expect("accepted");
         let text = panic_text(move || {
             loop {
@@ -59,8 +69,9 @@ fn wait_with_a_worker_blocked_at_a_barrier_panics() {
 fn a_frame_from_a_worker_wakes_the_leader() {
     within_10s(|| {
         let mut g = Topology::new();
-        let w = g.worker(sends);
-        g.route::<Ping>(w, LEADER, 1);
+        let w = g.worker::<Sender>();
+        g.set(&w, || Sender {});
+        g.route::<Ping>(w.id(), LEADER, 1);
         let run = g.launch().expect("accepted");
         let got = loop {
             if let Some(p) = run.recv::<Ping>() {
@@ -74,30 +85,24 @@ fn a_frame_from_a_worker_wakes_the_leader() {
 
 /// `Napper` waits 20 ms on its clock, then sends `Ping(7)` to the leader. While it waits, the leader's
 /// `wait` must not be reported stuck: the deadline moves the worker (stuck.rs, earliest_deadline).
+#[crate::state(steps(nap))]
 struct Napper {
-    start: Option<crate::time::Reading>,
+    start: Option<Reading>,
 }
 
-#[crate::process]
-impl Napper {
-    fn step(&mut self) -> crate::status::Status {
-        let now = crate::time::now();
-        match self.start {
-            None => {
-                self.start = Some(now);
-                crate::status::Status::wait().until(now.after(core::time::Duration::from_millis(20)))
-            }
-            Some(_) => {
-                let _ = io::send(LEADER, Ping(7));
-                crate::status::Status::Done
-            }
+#[crate::step(Napper)]
+fn nap(start: &mut Option<Reading>) -> Status {
+    let now = crate::time::now();
+    match *start {
+        None => {
+            *start = Some(now);
+            Status::wait().until(now.after(Duration::from_millis(20)))
         }
+        Some(_) => match io::send(LEADER, Ping(7)) {
+            Ok(()) => Status::Done,
+            Err(_) => Status::wait().room::<Ping>(LEADER),
+        },
     }
-}
-
-fn naps(_cx: &Context) {
-    let r = crate::concurrent!(Napper { start: None };);
-    assert_eq!(r, Ok(()));
 }
 
 /// A leader that waits while a worker has a pending deadline is not stuck: its wait returns once the
@@ -106,8 +111,9 @@ fn naps(_cx: &Context) {
 fn a_pending_deadline_keeps_the_leader_waiting_not_stuck() {
     within_10s(|| {
         let mut g = Topology::new();
-        let w = g.worker(naps);
-        g.route::<Ping>(w, LEADER, 1);
+        let w = g.worker::<Napper>();
+        g.set(&w, || Napper { start: None });
+        g.route::<Ping>(w.id(), LEADER, 1);
         let run = g.launch().expect("accepted");
         let got = loop {
             if let Some(p) = run.recv::<Ping>() {
