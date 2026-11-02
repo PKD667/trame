@@ -1,6 +1,53 @@
 {
   "format": "2.0",
   "runs": {
+    "post-parallel-gpu": [
+      {
+        "facts": {
+          "closure": "/nix/store/b1l96rmdk6wwy6yc5686vdgfbspbvbm1-experiment-post-parallel-gpu",
+          "format": "2.0",
+          "input_id": "6dad293dbe47833fe0bded9df25e3e8dc35bea74a5a7aeb01172674a81100a02",
+          "params": {},
+          "replicate": 1,
+          "run": "post-parallel-gpu-6dad293dbe47-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "post-parallel-gpu-6dad293dbe47-r1",
+        "path": "/nix/store/kyc3cg9lfimynk29frkwcxyfshjjf30s-post-parallel-gpu-6dad293dbe47-r1",
+        "sha256": "sha256-qdf+fhenkgKrZDziCgJl4HptLsLyaqmlq1BE64urNBg="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/b1l96rmdk6wwy6yc5686vdgfbspbvbm1-experiment-post-parallel-gpu",
+          "format": "2.0",
+          "input_id": "6dad293dbe47833fe0bded9df25e3e8dc35bea74a5a7aeb01172674a81100a02",
+          "params": {},
+          "replicate": 2,
+          "run": "post-parallel-gpu-6dad293dbe47-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "post-parallel-gpu-6dad293dbe47-r2",
+        "path": "/nix/store/cmgjkkw1j2zwglibpn4mf2xf2nqvm6yf-post-parallel-gpu-6dad293dbe47-r2",
+        "sha256": "sha256-uHxnZ/XOrHCv79zn0FuPA/3jaE0ngjhJ6txN05iggAk="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/b1l96rmdk6wwy6yc5686vdgfbspbvbm1-experiment-post-parallel-gpu",
+          "format": "2.0",
+          "input_id": "6dad293dbe47833fe0bded9df25e3e8dc35bea74a5a7aeb01172674a81100a02",
+          "params": {},
+          "replicate": 3,
+          "run": "post-parallel-gpu-6dad293dbe47-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "post-parallel-gpu-6dad293dbe47-r3",
+        "path": "/nix/store/i0s8lzqrq7wiyc3cgg0gy04lf2gvvapg-post-parallel-gpu-6dad293dbe47-r3",
+        "sha256": "sha256-1Elhab001H3ShAj50ef3O51Yiuvs/VIt9kkgMY8cmp4="
+      }
+    ],
     "programs-cluster": [
       {
         "facts": {

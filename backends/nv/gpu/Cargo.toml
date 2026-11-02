@@ -1,0 +1,17 @@
+[package]
+name = "nv-post-parallel-gpu"
+version = "0.0.0"
+edition = "2024"
+description = "One-warp device prototype of programs/post_parallel_pod.rs (backends/nv/PLAN.md, gate D)"
+publish = false
+license = "Apache-2.0"
+
+# Own workspace, like rejections/ and backends/nv: not a member of the trame root.
+[workspace]
+
+[dependencies]
+# cuda-oxide crates by absolute path to the local checkout at 9df9e7cef (read-only use). A flake input
+# replaces these paths when the experiment is deployed (see README.md).
+cuda-core = { path = "/home/pkd/code/cuda-oxide/cuda-core" }
+cuda-device = { path = "/home/pkd/code/cuda-oxide/cuda-oxide/crates/cuda-device" }
+cuda-host = { path = "/home/pkd/code/cuda-oxide/cuda-oxide/crates/cuda-host" }
