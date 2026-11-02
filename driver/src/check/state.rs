@@ -110,13 +110,13 @@ impl<'tcx> Cx<'tcx> {
     fn walk(&mut self, ty: Ty<'tcx>, path: &str, field: Ty<'tcx>) {
         let tcx = self.tcx;
         match ty.kind() {
-            ty::FnPtr(..) => self.hit(path, field, "a function pointer (a code address)", Clause::M2),
+            ty::FnPtr(..) => self.hit(path, field, "a function pointer (a code address)", Some(ty), Clause::M2),
             ty::Closure(..) | ty::CoroutineClosure(..) | ty::Coroutine(..) => {
-                self.hit(path, field, "a closure (a code address and its captures)", Clause::M2)
+                self.hit(path, field, "a closure (a code address and its captures)", Some(ty), Clause::M2)
             }
-            ty::Dynamic(..) => self.hit(path, field, "a trait object (a vtable address)", Clause::M2),
-            ty::Ref(..) => self.hit(path, field, "a reference (an address in one process)", Clause::M2),
-            ty::RawPtr(..) => self.hit(path, field, "a raw pointer", Clause::M2),
+            ty::Dynamic(..) => self.hit(path, field, "a trait object (a vtable address)", Some(ty), Clause::M2),
+            ty::Ref(..) => self.hit(path, field, "a reference (an address in one process)", Some(ty), Clause::M2),
+            ty::RawPtr(..) => self.hit(path, field, "a raw pointer", Some(ty), Clause::M2),
             ty::Array(t, _) | ty::Slice(t) => self.walk(*t, path, field),
             ty::Tuple(ts) => {
                 for (i, t) in ts.iter().enumerate() {
@@ -128,7 +128,7 @@ impl<'tcx> Cx<'tcx> {
                 if let Some((_, what, clause)) = REFUSED.iter().find(|(p, _, _)| {
                     if p.ends_with("::") { name.starts_with(p) } else { name == *p }
                 }) {
-                    return self.hit(path, field, &format!("{what}, `{ty}`"), *clause);
+                    return self.hit(path, field, what, Some(ty), *clause);
                 }
                 if is_std(tcx, adt.did()) {
                     // A container of core, alloc or std: its fields are its own; what it holds is its
@@ -155,8 +155,13 @@ impl<'tcx> Cx<'tcx> {
         }
     }
 
-    fn hit(&mut self, path: &str, field: Ty<'tcx>, what: &str, clause: Clause) {
-        let msg = format!("[state-memory] {path}: {field} holds {what} (backend.rs {})", clause.name());
+    /// `offender` is the type found, named when it is not the field's own type (a `Cell` inside a `Vec`).
+    fn hit(&mut self, path: &str, field: Ty<'tcx>, what: &str, offender: Option<Ty<'tcx>>, clause: Clause) {
+        let inside = match offender {
+            Some(o) if o != field => format!(", found `{o}`"),
+            _ => String::new(),
+        };
+        let msg = format!("[state-memory] {path}: {field} holds {what}{inside} (backend.rs {})", clause.name());
         if self.said.insert(msg.clone()) {
             self.tcx.dcx().struct_span_err(self.span, msg).emit();
             self.errors += 1;
