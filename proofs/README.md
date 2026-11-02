@@ -15,12 +15,16 @@ the code has it.
   `epoch.rs` argues and what k agents see if the lock is ever narrowed. Properties: `NoLostWakeup`, `Live` (every
   sleeper sees a true condition), under weak fairness; `Announced` (SLEEP is non-zero while any sleeper has added and
   not subtracted, the fact `bump_word` relies on); `CountExact` (SLEEP equals that number).
-  Configurations, all W = 16, K = 3 bumps: `MCEpoch` N=1, `MCEpoch2` N=2, `MCEpoch3` N=3, `MCEpochXport` N=3 with
-  `XPORT`; all count, all expected to hold.
-- **Flag** (`MCEpochFlag.cfg`, N=2, `COUNTED = FALSE`). Expected to fail `NoLostWakeup`: agent A sleeps; agent B adds
-  itself, and A's wake-up clears the flag while B still sleeps; the next bump loads 0 and does not wake B.
-  `MCEpochFlagAnnounced.cfg` fails `Announced` (the cause, a few steps sooner). `MCEpochFlagXport.cfg` (flag, N=2, with
-  `XPORT`) is expected to hold: the lock alone hid the flag's fault when only one agent sleeps at a time.
+  Configurations, all W = 16, K = 3 bumps, all count; all hold (TLC 2.19, chiclet-5, 2026-11-02; distinct states,
+  depth): `MCEpoch` N=1 (223, 21), `MCEpoch2` N=2 (3,171, 27), `MCEpoch3` N=3 (43,375, 34), `MCEpochXport` N=3 with
+  `XPORT` (27,364, 26).
+- **Flag** (`MCEpochFlag.cfg`, N=2, `COUNTED = FALSE`). Fails `NoLostWakeup` (a 26-state trace): agent A sleeps;
+  agent B adds itself, and A's wake-up clears the flag while B still sleeps; the next bump loads 0 and does not wake
+  B. `MCEpochFlagAnnounced.cfg` fails `Announced`, the cause, in 14 states. `MCEpochFlagXport.cfg` (flag, N=2, with
+  `XPORT`) holds (2,577 distinct states, depth 24): under the lock only one agent of a rank sleeps at a time, and
+  the flag loses no wake among them. So the hang the count fixed did not come from a rank's agents racing on the
+  flag under `XPORT`; it came from a sleeper outside that lock (the leader's or the relay's `sleep_on`). Which one
+  is not established.
   Trace: `counterexamples/epoch-flag-k2.txt`.
 - **Credit** (`Credit.tla`, `MCCredit.cfg`). One lossless route, capacity 2, 4 frames, from `relay_out.rs` and
   `relay_routes.rs`, with `NODES.md` "A route between nodes". Properties: occupancy at most C, no over-send, FIFO
