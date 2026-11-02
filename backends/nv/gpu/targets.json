@@ -1,0 +1,16 @@
+{
+  "targets": {
+    "gruss3-a40": {
+      "backend": "ssh",
+      "host": "pkronlun@gruss-3.nancy.grid5000.fr",
+      "system": "x86_64-linux",
+      "store": "/tmp/pkronlun-nix-deploy/store",
+      "run_root": "/tmp/pkronlun-nix-deploy/runs",
+      "rootless": true,
+      "remote_bootstrap": "/tmp/pkronlun-nix-deploy/bin/nix",
+      "ssh_options": ["-F", "/home/pkd/.config/nixsci/cluster-ssh.config"],
+      "ready_timeout": 180,
+      "driver": "nvidia"
+    }
+  }
+}

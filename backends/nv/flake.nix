@@ -60,7 +60,12 @@
           closures.${system} = gpuClosure;
           # three finished runs: three fresh processes, each with its own driver context
           replicates = 3;
-          resources = { provider = "gpu"; hosts = 1; };
+          # the target declares driver = "nvidia" (nixsci refuses a job whose driver the target lacks);
+          # providers.json's static hosts do not carry it, so the target is named in gpu/targets.json
+          resources = {
+            provider = "gpu"; hosts = 1;
+            opts = { targets = [ "gruss3-a40" ]; config = "${./gpu/targets.json}"; };
+          };
           data.run = {
             columns = {
               ran = "bool"; ok = "bool"; verdict = "str"; device = "str"; compute_capability = "str";
