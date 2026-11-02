@@ -10,8 +10,8 @@
 extern crate std;
 
 use std::hint;
-use std::sync::atomic::Ordering::{Acquire, Relaxed};
 use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering::{Acquire, Relaxed};
 use std::thread;
 
 use mpi_rma::Ring;

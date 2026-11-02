@@ -59,10 +59,10 @@ use std::vec::Vec;
 
 pub use layout::{Route, Topology};
 pub use open::{agree, launch, open};
-pub use relay_rma::lane_frames;
-pub use small::SMALL_BYTES;
 pub use refusal::Refusal;
+pub use relay_rma::lane_frames;
 pub use shape::encode;
+pub use small::SMALL_BYTES;
 pub use state::finalize;
 
 pub use harness::{deadlocked, leader_join, returned};

@@ -60,7 +60,9 @@ pub(crate) fn lanes(routes: &[Route], node_of: &[u32], relay_rank: &[i32], rma: 
         lane.0 += r.cap as usize;
         lane.1 = lane.1.max(r.size + LANE_HEAD);
     }
-    by.into_iter().map(|((a, b), (depth, capacity))| (relay_rank[a as usize], relay_rank[b as usize], depth, capacity)).collect()
+    by.into_iter()
+        .map(|((a, b), (depth, capacity))| (relay_rank[a as usize], relay_rank[b as usize], depth, capacity))
+        .collect()
 }
 
 #[cfg(test)]

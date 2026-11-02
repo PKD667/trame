@@ -26,7 +26,7 @@ use mpi::traits::*;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
-use trame::__mpi::{Answer, Received, Role, Route, RouteId, SMALL_BYTES, Topology, clock, launch, lane_frames};
+use trame::__mpi::{Answer, Received, Role, Route, RouteId, SMALL_BYTES, Topology, clock, lane_frames, launch};
 
 #[path = "latency_util.rs"]
 mod util;
