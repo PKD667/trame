@@ -1,7 +1,7 @@
 # trame-driver
 
 Trame's compile-time checker (spec.md, Compile time): a rustc driver, and `cargo trame`, which runs cargo with it.
-The driver reads the optimized MIR of each root marker (`trame::__check::{item,step,worker}`, check.rs) and everything reachable from it, and refuses code that breaks the rules. Refusals are rustc errors: `error: [rule] <level> ...`.
+The driver reads the optimized MIR of each root marker (`trame::__check::{item,step,worker}`, check.rs) and everything reachable from it, and refuses code that breaks the rules. It also reads the types of each state and pool (`trame::__check::{state,pool}`). Refusals are rustc errors: `error: [rule] <level> ...`, and `error: [state-memory] <field path>: <type> holds <what> (backend.rs M2|M3)` for a type.
 
 Run from driver/. The compiler is pinned in driver/rust-toolchain.toml and built by flake.nix.
 
@@ -10,13 +10,31 @@ Run from driver/. The compiler is pinned in driver/rust-toolchain.toml and built
 On a crate: `nix build "path:$PWD/..#trame-driver"`, put its `bin/` on PATH, then `cargo trame check|build|test` in that crate. Checked builds use `target/trame`, apart from plain cargo's `target/`.
 Debug: `TRAME_DRIVER_DEBUG=1` prints each root and its level.
 
+## The markers
+
+The macros call these hidden functions of check.rs, from non-generic functions they emit. A checked build collects every non-generic function (`-Clink-dead-code`), so a step that nothing calls is still checked.
+- `#[trame::step]` emits `S::__trame_check()` on the step's struct, which calls `step(&f)` with the step function `f`: a Step root. A state's stop step is a step too.
+- `parallel!` calls `item(&f)`: an Item root.
+- `#[trame::state]` emits `S::__trame_check()`, which calls `state::<S>()` and, when the state says `pool = P`, `pool::<P>()`. The driver reads the type argument of each instance: this is the mechanism for the state-memory check, chosen because it adds no new scheme, only a generic function with a type argument.
+- `worker(&f)` is a Worker root: leader code, a builder, an edit. The library emits none yet: `Topology::set` and `Run::edit` would call it on their closure. The rejection cases call it directly.
+
 ## Checks
 
 Per level (Item, Step, Worker, as in spec.md, Requirement per level), for every function reached from a root:
 - Unsafe code, FFI, indirect calls, statics: refused at every level.
 - Effects (lists/effects.txt): each effect is allowed at the levels spec.md names for it.
 - Core and alloc callees: judged by the lists (below).
-- Counted loops (Item, Step), recursion (Item, Step), allocation (Item: no reach to `alloc::alloc` or `__rust_alloc`).
+- Counted loops (Item, Step), recursion (Item, Step).
+- Allocation (Item, Step; backend.rs M4, D5): a step neither allocates nor frees. A call into `alloc` is refused unless the list names it by the alloc type's own key (`alloc::vec::Vec::len`, `alloc::vec::Vec::index_mut`, ...), so a call that only a trait path allows (`Extend::extend`, `Clone::clone`) is refused as `[allocation]`, as `Vec::push` is. A `Vec` made or dropped inside a step is refused through `Vec::new` or `Vec::drop`: the drop glue shows a free. A step may rewrite in place the buffers its state holds: an index assignment, `len`, `iter_mut`, a counted loop. The Worker level may allocate.
+- State memory (on a state's field types and the pool type; backend.rs M2, M3), below.
+
+## State memory
+
+For each `state::<S>()` and `pool::<P>()` instance the driver walks the field types of `S` (and of `P`, when it is a struct; otherwise `P` itself) and refuses, with the field path and the clause:
+- M2: a function pointer, a closure, a trait object (`dyn`), a reference (also `&'static`), a raw pointer (`NonNull` included), `Rc`, `Arc`, `Weak`, and the handles of one process: files, sockets, threads, processes, `Instant`.
+- M3: `Cell`, `RefCell`, `UnsafeCell`, `OnceCell`, atomics, `Mutex`, `RwLock` and the other types of `std::sync`.
+
+The walk goes through user structs, enums, tuples, arrays and slices by their fields, and through the generic arguments of the types of core, alloc and std (`Vec<T>`, `Box<T>`, `Option<T>`), whose own fields belong to the container. A user type with an `unsafe impl Send` and `Sync` over a `Cell` is found by its layout, not by the auto traits. A recursive type ends the walk. A `PhantomData` holds nothing. rustc refuses first what is not `Send + Sync` (`State`'s bounds, worker.rs), so the driver's check matters for what rustc accepts: `Arc`, atomics, locks, function pointers, `&'static`, `Box<dyn Fn + Send + Sync>`, and a wrapper with an unsafe auto trait. A closure type cannot be written in a non-generic struct on stable Rust, so that arm has no case. A refusal of a pool that is not a user struct has no source line (`pool_not_a_struct`).
 
 A function reached from several roots is checked at the strictest level that reaches it.
 
@@ -25,8 +43,8 @@ A function reached from several roots is checked at the strictest level that rea
 Each line is a path, or `P::*` for every item under `P`, then a `# reason`. A `-` line is a deny at one level.
 - `deny.txt`: refused at every level; where a deny and an allow both match, the more specific entry decides, and a deny wins a tie. Interior mutability, locks, `Rc`, raw pointers, hints, intrinsics, arch.
 - `A_I.txt`: what an item may call. Read with deny.txt. The infinite iterator sources are denied here (`-` lines), because an item has no unbounded loop.
-- `A_C.txt`: what a step may call. Every line of A_I, plus allocation (`alloc::vec`, `boxed`, `collections`, `string`, `slice`, `fmt`, `alloc`).
-- `A_W.txt`: what a worker may call. Every line of A_C, without the infinite-source denies, plus the `Arc` snapshot handle.
+- `A_C.txt`: what a step may call. Every line of A_I, plus the alloc calls that read or rewrite a buffer in place, by key (`alloc::vec::Vec::len`, `index_mut`, `deref_mut`, the same for `String` and `Box`), and `Arc::{deref, clone, drop}` for trame's own handles. No `alloc::*` prefix is listed.
+- `A_W.txt`: what a worker may call. Every line of A_C, without the infinite-source denies, plus allocation (`alloc::vec`, `boxed`, `collections`, `string`, `slice`, `fmt`, `alloc`).
 
 The levels nest: an allow in a stricter level is allowed in every looser one (checked at start-up), and a deny at a looser level is denied at every stricter one. Start-up fails loudly otherwise.
 
@@ -57,6 +75,9 @@ What it costs: a non-effect trusted function that does I/O, or unbounded work, g
 - A default method of a core trait on a user type (`ne` of a derived `PartialEq`) is matched by its trait path, as `core::cmp::*` (`names_of`, scan.rs). Its body is core's, and the user code it calls is reached through the callee's trait bounds (`callable_traits`), so a user impl of a trait the callee does not bound is not walked. This assumes core reaches user code only through its bounds and `Drop`; specialization inside core could break that, and it holds on stable Rust because the traits core specializes on (`TrustedLen`, ...) cannot be implemented there. The reach also follows a fn item's signature (`map(mk)` with `mk -> X`), since a user type can appear only there. A user `Iterator` is refused as unbounded below Worker regardless.
 - Box: a deref of a Box is the Box's own pointer, not a raw-pointer deref of the program's, and is not [unsafe]. The driver recognises the MIR shape it observed for this (`box_pointer`, scan.rs: a local whose only definition is a transmute of `b.0.0`, a field path user code cannot name). That is a matched shape, not a proof about std; `unsafe/box_deref_step_ok` and `allocation/vec_macro_step_ok` are the cases that pin it.
 - Drop glue is compiler code (a shim): its raw derefs and union accesses are not [unsafe]. Its calls are scanned. A program's own `Drop` impl is an `Own` edge and is judged in full, so `Box<X>` with an unsafe `X::drop` is refused, and `Box<u32>` is not.
+- Allocation is judged on calls into `alloc`, by key. A buffer that a step makes and keeps would still have to be dropped or stored over an old value, and both are refused (`Vec::drop`, `Box::drop`); `mem::forget`, `ManuallyDrop` and `Box::leak` are unlisted, so they are refused. An allocation inside trusted trame code that is not an `alloc` call (a raw `__rust_alloc`) is not seen.
+- Trusted trame code is read for alloc calls at Step as it was at Item. An `Arc` handle's clone and drop in the backend are allowed by key (A_C.txt).
+- The state-memory check is on types. A `usize` that holds an address, or a `HashMap`'s per-process seed, passes.
 - Not implemented: the Lock rules (UnsafeCell only in Lock, no Lock in Lock) and the rest of spec.md section 3 outside the milestones.
 - Calls with no readable body and not listed are refused (`allow-list`), so a missing body fails closed.
 - Diagnostics point at MIR spans, which may be inside macro expansions.

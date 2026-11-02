@@ -17,17 +17,15 @@ struct Queue {
     n: u32,
 }
 
-struct P;
-
-#[trame::process(receives = Job)]
-impl P {
-    fn step(&mut self, q: &mut Queue) -> trame::Status {
-        q.n = even(4) as u32;
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Queue,
 }
 
-fn main() {
-    let mut q = Queue { n: 0 };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = Job)]
+fn step(q: &mut Queue) -> trame::Status {
+    q.n = even(4) as u32;
+    trame::Status::Done
 }
+
+fn main() {}

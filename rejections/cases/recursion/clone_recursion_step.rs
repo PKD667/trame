@@ -1,4 +1,6 @@
-// spec: Requirement (Step): no recursion. Node::clone calls Vec<Node>::clone, which calls Node::clone.
+// spec: Requirement (Step): no recursion. Node::clone calls Vec<Node>::clone, which calls Node::clone. The clone and the
+// drop of the old tree are allocation too (backend.rs M4); the cases above and below it are about recursion.
+//@error-in-other-file: [allocation] step
 #[trame::message]
 struct M {
     n: u32,
@@ -10,7 +12,9 @@ struct Node {
 
 impl Clone for Node {
     fn clone(&self) -> Node {
-        Node { kids: self.kids.clone() } //~ ERROR: [recursion] step
+        Node { kids: self.kids.clone() }
+        //~^ ERROR: [recursion] step
+        //~| ERROR: [allocation] step
     }
 }
 
@@ -18,18 +22,16 @@ struct Q {
     tree: Node,
 }
 
-struct P;
-
-#[trame::process(receives = M)]
-impl P {
-    fn step(&mut self, q: &mut Q) -> trame::Status {
-        let t = q.tree.clone();
-        q.tree = t;
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Q,
 }
 
-fn main() {
-    let mut q = Q { tree: Node { kids: Vec::new() } };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = M)]
+fn step(q: &mut Q) -> trame::Status {
+    let t = q.tree.clone();
+    q.tree = t;
+    trame::Status::Done
 }
+
+fn main() {}

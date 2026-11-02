@@ -42,14 +42,12 @@ pub enum Forb {
     Send,
     Recv,
     Now,
-    Barrier,
-    Concurrent,
     VecPush,
     RangeFromForEach,
 }
 
 impl Forb {
-    pub const ALL: [Forb; 14] = [
+    pub const ALL: [Forb; 12] = [
         Forb::Println,
         Forb::Spawn,
         Forb::Static,
@@ -60,8 +58,6 @@ impl Forb {
         Forb::Send,
         Forb::Recv,
         Forb::Now,
-        Forb::Barrier,
-        Forb::Concurrent,
         Forb::VecPush,
         Forb::RangeFromForEach,
     ];
@@ -78,8 +74,6 @@ impl Forb {
             Forb::Send => "send",
             Forb::Recv => "recv",
             Forb::Now => "now",
-            Forb::Barrier => "barrier",
-            Forb::Concurrent => "concurrent",
             Forb::VecPush => "vecpush",
             Forb::RangeFromForEach => "rangefrom",
         }
@@ -92,8 +86,8 @@ impl Forb {
             Forb::Println | Forb::Spawn | Forb::Static | Forb::Cell | Forb::DynCall | Forb::FnPtr | Forb::Unsafe => {
                 &[Item, Step, Worker]
             }
-            Forb::Send | Forb::Recv | Forb::Now | Forb::VecPush => &[Item],
-            Forb::Barrier | Forb::Concurrent | Forb::RangeFromForEach => &[Item, Step],
+            Forb::Send | Forb::Recv | Forb::Now => &[Item],
+            Forb::VecPush | Forb::RangeFromForEach => &[Item, Step],
         }
     }
 
@@ -108,7 +102,7 @@ impl Forb {
             Forb::Cell => &["deny"],
             Forb::DynCall | Forb::FnPtr => &["indirect"],
             Forb::Unsafe => &["unsafe"],
-            Forb::Send | Forb::Recv | Forb::Now | Forb::Barrier | Forb::Concurrent => &["effects"],
+            Forb::Send | Forb::Recv | Forb::Now => &["effects"],
             Forb::VecPush => &["allocation"],
             Forb::RangeFromForEach => &["deny"],
         }
@@ -232,12 +226,9 @@ pub struct Prog {
 }
 
 /// The canonical path the driver prints for root `k` (`reached from root X`): a fn root is its name,
-/// a step root is the inherent `step` method of its process type.
-pub fn root_name(k: usize, level: Level) -> String {
-    match level {
-        Level::Step => format!("P{k}::step"),
-        _ => format!("r{k}"),
-    }
+/// every root of every level is a function.
+pub fn root_name(k: usize, _level: Level) -> String {
+    format!("r{k}")
 }
 
 /// Knobs of the generator. `extra` adds the wrappers outside the theory.

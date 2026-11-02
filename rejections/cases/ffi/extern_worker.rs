@@ -4,8 +4,7 @@ unsafe extern "C" {
 }
 
 fn main() {
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let _ = unsafe { abs(-1) };
         //~^ ERROR: [unsafe] worker
         //~| ERROR: [ffi] worker

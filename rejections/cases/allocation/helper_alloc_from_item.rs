@@ -4,7 +4,7 @@
 fn remember(n: u32) -> u32 {
     let mut v: Vec<u32> = Vec::new(); //~ ERROR: [allocation] item
     v.push(n); //~ ERROR: [allocation] item
-    v[0]
+    v[0] //~ ERROR: [allocation] item
 } //~ ERROR: [allocation] item
 
 struct Work {
@@ -21,8 +21,7 @@ fn main() {
     let items = [Work { index: 0, by: 1 }];
     let mut slots = [0_u32];
     trame::parallel!(bump, &(), &items, &mut slots);
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let _ = remember(1);
     });
 }

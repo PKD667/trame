@@ -1,11 +1,11 @@
 //@check-pass
-// spec: Definition (Effect sets): Sigma_W includes barrier. driver/README.md:21 gives the strictest-level rule. This is the pair
-// of strictest_level_item.rs: helper, called only from a worker, is checked at the worker's level, where barrier is allowed.
+// spec: Requirement (Worker): a worker may allocate. driver/README.md gives the strictest-level rule. This is the pair
+// of strictest_level_item.rs: helper, called only from a worker, is checked at the worker's level, where Vec::push is allowed.
 fn helper() {
-    let _ = trame::barrier();
+    let mut v: Vec<u32> = Vec::new();
+    v.push(1);
 }
 
 fn main() {
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| helper());
+    trame::__check::worker(&|| helper());
 }

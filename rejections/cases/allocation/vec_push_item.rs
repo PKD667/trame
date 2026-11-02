@@ -8,7 +8,7 @@ struct Work {
 fn collect(x: &Work, slot: &mut u32, _cx: &()) {
     let mut v: Vec<u32> = Vec::new(); //~ ERROR: [allocation] item
     v.push(x.by); //~ ERROR: [allocation] item
-    *slot = v[0];
+    *slot = v[0]; //~ ERROR: [allocation] item
 } //~ ERROR: [allocation] item
 
 fn main() {

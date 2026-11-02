@@ -70,8 +70,16 @@ To add a case:
 
 Levels are `item`, `step`, `worker`. Rules, as the driver names them (`driver/src/check/`): `unsafe`, `ffi`, `indirect`,
 `static`, `std`, `deny`, `effects`, `allow-list`, `allocation`, `counted-loop`, `recursion`, `unbounded` (a user iterator
-passed to core code). The driver also emits `unresolved` for a call it cannot check. No case refuses by it yet.
+passed to core code), `state-memory` (a field type of a state or pool, backend.rs M2, M3; no level). The driver also emits
+`unresolved` for a call it cannot check. No case refuses by it yet.
 A root-level message (`[root]`) has no level and is not used here.
+
+## Roots in the cases
+
+A step case is a `#[trame::state]` struct with a `#[trame::step]` function (a Step root, emitted by the macro). An item case is
+`parallel!` with `#[trame::item]`. No library code emits a worker marker yet, so a worker case calls
+`trame::__check::worker(&|| { ... })` itself; it tests the level, not a library path. A step allocates nothing (backend.rs M4):
+`allocation/*_step*` hold the pairs, a Vec rewritten in place (accepted) and a Vec grown, made or dropped (refused).
 
 ## Findings
 
@@ -85,12 +93,13 @@ Each finding is a disagreement between the checks and the spec, with the verbati
 - **D1, println! (corrected).** `println!` in a worker is refused under `[std]` only (`std/println_worker`). In an item or
   a step it is also refused under `[unsafe]`, because the `format_args!` expansion calls core's `unsafe fn
   fmt::Arguments::new` (`std/println_item`, `std/println_step`). The second rule is correct and is named.
-- **E1, rustc before the driver.** A process step declared `unsafe fn` is called by the generated impl of the
-  `concurrent!` expansion, outside any unsafe block. rustc refuses it first with E0133 (`unsafe/unsafe_fn_step`). The
-  driver's `unsafe` rule for the body is covered by `unsafe/block_step`.
+- **E1, the macro before the driver.** A step declared `unsafe fn` is refused by `#[trame::step]` itself (`state/unsafe_fn_step`).
+  The driver's `unsafe` rule for the body is covered by `unsafe/block_step`. Likewise rustc refuses a state field that is not
+  `Send + Sync` (an `Rc`, a `Cell`) before the driver: `state-memory/rc_rustc_first`, `cell_rustc_first`. The driver's
+  state-memory rule is the second line, for what rustc accepts.
 - **M1, message generics.** A message with a lifetime parameter is refused by the macro, `a message type cannot be
   generic`. The reference rule is not reached; the reference cases therefore use `&'static str`.
-- **W1, cfg warning in user crates.** Each `concurrent!` and `parallel!` in a user crate prints an `unexpected_cfgs`
+- **W1, cfg warning in user crates.** Each `#[trame::state]` and `parallel!` in a user crate prints an `unexpected_cfgs`
   warning, because the macro emits `#[cfg(trame_checked)]`. It is noise, and it reaches every user.
 - **G1, the loop-mutation backstop.** `counted-loop/vec_iter_mutated_step` is refused by rustc's borrow check (E0502)
   before the driver runs. The driver's own mutation test (`driver/README.md`) is shallow, and this case does not exercise it.

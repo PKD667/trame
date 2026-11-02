@@ -6,8 +6,7 @@ fn countdown(n: u32) -> u32 {
 }
 
 fn main() {
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let mut i = 0u32;
         while i < 3 {
             i += 1;

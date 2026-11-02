@@ -8,15 +8,11 @@ pub mod io {
     pub fn recv() -> u32 {
         0
     }
-    pub fn barrier() {}
 }
 pub mod time {
     pub fn now() -> u64 {
         0
     }
-}
-pub mod concurrent {
-    pub fn concurrent() {}
 }
 pub mod __rt {
     pub fn parallel() {}

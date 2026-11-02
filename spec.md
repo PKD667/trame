@@ -116,8 +116,13 @@ lists are trusted.
 > through the fields of its write set.
 
 > **Requirement (Step).** A step calls only items of $A_C$ and effects of $\Sigma_C$. Every loop is
-> counted, and it does not recurse. It neither allocates nor frees (`CONTRACT.md`, M4). It writes
+> counted, and it does not recurse. It neither allocates nor frees (`CONTRACT.md`, M4): it rewrites
+> in place the buffers its state holds. It writes
 > only the fields of its write set $W(i)$ (Section 5.3).
+
+> **Requirement (State memory).** No field of a `#[trame::state]` struct, and nothing in its pool
+> type, holds a function pointer, a closure, a trait object, a reference, a raw pointer, an `Rc`,
+> an `Arc`, a cell, an atomic or a lock, at any depth of its layout (backend.rs M2, M3).
 
 > **Requirement (Item).** An item calls only items of $A_I$. Every loop is counted, and it neither
 > recurses nor allocates. It writes only its slot.

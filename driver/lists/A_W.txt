@@ -1,6 +1,6 @@
-# A_W: what a worker may call. Every line of A_C.txt is repeated here (checked at start-up). A worker
-# may loop without bound (spec.md, Requirement (Worker)), so the infinite constructors are not denied
-# here, and it may allocate, as a step may.
+# A_W: what a worker (leader code, a builder or an edit) may call. Every line of A_C.txt is repeated here
+# (checked at start-up). A worker may loop without bound (spec.md, Requirement (Worker)), so the infinite
+# constructors are not denied here, and it may allocate: only a builder or an edit does (backend.rs M4).
 
 core::option::*            # Option combinators: data only; closures they take are walked and checked here
 core::result::*            # Result combinators: data only, as Option
@@ -58,12 +58,53 @@ core::default::*           # Default: user impls are walked
 core::convert::*           # From, Into, AsRef: user impls are walked
 core::hash::*              # Hash: user impls are walked; no hashers are listed, so no HashMap
 core::marker::*            # PhantomData and marker traits: no code
-alloc::vec::*              # Vec: growth allocates; a worker may allocate (spec.md, Requirement (Worker))
+alloc::vec::*              # Vec: growth allocates; a worker may allocate
 alloc::boxed::*            # Box: one allocation per box
 alloc::collections::*      # VecDeque, BTreeMap and friends: allocation as Vec
 alloc::string::*           # String: allocation as Vec
 alloc::slice::*            # slice::sort and friends in alloc: allocation as Vec
 alloc::fmt::*              # format!: allocation as Vec
-alloc::alloc::*            # global allocator entry points; the item rule refuses them from an item
-alloc::sync::Arc::clone    # publication snapshots: a shared read-only handle
-alloc::sync::Arc::drop     # publication snapshots: releasing the handle
+alloc::alloc::*            # global allocator entry points; items and steps may not call them
+# A_C's non-allocating alloc calls, repeated because the levels nest textually (checked at start-up).
+alloc::vec::Vec::len
+alloc::vec::Vec::is_empty
+alloc::vec::Vec::capacity
+alloc::vec::Vec::as_slice
+alloc::vec::Vec::as_mut_slice
+alloc::vec::Vec::index
+alloc::vec::Vec::index_mut
+alloc::vec::Vec::deref
+alloc::vec::Vec::deref_mut
+alloc::vec::Vec::as_ref
+alloc::vec::Vec::as_mut
+alloc::vec::Vec::eq
+alloc::vec::Vec::ne
+alloc::vec::Vec::cmp
+alloc::vec::Vec::partial_cmp
+&alloc::vec::Vec::into_iter
+&mut alloc::vec::Vec::into_iter
+alloc::string::String::len
+alloc::string::String::is_empty
+alloc::string::String::capacity
+alloc::string::String::as_str
+alloc::string::String::as_mut_str
+alloc::string::String::as_bytes
+alloc::string::String::index
+alloc::string::String::deref
+alloc::string::String::deref_mut
+alloc::string::String::as_ref
+alloc::string::String::eq
+alloc::string::String::ne
+alloc::string::String::cmp
+alloc::string::String::partial_cmp
+alloc::boxed::Box::deref
+alloc::boxed::Box::deref_mut
+alloc::boxed::Box::as_ref
+alloc::boxed::Box::as_mut
+alloc::boxed::Box::eq
+alloc::boxed::Box::ne
+alloc::boxed::Box::cmp
+alloc::boxed::Box::partial_cmp
+alloc::sync::Arc::deref
+alloc::sync::Arc::clone
+alloc::sync::Arc::drop

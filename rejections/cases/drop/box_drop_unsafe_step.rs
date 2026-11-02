@@ -18,17 +18,16 @@ struct Q {
     b: Box<X>,
 }
 
-struct P;
-
-#[trame::process(receives = M)]
-impl P {
-    fn step(&mut self, q: &mut Q) -> trame::Status {
-        q.b = Box::new(X(1));
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Q,
 }
 
-fn main() {
-    let mut q = Q { b: Box::new(X(0)) };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = M)]
+fn step(q: &mut Q) -> trame::Status {
+    q.b = Box::new(X(1)); //~ ERROR: [allocation] step
+    //~^ ERROR: [allocation] step
+    trame::Status::Done
 }
+
+fn main() {}

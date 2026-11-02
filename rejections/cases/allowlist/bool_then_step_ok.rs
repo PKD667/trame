@@ -11,17 +11,15 @@ struct Q {
     tag: Option<u32>,
 }
 
-struct P;
-
-#[trame::process(receives = M)]
-impl P {
-    fn step(&mut self, q: &mut Q) -> trame::Status {
-        q.tag = (q.n > 0).then(|| q.n);
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Q,
 }
 
-fn main() {
-    let mut q = Q { n: 1, tag: None };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = M)]
+fn step(q: &mut Q) -> trame::Status {
+    q.tag = (q.n > 0).then(|| q.n);
+    trame::Status::Done
 }
+
+fn main() {}

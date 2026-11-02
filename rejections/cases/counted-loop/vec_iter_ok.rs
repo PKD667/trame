@@ -1,32 +1,25 @@
 //@check-pass
 // spec: Definition (Counted loop). This is the pair of vec_iter_mutated_step.rs: a `for` over a slice that the
-// body only reads is counted, and accepted. Its refusal before the Box and vec! fixes came from vec![1, 2] (the
-// allocation's raw derefs, a Box), not from the slice iterator: core::slice::* is judged by its list entry.
+// body only reads is counted, and accepted. The Vec is a field of the state: a step does not make one.
 #[trame::message]
 struct Job {
     id: u32,
 }
 
-struct Queue {
+#[trame::state(steps(step))]
+struct S {
+    v: Vec<u32>,
     n: u32,
 }
 
-struct P;
-
-#[trame::process(receives = Job)]
-impl P {
-    fn step(&mut self, q: &mut Queue) -> trame::Status {
-        let v: Vec<u32> = vec![1, 2];
-        let mut sum = 0u32;
-        for x in v.iter() {
-            sum += *x;
-        }
-        q.n = sum;
-        trame::Status::Done
+#[trame::step(S, receives = Job)]
+fn step(v: &Vec<u32>, n: &mut u32) -> trame::Status {
+    let mut sum = 0u32;
+    for x in v.iter() {
+        sum += *x;
     }
+    *n = sum;
+    trame::Status::Done
 }
 
-fn main() {
-    let mut q = Queue { n: 0 };
-    let _ = trame::concurrent!(P; q);
-}
+fn main() {}

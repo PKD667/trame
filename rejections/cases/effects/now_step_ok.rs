@@ -9,18 +9,16 @@ struct Queue {
     n: u32,
 }
 
-struct P;
-
-#[trame::process(receives = Msg)]
-impl P {
-    fn step(&mut self, q: &mut Queue) -> trame::Status {
-        let _ = trame::now();
-        q.n += 1;
-        trame::Status::Done
-    }
+#[trame::state(steps(step))]
+struct S {
+    q: Queue,
 }
 
-fn main() {
-    let mut q = Queue { n: 0 };
-    let _ = trame::concurrent!(P; q);
+#[trame::step(S, receives = Msg)]
+fn step(q: &mut Queue) -> trame::Status {
+    let _ = trame::now();
+    q.n += 1;
+    trame::Status::Done
 }
+
+fn main() {}

@@ -19,8 +19,7 @@ fn main() {
     let items = [Work { index: 0, by: 1 }];
     let mut slots = [0_u32];
     trame::parallel!(bump, &(), &items, &mut slots);
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let _ = remember(1);
     });
 }

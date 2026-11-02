@@ -3,8 +3,7 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 fn main() {
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| {
+    trame::__check::worker(&|| {
         let a = AtomicU32::new(1); //~ ERROR: [deny] worker
         a.fetch_add(1, Ordering::SeqCst); //~ ERROR: [deny] worker
     });

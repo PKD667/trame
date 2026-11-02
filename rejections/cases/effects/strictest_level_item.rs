@@ -1,13 +1,11 @@
-// spec: Requirement (Item), Definition (Effect sets): an item performs no effect. helper calls barrier, a worker effect.
-// driver/README.md:21: a function reached from several roots is checked at the strictest level that reaches it.
+// spec: Requirement (Item): an item neither allocates nor calls alloc. helper pushes to a Vec.
+// driver/README.md: a function reached from several roots is checked at the strictest level that reaches it.
 // helper is reached from an item (bump) and from a worker (main), so the item level applies, and helper is refused.
-// Refused [effects] item: the call to trame::barrier. [allocation] item: the Arc that barrier returns is dropped (Requirement (Item)).
-// The worker use alone is accepted: strictest_level_worker_ok.rs.
+// Refused [allocation] item: Vec::new, Vec::push and the drop. The worker use alone is accepted: strictest_level_worker_ok.rs.
 fn helper() {
-    let _ = trame::barrier();
-    //~^ ERROR: [effects] item
-    //~| ERROR: [allocation] item
-}
+    let mut v: Vec<u32> = Vec::new(); //~ ERROR: [allocation] item
+    v.push(1); //~ ERROR: [allocation] item
+} //~ ERROR: [allocation] item
 
 struct Work {
     index: u32,
@@ -24,6 +22,5 @@ fn main() {
     let items = [Work { index: 0, by: 1 }];
     let mut slots = [0_u32];
     trame::parallel!(bump, &(), &items, &mut slots);
-    let mut t = trame::Topology::new();
-    let _ = t.worker(|_cx| helper());
+    trame::__check::worker(&|| helper());
 }
