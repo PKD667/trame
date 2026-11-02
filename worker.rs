@@ -162,6 +162,55 @@ impl<S: State> Core<S> {
     }
 }
 
+/// The pool: read-only shared data. Steps that take `pool: &P` read it under the `POOL` bit
+/// (sched.rs); only the leader writes it, in an edit holding that bit in every worker (backend.rs, S4).
+pub(crate) struct PoolCore<P> {
+    value: UnsafeCell<MaybeUninit<P>>,
+    filled: AtomicBool,
+}
+
+// SAFETY: steps share `&P` (P: Sync) and the leader writes only while it holds the POOL bit everywhere.
+unsafe impl<P: Send + Sync> Sync for PoolCore<P> {}
+
+impl<P> PoolCore<P> {
+    pub(crate) fn empty() -> Self {
+        PoolCore { value: UnsafeCell::new(MaybeUninit::uninit()), filled: AtomicBool::new(false) }
+    }
+
+    /// Put the built pool in place. Once, at launch, before any step.
+    pub(crate) fn fill(&self, p: P) {
+        assert!(!self.filled.load(Ordering::Acquire), "trame: the pool was built twice");
+        // SAFETY: not filled yet, and no step runs before the launch has built it.
+        unsafe { (*self.value.get()).write(p) };
+        self.filled.store(true, Ordering::Release);
+    }
+
+    /// # Safety
+    /// The caller holds the POOL bit for reading (a step that takes the pool).
+    pub(crate) unsafe fn get(&self) -> &P {
+        assert!(self.filled.load(Ordering::Acquire), "trame: the pool was never built");
+        // SAFETY: filled; no writer while the caller reads.
+        unsafe { (*self.value.get()).assume_init_ref() }
+    }
+
+    /// # Safety
+    /// The caller holds the POOL bit in every worker for writing (backend.rs, S4).
+    pub(crate) unsafe fn edit_with<R>(&self, f: impl FnOnce(&mut P) -> R) -> R {
+        assert!(self.filled.load(Ordering::Acquire), "trame: the pool was never built");
+        // SAFETY: filled; the caller excludes every reader.
+        f(unsafe { (*self.value.get()).assume_init_mut() })
+    }
+}
+
+impl<P> Drop for PoolCore<P> {
+    fn drop(&mut self) {
+        if *self.filled.get_mut() {
+            // SAFETY: filled, and `&mut self` is the only access.
+            unsafe { self.value.get_mut().assume_init_drop() }
+        }
+    }
+}
+
 impl<S: State> Drop for Core<S> {
     fn drop(&mut self) {
         if *self.filled.get_mut() && !*self.taken.get_mut() {
@@ -182,8 +231,8 @@ pub(crate) trait Erased: Send + Sync {
     /// Run step i. A failure is kept here for the leader, and answered as `Err(())`.
     ///
     /// # Safety
-    /// The caller holds step i's fields (backend.rs, S1). `pool` is the host's pool, of `pool_type`,
-    /// or `None` when that is `()`.
+    /// The caller holds step i's fields (backend.rs, S1). `pool` is the launch's pool, a
+    /// `PoolCore<pool_type>`, or `None` when that is `()`.
     unsafe fn run(&self, i: usize, pool: Option<&(dyn Any + Send + Sync)>) -> Result<Status, ()>;
 }
 
@@ -209,7 +258,8 @@ impl<S: State> Erased for Core<S> {
     unsafe fn run(&self, i: usize, pool: Option<&(dyn Any + Send + Sync)>) -> Result<Status, ()> {
         static UNIT: () = ();
         let pool: &S::Pool = match pool {
-            Some(p) => p.downcast_ref::<S::Pool>().expect("trame: the launch checked the pool's type"),
+            // SAFETY: a step that takes the pool reads the POOL bit, held with its fields.
+            Some(p) => unsafe { p.downcast_ref::<PoolCore<S::Pool>>().expect("trame: the launch checked the pool's type").get() },
             None => (&UNIT as &dyn Any).downcast_ref::<S::Pool>().expect("trame: a worker without a pool has Pool = ()"),
         };
         #[cfg(debug_assertions)]
@@ -239,8 +289,6 @@ pub(crate) struct Inner {
     pub s: Sched,
     /// The conditions of each waiting step.
     pub waits: [Waits; crate::sched::MAX_STEPS],
-    /// A leader edit waits for running steps: no step starts meanwhile.
-    pub editing: bool,
     /// The trace, when the launch asked for one (`Topology::__trace`).
     pub trace: Option<Vec<Event>>,
     /// A step unwound mid-way (the run aborted): its fields are never given back.
@@ -258,7 +306,7 @@ pub(crate) struct Slot {
 impl Slot {
     pub(crate) fn new(obj: Arc<dyn Erased>, trace: bool) -> Slot {
         let s = model(&*obj);
-        let inner = Inner { s, waits: [Waits::default(); crate::sched::MAX_STEPS], editing: false, trace: trace.then(Vec::new), dead: false };
+        let inner = Inner { s, waits: [Waits::default(); crate::sched::MAX_STEPS], trace: trace.then(Vec::new), dead: false };
         Slot { obj, inner: Mutex::new(inner), changed: Condvar::new() }
     }
 
@@ -284,20 +332,38 @@ impl Slot {
 
     /// Edit: wait until no step runs, keep any from starting, run `f`, and wake every step. The
     /// backend then wakes the agents. A worker with a result is not edited: `f` is not run.
-    pub(crate) fn edit(&self, f: &mut dyn FnMut()) -> bool {
+    /// Hold `fields` for an edit (S4): from now no step touching one starts; returns once none
+    /// runs. Answers whether the worker is live (no result, not dead). Give them back with `release`.
+    pub(crate) fn hold(&self, fields: u64) -> bool {
         let mut g = self.lock();
-        g.editing = true;
-        while g.s.running() && !g.dead {
+        if g.dead {
+            return false;
+        }
+        g.s.editing |= fields;
+        Slot::record(&mut g, Event::Hold { fields });
+        while g.s.touching(fields) && !g.dead {
             g = self.changed.wait(g).unwrap_or_else(PoisonError::into_inner);
         }
-        let live = !g.dead && g.s.answer().is_none();
+        !g.dead && g.s.answer().is_none()
+    }
+
+    /// Give back `fields` after an edit: every step touching one is woken (S3).
+    pub(crate) fn release(&self, fields: u64) {
+        let mut g = self.lock();
+        if !g.dead {
+            g.s.edited(fields);
+            Slot::record(&mut g, Event::Edit { fields });
+        }
+        self.changed.notify_all();
+    }
+
+    /// Edit `fields` of this worker: hold, run `f` if the worker is live, release.
+    pub(crate) fn edit(&self, fields: u64, f: &mut dyn FnMut()) -> bool {
+        let live = self.hold(fields);
         if live {
             f();
-            g.s.edited();
-            Slot::record(&mut g, Event::Edit);
         }
-        g.editing = false;
-        self.changed.notify_all();
+        self.release(fields);
         live
     }
 
@@ -370,7 +436,21 @@ fn ended(r: Result<Status, ()>, clock: time::ClockId, service: u64) -> (Ended, W
 /// One agent of the reference scheduler: run steps of `slot` until the worker has a result. Several
 /// agents may run one slot at once; each step runs on the agent that started it. `service` measures a
 /// step that ran from `t0` (seq: 1 per step).
-pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: &dyn Fn() -> Option<Arc<dyn Any + Send + Sync>>) -> Answer {
+/// Edit the pool (S4 over the POOL bit): hold it in every live worker, run `f`, release everywhere.
+/// Holding one slot after another cannot deadlock: only the leader holds more than one, and a step
+/// never waits for a hold.
+pub(crate) fn edit_pool(slots: &[Arc<Slot>], f: &mut dyn FnMut()) {
+    use crate::sched::POOL;
+    for s in slots {
+        s.hold(POOL);
+    }
+    f();
+    for s in slots {
+        s.release(POOL);
+    }
+}
+
+pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn Any + Send + Sync)>) -> Answer {
     let clock = time::now().clock();
     let obj = &*slot.obj;
     loop {
@@ -394,23 +474,21 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: &dyn Fn() -> O
             slot.changed.notify_all();
             return a;
         }
-        let pick = if g.editing { None } else { g.s.choose(&now) };
+        let pick = g.s.choose(&now);
         match pick {
             Some(i) => {
                 g.s.start(i);
                 Slot::record(&mut g, Event::Start { i, now });
                 drop(g);
-                let pin = pool();
                 let start = service();
                 let _unwinding = Unwinding(slot);
                 let r = {
                     let _owning = Owning::new(obj.tags(i));
                     // SAFETY: Start took step i's fields in the model, and every start goes through it.
-                    unsafe { obj.run(i, pin.as_deref()) }
+                    unsafe { obj.run(i, pool) }
                 };
                 core::mem::forget(_unwinding);
                 let (e, w) = ended(r, clock, service().saturating_sub(start).max(1));
-                drop(pin);
                 let mut g = slot.lock();
                 g.s.end(i, e);
                 g.waits[i] = w;

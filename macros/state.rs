@@ -65,8 +65,8 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
     let syn::Fields::Named(fields) = &s.fields else {
         return Err(syn::Error::new_spanned(&s.ident, "a state is a struct with named fields: steps name them"));
     };
-    if fields.named.len() > 64 {
-        return Err(syn::Error::new_spanned(&s.ident, "a state has at most 64 fields: each is one bit of a step's sets"));
+    if fields.named.len() > 63 {
+        return Err(syn::Error::new_spanned(&s.ident, "a state has at most 63 fields: each is one bit of a step's sets, and bit 63 is the pool"));
     }
     let total = args.steps.len() + usize::from(args.stop.is_some());
     if total > 64 {
@@ -186,6 +186,7 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
             if r.mutability.is_some() {
                 return Err(syn::Error::new_spanned(&pt.ty, "the pool is read-only: `pool: &P`"));
             }
+            reads.push(quote! { ::trame::__rt::POOL });
             call.push(quote! { pool });
             continue;
         }

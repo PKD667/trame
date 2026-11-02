@@ -13,7 +13,7 @@ use std::process;
 use std::sync::Arc;
 use std::vec::Vec;
 
-use crate::backend::{Backend, PoolRef};
+use crate::backend::{Backend, Target};
 use crate::sched::{Answer, Event, Sched};
 use crate::worker::{Erased, Slot, agent};
 use crate::io::Full;
@@ -41,9 +41,8 @@ fn run_worker(obj: Arc<dyn Erased>, agents: usize) -> ! {
     let slot = Slot::new(obj, false);
     let start = std::time::Instant::now();
     let clock = || u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);
-    let no_pool = || None;
     let one = || {
-        let r = catch_unwind(AssertUnwindSafe(|| agent(&slot, &clock, &no_pool)));
+        let r = catch_unwind(AssertUnwindSafe(|| agent(&slot, &clock, None)));
         if let Err(p) = &r
             && !p.is::<worker::Aborted>()
         {
@@ -171,11 +170,7 @@ impl Backend for Selected {
         leader::recv(run, ty, out)
     }
 
-    fn leader_pool(_run: &Leader, _pool: PoolRef) {
-        panic!("trame: pools are not carried to worker ranks on mpi yet (docs/worker-model.md, MPI)")
-    }
-
-    fn leader_edit(_run: &Leader, _w: usize, _f: &mut dyn FnMut()) -> bool {
+    fn leader_edit(_run: &Leader, _target: Target, _f: &mut dyn FnMut()) -> bool {
         panic!("trame: Run::edit needs the state shipped between ranks, not built on mpi yet (docs/worker-model.md, MPI)")
     }
 

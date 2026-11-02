@@ -63,8 +63,8 @@ name = "refuse"
 path = "programs/refuse.rs"
 
 [[example]]
-name = "pool_publish"
-path = "programs/pool_publish.rs"
+name = "pool_edit"
+path = "programs/pool_edit.rs"
 
 [[example]]
 name = "cells"

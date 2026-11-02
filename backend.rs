@@ -28,8 +28,9 @@
 //!      oldest frame. T3 A frame is delivered at most once, to the route's receiver.
 //!
 //! Pool:
-//!   P1 A step reads one pool version for its whole duration: the one current at its start.
-//!   P2 A version the leader installed is read by every step that starts after `leader_pool` returns.
+//!   P1 Only the leader writes the pool, in `leader_edit(Target::Pool)`: steps read it.
+//!   P2 A pool edit is S4 over the POOL bit (sched.rs) in every worker: it runs while no step that
+//!      reads the pool runs, no such step starts until it returns, and those steps are woken after.
 //!
 //! Worker operations act for the calling thread, which must be an agent of a worker. Leader
 //! operations act for the `Run` they are given. Bytes cross this seam; typed messages are encoded in
@@ -45,8 +46,17 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::any::{Any, TypeId};
 
-/// A pool version, as the backend holds it.
+/// The launch's pool, a `PoolCore<P>` (worker.rs), as the backend holds it.
 pub(crate) type PoolRef = Arc<dyn Any + Send + Sync>;
+
+/// What a leader edit writes.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Target {
+    /// Worker w's state: every field (sched.rs `STATE`).
+    Worker(usize),
+    /// The pool: the POOL bit, in every worker.
+    Pool,
+}
 
 pub(crate) trait Backend {
     /// The state of one launched run, owned by the leader.
@@ -119,12 +129,10 @@ pub(crate) trait Backend {
     /// Take the next frame of type `ty` addressed to the leader into `out`, as `worker_recv` does.
     fn leader_recv(run: &Self::Run, ty: TypeId, out: &mut [u8]) -> bool;
 
-    /// Install a new pool version (P1, P2).
-    fn leader_pool(run: &Self::Run, pool: PoolRef);
-
     /// Edit worker `w` (S4): run `f` while no step of `w` runs. Answers false, without running `f`,
     /// when `w` already has a result.
-    fn leader_edit(run: &Self::Run, w: usize, f: &mut dyn FnMut()) -> bool;
+    /// A pool edit (P2) answers true.
+    fn leader_edit(run: &Self::Run, target: Target, f: &mut dyn FnMut()) -> bool;
 
     /// Stop every worker (S5). Returns at once; `leader_join` waits for the results.
     fn leader_stop(run: &Self::Run);

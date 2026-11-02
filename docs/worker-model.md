@@ -15,12 +15,11 @@ diagram; copy it for a new one.
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000','edgeLabelBackground':'#ffffff','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','actorLineColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','fontFamily':'monospace'},'themeCSS':'rect.actor,rect.note,.note rect,.statediagram-note rect{fill:#fff!important;stroke:#000!important} line,.actor-line{stroke:#000!important} .arrowheadPath,marker path{fill:#000!important;stroke:#000!important} circle.state-end{stroke:#000!important} text,.noteText,.state-note text{fill:#000!important}'}}%%
 flowchart LR
-  B["build states<br/>(leader: any Rust)"] --> T["Topology<br/>worker(state), route, pool"]
+  B["declare<br/>worker::&lt;S&gt;(), pool::&lt;P&gt;()"] --> T["Topology<br/>set(&h, build), route"]
   T --> L{"launch<br/>checks"}
   L -- refused --> R["Refused<br/>nothing ran"]
   L -- accepted --> RUN["run<br/>steps on agents"]
-  RUN -- "edit(&w, f)" --> RUN
-  RUN -- "publish(pool)" --> RUN
+  RUN -- "edit(&w or &pool, f)" --> RUN
   RUN -- "stop()" --> S["stop steps<br/>run alone"]
   RUN --> J["join<br/>Vec&lt;Outcome&gt;"]
   S --> J
@@ -123,20 +122,18 @@ sequenceDiagram
   A-->>L: End flush: Stopped
 ```
 
-An edit waits for the worker's running steps to end, keeps any from starting, runs on the whole
-state (it may allocate and resize), and wakes every step. Frames queued for the worker are kept.
+An edit holds a set of fields: from the hold, no step that touches one starts; the edit runs once
+none runs, may allocate and resize, then gives the fields back and wakes the steps that touch them
+(sched.rs, `Event::Hold` and `Event::Edit`). Editing a worker holds all its fields. Frames are kept.
 
-The pool is read-only data of the host. `Run::publish` installs a new version; a step reads the
-version current at its start for its whole duration, and an old version is freed when its last
-reader ends (read-copy-update, McKenney and Slingwine 1998).
-
-The pool is not ordered with frames. A step that started before `publish` may take a frame the
-leader sent after it, and still read the old version: P1 holds, and so does P2, but nothing ties the
-two together. The barrier used to. `programs/pool_publish.rs` shows the pattern that restores it
-without new API: keep the round the frame names in the state, and while the pinned pool is older,
-return `Progress` so that the next start pins again. A causal rule (a frame sent after a publish is
-taken only by steps that started after it) or a lazily pinned pool are the alternatives; neither is
-built.
+The pool is read-only shared data: steps read it (`pool: &P`), only the leader writes it, and only
+in an edit. It is one more field, the POOL bit, in every worker's locks: a pool edit holds it in
+every worker, so only steps that read the pool wait, and steps that start after the edit returns
+read the edited pool. A worker that wants the pool changed sends the leader a message; its step
+returns, which gives the read back. The pool and the states are given the same way: declare
+(`t.worker::<S>()`, `t.pool::<P>()`), then `t.set(&h, || value)`, which the backend runs at launch
+in the memory where the value is used. `programs/pool_edit.rs` and `edits_follow_the_model` in
+`tests/conformance.rs` check it.
 
 After `stop()`, no ordinary step starts; the stop step, if the state has one, runs alone once no step
 runs, and the worker's outcome is `Stopped`. A stop step may send, so the leader keeps receiving

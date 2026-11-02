@@ -5,7 +5,8 @@ use crate::backend::{Backend, Selected};
 use crate::io::Message;
 use crate::launch::{Plan, Refused, Route, check};
 use crate::run::Run;
-use crate::worker::{Core, State};
+use crate::backend::Target;
+use crate::worker::{Core, PoolCore, State};
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::any::{TypeId, type_name};
@@ -30,10 +31,6 @@ impl<S: State> Worker<S> {
     /// The worker's identity, for routes and sends.
     pub fn id(&self) -> WorkerId {
         self.id
-    }
-
-    pub(crate) fn core(&self) -> &Core<S> {
-        &self.core
     }
 
     /// The state, after `Run::join`. Panics before the join, or when the run aborted (the leader
@@ -82,15 +79,24 @@ impl Topology {
         Worker { id: WorkerId(index), core, joined: self.joined.clone() }
     }
 
-    /// Give worker `w` its state: `build` makes it. The backend calls `build` at launch, in the memory
-    /// where the worker runs (backend.rs, M1), so every allocation the state owns lands there; a value
-    /// built outside `build` and moved in does not. A second `set` replaces the first.
-    pub fn set<S: State>(&mut self, w: &Worker<S>, build: impl FnOnce() -> S + Send + 'static) {
-        let k = w.id.0 as usize;
-        let ours = self.plan.workers.get(k).is_some_and(|c| core::ptr::addr_eq(Arc::as_ptr(c), Arc::as_ptr(&w.core)));
-        assert!(ours, "trame: Topology::set of a worker declared by another topology");
-        let core = w.core.clone();
-        self.plan.builders[k] = Some(alloc::boxed::Box::new(move || core.fill(build())));
+    /// Declare the pool: read-only data shared by every worker, of type `P`. A step reads it by
+    /// taking `pool: &P`; only the leader writes it, with `Run::edit`. Its value is given with `set`.
+    /// One pool per topology. A worker whose steps read a pool of another type is refused.
+    pub fn pool<P: Send + Sync + 'static>(&mut self) -> Pool<P> {
+        assert!(self.plan.pool.is_none(), "trame: a topology has one pool");
+        let core = Arc::new(PoolCore::empty());
+        self.plan.pool = Some(core.clone());
+        self.plan.pool_type = TypeId::of::<P>();
+        self.plan.pool_name = type_name::<P>();
+        Pool { core }
+    }
+
+    /// Give `h` (a worker or the pool) its value: `build` makes it. The backend calls `build` at
+    /// launch, in the memory where it is used (backend.rs, M1), so every allocation the value owns
+    /// lands there; a value built outside `build` and moved in does not. A second `set` replaces the
+    /// first.
+    pub fn set<H: Handle>(&mut self, h: &H, build: impl FnOnce() -> H::Value + Send + 'static) {
+        h.set(&mut self.plan, alloc::boxed::Box::new(build));
     }
 
     /// A route from `from` to `to` carrying messages of type `M`, with room for `cap` frames.
@@ -115,14 +121,6 @@ impl Topology {
         });
     }
 
-    /// The host's pool: read-only data every step that names a `pool` parameter reads. The leader
-    /// replaces it with `Run::publish`. A worker whose steps read a pool of another type is refused.
-    pub fn pool<P: Send + Sync + 'static>(&mut self, pool: P) {
-        self.plan.pool = Some(Arc::new(pool));
-        self.plan.pool_type = core::any::TypeId::of::<P>();
-        self.plan.pool_name = core::any::type_name::<P>();
-    }
-
     /// Test hook: run each worker with at most `n` agents; by default as many as the host has cores.
     /// Not surface: deployment, not meaning. seq ignores it.
     #[doc(hidden)]
@@ -142,7 +140,75 @@ impl Topology {
     pub fn launch(self) -> Result<Run, Refused> {
         Selected::agree(&self.plan)?;
         check(&self.plan)?;
-        let (pool_type, workers) = (self.plan.pool_type, self.plan.workers.len());
-        Selected::launch(self.plan).map(|r| Run::new(r, pool_type, workers, self.joined))
+        let (pool, workers) = (self.plan.pool.as_ref().map(|p| Arc::as_ptr(p).cast::<()>()), self.plan.workers.len());
+        Selected::launch(self.plan).map(|r| Run::new(r, pool, workers, self.joined))
+    }
+}
+
+/// The pool, as `Topology::pool` declared it: a handle for `Topology::set` and `Run::edit`.
+pub struct Pool<P> {
+    core: Arc<PoolCore<P>>,
+}
+
+/// What `Topology::set` and `Run::edit` act on: a worker's state (`Worker<S>`) or the pool
+/// (`Pool<P>`). Implemented by those two only.
+pub trait Handle: sealed::Sealed {}
+impl<S: State> Handle for Worker<S> {}
+impl<P: Send + Sync + 'static> Handle for Pool<P> {}
+
+// The methods take crate types on purpose: nothing outside the crate can name or implement Sealed.
+#[allow(private_interfaces)]
+pub(crate) mod sealed {
+    use super::*;
+
+    pub trait Sealed {
+        /// A worker's state, or the pool.
+        type Value: Send + 'static;
+        /// Record `build` in `plan` (`Topology::set`).
+        fn set(&self, plan: &mut Plan, build: alloc::boxed::Box<dyn FnOnce() -> Self::Value + Send>);
+        /// What a leader edit of it holds. Panics when it is not of `run`'s topology.
+        fn target(&self, run: &Run) -> Target;
+        /// # Safety
+        /// The backend holds `target`'s fields (backend.rs, S4, P2).
+        unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut Self::Value));
+    }
+
+    impl<S: State> Sealed for Worker<S> {
+        type Value = S;
+        fn set(&self, plan: &mut Plan, build: alloc::boxed::Box<dyn FnOnce() -> S + Send>) {
+            let k = self.id.0 as usize;
+            let ours = plan.workers.get(k).is_some_and(|c| core::ptr::addr_eq(Arc::as_ptr(c), Arc::as_ptr(&self.core)));
+            assert!(ours, "trame: Topology::set of a worker declared by another topology");
+            let core = self.core.clone();
+            plan.builders[k] = Some(alloc::boxed::Box::new(move || core.fill(build())));
+        }
+        fn target(&self, run: &Run) -> Target {
+            let index = self.id.0 as usize;
+            assert!(index < run.workers(), "trame: Run::edit of a worker of another topology");
+            Target::Worker(index)
+        }
+        unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut S)) {
+            // SAFETY: the caller's.
+            unsafe { self.core.edit_with(f) }
+        }
+    }
+
+    impl<P: Send + Sync + 'static> Sealed for Pool<P> {
+        type Value = P;
+        fn set(&self, plan: &mut Plan, build: alloc::boxed::Box<dyn FnOnce() -> P + Send>) {
+            let ours = plan.pool.as_ref().is_some_and(|p| core::ptr::addr_eq(Arc::as_ptr(p), Arc::as_ptr(&self.core)));
+            assert!(ours, "trame: Topology::set of a pool declared by another topology");
+            let core = self.core.clone();
+            plan.pool_builder = Some(alloc::boxed::Box::new(move || core.fill(build())));
+        }
+        fn target(&self, run: &Run) -> Target {
+            let ours = run.pool().is_some_and(|p| core::ptr::addr_eq(p, Arc::as_ptr(&self.core)));
+            assert!(ours, "trame: Run::edit of a pool of another topology");
+            Target::Pool
+        }
+        unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut P)) {
+            // SAFETY: the caller's.
+            unsafe { self.core.edit_with(f) }
+        }
     }
 }

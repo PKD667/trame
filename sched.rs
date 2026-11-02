@@ -29,6 +29,12 @@
 /// The most steps of one worker, the stop step included: masks are 64 bits.
 pub const MAX_STEPS: usize = 64;
 
+/// The pool's bit in a step's read set: a step that takes `pool: &P` reads it. A state's own fields
+/// are bits 0..63, so a state has at most 63 fields.
+pub const POOL: u64 = 1 << 63;
+/// A whole-state edit (`Run::edit` of a worker): every field but the pool.
+pub const STATE: u64 = !POOL;
+
 /// A weight in [0, 1], fixed point: 0 is 0, `Weight::MAX` is 1. Fixed point keeps seq deterministic.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Weight(pub u16);
@@ -149,6 +155,9 @@ impl Locks {
 #[derive(Clone, Copy, Debug)]
 pub struct Sched {
     pub ps: [Proc; MAX_STEPS],
+    /// Fields the leader holds for an edit (`Event::Hold`): no step touching one starts until the
+    /// edit (`Event::Edit`) gives them back.
+    pub editing: u64,
     pub len: usize,
     pub has_stop: bool,
     pub locks: Locks,
@@ -187,7 +196,7 @@ impl Sched {
         for (p, &(r, w, wt)) in ps.iter_mut().zip(steps) {
             *p = Proc::new(r, w, wt);
         }
-        Sched { ps, len: total - usize::from(has_stop), has_stop, locks: Locks::default(), stopping: false, starts: 0 }
+        Sched { ps, editing: 0, len: total - usize::from(has_stop), has_stop, locks: Locks::default(), stopping: false, starts: 0 }
     }
 
     fn total(&self) -> usize {
@@ -227,7 +236,13 @@ impl Sched {
         if !self.stopping && !ordinary {
             return false;
         }
-        self.locks.free(self.ps[i].reads, self.ps[i].writes)
+        let p = &self.ps[i];
+        (p.reads | p.writes) & self.editing == 0 && self.locks.free(p.reads, p.writes)
+    }
+
+    /// Whether a running step touches one of `fields`: an edit of them waits until none does.
+    pub fn touching(&self, fields: u64) -> bool {
+        self.ps[..self.total()].iter().any(|p| p.running && (p.reads | p.writes) & fields != 0)
     }
 
     /// The model's choice: stride among positive weights, else round robin among weight 0.
@@ -277,12 +292,17 @@ impl Sched {
     }
 
     /// A leader edit wrote every field: every step is woken (it is End of a step that writes all).
-    pub fn edited(&mut self) {
-        assert!(!self.running(), "trame: an edit runs only when no step does");
+    /// The leader wrote `fields` (and holds them): every step touching one is woken, as by a write
+    /// (S3), and the fields are given back.
+    pub fn edited(&mut self, fields: u64) {
+        assert!(!self.touching(fields), "trame: an edit runs only when no step touching its fields does");
         let total = self.total();
         for q in self.ps[..total].iter_mut() {
-            q.d = true;
+            if (q.reads | q.writes) & fields != 0 {
+                q.d = true;
+            }
         }
+        self.editing &= !fields;
     }
 
     /// The worker's result, if it has one now.
@@ -308,7 +328,10 @@ pub enum Event {
     Start { i: usize, now: Now },
     End { i: usize, e: Ended },
     Stop,
-    Edit,
+    /// The leader holds `fields` for an edit: no step touching one starts.
+    Hold { fields: u64 },
+    /// The leader wrote `fields`, with no step touching one running, and gave them back.
+    Edit { fields: u64 },
 }
 
 /// A violation of the model by a trace.
@@ -320,7 +343,7 @@ pub enum Violation {
     End { n: usize, i: usize },
     /// Event n started step i where the model chooses another (only with `exact`).
     Choice { n: usize, i: usize, model: Option<usize> },
-    /// Event n edited while a step runs.
+    /// Event n edited fields it did not hold, or while a step touching them runs.
     Edit { n: usize },
 }
 
@@ -345,11 +368,12 @@ pub fn check(mut s: Sched, trace: &[Event], exact: bool) -> Result<Sched, Violat
                 s.end(i, e);
             }
             Event::Stop => s.stopping = true,
-            Event::Edit => {
-                if s.running() {
+            Event::Hold { fields } => s.editing |= fields,
+            Event::Edit { fields } => {
+                if s.touching(fields) || s.editing & fields != fields {
                     return Err(Violation::Edit { n });
                 }
-                s.edited();
+                s.edited(fields);
             }
         }
     }

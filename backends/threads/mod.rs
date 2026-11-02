@@ -14,7 +14,7 @@
 
 extern crate std;
 
-use crate::backend::{Backend, PoolRef};
+use crate::backend::{Backend, PoolRef, Target};
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
 use crate::local_routes::Routes;
@@ -133,9 +133,10 @@ fn leader_check(g: MutexGuard<'_, State>) -> MutexGuard<'_, State> {
 fn agent_main(shared: Arc<Shared>, w: usize, a: usize, slot: Arc<Slot>) {
     CURRENT.with(|c| *c.borrow_mut() = Some((shared.clone(), w, a)));
     let outcome = catch_unwind(AssertUnwindSafe(|| {
-        let pool = || shared.lock().pool.clone();
+        // Fixed for the launch: an edit writes it in place (backend.rs, P2).
+        let pool = shared.lock().pool.clone();
         let clock = || shared.nanos();
-        agent(&slot, &clock, &pool)
+        agent(&slot, &clock, pool.as_deref())
     }));
     let mut g = shared.lock();
     g.workers[w].finished += 1;
@@ -305,15 +306,15 @@ impl Backend for Selected {
         taken
     }
 
-    fn leader_pool(run: &Run, pool: PoolRef) {
-        let mut g = leader_check(run.shared.lock());
-        g.pool = Some(pool);
-        acted(&run.shared, &mut g);
-    }
-
-    fn leader_edit(run: &Run, w: usize, f: &mut dyn FnMut()) -> bool {
+    fn leader_edit(run: &Run, target: Target, f: &mut dyn FnMut()) -> bool {
         drop(leader_check(run.shared.lock()));
-        let done = run.slots[w].edit(f);
+        let done = match target {
+            Target::Worker(w) => run.slots[w].edit(crate::sched::STATE, f),
+            Target::Pool => {
+                crate::worker::edit_pool(&run.slots, f);
+                true
+            }
+        };
         let mut g = leader_check(run.shared.lock());
         acted(&run.shared, &mut g);
         done

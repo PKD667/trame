@@ -161,6 +161,93 @@ fn traces_follow_the_model() {
     );
 }
 
+/// The pool of `Pooled`: the leader keeps `all.len() == n`, so a step that sees otherwise read a
+/// pool mid-edit (P2).
+struct Pair {
+    n: u64,
+    all: Vec<u64>,
+}
+
+/// Edits: two steps read the pool (one also writes f0), one does not and only writes f0.
+#[trame::state(steps(p0, p1, p2), pool = Pair)]
+struct Pooled {
+    f0: u64,
+    c0: Ctl,
+    c1: Ctl,
+    c2: Ctl,
+}
+
+#[trame::step(Pooled)]
+fn p0(c0: &mut Ctl, f0: &mut u64, pool: &Pair) -> Status {
+    assert_eq!(pool.all.len() as u64, pool.n, "a step read the pool mid-edit");
+    *f0 = f0.wrapping_add(1);
+    behave(c0)
+}
+
+#[trame::step(Pooled)]
+fn p1(c1: &mut Ctl, f0: &u64, pool: &Pair) -> Status {
+    assert_eq!(pool.all.len() as u64, pool.n, "a step read the pool mid-edit");
+    let _ = f0;
+    behave(c1)
+}
+
+#[trame::step(Pooled)]
+fn p2(c2: &mut Ctl, f0: &mut u64) -> Status {
+    *f0 = f0.wrapping_add(1);
+    behave(c2)
+}
+
+/// S4 and P2 under racing steps: two workers of `Pooled`; the leader edits the pool (growing a Vec)
+/// and the workers' states while they run, and the traces, with their Hold and Edit events, are
+/// replayed against the model.
+#[test]
+fn edits_follow_the_model() {
+    use std::sync::atomic::Ordering::Relaxed;
+    let exact = cfg!(feature = "seq");
+    let (mut events, mut edits) = (0, 0);
+    for seed in seeds() {
+        let mut t = Topology::new();
+        t.__trace();
+        let pool = t.pool();
+        t.set(&pool, || Pair { n: 0, all: Vec::new() });
+        let ws: Vec<_> = (0..2u64)
+            .map(|k| {
+                let w = t.worker();
+                let s = seed * 2 + k;
+                t.set(&w, move || Pooled { f0: 0, c0: Ctl::new(s, 1), c1: Ctl::new(s, 2), c2: Ctl::new(s, 3) });
+                w
+            })
+            .collect();
+        let run = t.launch().expect("launch");
+        let mut rng = Ctl::new(seed, 99);
+        for _ in 0..20 {
+            match rng.next() % 3 {
+                0 => {
+                    let w = &ws[(rng.next() % 2) as usize];
+                    run.edit(w, |s| s.f0 = s.f0.wrapping_add(100));
+                }
+                _ => {
+                    assert!(run.edit(&pool, |p| {
+                        p.n += 1;
+                        p.all.push(p.n);
+                    }));
+                }
+            }
+            edits += 1;
+        }
+        let (out, checked) = run.__join_checked(exact);
+        for (k, o) in out.iter().enumerate() {
+            assert!(matches!(o, Outcome::Returned | Outcome::Deadlock), "Pooled seed {seed}: worker {k} outcome {o:?}");
+        }
+        match checked {
+            Ok(n) => events += n,
+            Err((worker, v)) => panic!("Pooled seed {seed}: worker {worker} violates the model: {v}"),
+        }
+    }
+    let _ = Relaxed;
+    eprintln!("edits: exact={exact} events={events} leader edits={edits}");
+}
+
 /// S6: three steps that always progress and all write `hot`, with weights 1, 1/2 and 1/4, and one of
 /// weight 0. Each counts its own runs. The leader stops the run after a while and takes the counts.
 #[trame::state(steps(s1, s2, s4, s0))]

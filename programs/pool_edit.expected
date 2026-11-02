@@ -1,0 +1,12 @@
+round 1: worker 0 saw 1 len 1 sum 1, worker 1 saw 1 len 1 sum 1, worker 2 saw 1 len 1 sum 1
+round 2: worker 0 saw 2 len 2 sum 3, worker 1 saw 2 len 2 sum 3, worker 2 saw 2 len 2 sum 3
+round 3: worker 0 saw 3 len 3 sum 6, worker 1 saw 3 len 3 sum 6, worker 2 saw 3 len 3 sum 6
+round 4: worker 0 saw 4 len 4 sum 10, worker 1 saw 4 len 4 sum 10, worker 2 saw 4 len 4 sum 10
+round 5: worker 0 saw 5 len 5 sum 15, worker 1 saw 5 len 5 sum 15, worker 2 saw 5 len 5 sum 15
+round 6: worker 0 saw 6 len 6 sum 21, worker 1 saw 6 len 6 sum 21, worker 2 saw 6 len 6 sum 21
+round 7: worker 0 saw 7 len 7 sum 28, worker 1 saw 7 len 7 sum 28, worker 2 saw 7 len 7 sum 28
+round 8: worker 0 saw 8 len 8 sum 36, worker 1 saw 8 len 8 sum 36, worker 2 saw 8 len 8 sum 36
+round 9: worker 0 saw 9 len 9 sum 45, worker 1 saw 9 len 9 sum 45, worker 2 saw 9 len 9 sum 45
+round 10: worker 0 saw 10 len 10 sum 55, worker 1 saw 10 len 10 sum 55, worker 2 saw 10 len 10 sum 55
+edited 10 rounds
+outcomes: [Returned, Returned, Returned]

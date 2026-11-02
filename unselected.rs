@@ -1,7 +1,7 @@
 //! Stand-in for a build that selects no backend module (the `mpi` feature, until it has one). It
 //! refuses every launch, so no worker starts and no other operation can be reached.
 
-use crate::backend::{Backend, PoolRef};
+use crate::backend::{Backend, Target};
 use crate::sched::{Event, Sched};
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
@@ -71,11 +71,7 @@ impl Backend for Selected {
         match *run {}
     }
 
-    fn leader_pool(run: &Run, _pool: PoolRef) {
-        match *run {}
-    }
-
-    fn leader_edit(run: &Run, _w: usize, _f: &mut dyn FnMut()) -> bool {
+    fn leader_edit(run: &Run, _target: Target, _f: &mut dyn FnMut()) -> bool {
         match *run {}
     }
 

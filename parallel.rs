@@ -11,7 +11,7 @@ extern crate std;
 // The runtime of workers is worker.rs; its items are re-exported here so every runtime entry is
 // `trame::__rt::...`, as the driver's effects.txt names it.
 pub use crate::cells::{MAX_OWNED, Owning, Tags, owns};
-pub use crate::sched::Weight;
+pub use crate::sched::{POOL, Weight};
 pub use crate::worker::{State, StepInfo};
 
 /// Whether a frame of type `ty` is available to this worker. `#[trame::state]` calls it.

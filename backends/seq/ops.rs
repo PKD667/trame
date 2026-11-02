@@ -10,7 +10,7 @@ use super::Selected;
 use super::limit;
 use super::state::{Abandoned, Phase, Shared, State};
 use crate::local_routes::Routes;
-use crate::backend::{Backend, PoolRef};
+use crate::backend::{Backend, Target};
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
 use crate::run::{Outcome, panic_message};
@@ -95,8 +95,9 @@ fn worker_main(shared: Arc<Shared>, me: usize, slot: Arc<Slot>) {
     CURRENT.with(|c| *c.borrow_mut() = Some((shared.clone(), me)));
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         drop(wait_turn(&shared, shared.lock(), me));
-        let pool = || shared.lock().pool.clone();
-        agent(&slot, &|| 0, &pool)
+        // Fixed for the launch: an edit writes it in place (backend.rs, P2).
+        let pool = shared.lock().pool.clone();
+        agent(&slot, &|| 0, pool.as_deref())
     }));
     let mut st = shared.lock();
     match outcome {
@@ -270,17 +271,16 @@ impl Backend for Selected {
         taken
     }
 
-    fn leader_pool(run: &Run, pool: PoolRef) {
-        let mut st = leader_check(run.shared.lock());
-        st.pool = Some(pool);
-        st.acts += 1;
-        run.shared.changed.notify_all();
-    }
-
-    fn leader_edit(run: &Run, w: usize, f: &mut dyn FnMut()) -> bool {
+    fn leader_edit(run: &Run, target: Target, f: &mut dyn FnMut()) -> bool {
         drop(leader_check(run.shared.lock()));
         // Outside the run's Mutex: the edit waits for the worker's running step, which needs the baton.
-        let done = run.slots[w].edit(f);
+        let done = match target {
+            Target::Worker(w) => run.slots[w].edit(crate::sched::STATE, f),
+            Target::Pool => {
+                crate::worker::edit_pool(&run.slots, f);
+                true
+            }
+        };
         let mut st = leader_check(run.shared.lock());
         st.acts += 1;
         run.shared.changed.notify_all();

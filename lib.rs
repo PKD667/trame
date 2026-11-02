@@ -73,7 +73,7 @@ pub use launch::Refused;
 pub use run::{Outcome, Run};
 pub use status::Status;
 pub use time::{Reading, now};
-pub use topology::{LEADER, Topology, Worker, WorkerId};
+pub use topology::{Handle, LEADER, Pool, Topology, Worker, WorkerId};
 
 #[cfg(any(all(feature = "seq", feature = "mpi"), all(feature = "seq", feature = "threads"), all(feature = "threads", feature = "mpi")))]
 compile_error!("features `seq`, `threads` and `mpi` are exclusive: one backend per build (threads: --no-default-features --features threads)");

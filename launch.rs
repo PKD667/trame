@@ -21,6 +21,8 @@ pub enum Refused {
     TwoOwners { worker: WorkerId, name: &'static str },
     /// A worker's steps read a pool of type `want`, and the host's pool is `have` (`()`: none).
     PoolType { worker: WorkerId, want: &'static str, have: &'static str },
+    /// The pool was declared but never set (`Topology::set`).
+    PoolUnset,
     /// A worker was declared but its state was never set (`Topology::set`).
     Unset { worker: WorkerId },
     /// The backend could not allocate what the topology needs.
@@ -49,8 +51,10 @@ pub(crate) struct Plan {
     /// runs it at launch, in the worker's domain (backend.rs, M1). `None`: never set, refused.
     pub builders: Vec<Option<Builder>>,
     pub routes: Vec<Route>,
-    /// The host's pool, its type and the type's name. `None` with `()`: no pool.
+    /// The pool (a `PoolCore<P>`), its type and the type's name. `None` with `()`: no pool.
     pub pool: Option<PoolRef>,
+    /// The pool's builder (`Topology::set`); run at launch like a worker's.
+    pub pool_builder: Option<Builder>,
     pub pool_type: TypeId,
     pub pool_name: &'static str,
     /// Record each worker's trace (backend.rs, S7). For conformance; costs a lock and a push per event.
@@ -66,6 +70,7 @@ impl Default for Plan {
             builders: Vec::new(),
             routes: Vec::new(),
             pool: None,
+            pool_builder: None,
             pool_type: TypeId::of::<()>(),
             pool_name: "()",
             trace: false,
@@ -80,6 +85,9 @@ pub(crate) type Builder = alloc::boxed::Box<dyn FnOnce() + Send>;
 /// Run every builder: the backends whose leader builds every state in its own memory (seq, threads)
 /// call this at launch.
 pub(crate) fn build_all(plan: &mut Plan) {
+    if let Some(b) = plan.pool_builder.take() {
+        b();
+    }
     for b in plan.builders.iter_mut() {
         (b.take().expect("trame: the launch checked that every worker was set"))();
     }
@@ -101,6 +109,9 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
         if dup {
             return Err(Refused::Duplicate { from: r.from, to: r.to, name: r.name });
         }
+    }
+    if plan.pool.is_some() && plan.pool_builder.is_none() {
+        return Err(Refused::PoolUnset);
     }
     for (k, w) in plan.workers.iter().enumerate() {
         let worker = WorkerId(k as u32);

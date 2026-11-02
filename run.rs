@@ -3,8 +3,7 @@
 
 use crate::backend::{Backend, Selected};
 use crate::io::{Full, Message, read};
-use crate::topology::{Worker, WorkerId};
-use crate::worker::State;
+use crate::topology::{Handle, WorkerId};
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -17,15 +16,16 @@ pub struct Run {
     inner: <Selected as Backend>::Run,
     /// The leader's counter as of its last `wait` (see `wait`).
     seen: Cell<u64>,
-    pool_type: TypeId,
+    /// The pool's address, to check a `Run::edit` of it is of this run.
+    pool: Option<*const ()>,
     workers: usize,
     /// Set by `join`: the workers' states are the leader's again (topology.rs, `Worker::take`).
     joined: Arc<AtomicBool>,
 }
 
 impl Run {
-    pub(crate) fn new(inner: <Selected as Backend>::Run, pool_type: TypeId, workers: usize, joined: Arc<AtomicBool>) -> Self {
-        Run { inner, seen: Cell::new(0), pool_type, workers, joined }
+    pub(crate) fn new(inner: <Selected as Backend>::Run, pool: Option<*const ()>, workers: usize, joined: Arc<AtomicBool>) -> Self {
+        Run { inner, seen: Cell::new(0), pool, workers, joined }
     }
 
     /// Block until something changed for the leader since its last `wait`: a frame arrived for the
@@ -47,32 +47,28 @@ impl Run {
         read(|out| Selected::leader_recv(&self.inner, TypeId::of::<M>(), out))
     }
 
-    /// Replace the host's pool. A step that starts after this returns reads `pool`; a step already
-    /// running keeps the version it started with, which is freed once no step reads it. Panics when
-    /// `P` is not the type given to `Topology::pool`.
-    pub fn publish<P: Send + Sync + 'static>(&self, pool: P) {
-        assert!(
-            TypeId::of::<P>() == self.pool_type,
-            "trame: Run::publish of a {}, but the topology's pool has another type",
-            type_name::<P>()
-        );
-        Selected::leader_pool(&self.inner, Arc::new(pool))
+    /// Edit `h`, a worker's state or the pool: `f` runs once no step that uses it runs, and no such
+    /// step starts until `f` returns. For a worker, that is every step of the worker; for the pool,
+    /// every step that takes `pool: &P`, in every worker. `f` may allocate and resize. Frames are kept,
+    /// and every step that uses `h` is woken afterwards. A worker asks for a pool edit by sending the
+    /// leader a message. Answers `false`, without running `f`, when the worker already has a result;
+    /// a pool edit answers `true`.
+    pub fn edit<H: Handle>(&self, h: &H, f: impl FnOnce(&mut H::Value)) -> bool {
+        let target = h.target(self);
+        let mut f = Some(f);
+        Selected::leader_edit(&self.inner, target, &mut || {
+            let mut f = f.take();
+            // SAFETY: the backend runs this holding target's fields (backend.rs, S4, P2).
+            unsafe { h.edit_with(&mut |v| (f.take().expect("trame: an edit runs its function once"))(v)) }
+        })
     }
 
-    /// Edit a worker's state: `f` runs once no step of the worker runs, and no step starts until it
-    /// returns. It may allocate and resize. Frames queued for the worker are kept, and every step of
-    /// the worker is woken afterwards. Answers `false`, without running `f`, when the worker already
-    /// has a result.
-    pub fn edit<S: State>(&self, w: &Worker<S>, f: impl FnOnce(&mut S)) -> bool {
-        let index = w.id().0 as usize;
-        assert!(index < self.workers, "trame: Run::edit of a worker of another topology");
-        let mut f = Some(f);
-        let core = w.core();
-        Selected::leader_edit(&self.inner, index, &mut || {
-            let f = f.take().expect("trame: an edit runs its function once");
-            // SAFETY: the backend runs this while no step of the worker runs (backend.rs, S4).
-            unsafe { core.edit_with(f) }
-        })
+    pub(crate) fn workers(&self) -> usize {
+        self.workers
+    }
+
+    pub(crate) fn pool(&self) -> Option<*const ()> {
+        self.pool
     }
 
     /// Stop the run: no ordinary step starts again; each worker runs its stop step, when it has one,
