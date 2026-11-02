@@ -9,14 +9,14 @@ which runs each program on one node and on the `TRAME_MPI_NODE_RANKS=k` splits (
 ## Ranks
 
 With W workers, `mpirun` starts W + 1 ranks: ranks `0..W` are workers and rank W is the leader. The
-leader is a separate rank because the publication comes from host code, not from a worker, and giving
-that job to one worker would make it special at the barrier. This keeps every worker symmetric: the
-leader runs no worker code and is never counted at a barrier.
+leader is a separate rank because the leader's calls (`send`, `recv`, `stop`, `join`) come from host code, not
+from a worker, and giving that job to one worker would make it special. This keeps every worker symmetric:
+the leader runs no worker code.
 
 ## Mechanism
 
 - One `MPI_Win_allocate_shared` window per node, on the node communicator. The root node's leader
-  owns the root window. Every route, counter, barrier word and publication lives in a node's window.
+  owns the root window. Every route, counter and result word lives in a node's window.
   Outside the relay threads, no MPI call after launch except the launch barrier. The window is never freed (`MPI_Win_free` is collective and would wait for peers).
 - Each route has its own ring of `cap` slots, sized from that route's declared message size
   (`layout.rs`), not from a frame limit. Window bytes per route: 128 + cap × (align8(size) + 8).
@@ -27,20 +27,11 @@ leader runs no worker code and is never counted at a barrier.
 - Receive: the head of the first owned route, in rotating order, that has a frame. The scan starts
   past the route the last receive took, so a route with frames is taken within n receives (n = owned
   routes). Frames are ordered within a route only, as spec.md's Offers definition says.
-- Barrier: rootless on one node. Each worker stores its generation in its arrive word and adds 1 to
-  COUNT. Across nodes, a node's relay sends `ARRIVED` to the root once all its workers arrived, and the
-  root's relay counts the nodes that have workers (`Nodes::arrivers`). The add that makes COUNT a
-  multiple of W releases the generation: that worker adds 2 to GEN and wakes
-  the waiters. Waiters sleep on GEN with `FUTEX_WAIT` (no PRIVATE flag, so it works across the
-  processes that map the window). A worker that returned sets bit 0 of GEN and wakes the waiters,
-  so a worker that never arrives is reported as `Deadlock` to every waiter.
-- Publication: the leader's `publish` never waits. It writes the bytes to a POSIX shared-memory object
-  of their own length, `<window>-pend-<no>`, then names it in the window under a seqlock. The releaser
-  of the next barrier to complete copies that deposit into `<window>-pub-<no>`, and the workers read
-  that object. The deposit therefore takes effect at a barrier, not when it is made. A newer deposit
-  replaces an older one not yet installed, and each worker sees each publication once and in order. The
-  size of a publication is not limited by the backend. Objects are unlinked when the run ends
-  (`publish.rs`, `unlink_publication`).
+- Removed in the worker model (2026-11-02): the barrier (`gate.rs`: generations, COUNT, GEN, the per-worker
+  arrive word, Deadlock detection at a barrier) and the leader's publication (`publish.rs`: deposit,
+  `<window>-pend-<no>` and `<window>-pub-<no>` objects, `Run::publish`). Agents now sleep on their
+  worker's epoch (`epoch.rs`), and a worker's result is its exit. Results below that name them are
+  measured records of the old model.
 
 ## Testing on one machine
 
@@ -54,8 +45,7 @@ and relay, so the multi-node code runs on one machine. The design is in `NODES.m
     target/mpi/debug/check verify D
     mpirun --oversubscribe -n 3 target/mpi/debug/check overwrite --seed 7 --cap 4 --msgs 20000 [--late]
     mpirun --oversubscribe -n 4 target/mpi/debug/check fair --msgs 16
-    mpirun --oversubscribe -n 6 target/mpi/debug/check barrier --seed 3 --rounds 300   # 5 workers
-    mpirun --oversubscribe -n 5 target/mpi/debug/check deadlock                        # 4 workers
+    mpirun --oversubscribe -n 3 target/mpi/debug/check bigroute                        # 2 workers
     mpirun --oversubscribe -n 3 target/mpi/release/latency --samples 6636 --dir D
     TRAME_MPI_NODE_RANKS=2 mpirun --oversubscribe -n 4 target/mpi/debug/check fifo --seed 1 --dir D
 
@@ -76,8 +66,6 @@ record names the binary, toolchain, host, load and placement.
   strongly ordered variant than production (see RESULT.md).
 - Starvation beyond the bound above is not tested under time-varying load. `fair` tests the
   pre-filled case only.
-- The spec's Publish rule fires while every worker waits. A deposit here waits for the next barrier
-  instead, so the spec and this backend differ in when a publication changes. Spec wording to decide.
 
 ## Finalization
 

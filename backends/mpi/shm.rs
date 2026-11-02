@@ -104,7 +104,7 @@ impl Window {
         self.len
     }
 
-    /// The name of the object with `role` (`pub` or `pend`) and number `no`.
+    /// The name of the object with `role` (`abort`) and number `no`.
     pub(crate) fn object(&self, role: &str, no: u64) -> String {
         format!("{}-{role}-{no}", self.name)
     }

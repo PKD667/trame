@@ -8,7 +8,7 @@ use std::format;
 use std::string::String;
 use std::vec::Vec;
 
-use super::layout::{ARRIVE, LINE, Layout, RouteLayout, SLOT_HEAD, Topology, WORKER_LINES};
+use super::layout::{PER_WORKER, LINE, Layout, RouteLayout, SLOT_HEAD, Topology, WORKER_LINES};
 use super::refusal::Refusal;
 
 fn refuse(why: impl Into<String>) -> Refusal {
@@ -21,7 +21,7 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
         return Err(refuse("no workers"));
     }
     let mut seen = BTreeSet::new();
-    let header = ARRIVE + WORKER_LINES * LINE * topo.workers as usize;
+    let header = PER_WORKER + WORKER_LINES * LINE * topo.workers as usize;
     let mut at = header;
     let mut routes = Vec::with_capacity(topo.routes.len());
     for (rank, r) in topo.routes.iter().enumerate() {
@@ -64,8 +64,6 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
 pub fn encode(topo: &Topology) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(&topo.workers.to_le_bytes());
-    out.extend_from_slice(&(topo.publication.len() as u64).to_le_bytes());
-    out.extend_from_slice(&topo.publication);
     out.extend_from_slice(&(topo.routes.len() as u64).to_le_bytes());
     for r in &topo.routes {
         out.extend_from_slice(&r.from.to_le_bytes());

@@ -1,7 +1,7 @@
-// The bytes of one publication or one deposit: a POSIX shared-memory object of exactly its length, named
-// from the window's name (shm.rs `object`). The creator writes it once, before the window names it; no one
-// writes it again. So a reader needs no lock on the object, only the window's word that names it
-// (publish.rs, gate.rs). An object is unlinked when the protocol no longer needs it.
+// The bytes of one abort message: a POSIX shared-memory object of exactly its length, named from the
+// window's name (shm.rs `object`). The creator writes it once, before the window's ABORT bit is set; no one
+// writes it again. So a reader needs no lock on the object, only the bit (results.rs). An object is
+// unlinked when the run ends (results.rs `end_run`).
 
 extern crate std;
 

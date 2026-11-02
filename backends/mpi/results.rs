@@ -16,6 +16,7 @@
 
 extern crate std;
 
+use std::eprintln;
 use std::format;
 use std::io;
 use std::string::String;
@@ -38,8 +39,6 @@ impl Transport {
         self.win().wake(DONE);
         // A result is an act the leader waits for (LEADER_EPOCH, epoch.rs).
         self.bump(self.lay().workers);
-        // Exit after the result: a waiter that sees the exit must also see the result (gate.rs).
-        self.exit();
         true
     }
 
@@ -149,14 +148,23 @@ impl Transport {
     }
 
     /// Leader only, after `join`: every result is in, so the relays may stop (NODES.md, End). On several
-    /// nodes the relays unlink the publication objects when they stop (relay.rs `join`). On one node there
-    /// is no relay, so this unlinks them: no worker is left in a barrier.
+    /// nodes the relays unlink the abort message when they stop (relay.rs `join`). On one node there is no
+    /// relay, so this unlinks it: no worker can still read it.
     pub(super) fn end_run(&self) {
         if self.nodes().count > 1 {
             self.win().word(END).store(1, Release);
             self.bump_relay();
         } else {
-            self.unlink_publication();
+            self.unlink_abort();
+        }
+    }
+
+    /// Unlink this window's abort message. Called only when no agent can still read it. An object that is
+    /// already gone is not an error.
+    pub(crate) fn unlink_abort(&self) {
+        let name = self.win().object("abort", 0);
+        if let Err(e) = object::unlink(&name) {
+            eprintln!("trame: could not unlink {name}: {e}");
         }
     }
 }

@@ -5,13 +5,6 @@
 //
 // Window layout (all offsets in bytes, every header word on its own 64-byte line):
 //
-//   GEN                    barrier generations released so far (a counter, not a futex word)
-//   COUNT                  barrier arrivals, over all generations
-//   PUB_NO                 the publication the workers read: its number (0 is the initial one)
-//   PUB_LEN                its length; its bytes are the object `<window>-pub-<PUB_NO>` (object.rs)
-//   PEND_SEQ               seqlock of the leader's deposit (u32, futex word; publish.rs). Odd while the
-//                          leader writes; the releaser waits on it only while it is odd
-//   PEND_NO, PEND_LEN      the deposit: its number and length; its bytes are `<window>-pend-<PEND_NO>`
 //   DONE                   bit 0 = aborted; RESULT x workers with a result (u32, futex word)
 //   START                  CLOCK_MONOTONIC at launch, written by the leader before the launch barrier
 //   LEADER_EPOCH           u32, moves on every act that can change the leader's wait: a frame to the
@@ -25,12 +18,10 @@
 //   ABORT_LEN              the length of that message
 //   STOP                   1 once the leader stopped the run (Run::stop); workers poll it (one node only:
 //                          the relay does not carry it yet)
-//   ARRIVE                 per worker, five lines each, kind k of worker w at ARRIVE + 64 (k W + w):
-//                            k=0 ARRIVE   last barrier generation it arrived at
-//                            k=1 EXITED   1 once the worker has returned (barrier, deadlock)
-//                            k=2 OUTCOME  its result, 0 until set
-//                            k=3 EPOCH    u32, moves on every act that can change its wait conditions
-//                            k=4 SLEEP    how many of the worker's agents sleep on EPOCH (epoch.rs)
+//   PER_WORKER             per worker, three lines each, kind k of worker w at PER_WORKER + 64 (k W + w):
+//                            k=0 OUTCOME  its result, 0 until set
+//                            k=1 EPOCH    u32, moves on every act that can change its wait conditions
+//                            k=2 SLEEP    how many of the worker's agents sleep on EPOCH (epoch.rs)
 //   ROUTES                 per route, in rank order:
 //                            +0    P: frames ever sent on the route (written by the sender only)
 //                            +64   C: frames ever consumed (written by the receiver only; lossless)
@@ -41,14 +32,7 @@ extern crate std;
 use std::vec::Vec;
 
 pub(crate) const LINE: usize = 64;
-pub(crate) const GEN: usize = 0;
-pub(crate) const COUNT: usize = LINE;
-pub(crate) const PUB_NO: usize = 2 * LINE;
-pub(crate) const PUB_LEN: usize = 3 * LINE;
-pub(crate) const PEND_SEQ: usize = 4 * LINE;
-pub(crate) const PEND_NO: usize = 5 * LINE;
-pub(crate) const PEND_LEN: usize = 6 * LINE;
-pub(crate) const DONE: usize = PEND_LEN + LINE;
+pub(crate) const DONE: usize = 0;
 pub(crate) const START: usize = DONE + LINE;
 pub(crate) const LEADER_EPOCH: usize = START + LINE;
 pub(crate) const LEADER_SLEEP: usize = LEADER_EPOCH + LINE;
@@ -58,14 +42,12 @@ pub(crate) const END: usize = RELAY_SLEEP + LINE;
 pub(crate) const ABORT_WORKER: usize = END + LINE;
 pub(crate) const ABORT_LEN: usize = ABORT_WORKER + LINE;
 pub(crate) const STOP: usize = ABORT_LEN + LINE;
-pub(crate) const ARRIVE: usize = STOP + LINE;
+pub(crate) const PER_WORKER: usize = STOP + LINE;
 /// Header lines per worker, one per kind listed above.
-pub(crate) const WORKER_LINES: usize = 5;
-pub(crate) const K_ARRIVE: usize = 0;
-pub(crate) const K_EXITED: usize = 1;
-pub(crate) const K_OUTCOME: usize = 2;
-pub(crate) const K_EPOCH: usize = 3;
-pub(crate) const K_SLEEP: usize = 4;
+pub(crate) const WORKER_LINES: usize = 3;
+pub(crate) const K_OUTCOME: usize = 0;
+pub(crate) const K_EPOCH: usize = 1;
+pub(crate) const K_SLEEP: usize = 2;
 pub(crate) const SLOT_HEAD: usize = 8;
 /// Bit 0 of DONE: some agent panicked, and the run is aborted.
 pub(crate) const ABORT_BIT: u32 = 1;
@@ -75,7 +57,8 @@ pub(crate) const RESULT: u32 = 2;
 /// OUT_ABORT only so that its own result is set: the leader panics before it reads any word (results.rs).
 pub(crate) const OUT_RETURNED: u64 = 1;
 pub(crate) const OUT_ABORT: u64 = 2;
-/// The worker was stuck at a barrier and ended with Deadlock (spec.md 5, Deadlock).
+/// The worker ended with Deadlock (spec.md 5, Deadlock). No code on this backend sets it yet: the
+/// leader maps it to `Outcome::Deadlock` so that a detector can.
 pub(crate) const OUT_DEADLOCK: u64 = 3;
 /// Every step of the worker ended after a stop (spec.md, Stop).
 pub(crate) const OUT_STOPPED: u64 = 4;
@@ -95,12 +78,11 @@ pub struct Route {
 }
 
 /// The communication graph. Workers are ranks `0..workers`, the leader is rank `workers`; a route's
-/// rank is its index in `routes`. `publication` is the initial publication of the one host.
+/// rank is its index in `routes`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Topology {
     pub workers: u32,
     pub routes: Vec<Route>,
-    pub publication: Vec<u8>,
 }
 
 /// Per-route numbers the run needs, computed once.
@@ -127,7 +109,7 @@ pub(crate) struct Layout {
 impl Layout {
     /// The word of kind `k` (one of the K_ constants) for worker `w`.
     pub(crate) fn per_worker(&self, k: usize, w: u32) -> usize {
-        ARRIVE + LINE * (k * self.workers as usize + w as usize)
+        PER_WORKER + LINE * (k * self.workers as usize + w as usize)
     }
 
     pub(crate) fn slot(&self, r: &RouteLayout, index: u64) -> usize {

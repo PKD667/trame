@@ -24,7 +24,7 @@ impl Transport {
     /// workers unwind, and END stops the relays, without which the process hangs at exit. The panic hook has
     /// printed the message. END is set even when an abort is already recorded: one may have arrived from a
     /// worker before the leader's panic, and then nothing else ends the run (proofs/mpi, `MCAbortEarly`).
-    /// `end_run` may run twice: a publication object already gone is not an error. After `MPI_Finalize`
+    /// `end_run` may run twice: an object already gone is not an error. After `MPI_Finalize`
     /// (`fail_if_aborted` ended the run) there is nothing left to do.
     pub(super) fn leader_panicked(&self) {
         let mut done: i32 = 0;

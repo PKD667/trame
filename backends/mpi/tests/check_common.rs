@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
 use trame::__mpi::{
-    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, deadlocked, launch, leader_join,
+    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, launch, leader_join,
     returned,
 };
 
@@ -71,7 +71,7 @@ pub(crate) fn random_topology(seed: u64, n: u32) -> Topology {
         let cap = 1 + rng.below(8) as u32;
         routes.push(Route { from, to, tag, size, cap, lossy: false });
     }
-    Topology { workers: n, routes, publication: b"init".to_vec() }
+    Topology { workers: n, routes }
 }
 
 /// How many frames each route carries, from the seed and the route's rank only.

@@ -37,11 +37,6 @@ impl Transport {
         }
     }
 
-    /// This worker's epoch, read before its wait conditions are checked (see `sleep`).
-    pub(crate) fn epoch(&self) -> u32 {
-        self.win().word32(self.words(self.me()).0).load(SeqCst)
-    }
-
     /// An act that can change agent `w`'s wait conditions. `w` may be the leader's rank.
     pub(crate) fn bump(&self, w: u32) {
         let (e, s) = self.words(w);

@@ -23,13 +23,11 @@ written against MPI by hand, and no better: the network is not trame's to fix.
 
 The structural condition behind that bound:
 
-> **Locality.** Every operation on a path executed per frame, per wake or per barrier touches O(d)
+> **Locality.** Every operation on a path executed per frame or per wake touches O(d)
 > words, where d is the degree of the agent or node that runs it (its own routes and its own workers).
 > No such path iterates over all workers W, all routes R or all nodes N.
 
-A loop over W or R that runs once per run (launch, `join`, finalize) is allowed. The barrier is the
-one operation that must involve every node. Its cost is allowed to grow, but only as log N in depth
-and O(k) per node, for a fixed fan-out k.
+A loop over W or R that runs once per run (launch, `join`, finalize) is allowed.
 
 ## Where the backend breaks locality today
 
@@ -38,19 +36,15 @@ and O(k) per node, for a fixed fan-out k.
 | `out` route scan | `relay_routes.rs` | every relay wake | O(R) routes of the whole layout | O(routes with one end here) |
 | `out` frame buffer | `relay_routes.rs` | every outbound route, every wake | one allocation of `size` bytes | one scratch buffer per thread |
 | `out` control scan | `relay_control.rs` | every relay wake | O(W) | O(local workers) |
-| `bump_local` | `relay_in.rs` | every release, exit, abort | O(W) checks | O(local agents) |
-| barrier, across nodes | `relay_control.rs`, `relay_in.rs` | every barrier | star: root sends and receives N - 1 | k-ary tree: depth 2 log_k N, root O(k) |
-| barrier, one node | `gate.rs` | every barrier | the last arriver bumps W workers | unchanged: W here is the local count, bounded by cores |
 
 The first row is the one that matters. A ring of W = 1024 workers with 8 routes each makes the relay
 read 8192 route records on every wake, whichever node it runs on, so its cost per frame grows with
 N under weak scaling. NODES.md's table already states the intended cost ("routes with one end on the
 node"), and the code does not meet it.
 
-The barrier is not fixed by argument alone. A star costs the root about 2(N - 1) message handlings
-and two network latencies. A tree costs 2 log_k N latencies and O(k) handlings per node. At N = 32
-with a 10 µs latency the two are close, so the fan-out k is a constant in `nodes.rs`, chosen from
-the measured barrier curve (k >= N - 1 is the star). One mechanism, one constant, set by data.
+2026-11-02: the barrier rows of the table above (`gate.rs`, the `ARRIVED`/`RELEASE` star, `bump_local`) and the
+barrier discussion that followed it were removed with the barrier in the worker model. They described
+code that no longer exists; no measurement here depended on them.
 
 ## What does not change
 

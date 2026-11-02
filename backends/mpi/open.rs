@@ -94,25 +94,10 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
     // The lowest rank of each node initialises that node's window: a replica of the whole layout.
     let host = host_rank == world.rank();
     let t = Transport::new(me, win, lay, Arc::new(nodes));
-    // The initial publication is a POSIX object, so its creation can fail on the host. Every rank
-    // refuses together, with the host's error where the host has one.
-    let mut failed = 0i32;
-    let mut why = String::new();
     if host {
         // No worker has run yet. The launch barrier below keeps every worker out until this is written.
         t.win().zero();
         t.set_start(clock());
-        if let Err(e) = t.install_initial(&topo.publication) {
-            failed = 1;
-            why = e.to_string();
-        }
-    }
-    world.all_reduce_into(&failed, &mut all, SystemOperation::max());
-    if all != 0 {
-        if why.is_empty() {
-            why = "the node's host could not create it".into();
-        }
-        return Err(Refusal::Memory { need: topo.publication.len(), why });
     }
     if host && t.nodes().count > 1 {
         // Several nodes: the relay runs before the launch barrier, so every rank's first act can reach it.

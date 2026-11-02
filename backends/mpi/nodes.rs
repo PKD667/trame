@@ -24,14 +24,9 @@ pub(crate) struct Nodes {
     pub count: u32,
     /// Per node, the lowest world rank on it: the rank that hosts the node's relay.
     pub relay_rank: Vec<i32>,
-    /// The workers (ranks below W) on this rank's node.
-    pub local_workers: u32,
     /// The agent ranks on this rank's node, in rank order: the workers, then the leader's rank W if the
-    /// leader is here. The per-wake and per-barrier scans of the relay and of `bump_local` run over this.
+    /// leader is here. The relay's per-wake scans run over this.
     pub local: Vec<u32>,
-    /// The nodes with at least one worker: the nodes whose arrivals the root waits for. A node with only
-    /// the leader has no barrier arrivals, so it never sends ARRIVED.
-    pub arrivers: u32,
 }
 
 /// The value of TRAME_MPI_NODE_RANKS: `Ok(None)` when unset, `Ok(Some(k))` for k >= 1. Each rank reads
@@ -56,18 +51,6 @@ pub(crate) fn split_groups(
     shared.split_by_color(Color::with_value(world.rank() / k))
 }
 
-/// The barrier generation that a node's COUNT value `count` completes, if it completes one. `local` is
-/// the node's workers and `workers` is W. A node adds one per local arrival and, after each release, the
-/// other nodes' share, so arrivals of generation g leave COUNT at (g - 1) W + j for j = 1..=local. The
-/// test is `count - local` a multiple of W: it holds exactly at j = local. `local` = W is covered, and
-/// `local` = 0 never completes (that node has no arrivals).
-pub(crate) fn arrival_done(count: u64, workers: u64, local: u64) -> Option<u64> {
-    if local == 0 || count < local || !(count - local).is_multiple_of(workers) {
-        return None;
-    }
-    Some((count - local) / workers + 1)
-}
-
 /// The node table. Collective over `world`: `node` is this rank's node communicator (split_groups or
 /// the shared one), and every rank of `world` calls this. A node is numbered by its lowest world rank.
 pub(crate) fn discover(world: &SimpleCommunicator, node: &SimpleCommunicator) -> Nodes {
@@ -82,32 +65,6 @@ pub(crate) fn discover(world: &SimpleCommunicator, node: &SimpleCommunicator) ->
     let node_of: Vec<u32> =
         lows.iter().map(|l| relay_rank.binary_search(l).expect("every lowest rank is in the table") as u32).collect();
     let me = node_of[rank as usize];
-    let workers = world.size() as usize - 1;
     let local: Vec<u32> = (0..node_of.len() as u32).filter(|&w| node_of[w as usize] == me).collect();
-    let local_workers = local.iter().filter(|&&w| (w as usize) < workers).count() as u32;
-    let arrivers = (0..relay_rank.len() as u32).filter(|n| node_of[..workers].contains(n)).count() as u32;
-    Nodes { node_of, me, count: relay_rank.len() as u32, relay_rank, local_workers, local, arrivers }
-}
-
-#[cfg(test)]
-mod tests {
-    use alloc::vec::Vec;
-
-    use super::arrival_done;
-
-    #[test]
-    fn arrivals_complete_once_per_generation() {
-        // Five workers, two of them on this node, COUNT as the gate adds to it over two generations.
-        let done: Vec<Option<u64>> = (0..=12).map(|c| arrival_done(c, 5, 2)).collect();
-        assert_eq!(done[2], Some(1));
-        assert_eq!(done[7], Some(2));
-        assert_eq!(done[12], Some(3));
-        assert_eq!(done.iter().flatten().count(), 3, "{done:?}");
-        // All workers on this node: the last arrival of each generation is at a multiple of W.
-        assert_eq!(arrival_done(3, 3, 3), Some(1));
-        assert_eq!(arrival_done(6, 3, 3), Some(2));
-        assert_eq!(arrival_done(0, 3, 3), None);
-        // No worker on this node: it never completes a generation.
-        assert_eq!(arrival_done(5, 5, 0), None);
-    }
+    Nodes { node_of, me, count: relay_rank.len() as u32, relay_rank, local }
 }
