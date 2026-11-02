@@ -1,4 +1,4 @@
-//! State memory: what a `#[trame::state]` struct and its pool type may hold (backend.rs M2, M3).
+//! State memory: what a `#[trame::state]` struct and its pool type may hold (CONTRACT.md, M2, M3).
 //!
 //! The state macro calls `trame::__check::state::<S>()`, and `pool::<P>()` when it names a pool
 //! (check.rs). Each instance is one type, read here: its fields are walked through user structs,

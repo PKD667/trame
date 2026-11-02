@@ -1,4 +1,4 @@
-// spec: backend.rs M4, D5: vec![] allocates (a box expression), and the assignment frees the old buffer.
+// spec: CONTRACT.md, M4, D5: vec![] allocates (a box expression), and the assignment frees the old buffer.
 // The diagnostics are at the macro's call site.
 #[trame::state(steps(step))]
 struct S {

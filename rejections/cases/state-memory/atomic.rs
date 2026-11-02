@@ -1,4 +1,4 @@
-// spec: backend.rs M3 (no interior mutability): an atomic changes behind the field lock. It is Send and Sync, so rustc accepts it.
+// spec: CONTRACT.md, M3 (no interior mutability): an atomic changes behind the field lock. It is Send and Sync, so rustc accepts it.
 use std::sync::atomic::AtomicU64;
 
 #[trame::state(steps(step))]

@@ -1,4 +1,4 @@
-// spec: backend.rs M2 (no process meaning): an Instant is read from one process's clock.
+// spec: CONTRACT.md, M2 (no process meaning): an Instant is read from one process's clock.
 use std::time::Instant;
 
 #[trame::state(steps(step))]

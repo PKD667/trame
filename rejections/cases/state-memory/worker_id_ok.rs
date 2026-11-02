@@ -1,5 +1,5 @@
 //@check-pass
-// backend.rs M2: a WorkerId is an index, not an address: a state may name its peers.
+// CONTRACT.md, M2: a WorkerId is an index, not an address: a state may name its peers.
 use trame::WorkerId;
 
 #[trame::state(steps(step))]

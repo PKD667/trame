@@ -1,4 +1,4 @@
-// spec: backend.rs M3 (no interior mutability): the cell is two structs down, under a user type that promises Sync: the check follows the layout, not the
+// spec: CONTRACT.md, M3 (no interior mutability): the cell is two structs down, under a user type that promises Sync: the check follows the layout, not the
 // auto traits.
 use std::cell::Cell;
 
@@ -15,7 +15,7 @@ struct Outer {
 
 #[trame::state(steps(step))]
 struct Hold {
-    outer: Outer, //~ ERROR: [state-memory] Hold.outer.inner.c: std::cell::Cell<u32> holds interior mutability (backend.rs M3)
+    outer: Outer, //~ ERROR: [state-memory] Hold.outer.inner.c: std::cell::Cell<u32> holds interior mutability (CONTRACT.md, M3)
 }
 
 #[trame::step(Hold)]

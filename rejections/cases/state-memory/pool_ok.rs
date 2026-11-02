@@ -1,5 +1,5 @@
 //@check-pass
-// backend.rs M2, M3: a plain pool type is accepted.
+// CONTRACT.md, M2, M3: a plain pool type is accepted.
 struct Table {
     weights: Vec<f32>,
     names: Vec<String>,

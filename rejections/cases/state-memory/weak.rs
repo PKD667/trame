@@ -1,4 +1,4 @@
-// spec: backend.rs M2 (no process meaning): an Arc's Weak, as Arc.
+// spec: CONTRACT.md, M2 (no process meaning): an Arc's Weak, as Arc.
 use std::sync::Weak;
 
 #[trame::state(steps(step))]

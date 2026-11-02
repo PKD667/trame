@@ -1,4 +1,4 @@
-// spec: backend.rs M3 (no interior mutability): an OnceLock is set through a shared reference: interior mutability, Send and Sync.
+// spec: CONTRACT.md, M3 (no interior mutability): an OnceLock is set through a shared reference: interior mutability, Send and Sync.
 use std::sync::OnceLock;
 
 #[trame::state(steps(step))]

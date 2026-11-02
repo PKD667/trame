@@ -1,5 +1,5 @@
 // spec: Requirement (All levels): drop glue counts as a call. Box<u32> has no Drop impl of its own: its glue is library
-// code, and a step that makes and drops one allocates and frees (backend.rs M4, D5): `Box::new` and the drop are
+// code, and a step that makes and drops one allocates and frees (CONTRACT.md, M4, D5): `Box::new` and the drop are
 // refused as allocation. Its raw pointer derefs are the glue's own, not [unsafe].
 #[trame::message]
 struct M {

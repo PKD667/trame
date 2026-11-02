@@ -1,4 +1,4 @@
-// spec: backend.rs M4, D5: Box::new allocates, and the assignment frees the old box. The pair of box_slice_step_ok.rs.
+// spec: CONTRACT.md, M4, D5: Box::new allocates, and the assignment frees the old box. The pair of box_slice_step_ok.rs.
 #[trame::state(steps(step))]
 struct S {
     b: Box<u32>,

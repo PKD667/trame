@@ -1,8 +1,8 @@
-// spec: backend.rs M3 (no interior mutability): the pool is checked as a state is: a Cell under a user pool type that promises Sync.
+// spec: CONTRACT.md, M3 (no interior mutability): the pool is checked as a state is: a Cell under a user pool type that promises Sync.
 use std::cell::Cell;
 
 struct Table {
-    hits: Cell<u64>, //~ ERROR: [state-memory] Table.hits: std::cell::Cell<u64> holds interior mutability (backend.rs M3)
+    hits: Cell<u64>, //~ ERROR: [state-memory] Table.hits: std::cell::Cell<u64> holds interior mutability (CONTRACT.md, M3)
 }
 
 // SAFETY: for the case only.

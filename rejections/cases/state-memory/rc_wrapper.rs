@@ -1,4 +1,4 @@
-// spec: backend.rs M2 (no process meaning): an Rc under a user type with an unsafe Send and Sync.
+// spec: CONTRACT.md, M2 (no process meaning): an Rc under a user type with an unsafe Send and Sync.
 use std::rc::Rc;
 
 struct Shared(Rc<u32>);

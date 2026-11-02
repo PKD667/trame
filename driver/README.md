@@ -1,7 +1,7 @@
 # trame-driver
 
 Trame's compile-time checker (spec.md, Compile time): a rustc driver, and `cargo trame`, which runs cargo with it.
-The driver reads the optimized MIR of each root marker (`trame::__check::{item,step,worker}`, check.rs) and everything reachable from it, and refuses code that breaks the rules. It also reads the types of each state and pool (`trame::__check::{state,pool}`). Refusals are rustc errors: `error: [rule] <level> ...`, and `error: [state-memory] <field path>: <type> holds <what> (backend.rs M2|M3)` for a type.
+The driver reads the optimized MIR of each root marker (`trame::__check::{item,step,worker}`, check.rs) and everything reachable from it, and refuses code that breaks the rules. It also reads the types of each state and pool (`trame::__check::{state,pool}`). Refusals are rustc errors: `error: [rule] <level> ...`, and `error: [state-memory] <field path>: <type> holds <what> (CONTRACT.md M2|M3)` for a type.
 
 Run from driver/. The compiler is pinned in driver/rust-toolchain.toml and built by flake.nix.
 
@@ -25,8 +25,8 @@ Per level (Item, Step, Worker, as in spec.md, Requirement per level), for every 
 - Effects (lists/effects.txt): each effect is allowed at the levels spec.md names for it.
 - Core and alloc callees: judged by the lists (below).
 - Counted loops (Item, Step), recursion (Item, Step).
-- Allocation (Item, Step; backend.rs M4, D5): a step neither allocates nor frees. A call into `alloc` is refused unless the list names it by the alloc type's own key (`alloc::vec::Vec::len`, `alloc::vec::Vec::index_mut`, ...), so a call that only a trait path allows (`Extend::extend`, `Clone::clone`) is refused as `[allocation]`, as `Vec::push` is. A `Vec` made or dropped inside a step is refused through `Vec::new` or `Vec::drop`: the drop glue shows a free. A step may rewrite in place the buffers its state holds: an index assignment, `len`, `iter_mut`, a counted loop. The Worker level may allocate.
-- State memory (on a state's field types and the pool type; backend.rs M2, M3), below.
+- Allocation (Item, Step; CONTRACT.md, M4, D5): a step neither allocates nor frees. A call into `alloc` is refused unless the list names it by the alloc type's own key (`alloc::vec::Vec::len`, `alloc::vec::Vec::index_mut`, ...), so a call that only a trait path allows (`Extend::extend`, `Clone::clone`) is refused as `[allocation]`, as `Vec::push` is. A `Vec` made or dropped inside a step is refused through `Vec::new` or `Vec::drop`: the drop glue shows a free. A step may rewrite in place the buffers its state holds: an index assignment, `len`, `iter_mut`, a counted loop. The Worker level may allocate.
+- State memory (on a state's field types and the pool type; CONTRACT.md, M2, M3), below.
 
 ## State memory
 

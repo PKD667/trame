@@ -1,5 +1,5 @@
 // spec: Requirement (Step): no recursion. Node::clone calls Vec<Node>::clone, which calls Node::clone. The clone and the
-// drop of the old tree are allocation too (backend.rs M4); the cases above and below it are about recursion.
+// drop of the old tree are allocation too (CONTRACT.md, M4); the cases above and below it are about recursion.
 //@error-in-other-file: [allocation] step
 #[trame::message]
 struct M {

@@ -1,6 +1,6 @@
 // spec: Requirement (All levels): no std, and drop glue counts as a call. The step drops a Box<Loud>; Loud::drop calls
 // std, reached through the glue of Box (an Own edge), so the step is refused by the std rule. The Box::new and the drop are
-// refused too: a step neither allocates nor frees (backend.rs M4).
+// refused too: a step neither allocates nor frees (CONTRACT.md, M4).
 struct Loud(u32);
 
 impl Drop for Loud {

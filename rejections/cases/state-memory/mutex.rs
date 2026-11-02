@@ -1,4 +1,4 @@
-// spec: backend.rs M3 (no interior mutability): a Mutex is a lock inside the state: field locks are the only synchronisation.
+// spec: CONTRACT.md, M3 (no interior mutability): a Mutex is a lock inside the state: field locks are the only synchronisation.
 use std::sync::Mutex;
 
 #[trame::state(steps(step))]

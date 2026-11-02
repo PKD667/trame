@@ -1,4 +1,4 @@
-// spec: backend.rs M3 (no interior mutability): an RwLock, as Mutex.
+// spec: CONTRACT.md, M3 (no interior mutability): an RwLock, as Mutex.
 use std::sync::RwLock;
 
 #[trame::state(steps(step))]

@@ -70,7 +70,7 @@ To add a case:
 
 Levels are `item`, `step`, `worker`. Rules, as the driver names them (`driver/src/check/`): `unsafe`, `ffi`, `indirect`,
 `static`, `std`, `deny`, `effects`, `allow-list`, `allocation`, `counted-loop`, `recursion`, `unbounded` (a user iterator
-passed to core code), `state-memory` (a field type of a state or pool, backend.rs M2, M3; no level). The driver also emits
+passed to core code), `state-memory` (a field type of a state or pool, CONTRACT.md, M2, M3; no level). The driver also emits
 `unresolved` for a call it cannot check. No case refuses by it yet.
 A root-level message (`[root]`) has no level and is not used here.
 
@@ -78,7 +78,7 @@ A root-level message (`[root]`) has no level and is not used here.
 
 A step case is a `#[trame::state]` struct with a `#[trame::step]` function (a Step root, emitted by the macro). An item case is
 `parallel!` with `#[trame::item]`. No library code emits a worker marker yet, so a worker case calls
-`trame::__check::worker(&|| { ... })` itself; it tests the level, not a library path. A step allocates nothing (backend.rs M4):
+`trame::__check::worker(&|| { ... })` itself; it tests the level, not a library path. A step allocates nothing (CONTRACT.md, M4):
 `allocation/*_step*` hold the pairs, a Vec rewritten in place (accepted) and a Vec grown, made or dropped (refused).
 
 ## Findings

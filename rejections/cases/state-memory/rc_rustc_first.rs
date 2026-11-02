@@ -1,4 +1,4 @@
-// spec: backend.rs M2. rustc refuses an Rc field before the driver does: the state macro needs `Send + Sync` of the state
+// spec: CONTRACT.md, M2. rustc refuses an Rc field before the driver does: the state macro needs `Send + Sync` of the state
 // (worker.rs, State). The driver's check is the second line, for what rustc accepts (arc.rs, rc_wrapper.rs).
 use std::rc::Rc;
 

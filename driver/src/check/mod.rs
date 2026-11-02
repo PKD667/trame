@@ -318,7 +318,7 @@ fn allocates(lists: &Lists, level: Level, names: &[String]) -> bool {
 fn no_alloc(level: Level) -> &'static str {
     match level {
         Level::Item => "items neither allocate nor call alloc (spec.md, Requirement (Item))",
-        _ => "steps neither allocate nor free; only a builder or an edit does (backend.rs M4, D5)",
+        _ => "steps neither allocate nor free; only a builder or an edit does (CONTRACT.md, M4, D5)",
     }
 }
 

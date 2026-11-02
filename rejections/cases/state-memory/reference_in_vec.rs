@@ -1,8 +1,8 @@
-// spec: backend.rs M2 (no process meaning): a reference inside a container is found through the container's argument.
+// spec: CONTRACT.md, M2 (no process meaning): a reference inside a container is found through the container's argument.
 
 #[trame::state(steps(step))]
 struct Hold {
-    names: Vec<&'static [u8]>, //~ ERROR: [state-memory] Hold.names: std::vec::Vec<&[u8]> holds a reference (an address in one process), found `&[u8]` (backend.rs M2)
+    names: Vec<&'static [u8]>, //~ ERROR: [state-memory] Hold.names: std::vec::Vec<&[u8]> holds a reference (an address in one process), found `&[u8]` (CONTRACT.md, M2)
 }
 
 #[trame::step(Hold)]

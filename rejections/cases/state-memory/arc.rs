@@ -1,4 +1,4 @@
-// spec: backend.rs M2 (no process meaning): an Arc is a reference count in one process. It is Send and Sync, so rustc accepts it.
+// spec: CONTRACT.md, M2 (no process meaning): an Arc is a reference count in one process. It is Send and Sync, so rustc accepts it.
 use std::sync::Arc;
 
 #[trame::state(steps(step))]

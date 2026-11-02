@@ -1,5 +1,5 @@
 //@check-pass
-// spec: backend.rs M4: a step rewrites a Box<[f32]> field in place: an index assignment through the box neither
+// spec: CONTRACT.md, M4: a step rewrites a Box<[f32]> field in place: an index assignment through the box neither
 // allocates nor frees. The box is allocated by the builder.
 #[trame::state(steps(step))]
 struct S {

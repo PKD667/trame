@@ -1,5 +1,5 @@
 //@check-pass
-// spec: backend.rs M4: a step reads a String field without growing it: len, is_empty, as_str, a comparison.
+// spec: CONTRACT.md, M4: a step reads a String field without growing it: len, is_empty, as_str, a comparison.
 #[trame::state(steps(step))]
 struct S {
     s: String,

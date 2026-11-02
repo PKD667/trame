@@ -3,8 +3,8 @@
 //! `parallel!` and `#[trame::step]` call a level marker with the code they run, and `#[trame::state]`
 //! calls a type marker with the types it holds. The calls do nothing at run time. After
 //! monomorphization the driver finds every instance of `item::<F>`, `step::<F>` and `worker::<F>`, and
-//! checks `F` and everything it reaches at that level (backend.rs M4 for a step, spec.md for the
-//! rest); it finds every instance of `state::<S>` and `pool::<P>`, and checks the type (backend.rs M2,
+//! checks `F` and everything it reaches at that level (CONTRACT.md, M4 for a step, spec.md for the
+//! rest); it finds every instance of `state::<S>` and `pool::<P>`, and checks the type (CONTRACT.md, M2,
 //! M3). Renaming or moving these functions breaks the driver.
 //!
 //! `#[trame::step]` calls `step` from a hidden non-generic function of its step struct, and
@@ -18,7 +18,7 @@ pub fn item<F>(f: &F) {
 }
 
 /// `f` is a step (`#[trame::step]`, the stop step included): effects of `Σ_C` only, counted loops, no
-/// recursion, no allocation (backend.rs M4). The driver checks `f` and what it reaches.
+/// recursion, no allocation (CONTRACT.md, M4). The driver checks `f` and what it reaches.
 #[inline(always)]
 pub fn step<F>(f: &F) {
     let _ = f;
@@ -35,7 +35,7 @@ pub fn worker<F>(f: &F) {
     let _ = f;
 }
 
-/// `S` is a `#[trame::state]` struct: no field holds what backend.rs M2 and M3 exclude. The driver
+/// `S` is a `#[trame::state]` struct: no field holds what CONTRACT.md, M2 and M3 exclude. The driver
 /// reads `S`'s fields; the call does nothing.
 #[inline(always)]
 pub fn state<S>() {}

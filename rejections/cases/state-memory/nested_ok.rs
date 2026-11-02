@@ -1,5 +1,5 @@
 //@check-pass
-// backend.rs M2, M3: states and plain structs nest; a recursive type ends the walk, and a PhantomData holds nothing.
+// CONTRACT.md, M2, M3: states and plain structs nest; a recursive type ends the walk, and a PhantomData holds nothing.
 use trame::WorkerId;
 
 struct Node {

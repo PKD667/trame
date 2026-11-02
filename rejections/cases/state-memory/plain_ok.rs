@@ -1,5 +1,5 @@
 //@check-pass
-// backend.rs M2, M3: plain data is accepted: numbers, Vec<u64>, String, Box<[f32]>, Option, tuples, arrays.
+// CONTRACT.md, M2, M3: plain data is accepted: numbers, Vec<u64>, String, Box<[f32]>, Option, tuples, arrays.
 
 #[trame::state(steps(step))]
 struct Hold {

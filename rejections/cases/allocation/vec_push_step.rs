@@ -1,4 +1,4 @@
-// spec: backend.rs M4, D5: a step neither allocates nor frees. The pair of vec_index_assign_step_ok.rs: the same field,
+// spec: CONTRACT.md, M4, D5: a step neither allocates nor frees. The pair of vec_index_assign_step_ok.rs: the same field,
 // grown instead of rewritten. Vec::push may grow the buffer, and only a builder or an edit allocates in the domain.
 #[trame::state(steps(step))]
 struct S {

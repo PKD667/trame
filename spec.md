@@ -122,7 +122,7 @@ lists are trusted.
 
 > **Requirement (State memory).** No field of a `#[trame::state]` struct, and nothing in its pool
 > type, holds a function pointer, a closure, a trait object, a reference, a raw pointer, an `Rc`,
-> an `Arc`, a cell, an atomic or a lock, at any depth of its layout (backend.rs M2, M3).
+> an `Arc`, a cell, an atomic or a lock, at any depth of its layout (CONTRACT.md, M2, M3).
 
 > **Requirement (Item).** An item calls only items of $A_I$. Every loop is counted, and it neither
 > recurses nor allocates. It writes only its slot.
