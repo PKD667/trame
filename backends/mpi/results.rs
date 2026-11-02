@@ -49,11 +49,6 @@ impl Transport {
         self.bump_all();
     }
 
-    /// Whether the leader stopped the run.
-    pub(crate) fn stop_requested(&self) -> bool {
-        self.win().word(STOP).load(Acquire) != 0
-    }
-
     /// Whether some agent panicked, which ends the run.
     pub fn aborted(&self) -> bool {
         self.win().word32(DONE).load(Acquire) & ABORT_BIT != 0

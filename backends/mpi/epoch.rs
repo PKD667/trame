@@ -2,19 +2,23 @@
 // that can change an agent's wait conditions moves its word (`bump`). An agent that must wait sleeps
 // on its own word, and a bumper wakes it only when it is sleeping. Nobody polls.
 //
-// No lost wake-up. The waiter reads EPOCH (its `seen`), checks its conditions, stores SLEEP = 1, then
-// reads EPOCH again; the bumper adds 1 to EPOCH, then loads SLEEP. All four accesses are SeqCst, so
-// they have one total order S. If the bumper reads SLEEP = 0, its load comes before the waiter's
-// store in S, so its add comes before the waiter's second read, and the waiter sees the new EPOCH and
-// does not sleep. If the bumper reads SLEEP = 1, it wakes the futex. The kernel sleeps only while
-// EPOCH still equals `seen`, so a bump between the check and the sleep makes the sleep return at once.
+// No lost wake-up. SLEEP counts the sleepers of a word: a rank's k agents, and the leader or relay
+// for theirs. The waiter reads EPOCH (its `seen`), checks its conditions, adds 1 to SLEEP, then reads
+// EPOCH again; the bumper adds 1 to EPOCH, then loads SLEEP. All four accesses are SeqCst, so they
+// have one total order S. If the bumper reads SLEEP = 0, its load comes before every waiter's add in
+// S, so its add comes before each waiter's second read, and the waiter sees the new EPOCH and does
+// not sleep. If the bumper reads SLEEP > 0, it wakes the futex's sleepers. The kernel sleeps only
+// while EPOCH still equals `seen`, so a bump between the check and the sleep makes the sleep return at
+// once. A waiter subtracts 1 from SLEEP when it stops waiting. SLEEP was a flag (store 1, store 0)
+// before k agents per rank: one sleeper's store 0 then hid another sleeper (proofs/mpi, MCEpochFlag).
 //
 // Width. EPOCH is a u32, because the futex compares 32 bits. A bump between the waiter's SLEEP store
 // and the kernel's compare wakes nobody, since nobody sleeps yet; the compare covers it, because EPOCH
 // no longer equals `seen`. That fails only when EPOCH has wrapped back to `seen`: a multiple of 2^32
 // bumps between the waiter's read and the compare, so at least 2^32. The bound is a count, not a rate,
 // and nothing here measures how close a run gets. proofs/mpi/Epoch.tla checks both statements on a
-// small word: no lost wake-up with 16 values and 3 bumps; a lost wake-up with 3 values at 3 bumps.
+// small word: no lost wake-up with 16 values, 3 bumps and 1 to 3 sleepers; a lost wake-up when the
+// word wraps (MCEpochWrap, 2 values).
 
 extern crate std;
 
