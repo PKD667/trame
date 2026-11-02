@@ -125,6 +125,20 @@ Status: gate A fails on the measured toolchain for `sm_61` (evidence table); no 
 
 **Status after step 5 (sm_80 prototype, `gpu/`).** Gate A passes for `sm_80` at compile level: cargo-oxide builds `post_parallel` (one block of 32 threads, `gpu/nv_post_parallel_gpu.ptx`), and `ptxas` assembles it for sm_80 and sm_86 (CUDA 13.2.51). Gate D is not run: no GPU is on this machine, and no node was held. Gate E (the one-worker trace) is not reached. The heap variant of the device kernel is refused by the toolchain itself, "heap allocation is not supported in kernels", so state that owns memory cannot be a device slot; this answers the heap question at compile level, not at run level. The host harness and the nixsci experiment (`gpu/README.md`) are built and were run locally with no driver (`no-driver`, three rows) and with a C stand-in driver (CPU code, a wiring test only, not a GPU result). Phase B (a held node, three runs of `nix run .#post-parallel-gpu`) is blocked: the reserve loop requested upper-case names, which `reserve` rejects, so no node was held; and an earlier request left OAR job 6998376 on nancy (gres) whose release failed. That job needs a person to check it. Gate D is decisive: use a slot whose post-item value changes a later branch or effect, and compare the complete observable trace with `seq`. Also test a non-`Copy` slot and captured state. If the implementation cannot preserve those cases, it must identify them before launch and return `Refused`; it may not partially start workers.
 
+**Status after Phase B (device run, gate D, one case).** Node `gruss-3.nancy.grid5000.fr` (Grid'5000 Nancy, held by the orchestrator), two NVIDIA A40 (sm_86, 46068 MiB each), driver 580.178.04, CUDA 13.0 in `nvidia-smi`. The harness used GPU 0. Command: `cd backends/nv && nix run .#post-parallel-gpu`, three replicates, through nixsci with the target `gruss3` (`~/.config/nixsci/providers.json`, targets file `~/.config/nixsci/targets-gpu.json`, which carries `"driver": "nvidia"`). The run is `post-parallel-gpu-6dad293dbe47-r1..r3`, with rows in `.nixsci/runs/post-parallel-gpu/` (local, not committed) and `lab.lock`.
+
+| Replicate | ran | verdict | device | cc | driver_version (int) | stdout sha256 = seq sha256 |
+|---|---|---|---|---|---|---|
+| r1 | true | ok | NVIDIA A40 | 8.6 | 13000 | 3d5f386d... = 3d5f386d... |
+| r2 | true | ok | NVIDIA A40 | 8.6 | 13000 | 3d5f386d... = 3d5f386d... |
+| r3 | true | ok | NVIDIA A40 | 8.6 | 13000 | 3d5f386d... = 3d5f386d... |
+
+Each run's stdout equals `programs/post_parallel_pod.expected` (four lines: `slot 0 acc 60 branch 2` to `slot 3 acc 144 branch 1`, then `outcomes: [Returned]`). The PTX sha256 in every row is 7b6c88e3... Each manifest has state `ok`.
+
+This shows that the one-warp kernel, with global-memory slots and plain-data state, gives the seq result on this A40 with driver 580.178.04. It does not show lane-replica semantics for body-created state: the case is 4 keys, and the fold is not order-dependent across lanes. No timing was taken.
+
+Not done in Phase B: the health check on a dead launch (the local no-driver run in Phase A is the only dead-launch evidence); the second, larger case; the heap variant re-run. Nixsci note: the first attempts failed for three reasons, all in the apparatus: nixpkgs 2.34.9 against nixsci's nix-2.34.8 assertion (fixed by following nixsci's lock, commit c946e76); the hosts form of the static provider has no `driver` option, so the target needed the targets-file form (commit 8df6373); and nixsci refuses a dirty tree.
+
 ### Integration boundary
 
 The repository still has no selectable NV backend. A runnable implementation needs private hooks outside this directory: root/backend selection, typed worker registration, and a CUDA-specific `parallel!`/`concurrent!` path. No such files are changed here. The work remains in `backends/nv/` until those minimal hooks are explicitly approved.
