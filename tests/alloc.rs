@@ -49,18 +49,20 @@ fn add(x: &Work, slot: &mut u64, _cx: &Ctx) {
 }
 
 #[test]
-fn parallel_allocates_on_the_first_call_of_a_size_and_never_after() {
-    let items: Vec<Work> = (0..64).map(|i| Work { key: i % 4, value: u64::from(i) }).collect();
-    let mut slots = [0_u64; 4];
-    let before_first = count();
-    trame::parallel!(add, &Ctx, &items, &mut slots);
-    assert!(count() > before_first, "the first call sizes its buffers, so it allocates (the counter works)");
+fn parallel_never_allocates() {
+    let before_control = count();
+    drop(std::hint::black_box(Box::new(7_u64)));
+    assert!(count() > before_control, "the control allocation was counted (the counter works)");
 
-    let before = count();
-    for _ in 0..1000 {
-        trame::parallel!(add, &Ctx, &items, &mut slots);
+    for n in [0_u32, 1, 64, 1000] {
+        let items: Vec<Work> = (0..n).map(|i| Work { key: i % 4, value: u64::from(i) }).collect();
+        let mut slots = [0_u64; 4];
+        let at = count();
+        for _ in 0..100 {
+            trame::parallel!(add, &Ctx, &items, &mut slots);
+        }
+        assert_eq!(count() - at, 0, "100 calls over {n} items allocated, the first included");
     }
-    assert_eq!(count() - before, 0, "1000 calls of the same size allocated");
 }
 
 /// A frame of plain data, sent between a worker and itself.
