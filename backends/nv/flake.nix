@@ -4,12 +4,11 @@
   # Its own flake, not trame's root flake: the root pins what trame's own checks need, and this
   # experiment needs a PTX built outside Nix (gpu/README.md) and its own lab.lock. The flake source
   # is backends/nv, so programs/ (the expected output) is in it.
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # nixpkgs follows nixsci's lock: nixsci asserts pkgsStatic.nix is 2.34.8 (deploy/nix-bootstrap.nix),
+  # and an unpinned nixos-unstable had moved to 2.34.9 (run failed at eval, /tmp/run1.log).
+  inputs.nixpkgs.follows = "nixsci/nixpkgs";
   # The same nixsci revision trame's flake.lock records (fff7977), pinned here by revision.
-  inputs.nixsci = {
-    url = "github:PKD667/nixsci/fff797708f5d07be224b78c35665b33432a305b9";
-    inputs.nixpkgs.follows = "nixpkgs";
-  };
+  inputs.nixsci.url = "github:PKD667/nixsci/fff797708f5d07be224b78c35665b33432a305b9";
 
   outputs = { self, nixpkgs, nixsci, ... }:
     let
