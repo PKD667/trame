@@ -1,43 +1,30 @@
-//! `concurrent!` that cannot finish: a process waits for a frame that no leader will send. The run
-//! must end with `Deadlock` (spec.md 5, Deadlock), not hang. Also many rounds of two workers, each
-//! waiting on frames from the leader, so that the baton is passed between idle workers in many orders.
+//! A step that cannot finish: it waits for a frame that no leader will send. The run must end with
+//! `Deadlock` (spec.md 5, Deadlock), not hang. Also many rounds of two workers, each waiting on a frame
+//! from the leader, so that the baton is passed between idle workers in many orders.
 
 extern crate std;
 
 use super::tests::within_10s;
-use super::tests_concurrent::{Ev, Gate, collect, report};
-use super::tests_concurrent_io::Job;
+use super::tests_steps::{Ev, collect, report};
+use super::tests_steps_io::Job;
 use crate::io;
 use crate::run::Outcome::{Deadlock, Returned};
 use crate::status::Status;
-use crate::topology::{Context, LEADER, Topology};
+use crate::topology::{LEADER, Topology};
 
-/// Owns `Job`, and waits for one. Reports the id of each job it gets.
-struct Await;
+/// Receives `Job`, and waits for one. Reports the id of the job it gets.
+#[crate::state(steps(await_job))]
+struct Await {}
 
-#[crate::process(receives = Job)]
-impl Await {
-    fn step(&mut self, _g: &mut Gate) -> Status {
-        match io::recv::<Job>() {
-            Some(j) => {
-                report(j.id);
-                Status::Done
-            }
-            None => Status::wait().frame(),
+#[crate::step(Await, receives = Job)]
+fn await_job() -> Status {
+    match io::recv::<Job>() {
+        Some(j) => {
+            report(j.id);
+            Status::Done
         }
+        None => Status::wait().frame(),
     }
-}
-
-fn await_worker(_cx: &Context) {
-    let mut gate = Gate { inside: 0, open: false };
-    let r = crate::concurrent!(Await; gate);
-    assert_eq!(r, Ok(()));
-}
-
-fn lonely(_cx: &Context) {
-    let mut gate = Gate { inside: 0, open: false };
-    let r = crate::concurrent!(Await; gate);
-    report(u32::from(r.is_ok()));
 }
 
 /// No frame comes, and the leader joins at once: nothing can move, so the worker is deadlocked.
@@ -45,9 +32,10 @@ fn lonely(_cx: &Context) {
 fn a_frame_wait_that_no_leader_can_satisfy_is_deadlock() {
     within_10s(|| {
         let mut g = Topology::new();
-        let w = g.worker(lonely);
-        g.route::<Ev>(w, LEADER, 4);
-        g.route::<Job>(LEADER, w, 4);
+        let w = g.worker::<Await>();
+        g.set(&w, || Await {});
+        g.route::<Ev>(w.id(), LEADER, 4);
+        g.route::<Job>(LEADER, w.id(), 4);
         let run = g.launch().expect("accepted");
         assert_eq!(run.join(), [Deadlock]);
     });
@@ -60,8 +48,11 @@ fn two_idle_workers_all_finish_over_many_rounds() {
     within_10s(|| {
         for round in 0..200_u32 {
             let mut g = Topology::new();
-            let a = g.worker(await_worker);
-            let b = g.worker(await_worker);
+            let a = g.worker::<Await>();
+            g.set(&a, || Await {});
+            let b = g.worker::<Await>();
+            g.set(&b, || Await {});
+            let (a, b) = (a.id(), b.id());
             for w in [a, b] {
                 g.route::<Ev>(w, LEADER, 4);
                 g.route::<Job>(LEADER, w, 4);
