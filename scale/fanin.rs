@@ -8,7 +8,7 @@
 mod common;
 
 use std::time::Instant;
-use trame::{Context, LEADER, Reading, Status, Topology};
+use trame::{LEADER, Reading, Status, Topology, Worker};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -25,7 +25,8 @@ struct Report {
     ns: u64,
 }
 
-/// Sends `msgs` messages to the leader, as fast as the route allows, then reports.
+/// One worker: its index, how many messages to send, how many it has, and its span.
+#[trame::state(steps(feed))]
 struct Feeder {
     me: u64,
     msgs: u64,
@@ -35,47 +36,38 @@ struct Feeder {
     reported: bool,
 }
 
-#[trame::process]
-impl Feeder {
-    fn step(&mut self) -> Status {
-        let t0 = *self.t0.get_or_insert_with(trame::now);
-        while self.sent < self.msgs {
-            if trame::send(LEADER, Small { seq: self.sent, from: self.me, pad: [0; 48] }).is_err() {
-                return Status::wait().room::<Small>(LEADER);
-            }
-            self.sent += 1;
+/// Sends `msgs` messages to the leader, as fast as the route allows, then reports.
+#[trame::step(Feeder)]
+fn feed(me: &u64, msgs: &u64, sent: &mut u64, t0: &mut Option<Reading>, ns: &mut Option<u64>, reported: &mut bool) -> Status {
+    let start = *t0.get_or_insert_with(trame::now);
+    while *sent < *msgs {
+        if trame::send(LEADER, Small { seq: *sent, from: *me, pad: [0; 48] }).is_err() {
+            return Status::wait().room::<Small>(LEADER);
         }
-        let ns = *self.ns.get_or_insert_with(|| common::ns(trame::now().since(t0)));
-        if self.reported {
-            return Status::Done;
-        }
-        match trame::send(LEADER, Report { worker: self.me, ns }) {
-            Ok(()) => {
-                self.reported = true;
-                Status::Progress
-            }
-            Err(_) => Status::wait().room::<Report>(LEADER),
-        }
+        *sent += 1;
     }
-}
-
-fn worker(me: u64, msgs: u64) {
-    let r = trame::concurrent!(Feeder { me, msgs, sent: 0, t0: None, ns: None, reported: false };);
-    assert_eq!(r, Ok(()));
+    let ns = *ns.get_or_insert_with(|| common::ns(trame::now().since(start)));
+    if *reported {
+        return Status::Done;
+    }
+    match trame::send(LEADER, Report { worker: *me, ns }) {
+        Ok(()) => {
+            *reported = true;
+            Status::Progress
+        }
+        Err(_) => Status::wait().room::<Report>(LEADER),
+    }
 }
 
 fn main() {
     let w: usize = common::arg(1, "W");
     let msgs: u64 = common::arg(2, "MSGS");
     let mut t = Topology::new();
-    let mut ids = Vec::new();
-    for i in 0..w {
-        let id = t.worker(move |_cx: &Context| worker(i as u64, msgs));
-        ids.push(id);
-    }
-    for id in &ids {
-        t.route::<Small>(*id, LEADER, 64);
-        t.route::<Report>(*id, LEADER, 1);
+    let ws: Vec<Worker<Feeder>> = (0..w).map(|_| t.worker()).collect();
+    for (i, h) in ws.iter().enumerate() {
+        t.set(h, move || Feeder { me: i as u64, msgs, sent: 0, t0: None, ns: None, reported: false });
+        t.route::<Small>(h.id(), LEADER, 64);
+        t.route::<Report>(h.id(), LEADER, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     let total = w as u64 * msgs;

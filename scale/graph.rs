@@ -14,7 +14,7 @@ mod graph_net;
 #[path = "graph_proc.rs"]
 mod graph_proc;
 
-use trame::{Context, LEADER, Message, Reading, Status, Topology, WorkerId};
+use trame::{LEADER, Reading, Status, Topology, Worker, WorkerId};
 
 const WARM: u64 = 10;
 const CAP: usize = 4;
@@ -28,16 +28,8 @@ struct Report {
     checksum: u64,
 }
 
-graph!(GraphSmall, Small, 48, worker_small);
-graph!(GraphBig, Big, 1008, worker_big);
-
-/// Routes of one message type: worker i to each of its out-neighbours.
-fn wire<M: Message>(t: &mut Topology, ids: &[WorkerId], i: usize, offs: &[u64]) {
-    let w = ids.len();
-    for &o in offs {
-        t.route::<M>(ids[i], ids[(i + o as usize) % w], CAP);
-    }
-}
+graph!(GraphSmall, graph_small, Small, 48, build_small);
+graph!(GraphBig, graph_big, Big, 1008, build_big);
 
 fn main() {
     let w: usize = common::arg(1, "W");
@@ -52,23 +44,13 @@ fn main() {
     }
     let offs = graph_net::offsets(w as u64, degree as u64, seed);
     let mut t = Topology::new();
-    let mut ids = Vec::new();
-    for i in 0..w {
-        let offs = offs.clone();
-        let id = if size == 64 {
-            t.worker(move |cx: &Context| worker_small(cx, i as u64, &offs, steps, iters))
-        } else {
-            t.worker(move |cx: &Context| worker_big(cx, i as u64, &offs, steps, iters))
-        };
-        ids.push(id);
-    }
-    for i in 0..w {
-        if size == 64 {
-            wire::<Small>(&mut t, &ids, i, &offs)
-        } else {
-            wire::<Big>(&mut t, &ids, i, &offs)
-        }
-        t.route::<Report>(ids[i], LEADER, 1);
+    let ids = if size == 64 {
+        build_small(&mut t, w, &offs, steps, iters)
+    } else {
+        build_big(&mut t, w, &offs, steps, iters)
+    };
+    for id in ids {
+        t.route::<Report>(id, LEADER, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     common::collect::<Report>(&run, w, |r| {

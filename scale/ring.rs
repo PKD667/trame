@@ -7,7 +7,7 @@
 #[path = "common.rs"]
 mod common;
 
-use trame::{Context, LEADER, Message, Reading, Status, Topology, WorkerId};
+use trame::{LEADER, Reading, Status, Topology, Worker, WorkerId};
 
 const WARM: u64 = 10;
 #[trame::message]
@@ -17,16 +17,18 @@ struct Report {
     ns: u64,
 }
 
-/// One message type and process per size: a process names its type in `receives`, so both are stamped out.
+/// One message type, state and step per size: a step names its message type in `receives`, so all are stamped out.
+/// `rx[k]`: frames received from side k (0 right, 1 left). A step ends when both sends and both frames of the
+/// step are done; an early frame of the next step is counted, not stored. `$build` declares and fills the W
+/// workers of this size and routes each to its two neighbours; it answers their ids.
 macro_rules! ring {
-    ($proc:ident, $msg:ident, $pad:literal, $worker:ident) => {
+    ($state:ident, $step:ident, $msg:ident, $pad:literal, $build:ident) => {
         #[trame::message]
         #[derive(Debug, PartialEq, Eq)]
         struct $msg { seq: u64, from: u64, pad: [u8; $pad] }
 
-        /// `rx[k]`: frames received from side k (0 right, 1 left). A step ends when both sends and both
-        /// frames of the step are done; an early frame of the next step is counted, not stored.
-        struct $proc {
+        #[trame::state(steps($step))]
+        struct $state {
             me: u64,
             right: u64,
             left: u64,
@@ -40,77 +42,79 @@ macro_rules! ring {
             reported: bool,
         }
 
-        #[trame::process(receives = $msg)]
-        impl $proc {
-            fn step(&mut self) -> Status {
-                if self.cur == WARM && self.t0.is_none() {
-                    self.t0 = Some(trame::now());
-                }
-                if self.cur == self.total {
-                    let t0 = self.t0.expect("the warm-up ended");
-                    let ns = *self.ns.get_or_insert_with(|| common::ns(trame::now().since(t0)));
-                    if self.reported {
-                        return Status::Done;
-                    }
-                    return match trame::send(LEADER, Report { worker: self.me, ns }) {
-                        Ok(()) => {
-                            self.reported = true;
-                            Status::Progress
-                        }
-                        Err(_) => Status::wait().room::<Report>(LEADER),
-                    };
-                }
-                let (right, left, peers) = (self.right, self.left, self.peers);
-                for k in 0..2 {
-                    if !self.sent[k] {
-                        let m = $msg { seq: self.cur, from: self.me, pad: [0; $pad] };
-                        self.sent[k] = trame::send(peers[k], m).is_ok();
-                    }
-                }
-                while let Some(m) = trame::recv::<$msg>() {
-                    let k = if m.from == right {
-                        0
-                    } else if m.from == left {
-                        1
-                    } else {
-                        panic!("a frame from worker {}, which is not a neighbour of {}", m.from, self.me)
-                    };
-                    assert_eq!(m.seq, self.rx[k], "a frame out of order from worker {}", m.from);
-                    self.rx[k] += 1;
-                }
-                if self.sent == [true, true] && self.rx[0] > self.cur && self.rx[1] > self.cur {
-                    self.cur += 1;
-                    self.sent = [false; 2];
-                    return Status::Progress;
-                }
-                let mut wait = Status::wait().frame();
-                for k in (0..2).filter(|&k| !self.sent[k]) {
-                    wait = wait.room::<$msg>(peers[k]);
-                }
-                wait
+        #[trame::step($state, receives = $msg)]
+        fn $step(
+            me: &u64, right: &u64, left: &u64, peers: &[WorkerId; 2], cur: &mut u64, total: &u64,
+            sent: &mut [bool; 2], rx: &mut [u64; 2], t0: &mut Option<Reading>, ns: &mut Option<u64>,
+            reported: &mut bool,
+        ) -> Status {
+            if *cur == WARM && t0.is_none() {
+                *t0 = Some(trame::now());
             }
+            if *cur == *total {
+                let start = t0.expect("the warm-up ended");
+                let ns = *ns.get_or_insert_with(|| common::ns(trame::now().since(start)));
+                if *reported {
+                    return Status::Done;
+                }
+                return match trame::send(LEADER, Report { worker: *me, ns }) {
+                    Ok(()) => {
+                        *reported = true;
+                        Status::Progress
+                    }
+                    Err(_) => Status::wait().room::<Report>(LEADER),
+                };
+            }
+            for k in 0..2 {
+                if !sent[k] {
+                    let m = $msg { seq: *cur, from: *me, pad: [0; $pad] };
+                    sent[k] = trame::send(peers[k], m).is_ok();
+                }
+            }
+            while let Some(m) = trame::recv::<$msg>() {
+                let k = if m.from == *right {
+                    0
+                } else if m.from == *left {
+                    1
+                } else {
+                    panic!("a frame from worker {}, which is not a neighbour of {}", m.from, *me)
+                };
+                assert_eq!(m.seq, rx[k], "a frame out of order from worker {}", m.from);
+                rx[k] += 1;
+            }
+            if *sent == [true, true] && rx[0] > *cur && rx[1] > *cur {
+                *cur += 1;
+                *sent = [false; 2];
+                return Status::Progress;
+            }
+            let mut wait = Status::wait().frame();
+            for k in (0..2).filter(|&k| !sent[k]) {
+                wait = wait.room::<$msg>(peers[k]);
+            }
+            wait
         }
 
-        fn $worker(cx: &Context, me: u64, steps: u64) {
-            let ids = cx.workers();
-            let n = ids.len() as u64;
-            let right = (me + 1) % n;
-            let left = (me + n - 1) % n;
-            let peers = [ids[right as usize], ids[left as usize]];
-            let r = trame::concurrent!($proc { me, right, left, peers, cur: 0, total: WARM + steps, sent: [false; 2], rx: [0; 2], t0: None, ns: None, reported: false };);
-            assert_eq!(r, Ok(()));
+        fn $build(t: &mut Topology, w: usize, steps: u64, cap: usize) -> Vec<WorkerId> {
+            let ws: Vec<Worker<$state>> = (0..w).map(|_| t.worker()).collect();
+            for (i, h) in ws.iter().enumerate() {
+                let (right, left) = ((i + 1) % w, (i + w - 1) % w);
+                let peers = [ws[right].id(), ws[left].id()];
+                let (me, right, left) = (i as u64, right as u64, left as u64);
+                t.set(h, move || $state {
+                    me, right, left, peers, cur: 0, total: WARM + steps, sent: [false; 2], rx: [0; 2],
+                    t0: None, ns: None, reported: false,
+                });
+                for to in peers {
+                    t.route::<$msg>(h.id(), to, cap);
+                }
+            }
+            ws.iter().map(Worker::id).collect()
         }
     };
 }
 
-ring!(RingSmall, Small, 48, worker_small);
-ring!(RingBig, Big, 4080, worker_big);
-
-fn wire<M: Message>(t: &mut Topology, from: WorkerId, peers: [WorkerId; 2], cap: usize) {
-    for to in peers {
-        t.route::<M>(from, to, cap);
-    }
-}
+ring!(RingSmall, ring_small, Small, 48, build_small);
+ring!(RingBig, ring_big, Big, 4080, build_big);
 
 fn main() {
     let w: usize = common::arg(1, "W");
@@ -123,23 +127,9 @@ fn main() {
         std::process::exit(2);
     }
     let mut t = Topology::new();
-    let mut ids = Vec::new();
-    for i in 0..w {
-        let id = if size == 64 {
-            t.worker(move |cx: &Context| worker_small(cx, i as u64, steps))
-        } else {
-            t.worker(move |cx: &Context| worker_big(cx, i as u64, steps))
-        };
-        ids.push(id);
-    }
-    for i in 0..w {
-        let peers = [ids[(i + 1) % w], ids[(i + w - 1) % w]];
-        if size == 64 {
-            wire::<Small>(&mut t, ids[i], peers, cap);
-        } else {
-            wire::<Big>(&mut t, ids[i], peers, cap);
-        }
-        t.route::<Report>(ids[i], LEADER, 1);
+    let ids = if size == 64 { build_small(&mut t, w, steps, cap) } else { build_big(&mut t, w, steps, cap) };
+    for id in ids {
+        t.route::<Report>(id, LEADER, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     common::collect::<Report>(&run, w, |r| {

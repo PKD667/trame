@@ -1,6 +1,6 @@
 # Scaling benchmarks
 
-Five trame programs and three plain-MPI baselines. The trame programs are examples `scale_barrier`,
+Five trame programs and three plain-MPI baselines. The trame programs are examples `scale_round`,
 `scale_ring`, `scale_idle`, `scale_fanin`, `scale_graph` (Cargo.toml). The baselines are `baseline/barrier.c`,
 `baseline/ring.c` and `baseline/graph.c`. The lab experiments `scale-local` and `scale-nN` run them (flake.nix,
 `experiments/scale.py`): `nix run .#scale-local`.
@@ -11,8 +11,15 @@ clocks have unknown offsets (spec.md 5.1).
 
 ## What each benchmark measures
 
-- **barrier** (`W ROUNDS`): the time for ROUNDS `trame::barrier()` calls, after one warm-up barrier.
-  The baseline is ROUNDS `MPI_Barrier` calls, with the same warm-up.
+- **round** (`W ROUNDS`): the time for ROUNDS rounds of messages through the leader, after one warm-up
+  round. The worker model has no barrier, and a round is the nearest measurement: the leader sends `Go`
+  to each of the W workers, each worker answers `Ack`, and the leader sends the next `Go` when all W acks
+  are in. A worker's clock runs from its first ack (the warm-up's) to its last (round ROUNDS), so its span
+  is ROUNDS full rounds. It was `barrier` (ROUNDS `trame::barrier()` calls) before the barrier left the
+  model; the old name and its data are not comparable. The baseline is still ROUNDS `MPI_Barrier` calls
+  with one warm-up (`baseline/barrier.c`, run as `mpi_barrier`). The two do not measure one thing: a
+  barrier is W ranks agreeing among themselves, a round is W workers agreeing through the leader (W + 1
+  agents, 2W messages a round). The comparison is the cost of that choice, not of equal work.
 - **ring** (`W STEPS SIZE CAP`): W >= 3 workers in a ring. Each step, a worker sends one SIZE-byte
   message to each neighbour and receives one from each. The clock starts after 10 warm-up steps. The
   baseline does the same with `MPI_Irecv`, `MPI_Isend` and `MPI_Waitall`. The trame program waits on
@@ -40,12 +47,13 @@ Two measurement caveats are part of the design:
 
 ## What each benchmark can support
 
-- **Weak scaling** (barrier, ring, fanin): per-worker time stays flat as W grows, with the work per
+- **Weak scaling** (round, ring, fanin): per-worker time stays flat as W grows, with the work per
   worker fixed. Flat per-worker time is the claim that the runtime adds no cost that grows with W.
   *Refuted by*: per-worker time that rises steadily with W on an otherwise idle machine, at one node.
-- **Barrier**: cost grows with W and with the number of nodes. Only one node is measured here, so
-  the claim is about the one-node path. *Refuted by*: a per-barrier cost that grows faster than
-  linearly in W at fixed load, or a trame barrier slower than `MPI_Barrier` at the same W.
+- **Round**: cost grows with W and with the number of nodes, since every round goes through one leader.
+  Only one node is measured here, so the claim is about the one-node path. *Refuted by*: a per-round
+  cost that grows faster than linearly in W at fixed load. No claim is made against `MPI_Barrier`: a
+  round through the leader does more work than a barrier (see above), and its time is reported next to it.
 - **Ring vs. baseline**: trame's ring is no slower than the plain-MPI ring at the same W and SIZE.
   *Refuted by*: a trame ring median that is consistently above the baseline's, with both runs at
   low load. The trame ring also pays for its checked build (`--cfg trame_checked`), which the baseline
@@ -65,7 +73,7 @@ Two measurement caveats are part of the design:
   can differ widely (no run in the tree measures how widely), so a single run supports no scaling claim. Each job records
   `/proc/loadavg` at its start (dataset `mpi_config`, source `loadavg`). Read it before reading a number.
 - Nodes. `scale-local` is one node. `scale-nN` (N nodes) is defined in flake.nix, but no locked run is
-  quoted here. The barrier and idle claims are about the one-node path until those runs exist.
+  quoted here. The round and idle claims are about the one-node path until those runs exist.
 - Oversubscription. The runner passes `--oversubscribe`, so it would let ranks share fewer cores than
   they have. The graph sweep avoids this by its `fill` rule: workers per node are the physical cores less
   two (`full`) or half of them (`half`), so the ranks of a job do not exceed the physical cores. The
