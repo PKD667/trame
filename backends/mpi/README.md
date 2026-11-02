@@ -1,6 +1,6 @@
 # trame MPI transport
 
-Implements spec.md's Launch and Run sections for workers on one or more nodes. Multi-node is the design
+The MPI backend runs a launched topology on one or more nodes (spec.md, Sections 4 and 5). Multi-node is the design
 in `NODES.md`: each node has its own window and a relay thread pair, and needs MPI_THREAD_MULTIPLE
 (without it, a multi-node launch is refused with `Refusal::Threads`). Wired into `programs/run.sh`,
 which runs each program on one node and on the `TRAME_MPI_NODE_RANKS=k` splits (k = 1, 2). Results:
@@ -27,11 +27,9 @@ the leader runs no worker code.
 - Receive: the head of the first owned route, in rotating order, that has a frame. The scan starts
   past the route the last receive took, so a route with frames is taken within n receives (n = owned
   routes). Frames are ordered within a route only, as spec.md's Offers definition says.
-- Removed in the worker model (2026-11-02): the barrier (`gate.rs`: generations, COUNT, GEN, the per-worker
-  arrive word, Deadlock detection at a barrier) and the leader's publication (`publish.rs`: deposit,
-  `<window>-pend-<no>` and `<window>-pub-<no>` objects, `Run::publish`). Agents now sleep on their
-  worker's epoch (`epoch.rs`), and a worker's result is its exit. Results below that name them are
-  measured records of the old model.
+- Wake-up. Each worker has an epoch word (`epoch.rs`). Every act that can change what one of its agents
+  waits for bumps it, and an agent that must wait sleeps on it. A worker's result is its exit.
+- States, the pool, edits and `take` live in the node's segment (`segment.rs`).
 
 ## Testing on one machine
 

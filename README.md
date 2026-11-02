@@ -134,58 +134,73 @@ is five. Any other count is refused on every rank before a worker starts. Open M
 
 ## The levels
 
-A program has four levels, each inside the one above it (spec.md, Section 1). Each one may do less.
+A program has three levels, each inside the one above it (spec.md, Section 1). Each one may do less.
 
-| level | where it runs | may | may not | spec |
-|---|---|---|---|---|
-| host, leader | any Rust | build the topology, launch, `send`, `recv`, `wait`, `publish`, `join` through `Run` | nothing is checked here; it is the environment | 4, 5.2, 5.5 |
-| worker | a worker's `run` | any loop, recursion and allocation; `send`, `recv`, `now`, `barrier`, `concurrent!`, `parallel!` | the operating system, `unsafe`, `std`, threads, globals | 1, 3 |
-| step | `step` of a process in `concurrent!` | `send`, `recv`, `now`, `parallel!`; counted loops; allocation | recursion, uncounted loops, blocking: it returns a `Status` | 1, 3, 5.3 |
-| item | a function given to `parallel!` | arithmetic and listed core functions | every effect, allocation, recursion, uncounted loops | 1, 3, 5.4 |
+**Host, leader.** Any Rust. It declares the topology, launches it, and drives the run through `Run`:
+`send`, `recv`, `wait`, `edit`, `stop` and `join`. Nothing is checked here; it is the environment
+(spec.md, Sections 4 and 5.5).
+
+**Step.** A function over the fields of a worker's state, marked `#[trame::step]`. It may `send`,
+`recv`, `me`, `now` and `parallel!`, and use counted loops. It may not allocate, recurse, use an
+uncounted loop or block: it returns a `Status` (spec.md, Sections 3 and 5.3).
+
+**Item.** A function given to `parallel!`. It may do arithmetic and call the listed core functions.
+It may not perform an effect, allocate, recurse or use an uncounted loop (spec.md, Sections 3
+and 5.4).
 
 ## What is checked, and how
 
 | check | what it covers | explained in |
 |---|---|---|
-| the contract | the rules every other check enforces, and what a backend must not do | `spec.md` |
-| the macros | `#[trame::message]` refuses references, pointers, function pointers and padding; `concurrent!` and `parallel!` need the cfg flag | `macros/lib.rs` |
+| the contract | the rules every other check enforces, and what a backend must not do | `spec.md`, `CONTRACT.md` |
+| the macros | `#[trame::message]` refuses references, pointers, function pointers and padding; `#[trame::step]` takes fields and the pool as `&` or `&mut`; `#[trame::state]` and `parallel!` need the cfg flag | `macros/lib.rs` |
 | `cargo trame check` | the rustc driver judges the MIR of each level: effects, counted loops, recursion, allocation | `driver/README.md` |
 | rejection suite | cases the checks must refuse, and their matched accepted cases | `rejections/README.md` |
 | conformance by mutation | every rule has a program that fails on a backend which breaks it | `conformance/README.md` |
-| crate tests | `cargo test` in the seq build; `sched.rs` enumerates scheduler states up to a bound (a bounded check, not a proof) | `sched.rs`, `tests/` |
+| scheduler model | `sched.rs` unit and property tests; trace replay of random workloads | `PROOFS.md` |
+| crate tests | `cargo test` in the seq build | `tests/` |
 | programs | every program in `programs/` on seq and MPI, stdout compared with `.expected` | `programs/run.sh` |
-| MPI checks | the transport: FIFO, overwrite, barrier, deadlock, on one node and split across nodes | `backends/mpi/tests/run.sh` |
-| `nix flake check` | builds the verdicts that must hold: `programs-seq`, `seq-tests`, `scheduler-exhaustive`, `rejections`, `mutants-seq` | `experiments/validate.nix` |
+| MPI checks | the transport: FIFO, overwrite, fairness, large routes, on one node and split across nodes | `backends/mpi/tests/run.sh` |
+| TLA+ models | the MPI backend's wake-up, credit and abort protocols | `proofs/README.md` |
+| `nix flake check` | builds the verdicts that must hold: `programs-seq`, `seq-tests`, `rejections`, `mutants-seq` | `experiments/validate.nix` |
 | lab experiments | `nix run .#<name>` runs real processes: `programs-mpi`, `transport-mpi`, `mutants-mpi`, `scale-local`, `scale-n1` to `scale-n32`, and the `-cluster` variants | `experiments/README.md` |
+
+`PROOFS.md` says, for each clause of `CONTRACT.md`, which of these checks it and where the check
+stops.
 
 ## Repository map
 
-- `backends/`: `seq` is the reference, `mpi` runs on MPI ranks, memory windows and relays.
+- `docs/`: the system design, one file per part. `docs/overview.md` is the entry.
+- `backends/`: `seq` is the reference, `threads` runs several agents per worker, `mpi` runs on MPI
+  ranks, memory windows and relays, and `local` holds the routes that seq and threads share.
 - `conformance/`: mutants of each backend, and the runner that checks the programs kill them.
 - `driver/`: the rustc driver that judges MIR, and `cargo trame`.
 - `experiments/`: the lab runners and the claims they test.
-- `macros/`: the proc macros `message`, `process`, `item`, `concurrent`, `parallel`.
+- `macros/`: the proc macros `message`, `state`, `step`, `item` and `parallel`.
 - `math/`: `trame::math::f32` and `trame::math::f64`, numeric functions with the same bits on every backend.
 - `programs/`: shared programs with their expected output, run by `programs/run.sh`.
+- `proofs/`: the TLA+ models of the MPI backend.
 - `rejections/`: cases the compile-time checks must refuse or accept.
 - `scale/`: scaling benchmarks and their plain-MPI baselines.
-- `tests/`: crate tests for the allocation and `parallel!` rules, and for this README's example.
+- `tests/`: crate tests for allocation, `parallel!`, conformance, and this README's example.
 - `examples/`: the example in this README.
-- Top level: `spec.md` (the contract), `lib.rs` and the modules it names (the surface and the core),
-  `flake.nix` (pinned inputs, builds, lab experiments). `target/` is build output.
+- Top level: `spec.md` (the behaviour), `CONTRACT.md` (what a backend keeps), `PROOFS.md` (how that is
+  checked), `lib.rs` and the modules it names (the surface and the core), `flake.nix` (pinned inputs,
+  builds, lab experiments). `target/` is build output.
 
-## Status and limits
+## Limits
 
-- Backends: seq and mpi. The MPI backend runs several nodes only on one machine, through
-  `TRAME_MPI_NODE_RANKS`. It has not run on a real network (`backends/mpi/README.md`, Not checked).
+- Backends: seq, threads and mpi, one per build. The MPI backend runs several nodes only on one
+  machine, through `TRAME_MPI_NODE_RANKS`, and has not run on a real network
+  (`backends/mpi/README.md`, Not checked).
 - The driver fuzzer is not a verdict: run it as `driver/fuzz/README.md` says.
-- Not built on MPI: detecting a stuck run after `join`, and a leader whose `wait` can never return. Seq
-  does both (`backends/seq/stuck.rs`). Spec.md, Definition (Deadlock), allows a backend not to.
-- Open point: when a publication made during a barrier takes effect on MPI (`backends/mpi/README.md`,
-  Not checked).
+- The MPI backend never reports `Deadlock` and does not detect a leader whose `wait` can never
+  return. Seq does both (`backends/seq/stuck.rs`). Spec.md, Definition (Deadlock), allows a backend
+  not to.
 - The crate does not check the byte order of the target. Only the latency test does.
-- Implementation limits, not part of the contract: the scheduler keeps its conditions in 64-bit
-  masks, so one `concurrent!` holds at most 64 processes and 64 cells, and a `.room` wait names
-  one of a worker's first 64 routes. Exceeding one aborts with a message naming it.
-- Latency: the MPI backend records round trips, but no nixsci experiment locks them yet, so no latency
-  claim is checked (spec.md, Section 6).
+- A state has at most 63 fields, and a worker at most 64 steps, the stop step included. A step
+  receives at most 16 message types, and a `.room` wait names one of a worker's first 64 routes.
+  Exceeding one is refused or aborts with a message naming it. These are implementation limits, not
+  part of the contract.
+- No latency claim is checked: the MPI backend records round trips, and no nixsci experiment locks
+  them (spec.md, Section 6).

@@ -2,7 +2,7 @@
 
 trame exists so that a program states its algorithm and the runtime carries its messages. A program
 scales when the runtime adds no cost that grows with the size of the run. This file defines that, lists
-where the MPI backend breaks it today, and states what is measured to show it holds.
+where the MPI backend breaks it, and states what is measured to show it holds.
 
 ## What perfect scaling means here
 
@@ -29,22 +29,17 @@ The structural condition behind that bound:
 
 A loop over W or R that runs once per run (launch, `join`, finalize) is allowed.
 
-## Where the backend breaks locality today
+## Locality in the relay
 
-| path | file | runs | cost today | after |
-|---|---|---|---|---|
-| `out` route scan | `relay_routes.rs` | every relay wake | O(R) routes of the whole layout | O(routes with one end here) |
-| `out` frame buffer | `relay_routes.rs` | every outbound route, every wake | one allocation of `size` bytes | one scratch buffer per thread |
-| `out` control scan | `relay_control.rs` | every relay wake | O(W) | O(local workers) |
+The relay's `out` thread keeps its cost per wake to the routes and workers of its own node.
 
-The first row is the one that matters. A ring of W = 1024 workers with 8 routes each makes the relay
-read 8192 route records on every wake, whichever node it runs on, so its cost per frame grows with
-N under weak scaling. NODES.md's table already states the intended cost ("routes with one end on the
-node"), and the code does not meet it.
+| path | file | runs | cost |
+|---|---|---|---|
+| `out` route scan | `relay_routes.rs` | every relay wake | the node's outbound routes and inbound lossless routes, listed once at start |
+| `out` frame buffer | `relay_routes.rs` | every outbound route, every wake | one scratch buffer per thread, reused |
+| `out` control scan | `relay_control.rs` | every relay wake | the node's local workers; each new result is queued for N - 1 nodes |
 
-2026-11-02: the barrier rows of the table above (`gate.rs`, the `ARRIVED`/`RELEASE` star, `bump_local`) and the
-barrier discussion that followed it were removed with the barrier in the worker model. They described
-code that no longer exists; no measurement here depended on them.
+The Locality claim below tests the consequence: the relay's CPU time per frame does not grow with N.
 
 ## What does not change
 
