@@ -237,7 +237,7 @@ impl Sched {
         self.stopping || ordinary
     }
 
-    /// Who gets a contended field first (S6a): positive weights before weight 0; among positive
+    /// Who gets a contended field first (CONTRACT.md, S6): positive weights before weight 0; among positive
     /// weights the lowest pass, among weight 0 the earliest last start; then the index.
     pub fn rank(&self, i: usize) -> (bool, u64, usize) {
         let p = &self.ps[i];
@@ -251,7 +251,7 @@ impl Sched {
 
     /// The safety premise of Start: whether i may start now. Its fields are free (no running step
     /// and no edit holds them), and no step ranked above it that wants to start uses them: lock
-    /// access goes by rank (S6a), so a step that waits for a field is not overtaken by a lower one
+    /// access goes by rank (CONTRACT.md, S6), so a step that waits for a field is not overtaken by a lower one
     /// that would hold it longer. The choice among several is `choose`.
     pub fn may_start(&self, i: usize, now: &Now) -> bool {
         if !self.wants(i, now) {
@@ -441,7 +441,7 @@ mod tests {
     fn writers_of_one_field_exclude_each_other() {
         let mut s = Sched::new(&[(0, 1, W1), (0, 1, W1)], false);
         assert!(s.may_start(0, &NOW0), "step 0 ranks first");
-        assert!(!s.may_start(1, &NOW0), "step 0 ranks above step 1 and writes its field (S6a)");
+        assert!(!s.may_start(1, &NOW0), "step 0 ranks above step 1 and writes its field (CONTRACT.md, S6)");
         s.start(0);
         assert!(!s.may_start(1, &NOW0), "field 0 is written by step 0");
         s.end(0, PROGRESS);
@@ -596,7 +596,7 @@ mod tests {
         assert!(check(s0, &ok, true).is_ok());
         let bad = [Event::Start { i: 0, now: NOW0 }, Event::Start { i: 1, now: NOW0 }];
         assert_eq!(check(s0, &bad, false).unwrap_err(), Violation::Start { n: 1, i: 1 });
-        // Step 1 overtaking step 0, which ranks above it and writes the same field: refused (S6a).
+        // Step 1 overtaking step 0, which ranks above it and writes the same field: refused (CONTRACT.md, S6).
         let overtake = [Event::Start { i: 1, now: NOW0 }];
         assert_eq!(check(s0, &overtake, false).unwrap_err(), Violation::Start { n: 0, i: 1 });
         // On disjoint fields, another choice than the model's is safe, and only the exact replay refuses it.

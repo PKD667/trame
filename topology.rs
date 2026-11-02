@@ -84,7 +84,7 @@ impl Topology {
     }
 
     /// Give `h` (a worker or the pool) its value: `build` makes it. The backend calls `build` at
-    /// launch, in the memory where it is used (backend.rs, M1), so every allocation the value owns
+    /// launch, in the memory where it is used (CONTRACT.md, M1), so every allocation the value owns
     /// lands there; a value built outside `build` and moved in does not. A second `set` replaces the
     /// first.
     pub fn set<H: Handle>(&mut self, h: &H, build: impl FnOnce() -> H::Value + Send + 'static) {
@@ -161,7 +161,7 @@ pub(crate) mod sealed {
         /// What a leader edit of it holds. Panics when it is not of `run`'s topology.
         fn target(&self, run: &Run) -> Target;
         /// # Safety
-        /// The backend holds `target`'s fields (backend.rs, S4, P2).
+        /// The backend holds `target`'s fields (CONTRACT.md, S4, P2).
         unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut Self::Value));
     }
 

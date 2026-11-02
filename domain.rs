@@ -1,4 +1,4 @@
-//! `trame::Alloc`: the global allocator a trame program installs (backend.rs, M1).
+//! `trame::Alloc`: the global allocator a trame program installs (CONTRACT.md, M1).
 //!
 //! A state and the pool are built by the leader and used in place by the worker's agents, which on
 //! some backends run in another process or on a device. So every byte they own must lie in memory the

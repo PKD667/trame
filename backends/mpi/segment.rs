@@ -1,4 +1,4 @@
-// The machine segment: the domain of this backend's workers (backend.rs, M1). One POSIX shared-memory
+// The machine segment: the domain of this backend's workers (CONTRACT.md, M1). One POSIX shared-memory
 // object per node of a launch, mapped at the same address, ADDR, in every rank of the node, so a
 // pointer the builder wrote is the same pointer in the worker's process. The leader builds the states
 // of the workers on its node, and the pool, there; the host rank of another node builds that node's

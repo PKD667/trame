@@ -58,8 +58,8 @@ impl Run {
         let mut f = Some(f);
         Selected::leader_edit(&self.inner, target, &mut || {
             let mut f = f.take();
-            // SAFETY: the backend runs this holding target's fields (backend.rs, S4, P2).
-            // Arena mode: what the edit allocates lands in the domain (backend.rs, M1).
+            // SAFETY: the backend runs this holding target's fields (CONTRACT.md, S4, P2).
+            // Arena mode: what the edit allocates lands in the domain (CONTRACT.md, M1).
             crate::domain::arena(|| unsafe { h.edit_with(&mut |v| (f.take().expect("trame: an edit runs its function once"))(v)) })
         })
     }

@@ -99,7 +99,7 @@ macro_rules! graph {
                     t.route::<$msg>(ids[i], to, CAP);
                 }
                 let offs = offs.to_vec();
-                // Built at launch, where the worker runs (backend.rs, M1): its vectors are allocated there.
+                // Built at launch, where the worker runs (CONTRACT.md, M1): its vectors are allocated there.
                 t.set(h, move || {
                     let mut slot = vec![usize::MAX; wn as usize];
                     for (k, &o) in offs.iter().enumerate() {

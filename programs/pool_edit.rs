@@ -5,7 +5,7 @@
 //! for round r + 1 until all three reports for round r have arrived.
 //!
 //! A pool edit runs while no step that reads the pool runs, and a step that starts after the edit
-//! returns reads the edited pool (backend.rs, P2). The step that takes `Go(r)` starts after the leader
+//! returns reads the edited pool (CONTRACT.md, P2). The step that takes `Go(r)` starts after the leader
 //! sent it, so after the edit: each worker reports exactly round r, a list of length r and sum
 //! r(r+1)/2, on any backend.
 

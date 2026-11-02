@@ -1,7 +1,7 @@
 //! The threads backend: workers in one process, each run by several agent threads at once, with no
 //! baton. Steps of one worker whose fields do not conflict run truly in parallel; steps of different
 //! workers too. Each agent runs the reference scheduler (worker.rs `agent`); service is nanoseconds,
-//! so weights are shares of time (backend.rs, S6).
+//! so weights are shares of time (CONTRACT.md, S6).
 //!
 //! The number of agents per worker is the machine's parallelism (a test may lower it), never more than
 //! the worker's steps. The routes are the shared-memory rings of
@@ -133,7 +133,7 @@ fn leader_check(g: MutexGuard<'_, State>) -> MutexGuard<'_, State> {
 fn agent_main(shared: Arc<Shared>, w: usize, a: usize, slot: Arc<Slot>) {
     CURRENT.with(|c| *c.borrow_mut() = Some((shared.clone(), w, a)));
     let outcome = catch_unwind(AssertUnwindSafe(|| {
-        // Fixed for the launch: an edit writes it in place (backend.rs, P2).
+        // Fixed for the launch: an edit writes it in place (CONTRACT.md, P2).
         let pool = shared.lock().pool.clone();
         let clock = || shared.nanos();
         agent(&slot, &clock, pool.as_deref().map(|p| p.any()))

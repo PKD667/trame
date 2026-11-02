@@ -108,7 +108,7 @@ impl Transport {
                 return;
             }
             // A count, not a flag: several agents of one worker may sleep on one epoch, and the first to
-            // wake must not hide the others from `bump` (backend.rs, S3).
+            // wake must not hide the others from `bump` (CONTRACT.md, S3).
             self.win().word(s).fetch_add(1, SeqCst);
             // The Dekker check: an act between the test above and the store is seen here, without a
             // syscall. The model (proofs/mpi/Epoch.tla) needs it for no property, because it puts the

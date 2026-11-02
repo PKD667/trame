@@ -50,7 +50,7 @@ pub(crate) struct Plan {
     /// Each worker: its state and steps, without their type (worker.rs).
     pub workers: Vec<Arc<dyn Erased>>,
     /// Each worker's builder (`Topology::set`): builds the state and puts it in place. The backend
-    /// runs it at launch, in the worker's domain (backend.rs, M1). `None`: never set, refused.
+    /// runs it at launch, in the worker's domain (CONTRACT.md, M1). `None`: never set, refused.
     pub builders: Vec<Option<Builder>>,
     pub routes: Vec<Route>,
     /// The pool (a `PoolCore<P>`), its type and the type's name. `None` with `()`: no pool.
@@ -59,7 +59,7 @@ pub(crate) struct Plan {
     pub pool_builder: Option<Builder>,
     pub pool_type: TypeId,
     pub pool_name: &'static str,
-    /// Record each worker's trace (backend.rs, S7). For conformance; costs a lock and a push per event.
+    /// Record each worker's trace (CONTRACT.md, S9). For conformance; costs a lock and a push per event.
     pub trace: bool,
     /// Agents per worker, at most; `None`: the host's parallelism. Never more than a worker's steps.
     pub agents: Option<usize>,

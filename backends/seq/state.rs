@@ -32,7 +32,7 @@ pub(super) struct State {
     /// `None` when the run aborted without one (a worker thread that could not start).
     pub panic: Option<(usize, String)>,
     pub routes: Routes,
-    /// The host's pool: the current version. A step pins it by a clone at its start (backend.rs, P1).
+    /// The host's pool: the current version. A step pins it by a clone at its start (CONTRACT.md, P1).
     pub pool: Option<PoolRef>,
     pub epoch: Instant,
     /// Counts every effect a worker finished and every leader act (send, take, pool, edit, stop). An idle worker

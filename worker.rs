@@ -60,7 +60,7 @@ pub unsafe trait State: Send + Sync + Sized + 'static {
     unsafe fn run(this: *mut Self, pool: &Self::Pool, i: usize) -> Result<Status, Self::Error>;
 }
 
-/// What a worker's domain holds for it (backend.rs, M1): its state and, once a step failed, its
+/// What a worker's domain holds for it (CONTRACT.md, M1): its state and, once a step failed, its
 /// error. The leader builds it there at launch; a worker in another process adopts its address.
 struct Block<S: State> {
     state: ManuallyDrop<S>,
@@ -81,7 +81,7 @@ pub(crate) struct Core<S: State> {
 }
 
 // SAFETY: steps reach the state only through `State::run`, under the field locks of the contract
-// (backend.rs, S1), and the leader only through `edit` and `take`, when no step runs. `S: Sync` makes
+// (CONTRACT.md, S1), and the leader only through `edit` and `take`, when no step runs. `S: Sync` makes
 // two steps reading one field sound; `S: Send` lets the state move to an agent's thread. The error is
 // written once, by the step that set `failed`, and read by the leader after the run.
 unsafe impl<S: State> Sync for Core<S> {}
@@ -143,7 +143,7 @@ impl<S: State> Core<S> {
     }
 
     /// Use the block another process built at `addr`, in a domain this process maps at the same
-    /// address (backend.rs, M1). This process never frees it.
+    /// address (CONTRACT.md, M1). This process never frees it.
     ///
     /// # Safety
     /// `addr` is the `addr()` of a `Core<S>` of the same type, filled, in a mapped domain.
@@ -165,7 +165,7 @@ impl<S: State> Core<S> {
     /// The leader's edit: `f` gets the whole state.
     ///
     /// # Safety
-    /// No step of this worker runs or starts until it returns (backend.rs, S4).
+    /// No step of this worker runs or starts until it returns (CONTRACT.md, S4).
     pub(crate) unsafe fn edit_with<R>(&self, f: impl FnOnce(&mut S) -> R) -> R {
         // SAFETY: exclusive by the caller's promise.
         f(unsafe { &mut *self.ptr() })
@@ -219,9 +219,9 @@ impl<S: State> Core<S> {
 }
 
 /// The pool: read-only shared data. Steps that take `pool: &P` read it under the `POOL` bit
-/// (sched.rs); only the leader writes it, in an edit holding that bit in every worker (backend.rs, S4).
+/// (sched.rs); only the leader writes it, in an edit holding that bit in every worker (CONTRACT.md, S4).
 pub(crate) struct PoolCore<P> {
-    /// The pool's block in the domain (backend.rs, M1); null until built or adopted.
+    /// The pool's block in the domain (CONTRACT.md, M1); null until built or adopted.
     value: AtomicPtr<P>,
 }
 
@@ -269,7 +269,7 @@ impl<P> PoolCore<P> {
     }
 
     /// # Safety
-    /// The caller holds the POOL bit in every worker for writing (backend.rs, S4).
+    /// The caller holds the POOL bit in every worker for writing (CONTRACT.md, S4).
     pub(crate) unsafe fn edit_with<R>(&self, f: impl FnOnce(&mut P) -> R) -> R {
         // SAFETY: built; the caller excludes every reader.
         f(unsafe { &mut *self.at() })
@@ -341,7 +341,7 @@ pub(crate) trait Erased: Send + Sync {
     /// Run step i. A failure is kept here for the leader, and answered as `Err(())`.
     ///
     /// # Safety
-    /// The caller holds step i's fields (backend.rs, S1). `pool` is the launch's pool, a
+    /// The caller holds step i's fields (CONTRACT.md, S1). `pool` is the launch's pool, a
     /// `PoolCore<pool_type>`, or `None` when that is `()`.
     unsafe fn run(&self, i: usize, pool: Option<&(dyn Any + Send + Sync)>) -> Result<Status, ()>;
 }

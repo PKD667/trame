@@ -5,7 +5,7 @@
 //! return: progress (sometimes with a new weight), a bare wait, a timed wait, or done when its budget
 //! is spent. So the seed decides the statuses and weights, and the shape decides who excludes and who
 //! wakes whom. Each run records its trace; `__check_traces` replays it against the model: exactly
-//! (choices included) on seq, safety only elsewhere (backend.rs, S1-S5, S7).
+//! (choices included) on seq, safety only elsewhere (CONTRACT.md, S1-S6, S9).
 //!
 //! A failure prints the shape and the seed; add the seed to REGRESSIONS so every later run tries it.
 //! Shares (S6) are checked by `shares` below.

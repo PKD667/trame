@@ -1,6 +1,6 @@
 //! Operations of the sequential backend. Each worker is one OS thread, its one agent, running the
 //! reference scheduler (worker.rs `agent`) with service 1 per step: so seq follows `Sched::choose`
-//! exactly (backend.rs, S6). Exactly one agent runs at a time: the holder of the baton. A worker keeps
+//! exactly (CONTRACT.md, S6). Exactly one agent runs at a time: the holder of the baton. A worker keeps
 //! the baton between its effects and hands it on at each effect; the leader runs outside the baton,
 //! under the same Mutex.
 
@@ -95,7 +95,7 @@ fn worker_main(shared: Arc<Shared>, me: usize, slot: Arc<Slot>) {
     CURRENT.with(|c| *c.borrow_mut() = Some((shared.clone(), me)));
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         drop(wait_turn(&shared, shared.lock(), me));
-        // Fixed for the launch: an edit writes it in place (backend.rs, P2).
+        // Fixed for the launch: an edit writes it in place (CONTRACT.md, P2).
         let pool = shared.lock().pool.clone();
         agent(&slot, &|| 0, pool.as_deref().map(|p| p.any()))
     }));
