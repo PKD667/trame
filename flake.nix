@@ -89,7 +89,7 @@
           runHook preInstall
           mkdir -p $out/bin $out/share/expected
           rel=target/${pkgs.stdenv.hostPlatform.rust.rustcTarget}/release
-          for p in ${pkgs.lib.concatStringsSep " " mpiPrograms} scale_barrier scale_ring scale_idle scale_fanin scale_graph; do
+          for p in ${pkgs.lib.concatStringsSep " " mpiPrograms} scale_round scale_ring scale_idle scale_fanin scale_graph; do
             cp $rel/examples/$p $out/bin/
           done
           cp $rel/check $rel/latency $out/bin/
@@ -169,7 +169,7 @@
       };
       scaleCols = { bench = "str"; impl = "str"; nodes = "int"; workers = "int"; per_node = "int"; };
       scaleData = {
-        barrier = { columns = scaleCols // { worker = "int"; rounds = "int"; ns = "int"; }; noisy.ns = 1.0; };
+        round = { columns = scaleCols // { worker = "int"; rounds = "int"; ns = "int"; }; noisy.ns = 1.0; };
         ring = { columns = scaleCols // { worker = "int"; steps = "int"; size = "int"; cap = "int?"; ns = "int"; }; noisy.ns = 1.0; };
         idle = { columns = scaleCols // { worker = "int"; seconds = "int"; ns = "int"; }; noisy.ns = 1.0; };
         fanin = { columns = scaleCols // { worker = "int"; msgs = "int"; ns = "int"; }; noisy.ns = 1.0; };
@@ -186,7 +186,7 @@
         inherit name span resources;
         closures.${system} = scaleClosure;
         params = { inherit nodes; rounds = 10000; steps = 10000; msgs = 10000; seconds = 3; cap = 8; graph_iters = 100000; graph_steps = 2000; degree = 8; seed = 1; };
-        sweep = { bench = [ "barrier" "ring64" "ring4096" "idle" "fanin" "graph64" "graph1024" "graph1024s" ]; impl = [ "trame" "mpi" ]; fill = [ "half" "full" ]; };
+        sweep = { bench = [ "round" "ring64" "ring4096" "idle" "fanin" "graph64" "graph1024" "graph1024s" ]; impl = [ "trame" "mpi" ]; fill = [ "half" "full" ]; };
         replicates = 3;
         data = scaleData // { mpi_config = mpiConfigData; };
       };

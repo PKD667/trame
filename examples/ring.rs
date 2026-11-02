@@ -1,5 +1,5 @@
 //! ring: W workers pass a token around a ring for ROUNDS rounds, then report to the leader.
-use trame::{Context, LEADER, Status, Topology, WorkerId};
+use trame::{LEADER, Status, Topology, Worker, WorkerId};
 
 const W: usize = 4;
 const ROUNDS: u32 = 3;
@@ -15,6 +15,7 @@ struct Report {
     total: u32,
 }
 
+#[trame::state(steps(hop))]
 struct Hop {
     me: u32,
     next: WorkerId,
@@ -24,46 +25,37 @@ struct Hop {
     sent: bool,
 }
 
-#[trame::process(receives = Token)]
-impl Hop {
-    fn step(&mut self) -> Status {
-        if self.round == ROUNDS {
-            let report = Report { worker: self.me, total: self.total };
-            return match trame::send(LEADER, report) {
-                Ok(()) => Status::Done,
-                Err(_) => Status::wait().room::<Report>(LEADER),
-            };
-        }
-        if !self.sent {
-            if trame::send(self.next, Token { value: self.value }).is_err() {
-                return Status::wait().room::<Token>(self.next);
-            }
-            self.sent = true;
-        }
-        match trame::recv::<Token>() {
-            Some(t) => {
-                (self.value, self.total, self.round, self.sent) =
-                    (t.value, self.total + t.value, self.round + 1, false);
-                Status::Progress
-            }
-            None => Status::wait().frame(),
-        }
+#[trame::step(Hop, receives = Token)]
+fn hop(me: &u32, next: &WorkerId, round: &mut u32, value: &mut u32, total: &mut u32, sent: &mut bool) -> Status {
+    if *round == ROUNDS {
+        return match trame::send(LEADER, Report { worker: *me, total: *total }) {
+            Ok(()) => Status::Done,
+            Err(_) => Status::wait().room::<Report>(LEADER),
+        };
     }
-}
-
-fn worker(cx: &Context) {
-    let me = cx.workers().iter().position(|&w| w == cx.me()).expect("a worker is listed");
-    let hop =
-        Hop { me: me as u32, next: cx.workers()[(me + 1) % W], round: 0, value: me as u32 + 1, total: 0, sent: false };
-    assert_eq!(trame::concurrent!(hop;), Ok(()));
+    if !*sent {
+        if trame::send(*next, Token { value: *value }).is_err() {
+            return Status::wait().room::<Token>(*next);
+        }
+        *sent = true;
+    }
+    match trame::recv::<Token>() {
+        Some(t) => {
+            (*value, *total, *round, *sent) = (t.value, *total + t.value, *round + 1, false);
+            Status::Progress
+        }
+        None => Status::wait().frame(),
+    }
 }
 
 fn main() {
     let mut topo = Topology::new();
-    let ws: Vec<WorkerId> = (0..W).map(|_| { let w = topo.worker(); topo.set(&w, move || worker); w }).collect();
+    let ws: Vec<Worker<Hop>> = (0..W).map(|_| topo.worker()).collect();
     for i in 0..W {
-        topo.route::<Token>(ws[i], ws[(i + 1) % W], 1);
-        topo.route::<Report>(ws[i], LEADER, 1);
+        let next = ws[(i + 1) % W].id();
+        topo.set(&ws[i], move || Hop { me: i as u32, next, round: 0, value: i as u32 + 1, total: 0, sent: false });
+        topo.route::<Token>(ws[i].id(), next, 1);
+        topo.route::<Report>(ws[i].id(), LEADER, 1);
     }
     let run = topo.launch().expect("the ring launches");
     let mut totals = [None; W];

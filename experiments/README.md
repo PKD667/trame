@@ -70,7 +70,7 @@ bench's sizes. `fill` is `half` or `full`: workers per node are half the physica
 or the physical cores less two, where the physical cores are the unique (SOCKET, CORE) pairs of
 `lscpu`. Every dataset repeats `bench`, `impl`, `nodes`, `workers` and `per_node` as columns, so claims
 can select on them.
-- `barrier`: `worker`, `rounds`, `ns`
+- `round`: `worker`, `rounds`, `ns` (impl `trame`: rounds through the leader; impl `mpi`: `MPI_Barrier` calls, scale/README.md)
 - `ring`: `worker`, `steps`, `size`, `cap`, `ns`
 - `idle`: `worker`, `seconds`, `ns`
 - `fanin`: `worker` (-1 for the leader's total), `msgs`, `ns`
@@ -115,7 +115,7 @@ Analysis `scale`, each judged at 0.99 and reported as supported, contradicted or
   between 0.8 and 1.2 cores while the run lasts. This is the price of MPI's blocking receive.
 - **Weak scaling of neighbour exchange.** In `ring` at a fixed `per_node`, the median ns per
   step at N nodes is at most 1.5 times the median at one node, for every N measured.
-- **Barrier growth.** In `barrier`, the median ns per round grows at most linearly in N.
+- **Round growth.** In `round`, the median ns per round grows at most linearly in N.
 - **Cost against plain MPI.** In `ring`, trame's median is at most 3 times the MPI baseline's at
   the same `nodes`, `per_node` and size.
 - **The proxy benchmark.** The four claims of `backends/mpi/SCALING.md` (Claims) on `graph`:

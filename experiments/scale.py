@@ -1,12 +1,12 @@
 """The scaling benchmarks of scale/ and their plain-MPI baselines: one job, one bench, one implementation.
 
-Parameters: bench (barrier, ring64, ring4096, idle, fanin, graph64, graph1024, graph1024s), impl (trame or
+Parameters: bench (round, ring64, ring4096, idle, fanin, graph64, graph1024, graph1024s), impl (trame or
 mpi), nodes, fill (half or full: workers per node, from the physical cores), the sizes (rounds, steps, msgs,
 seconds, cap), and for the graph graph_iters, graph_steps, degree, seed. Also timeout (default 900) and the
 mpirun parameters of mpirun.py. Environment: BIN, NIX_LAB_DIR.
 
 trame: W = nodes * per_node workers and the leader as the last rank (W+1 ranks).
-mpi: the C baseline with W ranks and no leader. idle and fanin have no baseline: that job records nothing.
+mpi: the C baseline with W ranks and no leader (for round, ROUNDS `MPI_Barrier` calls). idle and fanin have no baseline: that job records nothing.
 
 Each rank runs `time` (GNU time) around its program. Its stderr starts with its host and ends with the time
 line; mpirun's --output tag prefixes each line with [job,rank]<stream>:, which matches a line to its rank.
@@ -25,7 +25,7 @@ from nixsci import lab
 import mpirun
 import proc
 
-FAMILY = {"barrier": "barrier", "ring64": "ring", "ring4096": "ring", "idle": "idle", "fanin": "fanin",
+FAMILY = {"round": "round", "ring64": "ring", "ring4096": "ring", "idle": "idle", "fanin": "fanin",
           "graph64": "graph", "graph1024": "graph", "graph1024s": "graph"}
 RING_SIZE = {"ring64": 64, "ring4096": 4096}
 GRAPH_SIZE = {"graph64": 64, "graph1024": 1024, "graph1024s": 1024}
@@ -47,7 +47,7 @@ def program(bench: str, impl: str, workers: int, p: dict, bindir: Path) -> list[
     graph = [workers, p.get("graph_steps", 2000), GRAPH_SIZE.get(bench, 0), p.get("degree", 8), iters, p.get("seed", 1)]
     if impl == "trame":
         table = {
-            "barrier": ["scale_barrier", workers, p.get("rounds", 10000)],
+            "round": ["scale_round", workers, p.get("rounds", 10000)],
             "ring": ["scale_ring", workers, p.get("steps", 10000), RING_SIZE.get(bench, 0), p.get("cap", 8)],
             "idle": ["scale_idle", workers, p.get("seconds", 3)],
             "fanin": ["scale_fanin", workers, p.get("msgs", 10000)],
@@ -55,7 +55,7 @@ def program(bench: str, impl: str, workers: int, p: dict, bindir: Path) -> list[
         }
     else:
         table = {
-            "barrier": ["mpi_barrier", workers, p.get("rounds", 10000)],
+            "round": ["mpi_barrier", workers, p.get("rounds", 10000)],
             "ring": ["mpi_ring", workers, p.get("steps", 10000), RING_SIZE.get(bench, 0)],
             "graph": ["mpi_graph", *graph],
         }
@@ -98,7 +98,7 @@ def record(bench: str, impl: str, nodes: int, per_node: int, workers: int, lines
         if obj.get("workers") != workers:
             raise SystemExit(f"{obj['bench']}: workers {obj.get('workers')} but the job has {workers}")
         worker = int(obj.get("worker", -1))
-        if FAMILY[bench] == "barrier":
+        if FAMILY[bench] == "round":
             row = {"worker": worker, "rounds": obj["rounds"], "ns": obj["ns"]}
         elif FAMILY[bench] == "ring":
             row = {"worker": worker, "steps": obj["steps"], "size": obj["size"], "cap": obj.get("cap"), "ns": obj["ns"]}

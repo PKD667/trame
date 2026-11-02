@@ -1,4 +1,4 @@
-//! scale_idle W SECONDS: W workers, each waiting in `concurrent!` with `.frame().until(deadline)` for SECONDS
+//! scale_idle W SECONDS: W workers, each waiting with `.frame().until(deadline)` for SECONDS
 //! on its own clock. Nothing is ever sent to a worker. Each worker reports the span it actually waited.
 //! Its point is CPU time, which experiments/scale.py measures per rank with GNU time. The leader prints one JSON
 //! line per worker, then the outcomes. Built with `--cfg trame_checked`.
@@ -7,7 +7,7 @@
 mod common;
 
 use core::time::Duration;
-use trame::{Context, LEADER, Reading, Status, Topology};
+use trame::{LEADER, Reading, Status, Topology, Worker};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -16,7 +16,8 @@ struct Report {
     ns: u64,
 }
 
-/// Waits for `span` from its first step, woken only by its deadline (no frame ever comes).
+/// One worker: its index, how long it waits, and the span it measured and whether it reported.
+#[trame::state(steps(idle))]
 struct Idle {
     me: u64,
     span: Duration,
@@ -25,31 +26,25 @@ struct Idle {
     reported: bool,
 }
 
-#[trame::process]
-impl Idle {
-    fn step(&mut self) -> Status {
-        let now = trame::now();
-        let start = *self.start.get_or_insert(now);
-        if now.since(start) < self.span {
-            return Status::wait().frame().until(start.after(self.span));
-        }
-        let ns = *self.ns.get_or_insert(common::ns(now.since(start)));
-        if self.reported {
-            return Status::Done;
-        }
-        match trame::send(LEADER, Report { worker: self.me, ns }) {
-            Ok(()) => {
-                self.reported = true;
-                Status::Progress
-            }
-            Err(_) => Status::wait().room::<Report>(LEADER),
-        }
+/// Waits for `span` from its first step, woken only by its deadline (no frame ever comes).
+#[trame::step(Idle)]
+fn idle(me: &u64, span: &Duration, start: &mut Option<Reading>, ns: &mut Option<u64>, reported: &mut bool) -> Status {
+    let now = trame::now();
+    let start = *start.get_or_insert(now);
+    if now.since(start) < *span {
+        return Status::wait().frame().until(start.after(*span));
     }
-}
-
-fn worker(me: u64, span: Duration) {
-    let r = trame::concurrent!(Idle { me, span, start: None, ns: None, reported: false };);
-    assert_eq!(r, Ok(()));
+    let ns = *ns.get_or_insert(common::ns(now.since(start)));
+    if *reported {
+        return Status::Done;
+    }
+    match trame::send(LEADER, Report { worker: *me, ns }) {
+        Ok(()) => {
+            *reported = true;
+            Status::Progress
+        }
+        Err(_) => Status::wait().room::<Report>(LEADER),
+    }
 }
 
 fn main() {
@@ -57,13 +52,10 @@ fn main() {
     let seconds: u64 = common::arg(2, "SECONDS");
     let span = Duration::from_secs(seconds);
     let mut t = Topology::new();
-    let mut ids = Vec::new();
-    for i in 0..w {
-        let id = t.worker(move |_cx: &Context| worker(i as u64, span));
-        ids.push(id);
-    }
-    for id in &ids {
-        t.route::<Report>(*id, LEADER, 1);
+    let ws: Vec<Worker<Idle>> = (0..w).map(|_| t.worker()).collect();
+    for (i, h) in ws.iter().enumerate() {
+        t.set(h, move || Idle { me: i as u64, span, start: None, ns: None, reported: false });
+        t.route::<Report>(h.id(), LEADER, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     common::collect::<Report>(&run, w, |r| {

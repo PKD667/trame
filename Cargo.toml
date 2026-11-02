@@ -108,8 +108,8 @@ path = "examples/ring.rs"
 
 # Scaling benchmarks (scale/, scale/README.md; run by experiments/scale.py). Not part of the conformance set.
 [[example]]
-name = "scale_barrier"
-path = "scale/barrier.rs"
+name = "scale_round"
+path = "scale/round.rs"
 
 [[example]]
 name = "scale_ring"
