@@ -124,15 +124,25 @@ def main():
     lab.record("debug", {"msg": "before_bench"})
     bench_rows = run_bench("bench")
     lab.record("debug", {"msg": f"bench done: {len(bench_rows)} rows"})
-    for row in bench_rows:
-        lab.record("bench", row)
+    for i, row in enumerate(bench_rows):
+        try:
+            lab.record("bench", row)
+        except Exception as e:
+            lab.record("error", {"msg": f"record bench row {i}: {e}"})
+            if i < 3 or i % 50 == 0:
+                lab.record("debug", {"msg": f"recorded bench row {i} ok"})
+            break  # Stop if recording fails
     
     # Run knee table.
     lab.record("debug", {"msg": "before_knee"})
     knee_rows = run_bench("bench_knee")
     lab.record("debug", {"msg": f"knee done: {len(knee_rows)} rows"})
-    for row in knee_rows:
-        lab.record("bench", row)  # Both go into the bench dataset.
+    for i, row in enumerate(knee_rows):
+        try:
+            lab.record("bench", row)  # Both go into the bench dataset.
+        except Exception as e:
+            lab.record("error", {"msg": f"record knee row {i}: {e}"})
+            break
 
 
 if __name__ == "__main__":
