@@ -282,7 +282,7 @@
         # Two ranks on two hosts (span = 2), one job per mode. Parameters: experiments/mpi_cross_host.py.
         # The hosts come from the provider: one experiment per kind of network, so that runs on different
         # clusters are never replicates of one another.
-        mpi-cross-host = xhostExperiment { name = "mpi-cross-host"; mca = ""; provider = "xhost-lille"; };
+        mpi-cross-host = xhostExperiment { name = "mpi-cross-host"; mca = ""; provider = "cluster"; };
         # The same on a cluster with Omni-Path (Nancy grvingt); `mca` is set after what the probe rows show.
         mpi-cross-host-opa = xhostExperiment { name = "mpi-cross-host-opa"; mca = ""; provider = "cluster-opa"; };
         scale-local = scaleExperiment {
