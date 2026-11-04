@@ -102,20 +102,22 @@ def main():
     lab.record("machine", info)
     
     # Debug: check what's in BIN directory
-    bin_dir = os.environ['BIN']
+    bin_dir = os.environ.get('BIN', 'BIN_NOT_SET')
     try:
-        bin_contents = os.listdir(bin_dir)
-        lab.record("debug", {"bin_dir": bin_dir, "contents": bin_contents})
+        bin_contents = os.listdir(bin_dir) if bin_dir != 'BIN_NOT_SET' else []
+        lab.record("debug", {"bin_dir": bin_dir, "contents": bin_contents[:10]})  # limit to first 10 items
     except Exception as e:
-        lab.record("debug", {"bin_dir_error": str(e)})
+        lab.record("debug", {"bin_dir_error": str(e), "bin_dir": bin_dir})
         raise
     
     # Run bench table.
+    lab.record("debug", {"stage": "before_bench"})
     bench_rows = run_bench("bench")
     for row in bench_rows:
         lab.record("bench", row)
     
     # Run knee table.
+    lab.record("debug", {"stage": "before_knee"})
     knee_rows = run_bench("bench_knee")
     for row in knee_rows:
         lab.record("bench", row)  # Both go into the bench dataset.
