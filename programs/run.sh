@@ -85,7 +85,9 @@ if [[ "$which_backend" != seq ]]; then
       d="$(mktemp -d)"
       rc=0
       "${set_k[@]}" timeout -k 5 "$T" mpirun --oversubscribe --output "filename=$d/o" -n "$((h * r))" "$B/$p" >/dev/null 2>"$errf" || rc=$?
-      host_out() { for ((k = $1 * r; k < ($1 + 1) * r; k++)); do cat "$d"/o.*@*."$k".out 2>/dev/null || true; done | uniq; }
+      # mpirun pads the rank in the file name to the width of the largest rank (05 of 12 ranks).
+      last=$((h * r - 1)); wd=${#last}
+      host_out() { for ((k = $1 * r; k < ($1 + 1) * r; k++)); do cat "$d"/o.*@*."$(printf "%0${wd}d" "$k")".out 2>/dev/null || true; done | uniq; }
       if [[ $h -eq 1 || ! -f "programs/$p.h2.expected" ]]; then
         for ((x = 0; x < h; x++)); do verify "mpi ${h}h host $x $p" "$p" "$rc" "$(host_out $x)"; done
       else

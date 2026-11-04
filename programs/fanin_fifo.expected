@@ -1,0 +1,8 @@
+worker 0 count 3000 sum 4519500
+worker 1 count 3000 sum 9018000
+worker 2 count 3000 sum 13516500
+worker 3 count 3000 sum 18015000
+worker 4 count 3000 sum 22513500
+worker 5 count 3000 sum 27012000
+total 94594500
+outcomes: [Returned, Returned, Returned, Returned, Returned, Returned]

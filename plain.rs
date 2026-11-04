@@ -53,7 +53,7 @@ plain!(
     core::num::NonZeroI128,
     core::num::NonZeroIsize,
 );
-plain!(core::time::Duration, crate::time::Reading, crate::topology::WorkerId, crate::topology::HostId);
+plain!(core::time::Duration, crate::time::Reading, crate::topology::WorkerId, crate::topology::HostId, crate::topology::Leader, crate::topology::End);
 
 macro_rules! plain_of {
     ($($c:ident),* $(,)?) => { $(

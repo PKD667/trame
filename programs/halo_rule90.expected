@@ -1,0 +1,9 @@
+worker 0 block 0xaa00
+worker 1 block 0xaaaa
+worker 2 block 0xaaaa
+worker 3 block 0xaaaa
+worker 4 block 0xaaaa
+worker 5 block 0xaaaa
+worker 6 block 0x00aa
+ones 48
+outcomes: [Returned, Returned, Returned, Returned, Returned, Returned, Returned]

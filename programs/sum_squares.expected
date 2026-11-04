@@ -1,0 +1,7 @@
+worker 0 partial 2666646666700000
+worker 1 partial 18666606666700000
+worker 2 partial 50666566666700000
+worker 3 partial 98666526666700000
+worker 4 partial 162666486666700000
+total 333332833333500000
+outcomes: [Returned, Returned, Returned, Returned, Returned]

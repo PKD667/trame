@@ -147,7 +147,7 @@ impl Backend for Selected {
         match role {
             Role::Leader(t) => {
                 l.inbox = inbox(&l.entries, t.me());
-                Ok(Leader::new(t))
+                Ok(Leader::new(t, (core::mem::take(&mut plan.workers), plan.pool.take())))
             }
             Role::Worker(t) => {
                 let me = t.me();

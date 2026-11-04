@@ -98,6 +98,11 @@ call of `parallel!`. The driver refuses allocation in items, not in steps.
 **M6 Bound.** On MPI by construction: `segment::alloc` answers null past the segment's end, and
 `Alloc` writes through no null (`domain.rs`). No test fills a domain.
 
+**M7 Lifetime.** By construction: the run holds the plan's references to every state and the pool
+(seq, threads: the run's plan; MPI: `leader.rs` `Leader`). Replay: `fanin_fifo` drops its handles
+after `set`. A leader that freed the blocks then would make its workers read the segment's free list
+as their state; the run hangs.
+
 **E1 Abort.** Programs `abort`, `abort_join`, `leader_panics`; TLA+ model `Abort`.
 
 **E2 Join.** Programs; the outcome check.
