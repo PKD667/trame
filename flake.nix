@@ -168,7 +168,7 @@
         CARGO_BUILD_JOBS = "1";
         cargoBuildFlags = [ "--release" "--bin" "bench" ];
         doCheck = false;
-        installPhase = ''mkdir -p $out/bin; cp target/release/bench $out/bin/'';;
+        installPhase = ''mkdir -p $out/bin; cp target/release/bench $out/bin/'';
       };
       simdClosure = nixsci.lib.mkExperiment pkgs {
         name = "simd-bench";
@@ -270,30 +270,14 @@
           span = 1;
           resources = { provider = "local"; hosts = 1; };
         };
-        # SIMD benchmark: one experiment per CPU type, with replicates = 3, walltime = 30 min.
-        simd-bench-zen1 = labLib.experiment {
-          name = "simd-bench-zen1";
+        # SIMD benchmark: flexible experiments for different CPU types on BESTEFFORT.
+        # Run with: nix run .#simd-bench
+        # The runner records machine CPU model via lscpu and matches to CPU type automatically.
+        simd-bench = labLib.experiment {
+          name = "simd-bench";
           closures.${system} = simdClosure;
-          params = { cpu_type = "zen1"; };
-          resources = { provider = "g5k-lille-zen1"; hosts = 1; walltime = 1800; };
-          replicates = 3;
-          data.bench = simdBenchData;
-          data.machine = simdMachineData;
-        };
-        simd-bench-intel-avx512 = labLib.experiment {
-          name = "simd-bench-intel-avx512";
-          closures.${system} = simdClosure;
-          params = { cpu_type = "intel-avx512"; };
-          resources = { provider = "g5k-lille-xeon"; hosts = 1; walltime = 1800; };
-          replicates = 3;
-          data.bench = simdBenchData;
-          data.machine = simdMachineData;
-        };
-        simd-bench-zen2plus = labLib.experiment {
-          name = "simd-bench-zen2plus";
-          closures.${system} = simdClosure;
-          params = { cpu_type = "zen2plus"; };
-          resources = { provider = "g5k-besteffort-zen2"; hosts = 1; walltime = 1800; };
+          params = { };
+          resources = { provider = "besteffort"; hosts = 1; walltime = 1800; opts.queue = "besteffort"; };
           replicates = 3;
           data.bench = simdBenchData;
           data.machine = simdMachineData;
