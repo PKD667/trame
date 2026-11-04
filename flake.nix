@@ -283,6 +283,8 @@
           replicates = 3;
           data.bench = simdBenchData;
           data.machine = simdMachineData;
+          data.debug = { columns = { msg = "str"; }; };
+          data.error = { columns = { msg = "str"; }; };
         };
         simd-bench-avx512 = labLib.experiment {
           name = "simd-bench-avx512";
@@ -292,6 +294,8 @@
           replicates = 3;
           data.bench = simdBenchData;
           data.machine = simdMachineData;
+          data.debug = { columns = { msg = "str"; }; };
+          data.error = { columns = { msg = "str"; }; };
         };
       } // builtins.listToAttrs (map (n: {
         name = "scale-n${toString n}";

@@ -32,11 +32,14 @@ def run_bench(table_name: str) -> list[dict]:
     try:
         res = proc.run(["taskset", "-c", "4"] + args, timeout=600.0)
     except Exception as e:
-        lab.record("error", {"stage": "proc.run", "table": table_name, "error": str(e), "args": str(args)})
+        lab.record("error", {"msg": f"proc.run {table_name}: {e}"})
         return []
     
     if res.rc != 0:
-        lab.record("error", {"stage": "bench_rc", "table": table_name, "rc": res.rc, "stderr": res.stderr[:200] if res.stderr else None})
+        err_msg = f"bench {table_name} rc={res.rc}"
+        if res.stderr:
+            err_msg += f" stderr={res.stderr[:100]}"
+        lab.record("error", {"msg": err_msg})
         return []
     
     rows = []
@@ -94,34 +97,40 @@ def machine_info() -> dict:
 
 
 def main():
+    lab.record("debug", {"msg": "main started"})
+    
     # Get experiment parameters (required by nixsci)
     params = lab.params()
+    lab.record("debug", {"msg": "params read"})
     
     # Record machine info once per job.
     info = machine_info()
     lab.record("machine", info)
+    lab.record("debug", {"msg": "machine info recorded"})
     
     # Debug: check what's in BIN directory
     bin_dir = os.environ.get('BIN', 'BIN_NOT_SET')
     try:
         if bin_dir != 'BIN_NOT_SET':
             bin_contents = os.listdir(bin_dir)
-            lab.record("debug", {"bin_dir": bin_dir, "exists": True, "contents": bin_contents[:10]})  # limit to first 10 items
+            lab.record("debug", {"msg": f"bin_dir={bin_dir} has {len(bin_contents)} items"})
         else:
-            lab.record("debug", {"bin_dir": bin_dir, "exists": False})
+            lab.record("debug", {"msg": f"BIN env var not set"})
     except Exception as e:
-        lab.record("debug", {"bin_dir_error": str(e), "bin_dir": bin_dir, "exception_type": type(e).__name__})
+        lab.record("error", {"msg": f"BIN error: {e}"})
         # Don't re-raise, continue
     
     # Run bench table.
-    lab.record("debug", {"stage": "before_bench"})
+    lab.record("debug", {"msg": "before_bench"})
     bench_rows = run_bench("bench")
+    lab.record("debug", {"msg": f"bench done: {len(bench_rows)} rows"})
     for row in bench_rows:
         lab.record("bench", row)
     
     # Run knee table.
-    lab.record("debug", {"stage": "before_knee"})
+    lab.record("debug", {"msg": "before_knee"})
     knee_rows = run_bench("bench_knee")
+    lab.record("debug", {"msg": f"knee done: {len(knee_rows)} rows"})
     for row in knee_rows:
         lab.record("bench", row)  # Both go into the bench dataset.
 
