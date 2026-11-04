@@ -1,6 +1,113 @@
 {
   "format": "2.0",
   "runs": {
+    "mpi-cross-host": [
+      {
+        "facts": {
+          "closure": "/nix/store/4hyi37jnnsy2x0ll3mbgj4vpjm45p5rp-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "91eac224e663deeb1a483105e1821cf133e0b881c0077cf85e87499a19357fb3",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "direct",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 4,
+          "run": "mpi-cross-host-91eac224e663-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-91eac224e663-r4",
+        "path": "/nix/store/3w2rxac3dgg658svs8qllndb9kfmsqb0-mpi-cross-host-91eac224e663-r4",
+        "sha256": "sha256-Fs/GpDMD0LrWUV/8FSp5bLicjxU0ePOym2z9AO/EHgA="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/4hyi37jnnsy2x0ll3mbgj4vpjm45p5rp-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "b51fde663683c2d9a7f2a05143424f422fef820ffbc804c7448c7764ad68d8c4",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "mixed_self",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 4,
+          "run": "mpi-cross-host-b51fde663683-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-b51fde663683-r4",
+        "path": "/nix/store/1gzrhx4xvkk9d8ddkrh15r92hvlzg3qv-mpi-cross-host-b51fde663683-r4",
+        "sha256": "sha256-vploXmIqkEwjIZWz/xZcqLNXeNMPz4KA33bJWpZVI2g="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/4hyi37jnnsy2x0ll3mbgj4vpjm45p5rp-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "d47dc888b6a4323d33d62430cd27d816b919e7b9db3b1bcbf0ecd2664318960b",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "wake_futex",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 4,
+          "run": "mpi-cross-host-d47dc888b6a4-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-d47dc888b6a4-r4",
+        "path": "/nix/store/syj7ksqc9bvlkkgsabr2v81vfz6a0808-mpi-cross-host-d47dc888b6a4-r4",
+        "sha256": "sha256-r13+UTfSvKsy+IKOrjnxJkn2t/ky1C8LI7hcfYloog4="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/4hyi37jnnsy2x0ll3mbgj4vpjm45p5rp-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "ed2cdb6fde38010e150419ae953c17cd2ad5c2be6f1534cc0463e6e9edec552d",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "mixed_flag",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 4,
+          "run": "mpi-cross-host-ed2cdb6fde38-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-ed2cdb6fde38-r4",
+        "path": "/nix/store/a2d52d3j1n7hhhabz1j1n97j19hn6p33-mpi-cross-host-ed2cdb6fde38-r4",
+        "sha256": "sha256-VJ0eEv5TZn1Li4QUp5KRjDrYp+7jxjoKK+vwKDHeDu4="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/4hyi37jnnsy2x0ll3mbgj4vpjm45p5rp-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "ff67e201833f0842a4ce781812ee5ace16a06463906f4d0808a38c4d9ce9f6f6",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "direct_single",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 4,
+          "run": "mpi-cross-host-ff67e201833f-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-ff67e201833f-r4",
+        "path": "/nix/store/nl3xcak9hwm0064y5jncyi27xkyh3paq-mpi-cross-host-ff67e201833f-r4",
+        "sha256": "sha256-4zsI/9pZdn02SlNYTWaOtCc18gzT6ST+l9F+NWgeCZ8="
+      }
+    ],
     "programs-mpi": [
       {
         "facts": {
