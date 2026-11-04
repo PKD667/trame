@@ -59,6 +59,59 @@
         "path": "/nix/store/mly13lxn6lnb4k4isqajqfqqz9m7chh2-programs-mpi-d4ef6c9a8ea6-r1",
         "sha256": "sha256-cIGXQa4XEcYEB4YfXv5KWBLd8FhdvSVQ+4I3Do3XGWo="
       }
+    ],
+    "simd-bench-zen1": [
+      {
+        "facts": {
+          "closure": "/nix/store/hv34bg667w8rci4r14am6fl9wf6sks31-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "8b2fe01a54293bfc1ab05f073efb8d6317c27bdde7fb9ebbff196cde0d512073",
+          "params": {
+            "cpu_type": "zen1"
+          },
+          "replicate": 1,
+          "run": "simd-bench-zen1-8b2fe01a5429-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-zen1-8b2fe01a5429-r1",
+        "path": "/nix/store/m5sjgla65a69i2s75habrmi15db31v04-simd-bench-zen1-8b2fe01a5429-r1",
+        "sha256": "sha256-Yv8KnxbDzAL/FUhAA47K0eRJcJtD3A/Rqi0A9Kcrq8w="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/hv34bg667w8rci4r14am6fl9wf6sks31-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "8b2fe01a54293bfc1ab05f073efb8d6317c27bdde7fb9ebbff196cde0d512073",
+          "params": {
+            "cpu_type": "zen1"
+          },
+          "replicate": 2,
+          "run": "simd-bench-zen1-8b2fe01a5429-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-zen1-8b2fe01a5429-r2",
+        "path": "/nix/store/h0044xaz6whbglaa5dq173ypkwj1nzag-simd-bench-zen1-8b2fe01a5429-r2",
+        "sha256": "sha256-u5zZYm1UM3KabW84PnOoCjEDY6+5JNEqkh8uhrvzmjQ="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/hv34bg667w8rci4r14am6fl9wf6sks31-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "8b2fe01a54293bfc1ab05f073efb8d6317c27bdde7fb9ebbff196cde0d512073",
+          "params": {
+            "cpu_type": "zen1"
+          },
+          "replicate": 3,
+          "run": "simd-bench-zen1-8b2fe01a5429-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-zen1-8b2fe01a5429-r3",
+        "path": "/nix/store/3iysvyp7y1aaflw6fvp5scyxgmci1vvi-simd-bench-zen1-8b2fe01a5429-r3",
+        "sha256": "sha256-65HtsMoO3tkFcIcwIzB5KaDZ+foMCKFHHHGRf5SQfA8="
+      }
     ]
   }
 }

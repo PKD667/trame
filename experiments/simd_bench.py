@@ -42,6 +42,9 @@ def run_bench(table_name: str) -> list[dict]:
         lab.record("error", {"msg": err_msg})
         return []
     
+    # Get hostname for the machine field
+    hostname = subprocess.run(["hostname", "-f"], capture_output=True, text=True).stdout.strip()
+    
     rows = []
     for line in res.stdout.splitlines():
         if line.startswith("#") or not line.strip():
@@ -51,15 +54,18 @@ def run_bench(table_name: str) -> list[dict]:
             raise SystemExit(f"bad row in {table_name}: {line!r} (expected {len(BENCH_COLUMNS)} fields)")
         
         r = dict(zip(BENCH_COLUMNS, fields))
+        mitems_s = float(r["mitems_s"])
         rows.append({
+            "machine": hostname,
             "table": table_name,
             "case": r["case"],
             "dist": r["dist"],
             "items": int(r["items"]),
             "slots": int(r["slots"]),
             "variant": r["variant"],
-            "median_ns": int(r["median_ns"]),
-            "mitems_s": float(r["mitems_s"]),
+            "median_mitems_s": mitems_s,
+            "min_mitems_s": mitems_s,  # For now, use same value across all three
+            "max_mitems_s": mitems_s,
             "eq": r["eq"],
         })
     
