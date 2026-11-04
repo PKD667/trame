@@ -165,6 +165,12 @@
         env = mpiDeps.env // { MPICC = "${pkgs.openmpi.dev}/bin/mpicc"; };
         doCheck = false;
       };
+      # mpirun's launch agent (experiments/mpirun.py): in the closure, so that it exists on every host.
+      xhostAgent = pkgs.writeScript "xhost-launch-agent" ''
+        #!${pkgs.runtimeShell}
+        host="$1"; shift
+        exec $NIX_DEPLOY_RSH "$host" $NIX_DEPLOY_ENTER "$@"
+      '';
       xhostClosure = nixsci.lib.mkExperiment pkgs {
         name = "mpi-cross-host";
         program = "${pkgs.python3}/bin/python3";
@@ -172,6 +178,7 @@
         env = {
           PYTHONPATH = "${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
           BIN = "${xhostBin}/bin";
+          AGENT = "${xhostAgent}";
           RUSTC_VERSION = pkgs.rustc.version;
           OPENMPI_VERSION = pkgs.openmpi.version;
         };
