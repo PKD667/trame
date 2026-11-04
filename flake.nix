@@ -270,14 +270,21 @@
           span = 1;
           resources = { provider = "local"; hosts = 1; };
         };
-        # SIMD benchmark: flexible experiments for different CPU types on BESTEFFORT.
-        # Run with: nix run .#simd-bench
-        # The runner records machine CPU model via lscpu and matches to CPU type automatically.
-        simd-bench = labLib.experiment {
-          name = "simd-bench";
+        # SIMD benchmark: per-CPU-type experiments on Grid'5000 BESTEFFORT.
+        simd-bench-zen1 = labLib.experiment {
+          name = "simd-bench-zen1";
           closures.${system} = simdClosure;
-          params = { };
-          resources = { provider = "besteffort"; hosts = 1; walltime = 1800; opts.queue = "besteffort"; };
+          params = { cpu_type = "zen1"; };
+          resources = { provider = "simd-zen1"; hosts = 1; walltime = 1800; };
+          replicates = 3;
+          data.bench = simdBenchData;
+          data.machine = simdMachineData;
+        };
+        simd-bench-avx512 = labLib.experiment {
+          name = "simd-bench-avx512";
+          closures.${system} = simdClosure;
+          params = { cpu_type = "intel-avx512"; };
+          resources = { provider = "simd-avx512"; hosts = 1; walltime = 1800; };
           replicates = 3;
           data.bench = simdBenchData;
           data.machine = simdMachineData;
