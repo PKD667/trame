@@ -84,17 +84,7 @@ pub fn finalize() {
     }
 }
 
-/// Map a transport refusal to the surface's. The surface's reason is a static string, so the detail
-/// that varies (a count, a size) is not in it; the transport's own message has it.
+/// Map a transport refusal to the surface's, with its message whole (refusal.rs).
 pub(super) fn refused(r: Refusal) -> Refused {
-    let reason = match r {
-        Refusal::Topology(_) => "the MPI transport's layout refused the topology",
-        Refusal::Inconsistent => "the ranks were given different plans",
-        Refusal::Ranks { .. } => "the world does not have one rank per worker plus the leader",
-        Refusal::Memory { .. } => "the MPI backend could not allocate the shared memory the launch needs",
-        Refusal::NodeRanks(_) => "TRAME_MPI_NODE_RANKS is not a number of ranks per node",
-        Refusal::NotUnified => "the MPI window is not in the unified memory model",
-        Refusal::Mpi(_) => "an MPI call failed",
-    };
-    Refused::Backend { reason }
+    Refused::Backend { reason: alloc::format!("MPI: {r}") }
 }

@@ -68,7 +68,7 @@ pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
 /// The transport's topology for a checked plan. Each distinct message type is a tag, numbered in the
 /// order the plan first uses it, so every rank numbers them the same.
 pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
-    let workers = u32::try_from(plan.workers.len()).map_err(|_| Refused::Backend { reason: "too many workers" })?;
+    let workers = u32::try_from(plan.workers.len()).map_err(|_| Refused::Backend { reason: "too many workers".into() })?;
     let mut tags: Vec<TypeId> = Vec::new();
     let mut routes = Vec::with_capacity(plan.routes.len());
     for r in &plan.routes {
@@ -80,7 +80,7 @@ pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
             }
         };
         let cap = u32::try_from(r.cap)
-            .map_err(|_| Refused::Backend { reason: "a route's capacity does not fit in 32 bits" })?;
+            .map_err(|_| Refused::Backend { reason: "a route's capacity does not fit in 32 bits".into() })?;
         routes.push(Route {
             from: rank_of(r.from, workers),
             to: rank_of(r.to, workers),

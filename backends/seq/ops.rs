@@ -127,7 +127,7 @@ impl Backend for Selected {
         crate::launch::build_all(&mut plan);
         let n = plan.workers.len();
         let routes = Routes::new(&plan.routes)?;
-        let limit = limit::setting().map_err(|reason| Refused::Backend { reason })?;
+        let limit = limit::setting().map_err(|reason| Refused::Backend { reason: reason.into() })?;
         let state = State {
             phase: vec![Phase::Ready; n],
             turn: None,
@@ -147,7 +147,7 @@ impl Backend for Selected {
             if std::thread::Builder::new().spawn(move || worker_main(sh, i, slot)).is_err() {
                 shared.lock().abort_all(None);
                 shared.changed.notify_all();
-                return Err(Refused::Backend { reason: "could not start a worker thread" });
+                return Err(Refused::Backend { reason: "could not start a worker thread".into() });
             }
         }
         // Every thread exists; only now may the first worker run.

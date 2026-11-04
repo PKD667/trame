@@ -20,7 +20,7 @@ impl Backend for Selected {
     type Run = Run;
 
     fn launch(_plan: Plan) -> Result<Run, Refused> {
-        Err(Refused::Backend { reason: "no backend selected" })
+        Err(Refused::Backend { reason: "no backend selected".into() })
     }
 
     fn worker_send(_to: WorkerId, _ty: TypeId, _name: &'static str, _bytes: &[u8]) -> Result<(), Full> {

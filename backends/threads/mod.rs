@@ -183,7 +183,7 @@ impl Backend for Selected {
                     let mut g = shared.lock();
                     g.aborted = true;
                     acted(&shared, &mut g);
-                    return Err(Refused::Backend { reason: "could not start an agent thread" });
+                    return Err(Refused::Backend { reason: "could not start an agent thread".into() });
                 }
             }
         }
