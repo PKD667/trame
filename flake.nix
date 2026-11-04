@@ -224,6 +224,17 @@
           noisy = { user_s = 1.0; sys_s = 1.0; wall_s = 1.0; };
         };
       };
+      xhostExperiment = { name, mca }: labLib.experiment {
+        inherit name;
+        span = 2;
+        closures.${system} = xhostClosure;
+        params = { iters = 100000; warmup = 10000; sizes = "8,64,1024,65536"; inherit mca; };
+        sweep.mode = [ "direct" "direct_single" "relay" "mixed_self" "mixed_flag" "wake_futex" ];
+        replicates = 3;
+        resources = { provider = "cluster"; hosts = 2; walltime = 120; opts.stage = "fanout"; };
+        data.latency = xhostData;
+        data.mpi_config = mpiConfigData;
+      };
       scaleExperiment = { name, nodes, span, resources }: labLib.experiment {
         inherit name span resources;
         closures.${system} = scaleClosure;
@@ -269,17 +280,11 @@
           data.mpi_config = mpiConfigData;
         };
         # Two ranks on two hosts (span = 2), one job per mode. Parameters: experiments/mpi_cross_host.py.
-        mpi-cross-host = labLib.experiment {
-          name = "mpi-cross-host";
-          span = 2;
-          closures.${system} = xhostClosure;
-          params = { iters = 100000; warmup = 10000; sizes = "8,64,1024,65536"; mca = ""; };
-          sweep.mode = [ "direct" "direct_single" "relay" "mixed_self" "mixed_flag" "wake_futex" ];
-          replicates = 3;
-          resources = { provider = "cluster"; hosts = 2; walltime = 60; opts.stage = "fanout"; };
-          data.latency = xhostData;
-          data.mpi_config = mpiConfigData;
-        };
+        # The hosts come from the provider: one experiment per kind of network, so that runs on different
+        # clusters are never replicates of one another.
+        mpi-cross-host = xhostExperiment { name = "mpi-cross-host"; mca = ""; };
+        # The same on a cluster with Omni-Path (Nancy grvingt); `mca` is set after what the probe rows show.
+        mpi-cross-host-opa = xhostExperiment { name = "mpi-cross-host-opa"; mca = ""; };
         scale-local = scaleExperiment {
           name = "scale-local";
           nodes = 1;

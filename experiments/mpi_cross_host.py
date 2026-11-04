@@ -17,7 +17,8 @@ For wake rows the CPU is per wake over the warm-up and measured wakes together, 
 
 Each job also writes `mpi_config` rows: mpirun.py's, and the host of each rank, the CPU model, the network
 interfaces with their speed, the InfiniBand/Omni-Path devices, the compiler and Open MPI the closure was built
-with, the MCA settings of this job, and the MPI library string that rank 0 printed.
+with, the MCA settings of this job, the MPI library string that rank 0 printed, and `transport` rows: the selection
+lines of a short probe run of the same placement with Open MPI's pml, btl and mtl selection verbose.
 """
 
 from __future__ import annotations
@@ -84,6 +85,26 @@ def parse(stdout: str) -> list[dict]:
     return rows
 
 
+def probe_transport(base: list[str], binary: str) -> None:
+    """Which MPI transport the job's two hosts get. A short run of the same placement with Open MPI's selection
+    verbose, its selection lines recorded as `transport` rows (at most 40, 200 characters each). A probe that fails
+    records a row saying so and the job goes on: the probe is a record, not a check."""
+    cmd = base + ["--output", "tag", "--mca", "pml_base_verbose", "10", "--mca", "btl_base_verbose", "10",
+                 "--mca", "mtl_base_verbose", "10", binary, "direct", "--iters", "200", "--warmup", "50", "--sizes", "8"]
+    res = proc.run(cmd, 300.0)
+    if res.timed_out or res.rc != 0:
+        lab.record("mpi_config", {"source": "transport", "text": f"probe failed: rc={res.rc}"})
+        return
+    seen: list[str] = []
+    for line in (res.stdout + res.stderr).splitlines():
+        m = RANK_LINE.match(line)
+        body = (m.group(3) if m else line).strip()
+        if re.search(r"select|selected|component|initializ|using|transport|provider", body, re.I) and body not in seen:
+            seen.append(body)
+    for body in seen[:40]:
+        lab.record("mpi_config", {"source": "transport", "text": body[:200]})
+
+
 def main() -> None:
     p = lab.params()
     mode = p["mode"]
@@ -108,6 +129,7 @@ def main() -> None:
             "--iters", str(p.get("iters", 100000)), "--warmup", str(p.get("warmup", 10000)),
             "--sizes", str(p.get("sizes", "8,64,1024,65536"))]
     mpirun.record_argv(cmd)
+    probe_transport(cmd[: cmd.index("--output")], str(Path(os.environ["BIN"]) / "mpi_cross_host"))
     res = proc.run(cmd, float(p.get("timeout", 1800)))
     logs = Path(os.environ["NIX_LAB_DIR"]) / "logs"
     logs.mkdir(parents=True, exist_ok=True)
