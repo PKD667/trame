@@ -2,7 +2,7 @@
 //! which prints it and then the outcomes. Built with `--cfg trame_checked`, because `#[trame::state]`
 //! needs it (run.sh sets it). Expected output: ping_pong.expected.
 
-use trame::{LEADER, Outcome, Status, Topology, WorkerId};
+use trame::{Leader, Outcome, Status, Topology, WorkerId};
 
 const ROUNDS: u32 = 1000;
 
@@ -50,12 +50,12 @@ fn pinger(next: &mut u32, waiting: &mut bool, reported: &mut bool, to: &WorkerId
         if *reported {
             return Status::Done;
         }
-        return match trame::send(LEADER, Count { rounds: *next }) {
+        return match trame::send(Leader, Count { rounds: *next }) {
             Ok(()) => {
                 *reported = true;
                 Status::Progress
             }
-            Err(_) => Status::wait().room::<Count>(LEADER),
+            Err(_) => Status::wait().room::<Count>(Leader),
         };
     }
     match trame::send(*to, Ping { n: *next }) {
@@ -110,7 +110,7 @@ fn main() {
     t.set(&b, move || Ponger { next: 0, reply: None, to: to_a });
     t.route::<Ping>(a.id(), b.id(), 1);
     t.route::<Pong>(b.id(), a.id(), 1);
-    t.route::<Count>(a.id(), LEADER, 1);
+    t.route::<Count>(a.id(), Leader, 1);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

@@ -10,7 +10,7 @@ use crate::io;
 use crate::run::Outcome::Returned;
 use crate::run::Run;
 use crate::status::Status;
-use crate::topology::{LEADER, Topology};
+use crate::topology::{Leader, Topology};
 use alloc::vec::Vec;
 
 /// One observation of a step, reported by the worker to the leader.
@@ -30,7 +30,7 @@ pub(super) struct Gate {
 /// Report one observation to the leader. The routes of these tests have room for every report, so a
 /// send never answers `Full`.
 pub(super) fn report(v: u32) {
-    assert!(io::send(LEADER, Ev { v }).is_ok(), "a report did not fit");
+    assert!(io::send(Leader, Ev { v }).is_ok(), "a report did not fit");
 }
 
 /// Take a step's hold on the gate: no other step may hold it now (spec.md 5.3, Start).
@@ -90,7 +90,7 @@ fn positive_weight_runs_first_and_no_overlap_on_a_shared_field() {
         let mut g = Topology::new();
         let w = g.worker::<Weighted>();
         g.set(&w, || Weighted { gate: Gate { inside: 0, open: false }, lo_left: 1, hi_left: 2 });
-        g.route::<Ev>(w.id(), LEADER, 16);
+        g.route::<Ev>(w.id(), Leader, 16);
         let run = g.launch().expect("accepted");
         assert_eq!(collect(&run, 5), [12, 11, 10, 21, 20]);
         assert_eq!(run.join(), [Returned]);
@@ -122,7 +122,7 @@ fn steps_of_weight_zero_take_turns_on_a_shared_field() {
         let mut g = Topology::new();
         let w = g.worker::<Fair>();
         g.set(&w, || Fair { gate: Gate { inside: 0, open: false }, first_left: 2, second_left: 1 });
-        g.route::<Ev>(w.id(), LEADER, 16);
+        g.route::<Ev>(w.id(), Leader, 16);
         let run = g.launch().expect("accepted");
         assert_eq!(collect(&run, 5), [12, 21, 11, 20, 10]);
         assert_eq!(run.join(), [Returned]);

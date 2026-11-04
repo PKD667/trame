@@ -10,6 +10,6 @@ struct Msg {
 fn main() {
     trame::__check::worker(&|| {
         let m = <Msg as trame::Message>::zeroed();
-        let _ = trame::send(trame::LEADER, m);
+        let _ = trame::send(trame::Leader, m);
     });
 }

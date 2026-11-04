@@ -7,7 +7,7 @@ use super::tests::{Ping, Quick, Stuck, panic_text, within_10s};
 use crate::io;
 use crate::run::Outcome::{Deadlock, Returned};
 use crate::status::Status;
-use crate::topology::{LEADER, Topology};
+use crate::topology::{Leader, Topology};
 
 /// Waits for a `Ping` that never comes, and for a write that never comes.
 #[crate::state(steps(waits))]
@@ -35,7 +35,7 @@ struct Stray {}
 
 #[crate::step(Stray)]
 fn stray() -> Status {
-    let _ = io::send(LEADER, Ping(0));
+    let _ = io::send(Leader, Ping(0));
     Status::Done
 }
 

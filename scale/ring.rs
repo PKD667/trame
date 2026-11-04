@@ -7,7 +7,7 @@
 #[path = "common.rs"]
 mod common;
 
-use trame::{LEADER, Reading, Status, Topology, Worker, WorkerId};
+use trame::{Leader, Reading, Status, Topology, Worker, WorkerId};
 
 const WARM: u64 = 10;
 #[trame::message]
@@ -57,12 +57,12 @@ macro_rules! ring {
                 if *reported {
                     return Status::Done;
                 }
-                return match trame::send(LEADER, Report { worker: *me, ns }) {
+                return match trame::send(Leader, Report { worker: *me, ns }) {
                     Ok(()) => {
                         *reported = true;
                         Status::Progress
                     }
-                    Err(_) => Status::wait().room::<Report>(LEADER),
+                    Err(_) => Status::wait().room::<Report>(Leader),
                 };
             }
             for k in 0..2 {
@@ -129,7 +129,7 @@ fn main() {
     let mut t = Topology::new();
     let ids = if size == 64 { build_small(&mut t, w, steps, cap) } else { build_big(&mut t, w, steps, cap) };
     for id in ids {
-        t.route::<Report>(id, LEADER, 1);
+        t.route::<Report>(id, Leader, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     common::collect::<Report>(&run, w, |r| {

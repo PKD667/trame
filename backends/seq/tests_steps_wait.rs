@@ -7,7 +7,7 @@ use super::tests::within_10s;
 use super::tests_steps::{Ev, Gate, collect, enter, leave, report};
 use crate::run::Outcome::Returned;
 use crate::status::Status;
-use crate::topology::{LEADER, Topology};
+use crate::topology::{Leader, Topology};
 
 /// `waiter` (index 0) waits on the gate until it is open. `opener` opens it and ends. Ending a step
 /// that wrote the gate wakes the step that uses it, so `waiter` runs again after `opener`. A lost
@@ -46,7 +46,7 @@ fn a_waiter_on_fields_is_woken_after_the_other_steps() {
         let mut g = Topology::new();
         let w = g.worker::<Gated>();
         g.set(&w, || Gated { gate: Gate { inside: 0, open: false } });
-        g.route::<Ev>(w.id(), LEADER, 16);
+        g.route::<Ev>(w.id(), Leader, 16);
         let run = g.launch().expect("accepted");
         assert_eq!(collect(&run, 3), [1, 3, 2]);
         assert_eq!(run.join(), [Returned]);

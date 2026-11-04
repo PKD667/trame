@@ -10,7 +10,7 @@ use super::tests_steps_io::Job;
 use crate::io;
 use crate::run::Outcome::{Deadlock, Returned};
 use crate::status::Status;
-use crate::topology::{LEADER, Topology};
+use crate::topology::{Leader, Topology};
 
 /// Receives `Job`, and waits for one. Reports the id of the job it gets.
 #[crate::state(steps(await_job))]
@@ -34,8 +34,8 @@ fn a_frame_wait_that_no_leader_can_satisfy_is_deadlock() {
         let mut g = Topology::new();
         let w = g.worker::<Await>();
         g.set(&w, || Await {});
-        g.route::<Ev>(w.id(), LEADER, 4);
-        g.route::<Job>(LEADER, w.id(), 4);
+        g.route::<Ev>(w.id(), Leader, 4);
+        g.route::<Job>(Leader, w.id(), 4);
         let run = g.launch().expect("accepted");
         assert_eq!(run.join(), [Deadlock]);
     });
@@ -54,8 +54,8 @@ fn two_idle_workers_all_finish_over_many_rounds() {
             g.set(&b, || Await {});
             let (a, b) = (a.id(), b.id());
             for w in [a, b] {
-                g.route::<Ev>(w, LEADER, 4);
-                g.route::<Job>(LEADER, w, 4);
+                g.route::<Ev>(w, Leader, 4);
+                g.route::<Job>(Leader, w, 4);
             }
             let run = g.launch().expect("accepted");
             let (first, second) = if round % 2 == 0 { (a, b) } else { (b, a) };

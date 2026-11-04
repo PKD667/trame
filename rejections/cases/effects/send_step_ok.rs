@@ -17,7 +17,7 @@ struct S {
 
 #[trame::step(S, receives = Msg)]
 fn step(q: &mut Queue) -> trame::Status {
-    let _ = trame::send(trame::LEADER, Msg { n: q.n });
+    let _ = trame::send(trame::Leader, Msg { n: q.n });
     trame::Status::Done
 }
 

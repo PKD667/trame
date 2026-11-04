@@ -1,5 +1,5 @@
 //! The per-size state and step of scale_graph, stamped out by `graph!` (included by graph.rs with `#[macro_use]`). Its
-//! names (WARM, CAP, Report, LEADER, common) resolve where the macro is invoked, in graph.rs.
+//! names (WARM, CAP, Report, Leader, common) resolve where the macro is invoked, in graph.rs.
 
 /// One message type, state and step per size, stamped out as in ring.rs. `slot[s]` is the index in `rx` of the
 /// in-neighbour with worker index s, or usize::MAX when s is not an in-neighbour. `$build` declares and fills the
@@ -45,12 +45,12 @@ macro_rules! graph {
                     return Status::Done;
                 }
                 let r = Report { worker: *me, ns, compute_ns: *compute, checksum: *x ^ *acc };
-                return match trame::send(LEADER, r) {
+                return match trame::send(Leader, r) {
                     Ok(()) => {
                         *reported = true;
                         Status::Progress
                     }
-                    Err(_) => Status::wait().room::<Report>(LEADER),
+                    Err(_) => Status::wait().room::<Report>(Leader),
                 };
             }
             if !*started {

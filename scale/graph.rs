@@ -14,7 +14,7 @@ mod graph_net;
 #[path = "graph_proc.rs"]
 mod graph_proc;
 
-use trame::{LEADER, Reading, Status, Topology, Worker, WorkerId};
+use trame::{Leader, Reading, Status, Topology, Worker, WorkerId};
 
 const WARM: u64 = 10;
 const CAP: usize = 4;
@@ -50,7 +50,7 @@ fn main() {
         build_big(&mut t, w, &offs, steps, iters)
     };
     for id in ids {
-        t.route::<Report>(id, LEADER, 1);
+        t.route::<Report>(id, Leader, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     common::collect::<Report>(&run, w, |r| {

@@ -16,7 +16,7 @@ use std::panic::resume_unwind;
 
 use crate::io::Full;
 use crate::time::ClockId;
-use crate::topology::WorkerId;
+use crate::topology::End;
 use std::sync::atomic::Ordering::{Acquire, SeqCst};
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
@@ -55,13 +55,13 @@ fn parts() -> (&'static mut Transport, &'static [Entry]) {
     (t, &l.entries)
 }
 
-fn route(entries: &[Entry], t: &Transport, to: WorkerId, ty: TypeId, name: &str) -> RouteId {
+fn route(entries: &[Entry], t: &Transport, to: End, ty: TypeId, name: &str) -> RouteId {
     let to_rank = rank_of(to, t.lay().workers);
     plan::find(entries, t.me(), to_rank, ty)
         .unwrap_or_else(|| panic!("trame: worker {} has no route of {name} to rank {to_rank}", t.me()))
 }
 
-pub(super) fn send(to: WorkerId, ty: TypeId, name: &str, bytes: &[u8]) -> Result<(), Full> {
+pub(super) fn send(to: End, ty: TypeId, name: &str, bytes: &[u8]) -> Result<(), Full> {
     let _x = xport();
     let (t, entries) = parts();
     let id = route(entries, t, to, ty, name);
@@ -98,7 +98,7 @@ pub(super) fn offer(ty: TypeId) -> bool {
 }
 
 /// The index of this worker's route to `to` with `ty` among its outgoing routes (plan.rs `outgoing`).
-pub(super) fn route_index(to: WorkerId, ty: TypeId) -> Option<usize> {
+pub(super) fn route_index(to: End, ty: TypeId) -> Option<usize> {
     let _x = xport();
     let (t, entries) = parts();
     let to_rank = rank_of(to, t.lay().workers);

@@ -5,7 +5,7 @@
 //! reader, and the reader checks again. The worker logs each step to the leader, which prints the log
 //! in arrival order.
 
-use trame::{LEADER, Outcome, Status, Topology};
+use trame::{Leader, Outcome, Status, Topology};
 
 const READER: u32 = 0;
 const WRITER: u32 = 1;
@@ -25,7 +25,7 @@ struct Tally {
 }
 
 fn log(who: u32, n: u32) {
-    assert!(trame::send(LEADER, Log { who, n }).is_ok(), "a log did not fit");
+    assert!(trame::send(Leader, Log { who, n }).is_ok(), "a log did not fit");
 }
 
 /// Waits until the tally reaches 3, then logs it.
@@ -54,7 +54,7 @@ fn main() {
     let mut t = Topology::new();
     let w = t.worker();
     t.set(&w, move || Tally { value: 0, n: 0 });
-    t.route::<Log>(w.id(), LEADER, 8);
+    t.route::<Log>(w.id(), Leader, 8);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

@@ -16,9 +16,9 @@ use core::mem::size_of;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct HostId(pub u32);
 
-/// Identity of a worker, or of the leader: its index among its host's workers (0..n on every host),
-/// and its host. Made by `Topology::worker` and `LEADER` for this host's, and from `(HostId, k)` for
-/// worker k of another host, as that host declared it.
+/// Identity of a worker: its index among its host's workers (0..n on every host), and its host. Made
+/// by `Topology::worker` for this host's, and from `(HostId, k)` for worker k of another host, as that
+/// host declared it. The leader is not a worker and has no `WorkerId` (`Leader`).
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorkerId(pub(crate) u32, pub(crate) u32);
 
@@ -45,8 +45,47 @@ impl From<(HostId, u32)> for WorkerId {
     }
 }
 
-/// This host's leader. It is an agent of its own, and it may be the end of a route.
-pub const LEADER: WorkerId = WorkerId::here(u32::MAX);
+/// This host's leader, as the end of a route: `t.route::<M>(Leader, w.id(), 16)`. The leader is not
+/// a worker. It is the process outside the workers that built the topology and holds the `Run`: on
+/// MPI a rank of its own, on a device the host program. It has no steps, no state and no index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Leader;
+
+/// An end of a route: a worker or this host's leader. Made from `WorkerId`, `(HostId, k)` and
+/// `Leader`; programs pass those, not an `End`.
+#[doc(hidden)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum End {
+    Worker(WorkerId),
+    Leader,
+}
+
+impl core::fmt::Debug for End {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            End::Worker(w) => w.fmt(f),
+            End::Leader => f.write_str("Leader"),
+        }
+    }
+}
+
+impl From<WorkerId> for End {
+    fn from(w: WorkerId) -> End {
+        End::Worker(w)
+    }
+}
+
+impl From<(HostId, u32)> for End {
+    fn from(hk: (HostId, u32)) -> End {
+        End::Worker(hk.into())
+    }
+}
+
+impl From<Leader> for End {
+    fn from(_: Leader) -> End {
+        End::Leader
+    }
+}
 
 /// A declared worker of state type `S`: its identity, and the handle the leader edits and takes the
 /// state through. Made by `Topology::worker`.
@@ -121,16 +160,23 @@ impl Topology {
     }
 
     /// A route from `from` to `to` carrying messages of type `M`, with room for `cap` frames.
-    pub fn route<M: Message>(&mut self, from: impl Into<WorkerId>, to: impl Into<WorkerId>, cap: usize) {
+    /// Each end is a worker (`w.id()`, `(HostId, k)`) or `Leader`; a route from the leader to itself
+    /// panics.
+    pub fn route<M: Message>(&mut self, from: impl Into<End>, to: impl Into<End>, cap: usize) {
         self.add::<M>(from.into(), to.into(), cap, false);
     }
 
     /// As `route`, but a send at capacity replaces the oldest frame instead of answering `Full`.
-    pub fn lossy<M: Message>(&mut self, from: impl Into<WorkerId>, to: impl Into<WorkerId>, cap: usize) {
+    pub fn lossy<M: Message>(&mut self, from: impl Into<End>, to: impl Into<End>, cap: usize) {
         self.add::<M>(from.into(), to.into(), cap, true);
     }
 
-    fn add<M: Message>(&mut self, from: WorkerId, to: WorkerId, cap: usize, lossy: bool) {
+    fn add<M: Message>(&mut self, from: End, to: End, cap: usize, lossy: bool) {
+        assert!(
+            !(from == End::Leader && to == End::Leader),
+            "trame: a route of {} from the leader to itself; the leader keeps its own values, it does not send to itself",
+            type_name::<M>()
+        );
         self.plan.routes.push(Route {
             from,
             to,

@@ -16,7 +16,7 @@ use crate::launch::{Plan, Refused};
 use crate::run::{Outcome, panic_message};
 use crate::sched::{Answer, Event, Sched};
 use crate::time::ClockId;
-use crate::topology::{LEADER, WorkerId};
+use crate::topology::{End, WorkerId};
 use crate::worker::{Slot, agent};
 use std::boxed::Box;
 use std::cell::RefCell;
@@ -160,9 +160,9 @@ impl Backend for Selected {
         WorkerId::here(current().1 as u32)
     }
 
-    fn worker_send(to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
+    fn worker_send(to: End, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
         effect(|st, me| {
-            let from = WorkerId::here(me as u32);
+            let from = End::Worker(WorkerId::here(me as u32));
             match st.routes.find(from, to, ty) {
                 Some(i) => st.routes.push(i, bytes),
                 None => panic!("trame: worker {from:?} has no route to {to:?} for {name}"),
@@ -171,26 +171,26 @@ impl Backend for Selected {
     }
 
     fn worker_recv(ty: core::any::TypeId, out: &mut [u8]) -> bool {
-        effect(|st, me| st.routes.take(WorkerId::here(me as u32), ty, out))
+        effect(|st, me| st.routes.take(End::Worker(WorkerId::here(me as u32)), ty, out))
     }
 
     fn worker_offer(ty: core::any::TypeId) -> bool {
         let (shared, me) = current();
         let st = shared.lock();
-        st.routes.all.iter().any(|r| r.to == WorkerId::here(me as u32) && r.ty == ty && r.len > 0)
+        st.routes.all.iter().any(|r| r.to == End::Worker(WorkerId::here(me as u32)) && r.ty == ty && r.len > 0)
     }
 
-    fn worker_route(to: WorkerId, ty: core::any::TypeId) -> Option<usize> {
+    fn worker_route(to: End, ty: core::any::TypeId) -> Option<usize> {
         let (shared, me) = current();
         let st = shared.lock();
-        let from = WorkerId::here(me as u32);
+        let from = End::Worker(WorkerId::here(me as u32));
         st.routes.all.iter().filter(|r| r.from == from).position(|r| r.to == to && r.ty == ty)
     }
 
     fn worker_room(route: usize) -> bool {
         let (shared, me) = current();
         let st = shared.lock();
-        let from = WorkerId::here(me as u32);
+        let from = End::Worker(WorkerId::here(me as u32));
         match st.routes.all.iter().filter(|r| r.from == from).nth(route) {
             Some(r) => r.lossy || r.len < r.cap,
             None => panic!("trame: worker {me} has no outgoing route {route} for this room check"),
@@ -251,7 +251,7 @@ impl Backend for Selected {
         bytes: &[u8],
     ) -> Result<(), Full> {
         let mut st = leader_check(run.shared.lock());
-        let answer = match st.routes.find(LEADER, to, ty) {
+        let answer = match st.routes.find(End::Leader, End::Worker(to), ty) {
             Some(i) => st.routes.push(i, bytes),
             None => panic!("trame: the leader has no route to {to:?} for {name}"),
         };
@@ -263,7 +263,7 @@ impl Backend for Selected {
     fn leader_recv(run: &Run, ty: core::any::TypeId, out: &mut [u8]) -> bool {
         // A take frees room on a route, so it wakes a worker that waits for room.
         let mut st = leader_check(run.shared.lock());
-        let taken = st.routes.take(LEADER, ty, out);
+        let taken = st.routes.take(End::Leader, ty, out);
         if taken {
             st.acts += 1;
             run.shared.changed.notify_all();

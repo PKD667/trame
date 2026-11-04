@@ -12,7 +12,7 @@ use crate::launch::{Plan, Refused};
 use crate::run::Outcome;
 use crate::sched::{Event, Sched};
 use crate::time::ClockId;
-use crate::topology::WorkerId;
+use crate::topology::{End, WorkerId};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::any::TypeId;
@@ -104,7 +104,7 @@ pub(crate) trait Backend {
 
     /// Send `bytes` of the message type `ty` (named `name` in messages) from this worker to `to`.
     /// Panics when this worker has no such route.
-    fn worker_send(to: WorkerId, ty: TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full>;
+    fn worker_send(to: End, ty: TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full>;
 
     /// Take the next frame of type `ty` addressed to this worker into `out`, which has the size of
     /// that type. Answers `false`, and leaves `out` alone, when there is no frame. Allocates nothing.
@@ -115,7 +115,7 @@ pub(crate) trait Backend {
 
     /// The index of the route from this worker to `to` with type `ty`, among this worker's outgoing
     /// routes in plan order, or None. A `Status` names rooms by this index (status.rs).
-    fn worker_route(to: WorkerId, ty: TypeId) -> Option<usize>;
+    fn worker_route(to: End, ty: TypeId) -> Option<usize>;
 
     /// Whether the outgoing route at `route` (see `worker_route`) has room for a send: fewer frames
     /// than its capacity, or a lossy route. Panics when this worker has no such route.

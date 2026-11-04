@@ -2,7 +2,7 @@
 //! command on its own route, with its own message type, so the leader's output per worker is in the
 //! order that worker sent. The leader prints the answers, then the outcomes.
 
-use trame::{LEADER, Outcome, Status, Topology};
+use trame::{Leader, Outcome, Status, Topology};
 
 const N: u32 = 3;
 
@@ -35,12 +35,12 @@ struct Echo0 {
 #[trame::step(Echo0, receives = Cmd)]
 fn echo0(got: &mut u32, pending: &mut Option<u32>) -> Status {
     if let Some(v) = *pending {
-        return match trame::send(LEADER, Reply0 { v }) {
+        return match trame::send(Leader, Reply0 { v }) {
             Ok(()) => {
                 *pending = None;
                 Status::Progress
             }
-            Err(_) => Status::wait().room::<Reply0>(LEADER),
+            Err(_) => Status::wait().room::<Reply0>(Leader),
         };
     }
     if *got == N {
@@ -67,12 +67,12 @@ struct Echo1 {
 #[trame::step(Echo1, receives = Cmd)]
 fn echo1(got: &mut u32, pending: &mut Option<u32>) -> Status {
     if let Some(v) = *pending {
-        return match trame::send(LEADER, Reply1 { v }) {
+        return match trame::send(Leader, Reply1 { v }) {
             Ok(()) => {
                 *pending = None;
                 Status::Progress
             }
-            Err(_) => Status::wait().room::<Reply1>(LEADER),
+            Err(_) => Status::wait().room::<Reply1>(Leader),
         };
     }
     if *got == N {
@@ -96,10 +96,10 @@ fn main() {
     let b_worker = t.worker();
     t.set(&b_worker, || Echo1 { got: 0, pending: None });
     let b = b_worker.id();
-    t.route::<Cmd>(LEADER, a, 4);
-    t.route::<Cmd>(LEADER, b, 4);
-    t.route::<Reply0>(a, LEADER, 4);
-    t.route::<Reply1>(b, LEADER, 4);
+    t.route::<Cmd>(Leader, a, 4);
+    t.route::<Cmd>(Leader, b, 4);
+    t.route::<Reply0>(a, Leader, 4);
+    t.route::<Reply1>(b, Leader, 4);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

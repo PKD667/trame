@@ -3,7 +3,7 @@
 //! panic (leader_panics.panics). On several nodes, before the fix in backends/mpi/leader.rs, the process hung
 //! at exit instead, because the relays waited for END.
 
-use trame::{LEADER, Status, Topology};
+use trame::{Leader, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -31,7 +31,7 @@ fn main() {
     let mut t = Topology::new();
     let w = t.worker();
     t.set(&w, move || Waiter {});
-    t.route::<Never>(LEADER, w.id(), 1);
+    t.route::<Never>(Leader, w.id(), 1);
     let _run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

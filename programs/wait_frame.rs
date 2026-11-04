@@ -3,7 +3,7 @@
 //! twice: once to say `Ready` and wait, and once when `Want` arrives. A call for `Noise` would show as a
 //! third call. The leader sends nothing until `Ready`, so the first call always comes before `Want`.
 
-use trame::{LEADER, Outcome, Status, Topology};
+use trame::{Leader, Outcome, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -36,12 +36,12 @@ fn picky(calls: &mut u32, said_ready: &mut bool) -> Status {
     *calls += 1;
     if !*said_ready {
         *said_ready = true;
-        assert!(trame::send(LEADER, Ready).is_ok(), "ready did not fit");
+        assert!(trame::send(Leader, Ready).is_ok(), "ready did not fit");
         return Status::wait().frame();
     }
     match trame::recv::<Want>() {
         Some(Want) => {
-            assert!(trame::send(LEADER, Calls { n: *calls }).is_ok(), "calls did not fit");
+            assert!(trame::send(Leader, Calls { n: *calls }).is_ok(), "calls did not fit");
             Status::Done
         }
         None => Status::wait().frame(),
@@ -53,10 +53,10 @@ fn main() {
     let w_worker = t.worker();
     t.set(&w_worker, || Picky { calls: 0, said_ready: false });
     let w = w_worker.id();
-    t.route::<Ready>(w, LEADER, 2);
-    t.route::<Calls>(w, LEADER, 2);
-    t.route::<Noise>(LEADER, w, 2);
-    t.route::<Want>(LEADER, w, 2);
+    t.route::<Ready>(w, Leader, 2);
+    t.route::<Calls>(w, Leader, 2);
+    t.route::<Noise>(Leader, w, 2);
+    t.route::<Want>(Leader, w, 2);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

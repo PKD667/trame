@@ -11,7 +11,7 @@ struct Work {
 
 #[trame::item(key = x.index as usize)]
 fn sending(x: &Work, slot: &mut u32, _cx: &()) {
-    let _ = trame::send(trame::LEADER, Msg { n: x.by }); //~ ERROR: [effects] item
+    let _ = trame::send(trame::Leader, Msg { n: x.by }); //~ ERROR: [effects] item
     *slot = x.by;
 }
 

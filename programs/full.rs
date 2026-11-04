@@ -4,7 +4,7 @@
 //! capacity 2 (so it waits for room). Worker 1 turns each job into an event for the leader, and checks
 //! its clock. The leader prints the events in order, then the outcomes.
 
-use trame::{LEADER, Outcome, Reading, Status, Topology, WorkerId};
+use trame::{Leader, Outcome, Reading, Status, Topology, WorkerId};
 
 const JOBS: u32 = 5;
 
@@ -77,12 +77,12 @@ fn consumer(seen: &mut u32, pending: &mut Option<u32>, start: &mut Option<Readin
     // Worker 1's clock is the run's clock: a reading of it compares with a later one.
     let start = *start.get_or_insert_with(trame::now);
     if let Some(v) = *pending {
-        return match trame::send(LEADER, Ev { v }) {
+        return match trame::send(Leader, Ev { v }) {
             Ok(()) => {
                 *pending = None;
                 Status::Progress
             }
-            Err(_) => Status::wait().room::<Ev>(LEADER),
+            Err(_) => Status::wait().room::<Ev>(Leader),
         };
     }
     if *seen == JOBS {
@@ -107,9 +107,9 @@ fn main() {
     let to = b.id();
     t.set(&a, move || Source { open: false, next: 0, to });
     t.set(&b, || Sink { seen: 0, pending: None, start: None });
-    t.route::<Go>(LEADER, a.id(), 1);
+    t.route::<Go>(Leader, a.id(), 1);
     t.route::<Job>(a.id(), b.id(), 2);
-    t.route::<Ev>(b.id(), LEADER, 8);
+    t.route::<Ev>(b.id(), Leader, 8);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

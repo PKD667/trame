@@ -1,5 +1,5 @@
 //! ring: W workers pass a token around a ring for ROUNDS rounds, then report to the leader.
-use trame::{LEADER, Status, Topology, Worker, WorkerId};
+use trame::{Leader, Status, Topology, Worker, WorkerId};
 
 const W: usize = 4;
 const ROUNDS: u32 = 3;
@@ -28,9 +28,9 @@ struct Hop {
 #[trame::step(Hop, receives = Token)]
 fn hop(me: &u32, next: &WorkerId, round: &mut u32, value: &mut u32, total: &mut u32, sent: &mut bool) -> Status {
     if *round == ROUNDS {
-        return match trame::send(LEADER, Report { worker: *me, total: *total }) {
+        return match trame::send(Leader, Report { worker: *me, total: *total }) {
             Ok(()) => Status::Done,
-            Err(_) => Status::wait().room::<Report>(LEADER),
+            Err(_) => Status::wait().room::<Report>(Leader),
         };
     }
     if !*sent {
@@ -55,7 +55,7 @@ fn main() {
         let next = ws[(i + 1) % W].id();
         topo.set(&ws[i], move || Hop { me: i as u32, next, round: 0, value: i as u32 + 1, total: 0, sent: false });
         topo.route::<Token>(ws[i].id(), next, 1);
-        topo.route::<Report>(ws[i].id(), LEADER, 1);
+        topo.route::<Report>(ws[i].id(), Leader, 1);
     }
     let run = topo.launch().expect("the ring launches");
     let mut totals = [None; W];

@@ -8,7 +8,7 @@
 //! An experiment, not a program with an .expected file: its numbers are measurements.
 
 use std::time::Duration;
-use trame::{LEADER, Outcome, Status, Topology};
+use trame::{Leader, Outcome, Status, Topology};
 
 #[trame::message]
 #[derive(Debug)]
@@ -56,9 +56,9 @@ fn c(hot: &mut u64, nc: &mut [u64; 2]) -> Status {
 #[trame::step(Contended)]
 fn report(na: &[u64; 2], nb: &[u64; 2], nc: &[u64; 2]) -> Status {
     let t = Totals { steps: [na[0], nb[0], nc[0]], nanos: [na[1], nb[1], nc[1]] };
-    match trame::send(LEADER, t) {
+    match trame::send(Leader, t) {
         Ok(()) => Status::Done,
-        Err(_) => Status::wait().room::<Totals>(LEADER),
+        Err(_) => Status::wait().room::<Totals>(Leader),
     }
 }
 
@@ -67,7 +67,7 @@ fn main() {
     let mut t = Topology::new();
     let w = t.worker();
     t.set(&w, move || Contended { hot: 0, na: [0; 2], nb: [0; 2], nc: [0; 2] });
-    t.route::<Totals>(w.id(), LEADER, 1);
+    t.route::<Totals>(w.id(), Leader, 1);
     let run = t.launch().expect("launch");
     std::thread::sleep(Duration::from_secs_f64(secs));
     run.stop();

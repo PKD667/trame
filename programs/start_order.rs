@@ -3,7 +3,7 @@
 //! started, ties to the lower index). Each step reports its id to the leader over one route, so the
 //! leader sees the order of the starts.
 
-use trame::{LEADER, Outcome, Status, Topology};
+use trame::{Leader, Outcome, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -16,13 +16,13 @@ struct Pair {}
 
 #[trame::step(Pair)]
 fn first() -> Status {
-    assert!(trame::send(LEADER, Started { id: 1 }).is_ok(), "report did not fit");
+    assert!(trame::send(Leader, Started { id: 1 }).is_ok(), "report did not fit");
     Status::Done
 }
 
 #[trame::step(Pair)]
 fn second() -> Status {
-    assert!(trame::send(LEADER, Started { id: 2 }).is_ok(), "report did not fit");
+    assert!(trame::send(Leader, Started { id: 2 }).is_ok(), "report did not fit");
     Status::Done
 }
 
@@ -30,7 +30,7 @@ fn main() {
     let mut t = Topology::new();
     let w = t.worker();
     t.set(&w, move || Pair {});
-    t.route::<Started>(w.id(), LEADER, 2);
+    t.route::<Started>(w.id(), Leader, 2);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

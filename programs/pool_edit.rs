@@ -9,7 +9,7 @@
 //! sent it, so after the edit: each worker reports exactly round r, a list of length r and sum
 //! r(r+1)/2, on any backend.
 
-use trame::{LEADER, Outcome, Status, Topology};
+use trame::{Leader, Outcome, Status, Topology};
 
 const WORKERS: u32 = 3;
 const ROUNDS: u32 = 10;
@@ -55,7 +55,7 @@ fn probe(me: &u32, done: &mut u32, pool: &Round) -> Status {
     };
     assert_eq!(g.round, *done + 1, "a probe took the Go of another round");
     let rep = Report { worker: *me, round: g.round, seen: pool.round, len: pool.all.len() as u32, sum: pool.all.iter().sum() };
-    assert!(trame::send(LEADER, rep).is_ok(), "a report did not fit");
+    assert!(trame::send(Leader, rep).is_ok(), "a report did not fit");
     *done += 1;
     Status::Progress
 }
@@ -72,8 +72,8 @@ fn main() {
     let pool = t.pool();
     t.set(&pool, || Round { round: 0, all: Vec::new() });
     for w in &ws {
-        t.route::<Go>(LEADER, w.id(), 2);
-        t.route::<Report>(w.id(), LEADER, 2);
+        t.route::<Go>(Leader, w.id(), 2);
+        t.route::<Report>(w.id(), Leader, 2);
     }
     let run = match t.launch() {
         Ok(run) => run,

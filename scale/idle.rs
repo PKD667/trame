@@ -7,7 +7,7 @@
 mod common;
 
 use core::time::Duration;
-use trame::{LEADER, Reading, Status, Topology, Worker};
+use trame::{Leader, Reading, Status, Topology, Worker};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -38,12 +38,12 @@ fn idle(me: &u64, span: &Duration, start: &mut Option<Reading>, ns: &mut Option<
     if *reported {
         return Status::Done;
     }
-    match trame::send(LEADER, Report { worker: *me, ns }) {
+    match trame::send(Leader, Report { worker: *me, ns }) {
         Ok(()) => {
             *reported = true;
             Status::Progress
         }
-        Err(_) => Status::wait().room::<Report>(LEADER),
+        Err(_) => Status::wait().room::<Report>(Leader),
     }
 }
 
@@ -55,7 +55,7 @@ fn main() {
     let ws: Vec<Worker<Idle>> = (0..w).map(|_| t.worker()).collect();
     for (i, h) in ws.iter().enumerate() {
         t.set(h, move || Idle { me: i as u64, span, start: None, ns: None, reported: false });
-        t.route::<Report>(h.id(), LEADER, 1);
+        t.route::<Report>(h.id(), Leader, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     common::collect::<Report>(&run, w, |r| {

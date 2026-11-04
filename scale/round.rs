@@ -14,7 +14,7 @@
 #[path = "common.rs"]
 mod common;
 
-use trame::{LEADER, Reading, Status, Topology, Worker};
+use trame::{Leader, Reading, Status, Topology, Worker};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -52,9 +52,9 @@ struct Pace {
 #[trame::step(Pace, receives = Go)]
 fn pace(me: &u64, rounds: &u64, next: &mut u64, owes: &mut bool, t0: &mut Option<Reading>, ns: &mut Option<u64>) -> Status {
     if let Some(ns) = *ns {
-        return match trame::send(LEADER, Report { worker: *me, ns }) {
+        return match trame::send(Leader, Report { worker: *me, ns }) {
             Ok(()) => Status::Done,
-            Err(_) => Status::wait().room::<Report>(LEADER),
+            Err(_) => Status::wait().room::<Report>(Leader),
         };
     }
     if !*owes {
@@ -66,8 +66,8 @@ fn pace(me: &u64, rounds: &u64, next: &mut u64, owes: &mut bool, t0: &mut Option
             None => return Status::wait().frame(),
         }
     }
-    if trame::send(LEADER, Ack { worker: *me, round: *next }).is_err() {
-        return Status::wait().room::<Ack>(LEADER);
+    if trame::send(Leader, Ack { worker: *me, round: *next }).is_err() {
+        return Status::wait().room::<Ack>(Leader);
     }
     *owes = false;
     if *next == 0 {
@@ -92,9 +92,9 @@ fn main() {
     let ws: Vec<Worker<Pace>> = (0..w).map(|_| t.worker()).collect();
     for (i, h) in ws.iter().enumerate() {
         t.set(h, move || Pace { me: i as u64, rounds, next: 0, owes: false, t0: None, ns: None });
-        t.route::<Go>(LEADER, h.id(), 1);
-        t.route::<Ack>(h.id(), LEADER, 1);
-        t.route::<Report>(h.id(), LEADER, 1);
+        t.route::<Go>(Leader, h.id(), 1);
+        t.route::<Ack>(h.id(), Leader, 1);
+        t.route::<Report>(h.id(), Leader, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     for round in 0..=rounds {

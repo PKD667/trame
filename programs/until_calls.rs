@@ -3,7 +3,7 @@
 //! deadline, and once when the deadline has passed. It reports how many times it was called. An early wake
 //! (a wait condition that holds before the deadline) shows as a larger count.
 
-use trame::{LEADER, Outcome, Reading, Status, Topology};
+use trame::{Leader, Outcome, Reading, Status, Topology};
 
 const WAIT_NANOS: u64 = 20_000_000;
 
@@ -27,7 +27,7 @@ fn sleeper(deadline: &mut Option<Reading>, calls: &mut u32) -> Status {
     if deadline.since(now) > core::time::Duration::ZERO {
         return Status::wait().until(deadline);
     }
-    assert!(trame::send(LEADER, Woke { calls: *calls }).is_ok(), "a report did not fit");
+    assert!(trame::send(Leader, Woke { calls: *calls }).is_ok(), "a report did not fit");
     Status::Done
 }
 
@@ -35,7 +35,7 @@ fn main() {
     let mut t = Topology::new();
     let w = t.worker();
     t.set(&w, move || Sleeper { deadline: None, calls: 0 });
-    t.route::<Woke>(w.id(), LEADER, 2);
+    t.route::<Woke>(w.id(), Leader, 2);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

@@ -1,6 +1,6 @@
 // The backend's view of a plan: its exact encoding (what ranks agree on), the transport's topology,
 // and the route table each endpoint looks its routes up in. Ranks are workers `0..W` and the leader
-// `W`; `LEADER` in the surface is the leader's rank.
+// `W`; `Leader` in the surface is the leader's rank.
 
 extern crate std;
 
@@ -10,7 +10,7 @@ use std::vec;
 use std::vec::Vec;
 
 use crate::launch::{Plan, Refused};
-use crate::topology::{LEADER, WorkerId};
+use crate::topology::End;
 
 use super::{Route, RouteId, Topology};
 
@@ -34,8 +34,11 @@ fn type_bytes(ty: TypeId) -> Vec<u8> {
 }
 
 /// The rank of an agent: a worker's index, or `workers` for the leader.
-pub(super) fn rank_of(id: WorkerId, workers: u32) -> u32 {
-    if id == LEADER { workers } else { id.0 }
+pub(super) fn rank_of(id: End, workers: u32) -> u32 {
+    match id {
+        End::Worker(w) => w.0,
+        End::Leader => workers,
+    }
 }
 
 fn put_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
@@ -54,8 +57,8 @@ pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
     put_bytes(&mut out, &[]);
     out.extend_from_slice(&(plan.routes.len() as u64).to_le_bytes());
     for r in &plan.routes {
-        out.extend_from_slice(&r.from.0.to_le_bytes());
-        out.extend_from_slice(&r.to.0.to_le_bytes());
+        out.extend_from_slice(&rank_of(r.from, u32::MAX).to_le_bytes());
+        out.extend_from_slice(&rank_of(r.to, u32::MAX).to_le_bytes());
         put_bytes(&mut out, &type_bytes(r.ty));
         put_bytes(&mut out, r.name.as_bytes());
         out.extend_from_slice(&(r.size as u64).to_le_bytes());

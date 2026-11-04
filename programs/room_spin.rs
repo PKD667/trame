@@ -5,7 +5,7 @@
 //! sends the second item once room comes. It reports how many sends failed: 1. A wait that is woken while the
 //! route is still full is called during the ticks, fails again, and reports a larger count.
 
-use trame::{LEADER, Outcome, Status, Topology};
+use trame::{Leader, Outcome, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -45,11 +45,11 @@ struct Pair {
 
 #[trame::step(Pair)]
 fn sender(sent: &mut u32, failed: &mut u32, reported: &mut bool) -> Status {
-    match trame::send(LEADER, Item { id: *sent + 1 }) {
+    match trame::send(Leader, Item { id: *sent + 1 }) {
         Ok(()) => {
             *sent += 1;
             if *sent == 2 {
-                assert!(trame::send(LEADER, Finished { failed: *failed }).is_ok(), "finished did not fit");
+                assert!(trame::send(Leader, Finished { failed: *failed }).is_ok(), "finished did not fit");
                 return Status::Done;
             }
             Status::Progress
@@ -58,9 +58,9 @@ fn sender(sent: &mut u32, failed: &mut u32, reported: &mut bool) -> Status {
             *failed += 1;
             if !*reported {
                 *reported = true;
-                assert!(trame::send(LEADER, Blocked).is_ok(), "blocked did not fit");
+                assert!(trame::send(Leader, Blocked).is_ok(), "blocked did not fit");
             }
-            Status::wait().room::<Item>(LEADER)
+            Status::wait().room::<Item>(Leader)
         }
     }
 }
@@ -81,7 +81,7 @@ fn ticker(ticks: &mut Option<u32>) -> Status {
             Status::Progress
         }
         Some(_) => {
-            assert!(trame::send(LEADER, Ticked).is_ok(), "ticked did not fit");
+            assert!(trame::send(Leader, Ticked).is_ok(), "ticked did not fit");
             Status::Done
         }
     }
@@ -92,11 +92,11 @@ fn main() {
     let w_worker = t.worker();
     t.set(&w_worker, || Pair { sent: 0, failed: 0, reported: false, ticks: None });
     let w = w_worker.id();
-    t.route::<Item>(w, LEADER, 1);
-    t.route::<Blocked>(w, LEADER, 2);
-    t.route::<Go>(LEADER, w, 1);
-    t.route::<Ticked>(w, LEADER, 1);
-    t.route::<Finished>(w, LEADER, 2);
+    t.route::<Item>(w, Leader, 1);
+    t.route::<Blocked>(w, Leader, 2);
+    t.route::<Go>(Leader, w, 1);
+    t.route::<Ticked>(w, Leader, 1);
+    t.route::<Finished>(w, Leader, 2);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

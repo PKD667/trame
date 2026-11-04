@@ -8,6 +8,6 @@ struct Msg {
 
 fn main() {
     trame::__check::worker(&|| {
-        let _ = trame::send(trame::LEADER, Msg { n: 1 });
+        let _ = trame::send(trame::Leader, Msg { n: 1 });
     });
 }

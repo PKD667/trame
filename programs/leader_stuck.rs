@@ -3,7 +3,7 @@
 //! `trame: deadlock: the leader waits and nothing can arrive` (leader_stuck.panics; spec.md 5, Deadlock).
 //! Seq only: it has no row in backends/mpi/deploy/ranks.txt, so it does not run on MPI (on MPI the leader would hang).
 
-use trame::{LEADER, Status, Topology};
+use trame::{Leader, Status, Topology};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -26,7 +26,7 @@ fn main() {
     t.set(&a, move || Quick {});
     let _b = t.worker();
     t.set(&_b, move || Quick {});
-    t.route::<Never>(a.id(), LEADER, 1);
+    t.route::<Never>(a.id(), Leader, 1);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

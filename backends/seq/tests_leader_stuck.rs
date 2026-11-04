@@ -7,7 +7,7 @@ use super::tests::{Ping, Quick, Stuck, panic_text, within_10s};
 use crate::io;
 use crate::status::Status;
 use crate::time::Reading;
-use crate::topology::{LEADER, Topology};
+use crate::topology::{Leader, Topology};
 use core::time::Duration;
 
 const STUCK: &str = "trame: deadlock: the leader waits and nothing can arrive";
@@ -18,9 +18,9 @@ struct Sender {}
 
 #[crate::step(Sender)]
 fn sends() -> Status {
-    match io::send(LEADER, Ping(7)) {
+    match io::send(Leader, Ping(7)) {
         Ok(()) => Status::Done,
-        Err(_) => Status::wait().room::<Ping>(LEADER),
+        Err(_) => Status::wait().room::<Ping>(Leader),
     }
 }
 
@@ -33,7 +33,7 @@ fn wait_after_every_worker_returned_panics() {
         g.set(&a, || Quick {});
         let b = g.worker::<Quick>();
         g.set(&b, || Quick {});
-        g.route::<Ping>(a.id(), LEADER, 1);
+        g.route::<Ping>(a.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         let text = panic_text(move || {
             loop {
@@ -71,7 +71,7 @@ fn a_frame_from_a_worker_wakes_the_leader() {
         let mut g = Topology::new();
         let w = g.worker::<Sender>();
         g.set(&w, || Sender {});
-        g.route::<Ping>(w.id(), LEADER, 1);
+        g.route::<Ping>(w.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         let got = loop {
             if let Some(p) = run.recv::<Ping>() {
@@ -98,9 +98,9 @@ fn nap(start: &mut Option<Reading>) -> Status {
             *start = Some(now);
             Status::wait().until(now.after(Duration::from_millis(20)))
         }
-        Some(_) => match io::send(LEADER, Ping(7)) {
+        Some(_) => match io::send(Leader, Ping(7)) {
             Ok(()) => Status::Done,
-            Err(_) => Status::wait().room::<Ping>(LEADER),
+            Err(_) => Status::wait().room::<Ping>(Leader),
         },
     }
 }
@@ -113,7 +113,7 @@ fn a_pending_deadline_keeps_the_leader_waiting_not_stuck() {
         let mut g = Topology::new();
         let w = g.worker::<Napper>();
         g.set(&w, || Napper { start: None });
-        g.route::<Ping>(w.id(), LEADER, 1);
+        g.route::<Ping>(w.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         let got = loop {
             if let Some(p) = run.recv::<Ping>() {

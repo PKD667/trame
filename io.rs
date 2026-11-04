@@ -2,7 +2,6 @@
 //! tag of its routes, so one route family per type.
 
 use crate::backend::{Backend, Selected};
-use crate::topology::WorkerId;
 use core::any::{TypeId, type_name};
 
 /// A message type: plain data, sent as its bytes. Every `Pod` type is one (bytemuck: no padding, no
@@ -30,7 +29,7 @@ pub struct Full;
 
 /// Send `msg` from this worker to `to`, on the route of type `M`. Answers `Full` only when that
 /// route is not lossy and at capacity. Panics when the topology has no such route.
-pub fn send<M: Message>(to: impl Into<WorkerId>, msg: M) -> Result<(), Full> {
+pub fn send<M: Message>(to: impl Into<crate::topology::End>, msg: M) -> Result<(), Full> {
     Selected::worker_send(to.into(), TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
 }
 

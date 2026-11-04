@@ -6,7 +6,7 @@ use super::tests::{Ping, Quick, await_frame, within_10s};
 use crate::io;
 use crate::launch::Refused;
 use crate::status::Status;
-use crate::topology::{LEADER, Topology, WorkerId};
+use crate::topology::{Leader, Topology, WorkerId};
 
 /// A message of 256 KiB: no size limit applies, so it is one frame and launches (spec.md 4).
 #[crate::message]
@@ -20,9 +20,9 @@ struct LargeSender {}
 fn send_large() -> Status {
     let mut bytes = [0u8; 256 * 1024];
     bytes[256 * 1024 - 1] = 7;
-    match io::send(LEADER, Large(bytes)) {
+    match io::send(Leader, Large(bytes)) {
         Ok(()) => Status::Done,
-        Err(_) => Status::wait().room::<Large>(LEADER),
+        Err(_) => Status::wait().room::<Large>(Leader),
     }
 }
 
@@ -38,10 +38,10 @@ fn duplicate_sender_receiver_tag_is_refused() {
     within_10s(|| {
         let mut g = Topology::new();
         let w = quick_worker(&mut g);
-        g.route::<Ping>(w, LEADER, 1);
-        g.route::<Ping>(w, LEADER, 4);
+        g.route::<Ping>(w, Leader, 1);
+        g.route::<Ping>(w, Leader, 4);
         let refused = g.launch().err();
-        assert_eq!(refused, Some(Refused::Duplicate { from: w, to: LEADER, name: core::any::type_name::<Ping>() }));
+        assert_eq!(refused, Some(Refused::Duplicate { from: w.into(), to: Leader.into(), name: core::any::type_name::<Ping>() }));
     });
 }
 
@@ -50,7 +50,7 @@ fn zero_capacity_is_refused() {
     within_10s(|| {
         let mut g = Topology::new();
         let w = quick_worker(&mut g);
-        g.route::<Ping>(w, LEADER, 0);
+        g.route::<Ping>(w, Leader, 0);
         assert!(matches!(g.launch(), Err(Refused::ZeroCapacity { .. })));
     });
 }
@@ -60,7 +60,7 @@ fn route_to_a_worker_not_in_the_topology_is_refused() {
     within_10s(|| {
         let mut g = Topology::new();
         quick_worker(&mut g);
-        g.route::<Ping>(LEADER, WorkerId::here(7), 1);
+        g.route::<Ping>(Leader, WorkerId::here(7), 1);
         assert_eq!(g.launch().err(), Some(Refused::UnknownWorker(WorkerId::here(7))));
     });
 }
@@ -84,7 +84,7 @@ fn a_message_of_any_size_is_one_frame_and_round_trips() {
         let mut g = Topology::new();
         let w = g.worker::<LargeSender>();
         g.set(&w, || LargeSender {});
-        g.route::<Large>(w.id(), LEADER, 1);
+        g.route::<Large>(w.id(), Leader, 1);
         let run = g.launch().expect("no size limit: accepted");
         let got = await_frame::<Large>(&run);
         assert_eq!(got.0[256 * 1024 - 1], 7);
@@ -97,8 +97,8 @@ fn same_type_on_opposite_routes_is_not_a_duplicate() {
     within_10s(|| {
         let mut g = Topology::new();
         let w = quick_worker(&mut g);
-        g.route::<Ping>(w, LEADER, 1);
-        g.route::<Ping>(LEADER, w, 1);
+        g.route::<Ping>(w, Leader, 1);
+        g.route::<Ping>(Leader, w, 1);
         assert_eq!(g.launch().expect("accepted").join().len(), 1);
     });
 }

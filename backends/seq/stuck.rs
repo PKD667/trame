@@ -28,7 +28,7 @@ impl State {
     /// The leader, blocked in `wait`, can never return. `wait(seen)` returns when `acts` moves past
     /// `seen`, and only a worker can move it now: so it is stuck when no worker moves now or after time
     /// passes. A frame already queued for the leader does not count: the leader saw it before `seen`.
-    /// The seq backend has one leader (`LEADER`), so no other leader can act while this one waits.
+    /// The seq backend has one leader (`Leader`), so no other leader can act while this one waits.
     pub(super) fn leader_stuck(&self) -> bool {
         !self.worker_moves_now() && self.earliest_deadline().is_none()
     }

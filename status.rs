@@ -7,7 +7,6 @@ use crate::backend::{Backend, Selected};
 use crate::io::Message;
 use crate::sched::Weight;
 use crate::time::Reading;
-use crate::topology::WorkerId;
 use core::any::{TypeId, type_name};
 
 /// The status a step returns (spec.md 5.3). A failing step answers `Err(e)` from a step that returns
@@ -96,7 +95,8 @@ impl Status {
 
     /// Add the condition: the route from this worker to `to`, carrying `M`, has room for a send. Aborts
     /// when this worker has no such route, since the condition could never change.
-    pub fn room<M: Message>(self, to: WorkerId) -> Status {
+    pub fn room<M: Message>(self, to: impl Into<crate::topology::End>) -> Status {
+        let to = to.into();
         self.with_condition(".room()", |w| {
             let route = Selected::worker_route(to, TypeId::of::<M>()).unwrap_or_else(|| {
                 panic!("trame: .room::<{}>({to:?}) names no route from this worker of that type; declare the route in the topology", type_name::<M>())

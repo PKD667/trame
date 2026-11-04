@@ -8,7 +8,7 @@
 mod common;
 
 use std::time::Instant;
-use trame::{LEADER, Reading, Status, Topology, Worker};
+use trame::{Leader, Reading, Status, Topology, Worker};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -41,8 +41,8 @@ struct Feeder {
 fn feed(me: &u64, msgs: &u64, sent: &mut u64, t0: &mut Option<Reading>, ns: &mut Option<u64>, reported: &mut bool) -> Status {
     let start = *t0.get_or_insert_with(trame::now);
     while *sent < *msgs {
-        if trame::send(LEADER, Small { seq: *sent, from: *me, pad: [0; 48] }).is_err() {
-            return Status::wait().room::<Small>(LEADER);
+        if trame::send(Leader, Small { seq: *sent, from: *me, pad: [0; 48] }).is_err() {
+            return Status::wait().room::<Small>(Leader);
         }
         *sent += 1;
     }
@@ -50,12 +50,12 @@ fn feed(me: &u64, msgs: &u64, sent: &mut u64, t0: &mut Option<Reading>, ns: &mut
     if *reported {
         return Status::Done;
     }
-    match trame::send(LEADER, Report { worker: *me, ns }) {
+    match trame::send(Leader, Report { worker: *me, ns }) {
         Ok(()) => {
             *reported = true;
             Status::Progress
         }
-        Err(_) => Status::wait().room::<Report>(LEADER),
+        Err(_) => Status::wait().room::<Report>(Leader),
     }
 }
 
@@ -66,8 +66,8 @@ fn main() {
     let ws: Vec<Worker<Feeder>> = (0..w).map(|_| t.worker()).collect();
     for (i, h) in ws.iter().enumerate() {
         t.set(h, move || Feeder { me: i as u64, msgs, sent: 0, t0: None, ns: None, reported: false });
-        t.route::<Small>(h.id(), LEADER, 64);
-        t.route::<Report>(h.id(), LEADER, 1);
+        t.route::<Small>(h.id(), Leader, 64);
+        t.route::<Report>(h.id(), Leader, 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
     let total = w as u64 * msgs;

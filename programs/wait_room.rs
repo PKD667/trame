@@ -3,7 +3,7 @@
 //! blocked, so the block is certain: the second send finds the route full. The step reports the block
 //! once. The leader prints the items in order, so a wake that never comes shows as a hang, not a mismatch.
 
-use trame::{LEADER, Outcome, Status, Topology};
+use trame::{Leader, Outcome, Status, Topology};
 
 const ITEMS: u32 = 3;
 
@@ -30,7 +30,7 @@ fn sender(sent: &mut u32, reported: &mut bool) -> Status {
     if *sent == ITEMS {
         return Status::Done;
     }
-    match trame::send(LEADER, Item { id: *sent + 1 }) {
+    match trame::send(Leader, Item { id: *sent + 1 }) {
         Ok(()) => {
             *sent += 1;
             Status::Progress
@@ -38,9 +38,9 @@ fn sender(sent: &mut u32, reported: &mut bool) -> Status {
         Err(_) => {
             if !*reported {
                 *reported = true;
-                assert!(trame::send(LEADER, Blocked).is_ok(), "blocked did not fit");
+                assert!(trame::send(Leader, Blocked).is_ok(), "blocked did not fit");
             }
-            Status::wait().room::<Item>(LEADER)
+            Status::wait().room::<Item>(Leader)
         }
     }
 }
@@ -50,8 +50,8 @@ fn main() {
     let w_worker = t.worker();
     t.set(&w_worker, || Sender { sent: 0, reported: false });
     let w = w_worker.id();
-    t.route::<Item>(w, LEADER, 1);
-    t.route::<Blocked>(w, LEADER, 2);
+    t.route::<Item>(w, Leader, 1);
+    t.route::<Blocked>(w, Leader, 2);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

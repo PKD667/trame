@@ -2,7 +2,7 @@
 //! worker. The checks are the trame part of acceptance; the backend adds its own refusals.
 
 use crate::backend::PoolRef;
-use crate::topology::{LEADER, WorkerId};
+use crate::topology::{End, WorkerId};
 use crate::worker::Erased;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -14,7 +14,7 @@ pub enum Refused {
     /// A route names a worker that the topology does not contain.
     UnknownWorker(WorkerId),
     /// Two routes have the same sender, receiver and message type.
-    Duplicate { from: WorkerId, to: WorkerId, name: &'static str },
+    Duplicate { from: End, to: End, name: &'static str },
     /// A route has capacity 0, but the spec requires `cap >= 1`.
     ZeroCapacity { name: &'static str },
     /// Two steps of one worker receive the same message type: a tag has one owner per worker.
@@ -51,8 +51,8 @@ impl core::fmt::Display for Refused {
 /// type as the tag, so two tags cannot share one type.
 #[derive(Clone, Debug)]
 pub(crate) struct Route {
-    pub from: WorkerId,
-    pub to: WorkerId,
+    pub from: End,
+    pub to: End,
     pub ty: TypeId,
     pub name: &'static str,
     pub size: usize,
@@ -116,8 +116,10 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
     let n = plan.workers.len();
     for (i, r) in plan.routes.iter().enumerate() {
         for end in [r.from, r.to] {
-            if end.1 != crate::topology::HERE || (end != LEADER && end.0 as usize >= n) {
-                return Err(Refused::UnknownWorker(end));
+            if let End::Worker(w) = end
+                && (w.1 != crate::topology::HERE || w.0 as usize >= n)
+            {
+                return Err(Refused::UnknownWorker(w));
             }
         }
         if r.cap == 0 {

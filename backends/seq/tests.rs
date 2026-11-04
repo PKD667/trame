@@ -8,7 +8,7 @@ extern crate std;
 use crate::io::{self, Full, Message};
 use crate::run::{Outcome, Run};
 use crate::status::Status;
-use crate::topology::{LEADER, Topology, WorkerId};
+use crate::topology::{Leader, Topology, WorkerId};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::string::String;
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -93,7 +93,7 @@ fn pinger(to: &WorkerId, sent: &mut bool) -> Status {
     }
     match io::recv::<Pong>() {
         Some(reply) => {
-            assert!(io::send(LEADER, reply).is_ok(), "the leader's route is empty");
+            assert!(io::send(Leader, reply).is_ok(), "the leader's route is empty");
             Status::Done
         }
         None => Status::wait().frame(),
@@ -128,7 +128,7 @@ fn ping_pong_between_two_workers() {
         g.set(&b, move || Ponger { to: ia });
         g.route::<Ping>(ia, ib, 1);
         g.route::<Pong>(ib, ia, 1);
-        g.route::<Pong>(ia, LEADER, 1);
+        g.route::<Pong>(ia, Leader, 1);
         let run = g.launch().expect("accepted");
         assert_eq!(await_frame::<Pong>(&run), Pong(8), "B answers A's 7 with 8");
         assert_eq!(run.join(), [Outcome::Returned, Outcome::Returned]);
@@ -143,7 +143,7 @@ struct Echo {}
 fn echo() -> Status {
     match io::recv::<Ping>() {
         Some(Ping(v)) => {
-            assert!(io::send(LEADER, Pong(v * 2)).is_ok(), "the leader's route is empty");
+            assert!(io::send(Leader, Pong(v * 2)).is_ok(), "the leader's route is empty");
             Status::Done
         }
         None => Status::wait().frame(),
@@ -156,8 +156,8 @@ fn leader_sends_and_receives() {
         let mut g = Topology::new();
         let w = g.worker::<Echo>();
         g.set(&w, || Echo {});
-        g.route::<Ping>(LEADER, w.id(), 1);
-        g.route::<Pong>(w.id(), LEADER, 1);
+        g.route::<Ping>(Leader, w.id(), 1);
+        g.route::<Pong>(w.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         assert_eq!(run.send(w.id(), Ping(21)), Ok(()));
         assert_eq!(await_frame::<Pong>(&run), Pong(42));
@@ -173,9 +173,9 @@ struct Bursty {}
 #[crate::step(Bursty)]
 fn burst() -> Status {
     for i in 0..5 {
-        io::send(LEADER, Ping(i)).expect("a lossy route never answers Full");
+        io::send(Leader, Ping(i)).expect("a lossy route never answers Full");
     }
-    assert!(io::send(LEADER, Pong(0)).is_ok(), "the leader's route is empty");
+    assert!(io::send(Leader, Pong(0)).is_ok(), "the leader's route is empty");
     Status::Done
 }
 
@@ -185,8 +185,8 @@ fn lossy_route_overwrites_the_oldest_frame() {
         let mut g = Topology::new();
         let w = g.worker::<Bursty>();
         g.set(&w, || Bursty {});
-        g.lossy::<Ping>(w.id(), LEADER, 2);
-        g.route::<Pong>(w.id(), LEADER, 1);
+        g.lossy::<Ping>(w.id(), Leader, 2);
+        g.route::<Pong>(w.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         let _done: Pong = await_frame(&run);
         assert_eq!(run.recv::<Ping>(), Some(Ping(3)));
@@ -202,10 +202,10 @@ struct Filler {}
 
 #[crate::step(Filler)]
 fn fill() -> Status {
-    assert_eq!(io::send(LEADER, Ping(1)), Ok(()));
-    assert_eq!(io::send(LEADER, Ping(2)), Ok(()));
-    assert_eq!(io::send(LEADER, Ping(3)), Err(Full), "third frame on a capacity-2 route");
-    assert!(io::send(LEADER, Pong(9)).is_ok(), "the leader's route is empty");
+    assert_eq!(io::send(Leader, Ping(1)), Ok(()));
+    assert_eq!(io::send(Leader, Ping(2)), Ok(()));
+    assert_eq!(io::send(Leader, Ping(3)), Err(Full), "third frame on a capacity-2 route");
+    assert!(io::send(Leader, Pong(9)).is_ok(), "the leader's route is empty");
     Status::Done
 }
 
@@ -215,8 +215,8 @@ fn full_only_at_capacity_on_a_non_lossy_route() {
         let mut g = Topology::new();
         let w = g.worker::<Filler>();
         g.set(&w, || Filler {});
-        g.route::<Ping>(w.id(), LEADER, 2);
-        g.route::<Pong>(w.id(), LEADER, 1);
+        g.route::<Ping>(w.id(), Leader, 2);
+        g.route::<Pong>(w.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         assert_eq!(await_frame::<Pong>(&run), Pong(9));
         assert_eq!(run.recv::<Ping>(), Some(Ping(1)));

@@ -769,7 +769,8 @@ specification.
 | `Worker<S>` | type: `id`, `take`, `error` | a declared worker, and the leader's access to its state after the join (Section 4, Definition (Join)) |
 | `Pool<P>` | type | the declared pool (Section 4) |
 | `Handle` | trait, implemented by `Worker<S>` and `Pool<P>` only | what `Topology::set` and `Run::edit` act on |
-| `WorkerId`, `LEADER` | type, constant | a worker, the leader |
+| `WorkerId` | type | a worker, of this host or another (`(HostId, k)`) |
+| `Leader` | type, unit | this host's leader as an end of a route. Not a worker: it has no index, state or steps |
 | `Refused` | enum: `UnknownWorker`, `Duplicate`, `ZeroCapacity`, `TwoOwners`, `PoolType`, `Alloc`, `PoolUnset`, `Unset`, `Backend` | a refusal at launch (Section 4, Requirement (Launch checks), Requirement (Acceptance)) |
 | `Run` | type: `send`, `recv`, `wait`, `edit`, `stop`, `join` | the leader's side of a run (5.2, 5.5, Join) |
 | `Outcome` | enum: `Returned`, `Stopped`, `Failed`, `Deadlock` | a worker's result (5.3, Definition (Result)). A panic is Definition Abort, not a result |

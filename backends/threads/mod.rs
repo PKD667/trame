@@ -21,7 +21,7 @@ use crate::local_routes::Routes;
 use crate::run::{Outcome, panic_message};
 use crate::sched::{Answer, Event, Sched};
 use crate::time::ClockId;
-use crate::topology::{LEADER, WorkerId};
+use crate::topology::{End, WorkerId};
 use crate::worker::{Slot, agent};
 use std::boxed::Box;
 use std::cell::RefCell;
@@ -194,14 +194,14 @@ impl Backend for Selected {
         WorkerId::here(current().1 as u32)
     }
 
-    fn worker_send(to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
+    fn worker_send(to: End, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
         let (shared, w, _) = current();
         let mut g = shared.lock();
         if g.must_stop(w) {
             drop(g);
             resume_unwind(Box::new(Abandoned));
         }
-        let from = WorkerId::here(w as u32);
+        let from = End::Worker(WorkerId::here(w as u32));
         let Some(i) = g.routes.find(from, to, ty) else {
             drop(g);
             panic!("trame: worker {from:?} has no route to {to:?} for {name}");
@@ -218,7 +218,7 @@ impl Backend for Selected {
             drop(g);
             resume_unwind(Box::new(Abandoned));
         }
-        let taken = g.routes.take(WorkerId::here(w as u32), ty, out);
+        let taken = g.routes.take(End::Worker(WorkerId::here(w as u32)), ty, out);
         if taken {
             acted(&shared, &mut g);
         }
@@ -228,20 +228,20 @@ impl Backend for Selected {
     fn worker_offer(ty: core::any::TypeId) -> bool {
         let (shared, w, _) = current();
         let g = shared.lock();
-        g.routes.all.iter().any(|r| r.to == WorkerId::here(w as u32) && r.ty == ty && r.len > 0)
+        g.routes.all.iter().any(|r| r.to == End::Worker(WorkerId::here(w as u32)) && r.ty == ty && r.len > 0)
     }
 
-    fn worker_route(to: WorkerId, ty: core::any::TypeId) -> Option<usize> {
+    fn worker_route(to: End, ty: core::any::TypeId) -> Option<usize> {
         let (shared, w, _) = current();
         let g = shared.lock();
-        let from = WorkerId::here(w as u32);
+        let from = End::Worker(WorkerId::here(w as u32));
         g.routes.all.iter().filter(|r| r.from == from).position(|r| r.to == to && r.ty == ty)
     }
 
     fn worker_room(route: usize) -> bool {
         let (shared, w, _) = current();
         let g = shared.lock();
-        let from = WorkerId::here(w as u32);
+        let from = End::Worker(WorkerId::here(w as u32));
         match g.routes.all.iter().filter(|r| r.from == from).nth(route) {
             Some(r) => r.lossy || r.len < r.cap,
             None => {
@@ -288,7 +288,7 @@ impl Backend for Selected {
 
     fn leader_send(run: &Run, to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
         let mut g = leader_check(run.shared.lock());
-        let Some(i) = g.routes.find(LEADER, to, ty) else {
+        let Some(i) = g.routes.find(End::Leader, End::Worker(to), ty) else {
             drop(g);
             panic!("trame: the leader has no route to {to:?} for {name}");
         };
@@ -299,7 +299,7 @@ impl Backend for Selected {
 
     fn leader_recv(run: &Run, ty: core::any::TypeId, out: &mut [u8]) -> bool {
         let mut g = leader_check(run.shared.lock());
-        let taken = g.routes.take(LEADER, ty, out);
+        let taken = g.routes.take(End::Leader, ty, out);
         if taken {
             acted(&run.shared, &mut g);
         }

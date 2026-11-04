@@ -6,7 +6,7 @@ extern crate std;
 use super::tests::{await_frame, within_10s};
 use crate::io;
 use crate::status::Status;
-use crate::topology::{LEADER, Topology};
+use crate::topology::{Leader, Topology};
 
 #[crate::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -34,9 +34,9 @@ fn send_burst() -> Status {
         Spike { neuron: 3, t: 12 },
         Spike { neuron: 4, t: 13 },
     ];
-    match io::send(LEADER, Burst { id: 9, spikes }) {
+    match io::send(Leader, Burst { id: 9, spikes }) {
         Ok(()) => Status::Done,
-        Err(_) => Status::wait().room::<Burst>(LEADER),
+        Err(_) => Status::wait().room::<Burst>(Leader),
     }
 }
 
@@ -46,7 +46,7 @@ fn a_message_with_an_array_field_round_trips() {
         let mut g = Topology::new();
         let w = g.worker::<Sender>();
         g.set(&w, || Sender {});
-        g.route::<Burst>(w.id(), LEADER, 1);
+        g.route::<Burst>(w.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         let got: Burst = await_frame(&run);
         assert_eq!(got.id, 9);
@@ -57,9 +57,6 @@ fn a_message_with_an_array_field_round_trips() {
 
 #[test]
 fn an_array_of_message_structs_is_a_message_type() {
-    within_10s(|| {
-        let mut g = Topology::new();
-        g.route::<[Spike; 4]>(LEADER, LEADER, 1);
-        assert!(g.launch().is_ok());
-    });
+    fn message<M: crate::io::Message>() {}
+    message::<[Spike; 4]>();
 }

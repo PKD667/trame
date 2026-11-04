@@ -22,7 +22,7 @@ use crate::io::Full;
 use crate::launch::{Plan, Refused};
 use crate::run::Outcome;
 use crate::time::ClockId;
-use crate::topology::WorkerId;
+use crate::topology::{End, WorkerId};
 
 use super::layout::{OUT_ABORT, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
 use super::leader::{self, Leader};
@@ -160,7 +160,7 @@ impl Backend for Selected {
         }
     }
 
-    fn worker_send(to: WorkerId, ty: TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
+    fn worker_send(to: End, ty: TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
         worker::send(to, ty, name, bytes)
     }
 
@@ -172,7 +172,7 @@ impl Backend for Selected {
         worker::offer(ty)
     }
 
-    fn worker_route(to: WorkerId, ty: TypeId) -> Option<usize> {
+    fn worker_route(to: End, ty: TypeId) -> Option<usize> {
         worker::route_index(to, ty)
     }
 

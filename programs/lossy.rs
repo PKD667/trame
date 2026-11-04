@@ -3,7 +3,7 @@
 //! every overwrite has already happened and the output does not depend on timing: the four newest frames
 //! survive. Worker 1 reports them to the leader, which prints them and the outcomes.
 
-use trame::{LEADER, Outcome, Status, Topology, WorkerId};
+use trame::{Leader, Outcome, Status, Topology, WorkerId};
 
 const SENT: u32 = 10;
 
@@ -51,12 +51,12 @@ struct Drain {
 #[trame::step(Drain, receives = Done, Lossy)]
 fn drain(token: &mut bool, pending: &mut Option<u32>) -> Status {
     if let Some(v) = *pending {
-        return match trame::send(LEADER, Ev { v }) {
+        return match trame::send(Leader, Ev { v }) {
             Ok(()) => {
                 *pending = None;
                 Status::Progress
             }
-            Err(_) => Status::wait().room::<Ev>(LEADER),
+            Err(_) => Status::wait().room::<Ev>(Leader),
         };
     }
     if !*token {
@@ -86,7 +86,7 @@ fn main() {
     t.set(&b, || Drain { token: false, pending: None });
     t.lossy::<Lossy>(a.id(), b.id(), 4);
     t.route::<Done>(a.id(), b.id(), 1);
-    t.route::<Ev>(b.id(), LEADER, 8);
+    t.route::<Ev>(b.id(), Leader, 8);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {

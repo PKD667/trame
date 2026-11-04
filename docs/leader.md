@@ -32,13 +32,15 @@ at launch, in the memory where the value is used (`memory-domains.md`). A second
 first.
 
 **Route.** `t.route::<M>(from, to, cap)` and `t.lossy::<M>(from, to, cap)` add a route
-(`transport.md`). `LEADER` names the leader as an end.
+(`transport.md`). An end is a worker (`w.id()`, `(HostId, k)`) or `Leader`. The leader is not a
+worker: it is the process outside them that holds the `Run`, a rank of its own on MPI, the host
+program on a device. A route from the leader to itself panics.
 
 ```rust
 let mut t = Topology::new();
 let w = t.worker::<Pipe>();
 t.set(&w, || Pipe { ring: vec![0; 64], head: 0, tail: 0, delivered: 0, flushed: 0 });
-t.route::<Job>(LEADER, w.id(), 16);
+t.route::<Job>(Leader, w.id(), 16);
 let run = t.launch()?;
 ```
 

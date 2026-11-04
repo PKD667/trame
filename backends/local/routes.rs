@@ -7,7 +7,7 @@ extern crate std;
 use crate::io::Full;
 use crate::launch::Route as Planned;
 use crate::launch::Refused;
-use crate::topology::WorkerId;
+use crate::topology::End;
 use std::any::TypeId;
 use std::vec;
 use std::vec::Vec;
@@ -16,8 +16,8 @@ use std::vec::Vec;
 /// `buf`, a ring of `cap` slots of `size` bytes, allocated once at launch: a send copies into a
 /// slot and a receive copies out of one, so neither allocates. The oldest frame is at `head`.
 pub(crate) struct Route {
-    pub from: WorkerId,
-    pub to: WorkerId,
+    pub from: End,
+    pub to: End,
     pub ty: TypeId,
     pub cap: usize,
     pub size: usize,
@@ -54,7 +54,7 @@ impl Routes {
     }
 
     /// The index of the route from `from` to `to` with tag `ty`, if the topology has one.
-    pub fn find(&self, from: WorkerId, to: WorkerId, ty: TypeId) -> Option<usize> {
+    pub fn find(&self, from: End, to: End, ty: TypeId) -> Option<usize> {
         self.all.iter().position(|r| r.from == from && r.to == to && r.ty == ty)
     }
 
@@ -82,7 +82,7 @@ impl Routes {
     /// frame is then taken within one round of its siblings, whatever is taken in between (spec.md 6,
     /// Progress). A cursor shared by every route and tag is not enough: a periodic mix of takes can
     /// bring it back to the same route each time. Answers `false` when no route has a frame.
-    pub fn take(&mut self, to: WorkerId, ty: TypeId, out: &mut [u8]) -> bool {
+    pub fn take(&mut self, to: End, ty: TypeId, out: &mut [u8]) -> bool {
         let next = self.takes + 1;
         let Some(r) = self.all.iter_mut().filter(|r| r.to == to && r.ty == ty && r.len > 0).min_by_key(|r| r.taken)
         else {

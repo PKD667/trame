@@ -9,7 +9,7 @@ use super::tests_steps::{Ev, collect, report};
 use crate::run::Outcome::{Failed, Returned};
 use crate::status::Status;
 use crate::time::Reading;
-use crate::topology::{LEADER, Topology};
+use crate::topology::{Leader, Topology};
 use core::time::Duration;
 
 /// `fails` (index 0) returns an error at its first step. `late` would report 500 and set `late_ran`
@@ -41,7 +41,7 @@ fn a_failed_step_ends_the_worker_and_its_error_is_kept() {
         let mut g = Topology::new();
         let w = g.worker::<Failing>();
         g.set(&w, || Failing { late_ran: false });
-        g.route::<Ev>(w.id(), LEADER, 16);
+        g.route::<Ev>(w.id(), Leader, 16);
         let run = g.launch().expect("accepted");
         assert_eq!(run.join(), [Failed]);
         assert_eq!(w.error(), Some(Boom(7)));
@@ -78,7 +78,7 @@ fn wait_until_wakes_at_the_deadline() {
         let mut g = Topology::new();
         let w = g.worker::<Sleeper>();
         g.set(&w, || Sleeper { start: None });
-        g.route::<Ev>(w.id(), LEADER, 4);
+        g.route::<Ev>(w.id(), Leader, 4);
         let run = g.launch().expect("accepted");
         assert_eq!(collect(&run, 1), [1]);
         assert_eq!(run.join(), [Returned]);
@@ -93,7 +93,7 @@ fn join_waits_for_a_wait_until_deadline() {
         let mut g = Topology::new();
         let w = g.worker::<Sleeper>();
         g.set(&w, || Sleeper { start: None });
-        g.route::<Ev>(w.id(), LEADER, 4);
+        g.route::<Ev>(w.id(), Leader, 4);
         let run = g.launch().expect("accepted");
         assert_eq!(run.join(), [Returned]);
     });

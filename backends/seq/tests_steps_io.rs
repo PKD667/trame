@@ -9,7 +9,7 @@ use super::tests_steps::{Ev, collect, report};
 use crate::io;
 use crate::run::Outcome::Returned;
 use crate::status::Status;
-use crate::topology::{LEADER, Topology};
+use crate::topology::{Leader, Topology};
 
 #[crate::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -49,9 +49,9 @@ fn a_frame_wait_wakes_on_a_received_type_only() {
         let mut g = Topology::new();
         let w = g.worker::<Framed>();
         g.set(&w, || Framed { count: 0 });
-        g.route::<Ev>(w.id(), LEADER, 16);
-        g.route::<Job>(LEADER, w.id(), 4);
-        g.route::<Other>(LEADER, w.id(), 4);
+        g.route::<Ev>(w.id(), Leader, 16);
+        g.route::<Job>(Leader, w.id(), 4);
+        g.route::<Other>(Leader, w.id(), 4);
         let run = g.launch().expect("accepted");
         assert_eq!(collect(&run, 1), [101], "the first call waits for a job");
         // That `Other` does not wake the step is programs/frame_other's check (a call count);
@@ -106,9 +106,9 @@ fn a_step_cannot_receive_a_type_it_does_not_receive_and_its_frames_stay_queued()
         let mut g = Topology::new();
         let w = g.worker::<Peeking>();
         g.set(&w, || Peeking { got_job: false });
-        g.route::<Ev>(w.id(), LEADER, 16);
-        g.route::<Job>(LEADER, w.id(), 4);
-        g.route::<Other>(LEADER, w.id(), 4);
+        g.route::<Ev>(w.id(), Leader, 16);
+        g.route::<Job>(Leader, w.id(), 4);
+        g.route::<Other>(Leader, w.id(), 4);
         let run = g.launch().expect("accepted");
         // Other is sent first, so when the Job is there the Other already is too.
         run.send(w.id(), Other { id: 3 }).expect("room");

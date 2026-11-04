@@ -25,7 +25,7 @@ fn step(q: &mut Queue) -> trame::Status {
         sum[i] = i as u32;
         buffer[i] = sum[i];
     }
-    let _ = trame::send(trame::LEADER, Msg { n: q.n });
+    let _ = trame::send(trame::Leader, Msg { n: q.n });
     let _ = trame::now();
     q.n = trame::math::f32::exp(1.0) as u32 + sum[3] + buffer[3];
     trame::Status::Done

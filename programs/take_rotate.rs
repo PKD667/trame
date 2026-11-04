@@ -7,7 +7,7 @@
 //! that always starts at route 0 takes `Item 1` forever: the run never ends, and a timeout reports it.
 //! Spec.md 5.2 allows any order across routes, so the program prints only that `Item 2` arrived.
 
-use trame::{LEADER, Outcome, Status, Topology, WorkerId};
+use trame::{Leader, Outcome, Status, Topology, WorkerId};
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -44,12 +44,12 @@ struct Rx {
 #[trame::step(Rx, receives = Item, Ack)]
 fn rx(phase: &mut Phase) -> Status {
     match *phase {
-        Phase::Report => match trame::send(LEADER, Took) {
+        Phase::Report => match trame::send(Leader, Took) {
             Ok(()) => {
                 *phase = Phase::AwaitAck;
                 Status::Progress
             }
-            Err(_) => Status::wait().room::<Took>(LEADER),
+            Err(_) => Status::wait().room::<Took>(Leader),
         },
         Phase::AwaitAck => match trame::recv::<Ack>() {
             Some(Ack) => {
@@ -60,7 +60,7 @@ fn rx(phase: &mut Phase) -> Status {
         },
         Phase::Take => match trame::recv::<Item>() {
             Some(Item { id: 2 }) => {
-                assert!(trame::send(LEADER, Got).is_ok(), "got did not fit");
+                assert!(trame::send(Leader, Got).is_ok(), "got did not fit");
                 Status::Done
             }
             Some(Item { id: 1 }) => {
@@ -100,11 +100,11 @@ fn main() {
     let (rx_id, tx_id) = (rx.id(), tx.id());
     t.set(&rx, || Rx { phase: Phase::Take });
     t.set(&tx, move || Tx { to: rx_id });
-    t.route::<Item>(LEADER, rx_id, 4);
+    t.route::<Item>(Leader, rx_id, 4);
     t.route::<Item>(tx_id, rx_id, 1);
-    t.route::<Ack>(LEADER, rx_id, 1);
-    t.route::<Took>(rx_id, LEADER, 1);
-    t.route::<Got>(rx_id, LEADER, 1);
+    t.route::<Ack>(Leader, rx_id, 1);
+    t.route::<Took>(rx_id, Leader, 1);
+    t.route::<Got>(rx_id, Leader, 1);
     let run = match t.launch() {
         Ok(run) => run,
         Err(e) => {
