@@ -29,9 +29,14 @@ def run_bench(table_name: str) -> list[dict]:
     if table_name == "bench_knee":
         args.append("knee")
     
-    res = proc.run(["taskset", "-c", "4"] + args, timeout=600.0)
+    try:
+        res = proc.run(["taskset", "-c", "4"] + args, timeout=600.0)
+    except Exception as e:
+        lab.record("error", {"stage": "proc.run", "error": str(e), "args": args})
+        raise
     
     if res.rc != 0:
+        lab.record("error", {"stage": "bench_rc", "rc": res.rc, "stderr": res.stderr[:200]})
         raise SystemExit(f"bench failed with rc {res.rc}: {res.stderr}")
     
     rows = []
