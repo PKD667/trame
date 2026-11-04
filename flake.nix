@@ -154,40 +154,25 @@
       programsMpiClosure = runnerClosure "programs-mpi" "programs.py" trameMpiBins;
       transportClosure = runnerClosure "transport-mpi" "transport.py" trameMpiBins;
       scaleClosure = runnerClosure "scale-local" "scale.py" trameMpiBins;
-      # The SIMD benchmark (experiments/simd/): a standalone crate with its own Cargo.lock, trame as path dep.
-      # Build from experiments/simd, but include parent trame files for path dep to resolve.
-      trameMiniSrc = pkgs.lib.fileset.toSource {
-        root = ./.;
-        fileset = pkgs.lib.fileset.difference ./. (
-          pkgs.lib.fileset.unions [
-            (pkgs.lib.fileset.maybeMissing ./target)
-            (pkgs.lib.fileset.maybeMissing ./driver)
-            (pkgs.lib.fileset.maybeMissing ./proofs)
-            (pkgs.lib.fileset.maybeMissing ./conformance)
-            (pkgs.lib.fileset.maybeMissing ./rejections)
-            (pkgs.lib.fileset.maybeMissing ./scale)
-            (pkgs.lib.fileset.maybeMissing ./examples)
-            (pkgs.lib.fileset.maybeMissing ./tests)
-            (pkgs.lib.fileset.maybeMissing ./programs)
-          ]
-        );
-      };
-      simdBin = let
-        cargoSetupHook = pkgs.writeShellScript "cargo-setup" ''cd experiments/simd'';
-      in pkgs.rustPlatform.buildRustPackage {
+      # The SIMD benchmark (experiments/simd/): a crate of its own (own Cargo.lock) with trame as a path
+      # dependency, so the source is trame's files plus that directory, built from the subdirectory.
+      simdBin = pkgs.rustPlatform.buildRustPackage {
         pname = "trame-simd-bench";
         version = "0.1.0";
-        src = trameMiniSrc;
+        src = pkgs.lib.fileset.toSource {
+          root = ./.;
+          fileset = pkgs.lib.fileset.unions [
+            trameFiles
+            (pkgs.lib.fileset.difference ./experiments/simd (pkgs.lib.fileset.maybeMissing ./experiments/simd/target))
+            (pkgs.lib.fileset.maybeMissing ./backends/local)
+            (pkgs.lib.fileset.maybeMissing ./backends/threads)
+          ];
+        };
+        sourceRoot = "source/experiments/simd";
         cargoLock.lockFile = ./experiments/simd/Cargo.lock;
         RUSTFLAGS = "-C overflow-checks=on";
-        # Set working directory to experiments/simd for all phases
-        prePatch = ''cd experiments/simd'';
         cargoBuildFlags = [ "--bin" "bench" ];
         doCheck = false;
-        # Install from the subdirectory's target
-        postInstall = ''cp $src/experiments/simd/target/release/bench $out/bin/ || cp target/release/bench $out/bin/'';
-        # Override installPhase to not try to copy from current dir
-        installPhase = ''mkdir -p $out/bin'';
       };
       simdClosure = nixsci.lib.mkExperiment pkgs {
         name = "simd-bench";
