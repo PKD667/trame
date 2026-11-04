@@ -25,19 +25,19 @@ MACHINE_COLUMNS = ["hostname", "model", "avx2", "avx512f", "kernel", "rustc"]
 
 def run_bench(table_name: str) -> list[dict]:
     """Run bench or bench knee, parse TSV output, return typed rows."""
-    args = [f"{os.environ['BIN']}/bench"]
+    args = [f"{os.environ.get('BIN', '')}/bench"]
     if table_name == "bench_knee":
         args.append("knee")
     
     try:
         res = proc.run(["taskset", "-c", "4"] + args, timeout=600.0)
     except Exception as e:
-        lab.record("error", {"stage": "proc.run", "error": str(e), "args": args})
-        raise
+        lab.record("error", {"stage": "proc.run", "table": table_name, "error": str(e), "args": str(args)})
+        return []
     
     if res.rc != 0:
-        lab.record("error", {"stage": "bench_rc", "rc": res.rc, "stderr": res.stderr[:200]})
-        raise SystemExit(f"bench failed with rc {res.rc}: {res.stderr}")
+        lab.record("error", {"stage": "bench_rc", "table": table_name, "rc": res.rc, "stderr": res.stderr[:200] if res.stderr else None})
+        return []
     
     rows = []
     for line in res.stdout.splitlines():
@@ -104,11 +104,14 @@ def main():
     # Debug: check what's in BIN directory
     bin_dir = os.environ.get('BIN', 'BIN_NOT_SET')
     try:
-        bin_contents = os.listdir(bin_dir) if bin_dir != 'BIN_NOT_SET' else []
-        lab.record("debug", {"bin_dir": bin_dir, "contents": bin_contents[:10]})  # limit to first 10 items
+        if bin_dir != 'BIN_NOT_SET':
+            bin_contents = os.listdir(bin_dir)
+            lab.record("debug", {"bin_dir": bin_dir, "exists": True, "contents": bin_contents[:10]})  # limit to first 10 items
+        else:
+            lab.record("debug", {"bin_dir": bin_dir, "exists": False})
     except Exception as e:
-        lab.record("debug", {"bin_dir_error": str(e), "bin_dir": bin_dir})
-        raise
+        lab.record("debug", {"bin_dir_error": str(e), "bin_dir": bin_dir, "exception_type": type(e).__name__})
+        # Don't re-raise, continue
     
     # Run bench table.
     lab.record("debug", {"stage": "before_bench"})
