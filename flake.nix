@@ -155,19 +155,39 @@
       transportClosure = runnerClosure "transport-mpi" "transport.py" trameMpiBins;
       scaleClosure = runnerClosure "scale-local" "scale.py" trameMpiBins;
       # The SIMD benchmark (experiments/simd/): a standalone crate with its own Cargo.lock, trame as path dep.
-      simdBin = pkgs.rustPlatform.buildRustPackage {
+      # Build from experiments/simd, but include parent trame files for path dep to resolve.
+      trameMiniSrc = pkgs.lib.fileset.toSource {
+        root = ./.;
+        fileset = pkgs.lib.fileset.difference ./. (
+          pkgs.lib.fileset.unions [
+            (pkgs.lib.fileset.maybeMissing ./target)
+            (pkgs.lib.fileset.maybeMissing ./driver)
+            (pkgs.lib.fileset.maybeMissing ./proofs)
+            (pkgs.lib.fileset.maybeMissing ./conformance)
+            (pkgs.lib.fileset.maybeMissing ./rejections)
+            (pkgs.lib.fileset.maybeMissing ./scale)
+            (pkgs.lib.fileset.maybeMissing ./examples)
+            (pkgs.lib.fileset.maybeMissing ./tests)
+            (pkgs.lib.fileset.maybeMissing ./programs)
+          ]
+        );
+      };
+      simdBin = let
+        cargoSetupHook = pkgs.writeShellScript "cargo-setup" ''cd experiments/simd'';
+      in pkgs.rustPlatform.buildRustPackage {
         pname = "trame-simd-bench";
         version = "0.1.0";
-        src = pkgs.lib.fileset.toSource {
-          root = ./experiments/simd;
-          fileset = pkgs.lib.fileset.difference ./experiments/simd (pkgs.lib.fileset.maybeMissing ./experiments/simd/target);
-        };
+        src = trameMiniSrc;
         cargoLock.lockFile = ./experiments/simd/Cargo.lock;
-        # Overflow checks on (spec.md requirement).
         RUSTFLAGS = "-C overflow-checks=on";
+        # Set working directory to experiments/simd for all phases
+        prePatch = ''cd experiments/simd'';
         cargoBuildFlags = [ "--bin" "bench" ];
         doCheck = false;
-        installPhase = ''mkdir -p $out/bin; cp target/release/bench $out/bin/'';
+        # Install from the subdirectory's target
+        postInstall = ''cp $src/experiments/simd/target/release/bench $out/bin/ || cp target/release/bench $out/bin/'';
+        # Override installPhase to not try to copy from current dir
+        installPhase = ''mkdir -p $out/bin'';
       };
       simdClosure = nixsci.lib.mkExperiment pkgs {
         name = "simd-bench";
@@ -332,6 +352,7 @@
         trame-driver = trameDriver;
         trame-mpi-bins = trameMpiBins;
         trame-seq-bins = trameSeqBins;
+        trame-simd-bench = simdBin;
       };
       lab.${system}.experiments = experiments;
       # The mpi dev shell as a nixsci deployment, for `nixsci deploy shell ... dev -- CMD` on a cluster
