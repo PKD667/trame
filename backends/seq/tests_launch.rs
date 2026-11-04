@@ -60,8 +60,21 @@ fn route_to_a_worker_not_in_the_topology_is_refused() {
     within_10s(|| {
         let mut g = Topology::new();
         quick_worker(&mut g);
-        g.route::<Ping>(LEADER, WorkerId(7), 1);
-        assert_eq!(g.launch().err(), Some(Refused::UnknownWorker(WorkerId(7))));
+        g.route::<Ping>(LEADER, WorkerId::here(7), 1);
+        assert_eq!(g.launch().err(), Some(Refused::UnknownWorker(WorkerId::here(7))));
+    });
+}
+
+#[test]
+fn a_seq_deployment_is_one_host_and_a_route_to_another_host_is_refused() {
+    within_10s(|| {
+        use crate::HostId;
+        assert_eq!(crate::host(), HostId(0));
+        assert_eq!(WorkerId::from((HostId(0), 3)), WorkerId::here(3));
+        let mut g = Topology::new();
+        let w = quick_worker(&mut g);
+        g.route::<Ping>(w, (HostId(1), 0), 1);
+        assert_eq!(g.launch().err(), Some(Refused::UnknownWorker(WorkerId(0, 1))));
     });
 }
 

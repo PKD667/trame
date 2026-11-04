@@ -202,7 +202,7 @@ impl Backend for Selected {
     }
 
     fn worker_me() -> WorkerId {
-        WorkerId(worker::me())
+        WorkerId::here(worker::me())
     }
 
     fn worker_stop_requested() -> bool {

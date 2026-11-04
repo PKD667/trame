@@ -30,8 +30,8 @@ pub struct Full;
 
 /// Send `msg` from this worker to `to`, on the route of type `M`. Answers `Full` only when that
 /// route is not lossy and at capacity. Panics when the topology has no such route.
-pub fn send<M: Message>(to: WorkerId, msg: M) -> Result<(), Full> {
-    Selected::worker_send(to, TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
+pub fn send<M: Message>(to: impl Into<WorkerId>, msg: M) -> Result<(), Full> {
+    Selected::worker_send(to.into(), TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
 }
 
 /// The next message of type `M` addressed to this worker, or `None` when none is available. A type
@@ -49,6 +49,21 @@ pub fn recv<M: Message>() -> Option<M> {
 pub(crate) fn read<M: Message>(take: impl FnOnce(&mut [u8]) -> bool) -> Option<M> {
     let mut out = <M as Message>::zeroed();
     if take(crate::__bytemuck::bytes_of_mut(&mut out)) { Some(out) } else { None }
+}
+
+/// This host (`HostId`), on its leader and in its workers.
+pub fn host() -> crate::topology::HostId {
+    crate::topology::HostId(Selected::host())
+}
+
+/// The tag of a message type across hosts (CONTRACT.md F4): equal in two compilations of the same
+/// type, unlike `TypeId`. FNV-1a over the type's path and its size.
+pub(crate) fn tag<M: Message>() -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in type_name::<M>().bytes().chain((core::mem::size_of::<M>() as u64).to_le_bytes()) {
+        h = (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
+    }
+    h
 }
 
 /// This worker. Panics outside a worker.

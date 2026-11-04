@@ -3,7 +3,7 @@
 
 use crate::backend::{Backend, Selected};
 use crate::io::{Full, Message, read};
-use crate::topology::{Handle, WorkerId};
+use crate::topology::{Handle, HostId, WorkerId};
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -38,13 +38,25 @@ impl Run {
 
     /// Send `msg` from the leader to `to`, on the route of type `M`. Panics when there is no such
     /// route. `Full` only on a non-lossy route at capacity.
-    pub fn send<M: Message>(&self, to: WorkerId, msg: M) -> Result<(), Full> {
-        Selected::leader_send(&self.inner, to, TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
+    pub fn send<M: Message>(&self, to: impl Into<WorkerId>, msg: M) -> Result<(), Full> {
+        Selected::leader_send(&self.inner, to.into(), TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
     }
 
     /// The next message of type `M` addressed to the leader, or `None`.
     pub fn recv<M: Message>(&self) -> Option<M> {
         read(|out| Selected::leader_recv(&self.inner, TypeId::of::<M>(), out))
+    }
+
+    /// Send `msg` to the leader of host `to`, on the peer channel, not a route (CONTRACT.md F6).
+    /// `Full` when that channel is at capacity. Panics when `to` is not a host of the federation.
+    pub fn leader_send<M: Message>(&self, to: HostId, msg: M) -> Result<(), Full> {
+        Selected::peer_send(&self.inner, to.0, crate::io::tag::<M>(), crate::__bytemuck::bytes_of(&msg))
+    }
+
+    /// The next message of type `M` from a peer leader, with the host it came from, or `None`.
+    pub fn leader_recv<M: Message>(&self) -> Option<(HostId, M)> {
+        let mut from = 0;
+        read(|out| Selected::peer_recv(&self.inner, crate::io::tag::<M>(), out).map(|h| from = h).is_some()).map(|m| (HostId(from), m))
     }
 
     /// Edit `h`, a worker's state or the pool: `f` runs once no step that uses it runs, and no such

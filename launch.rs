@@ -100,7 +100,7 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
     let n = plan.workers.len();
     for (i, r) in plan.routes.iter().enumerate() {
         for end in [r.from, r.to] {
-            if end != LEADER && end.0 as usize >= n {
+            if end.1 != crate::topology::HERE || (end != LEADER && end.0 as usize >= n) {
                 return Err(Refused::UnknownWorker(end));
             }
         }
@@ -119,7 +119,7 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
         return Err(Refused::PoolUnset);
     }
     for (k, w) in plan.workers.iter().enumerate() {
-        let worker = WorkerId(k as u32);
+        let worker = WorkerId::here(k as u32);
         if plan.builders[k].is_none() {
             return Err(Refused::Unset { worker });
         }

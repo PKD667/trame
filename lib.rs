@@ -69,13 +69,13 @@ mod time;
 mod topology;
 
 /// The surface of spec.md 7: every public name of the crate, at the root and nowhere else.
-pub use io::{Full, Message, me, recv, send};
+pub use io::{Full, Message, host, me, recv, send};
 pub use domain::Alloc;
 pub use launch::Refused;
 pub use run::{Outcome, Run};
 pub use status::Status;
 pub use time::{Reading, now};
-pub use topology::{Handle, LEADER, Pool, Topology, Worker, WorkerId};
+pub use topology::{Handle, HostId, LEADER, Pool, Topology, Worker, WorkerId};
 
 #[cfg(any(all(feature = "seq", feature = "mpi"), all(feature = "seq", feature = "threads"), all(feature = "threads", feature = "mpi")))]
 compile_error!("features `seq`, `threads` and `mpi` are exclusive: one backend per build (threads: --no-default-features --features threads)");

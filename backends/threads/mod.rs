@@ -191,7 +191,7 @@ impl Backend for Selected {
     }
 
     fn worker_me() -> WorkerId {
-        WorkerId(current().1 as u32)
+        WorkerId::here(current().1 as u32)
     }
 
     fn worker_send(to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
@@ -201,7 +201,7 @@ impl Backend for Selected {
             drop(g);
             resume_unwind(Box::new(Abandoned));
         }
-        let from = WorkerId(w as u32);
+        let from = WorkerId::here(w as u32);
         let Some(i) = g.routes.find(from, to, ty) else {
             drop(g);
             panic!("trame: worker {from:?} has no route to {to:?} for {name}");
@@ -218,7 +218,7 @@ impl Backend for Selected {
             drop(g);
             resume_unwind(Box::new(Abandoned));
         }
-        let taken = g.routes.take(WorkerId(w as u32), ty, out);
+        let taken = g.routes.take(WorkerId::here(w as u32), ty, out);
         if taken {
             acted(&shared, &mut g);
         }
@@ -228,20 +228,20 @@ impl Backend for Selected {
     fn worker_offer(ty: core::any::TypeId) -> bool {
         let (shared, w, _) = current();
         let g = shared.lock();
-        g.routes.all.iter().any(|r| r.to == WorkerId(w as u32) && r.ty == ty && r.len > 0)
+        g.routes.all.iter().any(|r| r.to == WorkerId::here(w as u32) && r.ty == ty && r.len > 0)
     }
 
     fn worker_route(to: WorkerId, ty: core::any::TypeId) -> Option<usize> {
         let (shared, w, _) = current();
         let g = shared.lock();
-        let from = WorkerId(w as u32);
+        let from = WorkerId::here(w as u32);
         g.routes.all.iter().filter(|r| r.from == from).position(|r| r.to == to && r.ty == ty)
     }
 
     fn worker_room(route: usize) -> bool {
         let (shared, w, _) = current();
         let g = shared.lock();
-        let from = WorkerId(w as u32);
+        let from = WorkerId::here(w as u32);
         match g.routes.all.iter().filter(|r| r.from == from).nth(route) {
             Some(r) => r.lossy || r.len < r.cap,
             None => {

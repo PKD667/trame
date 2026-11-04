@@ -12,12 +12,34 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use core::any::{TypeId, type_name};
 use core::mem::size_of;
 
-/// Opaque identity of a worker, or of the leader. Made only by `Topology::worker`, and `LEADER`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct WorkerId(pub(crate) u32);
+/// A host of the federation: one memory domain, one backend, one leader. Fixed by deployment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct HostId(pub u32);
 
-/// The leader of the deployment. It is an agent of its own, and it may be the end of a route.
-pub const LEADER: WorkerId = WorkerId(u32::MAX);
+/// Identity of a worker, or of the leader: its index among its host's workers (0..n on every host),
+/// and its host. Made by `Topology::worker` and `LEADER` for this host's, and from `(HostId, k)` for
+/// worker k of another host, as that host declared it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WorkerId(pub(crate) u32, pub(crate) u32);
+
+/// The host field of a worker of this host.
+pub(crate) const HERE: u32 = u32::MAX;
+
+impl WorkerId {
+    pub(crate) const fn here(k: u32) -> Self {
+        WorkerId(k, HERE)
+    }
+}
+
+impl From<(HostId, u32)> for WorkerId {
+    /// Worker `k` of host `h`; this host's own `h` names this host's worker.
+    fn from((h, k): (HostId, u32)) -> Self {
+        if h == crate::host() { WorkerId::here(k) } else { WorkerId(k, h.0) }
+    }
+}
+
+/// This host's leader. It is an agent of its own, and it may be the end of a route.
+pub const LEADER: WorkerId = WorkerId::here(u32::MAX);
 
 /// A declared worker of state type `S`: its identity, and the handle the leader edits and takes the
 /// state through. Made by `Topology::worker`.
@@ -68,7 +90,7 @@ impl Topology {
         let core = Arc::new(Core::empty());
         self.plan.workers.push(core.clone());
         self.plan.builders.push(None);
-        Worker { id: WorkerId(index), core, joined: self.joined.clone() }
+        Worker { id: WorkerId::here(index), core, joined: self.joined.clone() }
     }
 
     /// Declare the pool: read-only data shared by every worker, of type `P`. A step reads it by
@@ -92,13 +114,13 @@ impl Topology {
     }
 
     /// A route from `from` to `to` carrying messages of type `M`, with room for `cap` frames.
-    pub fn route<M: Message>(&mut self, from: WorkerId, to: WorkerId, cap: usize) {
-        self.add::<M>(from, to, cap, false);
+    pub fn route<M: Message>(&mut self, from: impl Into<WorkerId>, to: impl Into<WorkerId>, cap: usize) {
+        self.add::<M>(from.into(), to.into(), cap, false);
     }
 
     /// As `route`, but a send at capacity replaces the oldest frame instead of answering `Full`.
-    pub fn lossy<M: Message>(&mut self, from: WorkerId, to: WorkerId, cap: usize) {
-        self.add::<M>(from, to, cap, true);
+    pub fn lossy<M: Message>(&mut self, from: impl Into<WorkerId>, to: impl Into<WorkerId>, cap: usize) {
+        self.add::<M>(from.into(), to.into(), cap, true);
     }
 
     fn add<M: Message>(&mut self, from: WorkerId, to: WorkerId, cap: usize, lossy: bool) {

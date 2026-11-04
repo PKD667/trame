@@ -157,12 +157,12 @@ impl Backend for Selected {
     }
 
     fn worker_me() -> WorkerId {
-        WorkerId(current().1 as u32)
+        WorkerId::here(current().1 as u32)
     }
 
     fn worker_send(to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
         effect(|st, me| {
-            let from = WorkerId(me as u32);
+            let from = WorkerId::here(me as u32);
             match st.routes.find(from, to, ty) {
                 Some(i) => st.routes.push(i, bytes),
                 None => panic!("trame: worker {from:?} has no route to {to:?} for {name}"),
@@ -171,26 +171,26 @@ impl Backend for Selected {
     }
 
     fn worker_recv(ty: core::any::TypeId, out: &mut [u8]) -> bool {
-        effect(|st, me| st.routes.take(WorkerId(me as u32), ty, out))
+        effect(|st, me| st.routes.take(WorkerId::here(me as u32), ty, out))
     }
 
     fn worker_offer(ty: core::any::TypeId) -> bool {
         let (shared, me) = current();
         let st = shared.lock();
-        st.routes.all.iter().any(|r| r.to == WorkerId(me as u32) && r.ty == ty && r.len > 0)
+        st.routes.all.iter().any(|r| r.to == WorkerId::here(me as u32) && r.ty == ty && r.len > 0)
     }
 
     fn worker_route(to: WorkerId, ty: core::any::TypeId) -> Option<usize> {
         let (shared, me) = current();
         let st = shared.lock();
-        let from = WorkerId(me as u32);
+        let from = WorkerId::here(me as u32);
         st.routes.all.iter().filter(|r| r.from == from).position(|r| r.to == to && r.ty == ty)
     }
 
     fn worker_room(route: usize) -> bool {
         let (shared, me) = current();
         let st = shared.lock();
-        let from = WorkerId(me as u32);
+        let from = WorkerId::here(me as u32);
         match st.routes.all.iter().filter(|r| r.from == from).nth(route) {
             Some(r) => r.lossy || r.len < r.cap,
             None => panic!("trame: worker {me} has no outgoing route {route} for this room check"),

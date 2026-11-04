@@ -106,6 +106,18 @@ returns, and to no step that runs during it.
 **M6 Bound.** A domain has a size fixed at launch. A builder that does not fit refuses the launch.
 An edit that does not fit fails, and allocates nothing outside the domain.
 
+## Federation
+
+**F1 Identity.** Each host of a deployment has a `HostId`, distinct from every other host's and
+fixed by deployment; `host()` answers it. Workers are numbered from 0 on each host; a worker of
+another host is named by its host and its number there.
+
+**F4 Tag.** A message crossing hosts is identified by a tag equal in two compilations of the same
+type: a hash of its path and its size. `TypeId` does not cross hosts.
+
+**F6 Peer channel.** Leaders exchange messages over a peer channel that is not a route. A host is not
+its own peer; a send to a host that is not a peer panics.
+
 ## End
 
 **E1 Abort.** A panic ends the run as Definition (Abort) of `spec.md` states.

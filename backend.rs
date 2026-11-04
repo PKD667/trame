@@ -67,6 +67,22 @@ pub(crate) trait Backend {
         unreachable!("trame: a heap domain owns no block")
     }
 
+    /// This process's host (CONTRACT.md F1). A backend whose deployment is one host answers 0.
+    fn host() -> u32 {
+        0
+    }
+
+    /// Send `bytes`, a message of tag `tag` (F4), to the leader of host `to` on the peer channel
+    /// (F6). A host is not its own peer. A backend whose deployment is one host has no peer.
+    fn peer_send(_run: &Self::Run, to: u32, _tag: u64, _bytes: &[u8]) -> Result<(), Full> {
+        panic!("trame: host {to} is not a peer of this host")
+    }
+
+    /// Take the next peer message of tag `tag` into `out`; answers the host it came from.
+    fn peer_recv(_run: &Self::Run, _tag: u64, _out: &mut [u8]) -> Option<u32> {
+        None
+    }
+
     /// Check that every process of the launch built the same plan, before the local checks run. A
     /// backend with one process has nothing to agree on. A backend with several processes makes this
     /// a collective: every process calls it, in the same order, and every process gets the same answer.
