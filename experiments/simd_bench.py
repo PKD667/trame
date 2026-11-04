@@ -101,6 +101,15 @@ def main():
     info = machine_info()
     lab.record("machine", info)
     
+    # Debug: check what's in BIN directory
+    bin_dir = os.environ['BIN']
+    try:
+        bin_contents = os.listdir(bin_dir)
+        lab.record("debug", {"bin_dir": bin_dir, "contents": bin_contents})
+    except Exception as e:
+        lab.record("debug", {"bin_dir_error": str(e)})
+        raise
+    
     # Run bench table.
     bench_rows = run_bench("bench")
     for row in bench_rows:
