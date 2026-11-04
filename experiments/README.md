@@ -113,7 +113,9 @@ and rustc the closure was built with, and the MCA settings.
 Rank 0's ping-pong clock and CPU are exact for what they are, and limited: one pair of hosts, ranks that spin on
 every core they use, a lockstep ping-pong with one frame in flight, and a relay whose shared-memory slots are
 in one process (the backend's are shared between processes; the futex cost is the same). It does not measure
-throughput or more than one frame in flight. Numbers come only from locked runs.
+throughput or more than one frame in flight. Numbers come only from locked runs. `mpi-cross-host-opa` is the same experiment on the `cluster-opa` provider, so
+that runs on a second kind of network are never replicates of the first; the Open MPI in the closure has the
+`self`, `sm` and `tcp` transports only, so on Omni-Path or InfiniBand it runs over IP (`btl_tcp_if_include`).
 
 **mutants** (`mutants-mpi`, built by `checks.nix`, runner `mutants.py`): conformance by mutation (`conformance/`).
 Nix builds one mpi build per mutant, its patch applied, and one closure holds them all with the runner.
