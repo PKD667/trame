@@ -92,18 +92,30 @@ def machine_info() -> dict:
 
 def main():
     # Record machine info once per job.
+    lab.record("debug", {"stage": "start"})
     info = machine_info()
     lab.record("machine", info)
+    lab.record("debug", {"stage": "machine_info_done"})
     
     # Run bench table.
-    bench_rows = run_bench("bench")
-    for row in bench_rows:
-        lab.record("bench", row)
+    lab.record("debug", {"stage": "before_bench"})
+    try:
+        bench_rows = run_bench("bench")
+        for row in bench_rows:
+            lab.record("bench", row)
+    except Exception as e:
+        lab.record("debug", {"stage": "bench_error", "error": str(e)})
+        raise
     
     # Run knee table.
-    knee_rows = run_bench("bench_knee")
-    for row in knee_rows:
-        lab.record("bench", row)  # Both go into the bench dataset.
+    lab.record("debug", {"stage": "before_knee"})
+    try:
+        knee_rows = run_bench("bench_knee")
+        for row in knee_rows:
+            lab.record("bench", row)  # Both go into the bench dataset.
+    except Exception as e:
+        lab.record("debug", {"stage": "knee_error", "error": str(e)})
+        raise
 
 
 if __name__ == "__main__":
