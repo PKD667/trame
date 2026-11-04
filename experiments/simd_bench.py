@@ -32,10 +32,7 @@ def run_bench(table_name: str) -> list[dict]:
     res = proc.run(["taskset", "-c", "4"] + args, timeout=600.0)
     
     if res.rc != 0:
-        import sys
-        print(f"ERROR: bench failed with rc {res.rc}", file=sys.stderr)
-        print(f"stderr: {res.stderr}", file=sys.stderr)
-        print(f"stdout: {res.stdout}", file=sys.stderr)
+        lab.record("bench_error", {"table": table_name, "rc": res.rc, "stderr": res.stderr, "stdout": res.stdout})
         raise SystemExit(f"bench failed with rc {res.rc}: {res.stderr}")
     
     rows = []
