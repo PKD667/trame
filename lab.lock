@@ -60,57 +60,110 @@
         "sha256": "sha256-cIGXQa4XEcYEB4YfXv5KWBLd8FhdvSVQ+4I3Do3XGWo="
       }
     ],
+    "simd-bench-avx512": [
+      {
+        "facts": {
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "06856bc3b49e8578bfd09c1ccf406b482bb0c15720a52162ffd6a5f1fc4edee2",
+          "params": {
+            "cpu_type": "intel-avx512"
+          },
+          "replicate": 1,
+          "run": "simd-bench-avx512-06856bc3b49e-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-avx512-06856bc3b49e-r1",
+        "path": "/nix/store/4qj88h2s3nivd6hqs194c1snyw7drwkf-simd-bench-avx512-06856bc3b49e-r1",
+        "sha256": "sha256-KQZHvZ52zE3nV8H0LlXprlXbtSpjMW7v2CLGUqEB5Oo="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "06856bc3b49e8578bfd09c1ccf406b482bb0c15720a52162ffd6a5f1fc4edee2",
+          "params": {
+            "cpu_type": "intel-avx512"
+          },
+          "replicate": 2,
+          "run": "simd-bench-avx512-06856bc3b49e-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-avx512-06856bc3b49e-r2",
+        "path": "/nix/store/5i043kak885z4cb8c33hlpm2f0gdb4fj-simd-bench-avx512-06856bc3b49e-r2",
+        "sha256": "sha256-2c1slpgFcPfg5wEGbIWzuPg8q5H2d/5zAvnDzCHm1ds="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "06856bc3b49e8578bfd09c1ccf406b482bb0c15720a52162ffd6a5f1fc4edee2",
+          "params": {
+            "cpu_type": "intel-avx512"
+          },
+          "replicate": 3,
+          "run": "simd-bench-avx512-06856bc3b49e-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-avx512-06856bc3b49e-r3",
+        "path": "/nix/store/w34bla9psznpwp90hb4iq4fcjljil0zb-simd-bench-avx512-06856bc3b49e-r3",
+        "sha256": "sha256-3zmFHQcYEriP3dxjn3RNpVoU+jmWvG6MCLSglpQ1VOs="
+      }
+    ],
     "simd-bench-zen1": [
       {
         "facts": {
-          "closure": "/nix/store/hv34bg667w8rci4r14am6fl9wf6sks31-experiment-simd-bench",
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
           "format": "2.0",
-          "input_id": "8b2fe01a54293bfc1ab05f073efb8d6317c27bdde7fb9ebbff196cde0d512073",
+          "input_id": "cd42154781ce5eb6cde9a58b53268cf3f1995fbbd80b1d366766786d3cccf86d",
           "params": {
             "cpu_type": "zen1"
           },
           "replicate": 1,
-          "run": "simd-bench-zen1-8b2fe01a5429-r1",
+          "run": "simd-bench-zen1-cd42154781ce-r1",
           "seed": null,
           "state": "ok"
         },
-        "name": "simd-bench-zen1-8b2fe01a5429-r1",
-        "path": "/nix/store/m5sjgla65a69i2s75habrmi15db31v04-simd-bench-zen1-8b2fe01a5429-r1",
-        "sha256": "sha256-Yv8KnxbDzAL/FUhAA47K0eRJcJtD3A/Rqi0A9Kcrq8w="
+        "name": "simd-bench-zen1-cd42154781ce-r1",
+        "path": "/nix/store/9xpv6hp69c04xvf3nfwfi3rhbwfz6frl-simd-bench-zen1-cd42154781ce-r1",
+        "sha256": "sha256-mABb5tqXAuXEkK+pdVaarhEn/Rdkid0chJd79yZNFbE="
       },
       {
         "facts": {
-          "closure": "/nix/store/hv34bg667w8rci4r14am6fl9wf6sks31-experiment-simd-bench",
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
           "format": "2.0",
-          "input_id": "8b2fe01a54293bfc1ab05f073efb8d6317c27bdde7fb9ebbff196cde0d512073",
+          "input_id": "cd42154781ce5eb6cde9a58b53268cf3f1995fbbd80b1d366766786d3cccf86d",
           "params": {
             "cpu_type": "zen1"
           },
           "replicate": 2,
-          "run": "simd-bench-zen1-8b2fe01a5429-r2",
+          "run": "simd-bench-zen1-cd42154781ce-r2",
           "seed": null,
           "state": "ok"
         },
-        "name": "simd-bench-zen1-8b2fe01a5429-r2",
-        "path": "/nix/store/h0044xaz6whbglaa5dq173ypkwj1nzag-simd-bench-zen1-8b2fe01a5429-r2",
-        "sha256": "sha256-u5zZYm1UM3KabW84PnOoCjEDY6+5JNEqkh8uhrvzmjQ="
+        "name": "simd-bench-zen1-cd42154781ce-r2",
+        "path": "/nix/store/wd9llvizqzmnc9z0gnbzywzbpfiyvmcy-simd-bench-zen1-cd42154781ce-r2",
+        "sha256": "sha256-+G6werbSpo4WXiwwN1ChRCDasgIV19e2huKBZj1YVlo="
       },
       {
         "facts": {
-          "closure": "/nix/store/hv34bg667w8rci4r14am6fl9wf6sks31-experiment-simd-bench",
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
           "format": "2.0",
-          "input_id": "8b2fe01a54293bfc1ab05f073efb8d6317c27bdde7fb9ebbff196cde0d512073",
+          "input_id": "cd42154781ce5eb6cde9a58b53268cf3f1995fbbd80b1d366766786d3cccf86d",
           "params": {
             "cpu_type": "zen1"
           },
           "replicate": 3,
-          "run": "simd-bench-zen1-8b2fe01a5429-r3",
+          "run": "simd-bench-zen1-cd42154781ce-r3",
           "seed": null,
           "state": "ok"
         },
-        "name": "simd-bench-zen1-8b2fe01a5429-r3",
-        "path": "/nix/store/3iysvyp7y1aaflw6fvp5scyxgmci1vvi-simd-bench-zen1-8b2fe01a5429-r3",
-        "sha256": "sha256-65HtsMoO3tkFcIcwIzB5KaDZ+foMCKFHHHGRf5SQfA8="
+        "name": "simd-bench-zen1-cd42154781ce-r3",
+        "path": "/nix/store/4m629pc0ax835kbfi2sj6m6z58c20bja-simd-bench-zen1-cd42154781ce-r3",
+        "sha256": "sha256-M271qfvY+ZjX4GS6JgnLN0zZzbOk21Hyuut9ywbznMI="
       }
     ]
   }
