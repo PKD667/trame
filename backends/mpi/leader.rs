@@ -159,7 +159,21 @@ pub(super) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
 /// Block until the leader's epoch differs from `seen`, and answer the new value (epoch.rs).
 pub(super) fn wait(run: &Leader, seen: u64) -> u64 {
     run.get().fail_if_aborted();
-    let e = run.get().leader_wait(seen);
+    // With peers, a peer message is a change too, and nothing on this host can wake the leader for
+    // it (it arrives through MPI, not the window): the leader spins on both.
+    let e = if super::hosts::host().count > 1 {
+        // The seen word is the epoch in the low half and the count of peer arrivals in the high half.
+        loop {
+            super::hosts::drain();
+            let e = run.get().leader_epoch() | u64::from(super::hosts::host().arrivals) << 32;
+            if e != seen {
+                break e;
+            }
+            core::hint::spin_loop();
+        }
+    } else {
+        run.get().leader_wait(seen)
+    };
     run.get().fail_if_aborted();
     e
 }

@@ -29,6 +29,8 @@ pub(super) struct Local {
     pub endpoint: Option<Transport>,
     /// This node's relay threads, when this rank hosts them (relay.rs). `finalize` joins them.
     pub relay: Option<Relay>,
+    /// This process's host (hosts.rs).
+    pub host: Option<super::hosts::Host>,
 }
 
 struct Slot(UnsafeCell<Option<Local>>);
@@ -48,6 +50,7 @@ pub(super) fn local() -> &'static mut Local {
         inbox: Vec::new(),
         endpoint: None,
         relay: None,
+        host: None,
     })
 }
 

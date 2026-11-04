@@ -19,8 +19,15 @@ pub struct HostId(pub u32);
 /// Identity of a worker, or of the leader: its index among its host's workers (0..n on every host),
 /// and its host. Made by `Topology::worker` and `LEADER` for this host's, and from `(HostId, k)` for
 /// worker k of another host, as that host declared it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorkerId(pub(crate) u32, pub(crate) u32);
+
+impl core::fmt::Debug for WorkerId {
+    /// `WorkerId(k)` for this host's worker k, `WorkerId(k, host h)` for another host's.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.1 == HERE { write!(f, "WorkerId({})", self.0) } else { write!(f, "WorkerId({}, host {})", self.0, self.1) }
+    }
+}
 
 /// The host field of a worker of this host.
 pub(crate) const HERE: u32 = u32::MAX;

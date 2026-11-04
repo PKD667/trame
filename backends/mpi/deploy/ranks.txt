@@ -23,3 +23,4 @@ until_calls 2
 room_spin 2
 take_rotate 3
 leader_panics 2
+peers 2

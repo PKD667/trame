@@ -56,6 +56,13 @@ pub fn host() -> crate::topology::HostId {
     crate::topology::HostId(Selected::host())
 }
 
+/// The number of hosts of the deployment, numbered from 0. Hidden until the surface has a name for
+/// the federation's membership.
+#[doc(hidden)]
+pub fn __hosts() -> u32 {
+    Selected::hosts()
+}
+
 /// The tag of a message type across hosts (CONTRACT.md F4): equal in two compilations of the same
 /// type, unlike `TypeId`. FNV-1a over the type's path and its size.
 pub(crate) fn tag<M: Message>() -> u64 {

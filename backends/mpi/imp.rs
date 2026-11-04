@@ -103,7 +103,7 @@ fn build_or_adopt(plan: &mut Plan, t: &Transport) {
             segment::pool_slot().store(pool.addr() as u64, Release);
         }
     }
-    mpi::traits::CommunicatorCollectives::barrier(world());
+    mpi::traits::CommunicatorCollectives::barrier(&super::hosts::host().comm);
     if !builder {
         for &w in &mine {
             // SAFETY: the node's builder filled a Core of the same type at this address, in the
@@ -136,12 +136,12 @@ impl Backend for Selected {
 
     fn agree(plan: &Plan) -> Result<(), Refused> {
         let ranks = plan.workers.len() as u32 + 1;
-        agree(world(), &encode_plan(plan), ranks).map_err(refused)
+        agree(&super::hosts::host().comm, &encode_plan(plan), ranks).map_err(refused)
     }
 
     fn launch(mut plan: Plan) -> Result<Leader, Refused> {
         let topo = topology(&plan)?;
-        let role = open(world(), &topo).map_err(refused)?;
+        let role = open(&super::hosts::host().comm, &topo).map_err(refused)?;
         let t = match &role {
             Role::Leader(t) | Role::Worker(t) => t,
         };
@@ -263,6 +263,23 @@ impl Backend for Selected {
 
     fn leader_wait(run: &Leader, seen: u64) -> u64 {
         leader::wait(run, seen)
+    }
+
+    fn host() -> u32 {
+        super::hosts::host().id
+    }
+
+    fn hosts() -> u32 {
+        super::hosts::host().count
+    }
+
+    fn peer_send(_run: &Leader, to: u32, tag: u64, bytes: &[u8]) -> Result<(), Full> {
+        super::hosts::send(to, tag, bytes);
+        Ok(())
+    }
+
+    fn peer_recv(_run: &Leader, tag: u64, out: &mut [u8]) -> Option<u32> {
+        super::hosts::recv(tag, out)
     }
 
     fn leader_join(run: Leader) -> Vec<Outcome> {

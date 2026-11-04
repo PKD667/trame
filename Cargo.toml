@@ -171,3 +171,7 @@ path = "examples/weights_time.rs"
 [[example]]
 name = "overlap"
 path = "examples/overlap.rs"
+
+[[example]]
+name = "peers"
+path = "programs/peers.rs"

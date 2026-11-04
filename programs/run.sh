@@ -73,16 +73,28 @@ if [[ "$which_backend" != seq ]]; then
   export CARGO_TARGET_DIR="$root/target/mpi"
   cargo build -q --no-default-features --features mpi --examples 2>&1 | grep -v 'Git tree' || true
   B="$CARGO_TARGET_DIR/debug/examples"
-  # Every program also runs with TRAME_MPI_NODE_RANKS = 1 and 2: the node split of NODES.md, on one
-  # machine. The output must not change with the split.
-  for k in "" 1 2; do
+  # Every program runs on one host, then on two: two hosts of one machine, cut by
+  # TRAME_MPI_NODE_RANKS (backends/mpi/hosts.rs). Each host runs the whole program with its own leader,
+  # and each rank's stdout goes to its own file. A host's output is its ranks' lines in rank order,
+  # collapsed by uniq (refuse prints once per rank). On two hosts, the outputs of host 0 then host 1
+  # must equal <name>.h2.expected when it exists, and each must equal <name>.expected otherwise.
+  for h in 1 2; do
     for p in "${mpi_programs[@]}"; do
-      # `env -u` leaves the variable unset for the first pass: an empty value is refused (nodes.rs).
-      if [[ -n "$k" ]]; then set_k=(env "TRAME_MPI_NODE_RANKS=$k"); else set_k=(env -u TRAME_MPI_NODE_RANKS); fi
+      r="${RANKS[$p]:-3}"
+      if [[ $h -gt 1 ]]; then set_k=(env "TRAME_MPI_NODE_RANKS=$r"); else set_k=(env -u TRAME_MPI_NODE_RANKS); fi
+      d="$(mktemp -d)"
       rc=0
-      out="$("${set_k[@]}" timeout -k 5 "$T" mpirun --oversubscribe -n "${RANKS[$p]:-3}" "$B/$p" 2>"$errf")" || rc=$?
-      out="$(echo "$out" | uniq)"
-      verify "mpi ${k:+k=$k }$p" "$p" "$rc" "$out"
+      "${set_k[@]}" timeout -k 5 "$T" mpirun --oversubscribe --output "filename=$d/o" -n "$((h * r))" "$B/$p" >/dev/null 2>"$errf" || rc=$?
+      host_out() { for ((k = $1 * r; k < ($1 + 1) * r; k++)); do cat "$d"/o.*@*."$k".out 2>/dev/null || true; done | uniq; }
+      if [[ $h -eq 1 || ! -f "programs/$p.h2.expected" ]]; then
+        for ((x = 0; x < h; x++)); do verify "mpi ${h}h host $x $p" "$p" "$rc" "$(host_out $x)"; done
+      else
+        out="$(for ((x = 0; x < h; x++)); do host_out $x; done)"
+        [[ "$rc" -eq 0 ]] || fail "mpi ${h}h $p: exit status $rc"
+        diff -u "programs/$p.h2.expected" <(emit "$out") >/dev/null || { echo "$out"; fail "mpi ${h}h $p: stdout differs"; }
+        ok "mpi ${h}h $p"
+      fi
+      rm -rf "$d"
     done
   done
 fi

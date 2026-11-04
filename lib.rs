@@ -69,7 +69,7 @@ mod time;
 mod topology;
 
 /// The surface of spec.md 7: every public name of the crate, at the root and nowhere else.
-pub use io::{Full, Message, host, me, recv, send};
+pub use io::{Full, Message, __hosts, host, me, recv, send};
 pub use domain::Alloc;
 pub use launch::Refused;
 pub use run::{Outcome, Run};

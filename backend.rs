@@ -72,6 +72,11 @@ pub(crate) trait Backend {
         0
     }
 
+    /// The number of hosts of the deployment; hosts are numbered 0..hosts.
+    fn hosts() -> u32 {
+        1
+    }
+
     /// Send `bytes`, a message of tag `tag` (F4), to the leader of host `to` on the peer channel
     /// (F6). A host is not its own peer. A backend whose deployment is one host has no peer.
     fn peer_send(_run: &Self::Run, to: u32, _tag: u64, _bytes: &[u8]) -> Result<(), Full> {

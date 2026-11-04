@@ -30,6 +30,7 @@ mod plan;
 mod poll;
 mod recv;
 mod refusal;
+mod hosts;
 mod relay;
 mod relay_control;
 mod relay_in;
