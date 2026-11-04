@@ -86,6 +86,35 @@ scale only), the load average at its start (`loadavg`), and the MCA settings of 
 
 Timing columns are `noisy`, with `replicates = 3`.
 
+**mpi-cross-host** (`nix run .#mpi-cross-host`, `span = 2`, built from `experiments/mpi_cross_host/`, runner
+`mpi_cross_host.py`): the cross-machine transport of the MPI backend, as a microbenchmark that shares no code
+with it. Two ranks on two hosts pass a frame back and forth, and the latency is half the round trip. The
+question is whether frames between machines need a relay thread (NODES.md, Replicas and relays) or can go
+rank to rank with two-sided MPI, the receiver spinning on a posted `MPI_Irecv`. One job per `mode`:
+- `direct`: rank to rank, `MPI_Test` spin, `MPI_THREAD_MULTIPLE`; `direct_single` is the same under
+  `MPI_THREAD_SINGLE` (what MPI's own thread locks cost).
+- `relay`: the baseline, for comparison only. Per rank an `out` thread (woken by a futex, `MPI_Send`) and an
+  `in` thread (blocked in `MPI_Recv(ANY_SOURCE)`, futex-waking the receiver, which sleeps).
+- `mixed_self`, `mixed_flag`: `direct` for a rank that also has a local waker, a second thread. `mixed_self` wakes
+  it with an `MPI_Isend` to its own rank, received by a second posted `MPI_Irecv` (`MPI_Testany` on both).
+  `mixed_flag` wakes it by an atomic flag that the receiver loads between its `MPI_Test` calls. Each runs the frame
+  ping-pong with the extra wait source, then a `wake` phase: the latency from just before the waker acts to the
+  moment the waiting rank sees it.
+- `wake_futex`: the `wake` phase alone, the receiver asleep on a futex, as a reference for the wake itself.
+
+Parameters: `mode`, `iters` (100000 measured round trips or wakes), `warmup` (10000), `sizes` (8, 64, 1024,
+65536 bytes), `mca` (Open MPI MCA settings, space-separated `name=value`), `same_host`. A job whose two ranks land
+on one machine is refused unless `same_host` is set. Dataset `latency`, key `mode`, `phase`, `size`: `median_ns`,
+`p99_ns`, `min_ns`, `mean_ns` (nanoseconds, of the one-way frame or of the wake), and per rank the CPU time per
+iteration, `cpu0_ns`, `cpu1_ns` (user plus system, `getrusage` of the whole process), `sys0_ns`, `sys1_ns`. The
+`mpi_config` rows record each rank's host, the CPU, the network interfaces and InfiniBand devices, the Open MPI
+and rustc the closure was built with, and the MCA settings.
+
+Rank 0's ping-pong clock and CPU are exact for what they are, and limited: one pair of hosts, ranks that spin on
+every core they use, a lockstep ping-pong with one frame in flight, and a relay whose shared-memory slots are
+in one process (the backend's are shared between processes; the futex cost is the same). It does not measure
+throughput or more than one frame in flight. Numbers come only from locked runs.
+
 **mutants** (`mutants-mpi`, built by `checks.nix`, runner `mutants.py`): conformance by mutation (`conformance/`).
 Nix builds one mpi build per mutant, its patch applied, and one closure holds them all with the runner.
 The seq record is the validate verdict `mutants-seq`, not an experiment. Parameters: `backend`, `mutant` (a patch id, `none` for the unpatched control),

@@ -1,0 +1,23 @@
+# The cross-machine transport microbenchmark (main.rs). A crate of its own, outside the root crate's
+# workspace, so that building it does not change the root crate's source or the closures built from it.
+# It uses the same `mpi` and `libc` as the MPI backend, at the same versions.
+[package]
+name = "mpi_cross_host"
+version = "0.1.0"
+edition = "2024"
+description = "Direct rank-to-rank MPI against a relay thread, between two machines."
+publish = false
+
+[[bin]]
+name = "mpi_cross_host"
+path = "main.rs"
+
+[dependencies]
+mpi = { version = "=0.8.2" }
+libc = { version = "=0.2.191" }
+
+# The root crate's release profile, so the two are built alike.
+[profile.release]
+overflow-checks = true
+
+[workspace]

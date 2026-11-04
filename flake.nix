@@ -151,6 +151,32 @@
         };
         runtime = labRuntime;
       };
+      # The cross-machine transport microbenchmark (experiments/mpi_cross_host/): a crate of its own, so the root
+      # crate's source and the closures above are unchanged by it.
+      xhostBin = pkgs.rustPlatform.buildRustPackage {
+        pname = "mpi-cross-host";
+        version = "0.1.0";
+        src = pkgs.lib.fileset.toSource {
+          root = ./experiments/mpi_cross_host;
+          fileset = pkgs.lib.fileset.difference ./experiments/mpi_cross_host (pkgs.lib.fileset.maybeMissing ./experiments/mpi_cross_host/target);
+        };
+        cargoLock.lockFile = ./experiments/mpi_cross_host/Cargo.lock;
+        nativeBuildInputs = mpiDeps.packages ++ [ pkgs.openmpi.dev ];
+        env = mpiDeps.env // { MPICC = "${pkgs.openmpi.dev}/bin/mpicc"; };
+        doCheck = false;
+      };
+      xhostClosure = nixsci.lib.mkExperiment pkgs {
+        name = "mpi-cross-host";
+        program = "${pkgs.python3}/bin/python3";
+        args = [ "${runners}/mpi_cross_host.py" ];
+        env = {
+          PYTHONPATH = "${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
+          BIN = "${xhostBin}/bin";
+          RUSTC_VERSION = pkgs.rustc.version;
+          OPENMPI_VERSION = pkgs.openmpi.version;
+        };
+        runtime = labRuntime;
+      };
       programsMpiClosure = runnerClosure "programs-mpi" "programs.py" trameMpiBins;
       transportClosure = runnerClosure "transport-mpi" "transport.py" trameMpiBins;
       scaleClosure = runnerClosure "scale-local" "scale.py" trameMpiBins;
@@ -166,6 +192,15 @@
         columns = { check = "str"; workers = "int"; seed = "int"; repeat = "int"; ok = "bool"; seconds = "float"; };
         key = [ "check" "workers" "seed" "repeat" ];
         noisy.seconds = 1.0;
+      };
+      xhostData = {
+        columns = {
+          mode = "str"; phase = "str"; size = "int"; iters = "int";
+          median_ns = "float"; p99_ns = "float"; min_ns = "float"; mean_ns = "float";
+          cpu0_ns = "float"; cpu1_ns = "float"; sys0_ns = "float"; sys1_ns = "float";
+        };
+        key = [ "mode" "phase" "size" ];
+        noisy = { median_ns = 1.0; p99_ns = 1.0; min_ns = 1.0; mean_ns = 1.0; cpu0_ns = 1.0; cpu1_ns = 1.0; sys0_ns = 1.0; sys1_ns = 1.0; };
       };
       scaleCols = { bench = "str"; impl = "str"; nodes = "int"; workers = "int"; per_node = "int"; };
       scaleData = {
@@ -224,6 +259,18 @@
           params = { node_ranks = 0; };
           resources = { provider = "cluster"; hosts = 2; walltime = 60; opts.stage = "fanout"; };
           data.check = transportData;
+          data.mpi_config = mpiConfigData;
+        };
+        # Two ranks on two hosts (span = 2), one job per mode. Parameters: experiments/mpi_cross_host.py.
+        mpi-cross-host = labLib.experiment {
+          name = "mpi-cross-host";
+          span = 2;
+          closures.${system} = xhostClosure;
+          params = { iters = 100000; warmup = 10000; sizes = "8,64,1024,65536"; mca = ""; };
+          sweep.mode = [ "direct" "direct_single" "relay" "mixed_self" "mixed_flag" "wake_futex" ];
+          replicates = 3;
+          resources = { provider = "cluster"; hosts = 2; walltime = 60; opts.stage = "fanout"; };
+          data.latency = xhostData;
           data.mpi_config = mpiConfigData;
         };
         scale-local = scaleExperiment {
