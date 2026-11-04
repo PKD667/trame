@@ -179,7 +179,7 @@
         program = "${pkgs.python3}/bin/python3";
         args = [ "${runners}/simd_bench.py" ];
         env = {
-          PYTHONPATH = "${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
+          PYTHONPATH = "${runners}:${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
           BIN = "${simdBin}/bin";
           RUSTC_VERSION = pkgs.rustc.version;
         };

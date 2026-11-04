@@ -29,11 +29,9 @@ def run_bench(table_name: str) -> list[dict]:
     if table_name == "bench_knee":
         args.append("knee")
     
-    # Try without taskset first for debugging
-    res = proc.run(args, timeout=600.0)
+    res = proc.run(["taskset", "-c", "4"] + args, timeout=600.0)
     
     if res.rc != 0:
-        lab.record("bench_error", {"table": table_name, "rc": res.rc, "stderr": res.stderr[:500], "stdout": res.stdout[:500]})
         raise SystemExit(f"bench failed with rc {res.rc}: {res.stderr}")
     
     rows = []
@@ -95,36 +93,18 @@ def main():
     params = lab.params()
     
     # Record machine info once per job.
-    lab.record("debug", {"stage": "start"})
-    try:
-        bin_path = f"{os.environ['BIN']}/bench"
-        lab.record("debug", {"bin_path": bin_path, "exists": Path(bin_path).exists()})
-    except Exception as e:
-        lab.record("debug", {"bin_check_error": str(e)})
-    
     info = machine_info()
     lab.record("machine", info)
-    lab.record("debug", {"stage": "machine_info_done"})
     
     # Run bench table.
-    lab.record("debug", {"stage": "before_bench"})
-    try:
-        bench_rows = run_bench("bench")
-        for row in bench_rows:
-            lab.record("bench", row)
-    except Exception as e:
-        lab.record("debug", {"stage": "bench_error", "error": str(e)})
-        raise
+    bench_rows = run_bench("bench")
+    for row in bench_rows:
+        lab.record("bench", row)
     
     # Run knee table.
-    lab.record("debug", {"stage": "before_knee"})
-    try:
-        knee_rows = run_bench("bench_knee")
-        for row in knee_rows:
-            lab.record("bench", row)  # Both go into the bench dataset.
-    except Exception as e:
-        lab.record("debug", {"stage": "knee_error", "error": str(e)})
-        raise
+    knee_rows = run_bench("bench_knee")
+    for row in knee_rows:
+        lab.record("bench", row)  # Both go into the bench dataset.
 
 
 if __name__ == "__main__":
