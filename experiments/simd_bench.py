@@ -25,22 +25,14 @@ MACHINE_COLUMNS = ["hostname", "model", "avx2", "avx512f", "kernel", "rustc"]
 
 def run_bench(table_name: str) -> list[dict]:
     """Run bench or bench knee, parse TSV output, return typed rows."""
-    args = [f"{os.environ.get('BIN', '')}/bench"]
+    args = [f"{os.environ['BIN']}/bench"]
     if table_name == "bench_knee":
         args.append("knee")
     
-    try:
-        res = proc.run(["taskset", "-c", "4"] + args, timeout=600.0)
-    except Exception as e:
-        lab.record("error", {"msg": f"proc.run {table_name}: {e}"})
-        return []
+    res = proc.run(["taskset", "-c", "4"] + args, timeout=600.0)
     
     if res.rc != 0:
-        err_msg = f"bench {table_name} rc={res.rc}"
-        if res.stderr:
-            err_msg += f" stderr={res.stderr[:100]}"
-        lab.record("error", {"msg": err_msg})
-        return []
+        raise SystemExit(f"bench {table_name} failed with rc {res.rc}: {res.stderr}")
     
     # Get hostname for the machine field
     hostname = subprocess.run(["hostname", "-f"], capture_output=True, text=True).stdout.strip()
@@ -103,52 +95,22 @@ def machine_info() -> dict:
 
 
 def main():
-    lab.record("debug", {"msg": "main started"})
-    
     # Get experiment parameters (required by nixsci)
     params = lab.params()
-    lab.record("debug", {"msg": "params read"})
     
     # Record machine info once per job.
     info = machine_info()
     lab.record("machine", info)
-    lab.record("debug", {"msg": "machine info recorded"})
-    
-    # Debug: check what's in BIN directory
-    bin_dir = os.environ.get('BIN', 'BIN_NOT_SET')
-    try:
-        if bin_dir != 'BIN_NOT_SET':
-            bin_contents = os.listdir(bin_dir)
-            lab.record("debug", {"msg": f"bin_dir={bin_dir} has {len(bin_contents)} items"})
-        else:
-            lab.record("debug", {"msg": f"BIN env var not set"})
-    except Exception as e:
-        lab.record("error", {"msg": f"BIN error: {e}"})
-        # Don't re-raise, continue
     
     # Run bench table.
-    lab.record("debug", {"msg": "before_bench"})
     bench_rows = run_bench("bench")
-    lab.record("debug", {"msg": f"bench done: {len(bench_rows)} rows"})
-    for i, row in enumerate(bench_rows):
-        try:
-            lab.record("bench", row)
-        except Exception as e:
-            lab.record("error", {"msg": f"record bench row {i}: {e}"})
-            if i < 3 or i % 50 == 0:
-                lab.record("debug", {"msg": f"recorded bench row {i} ok"})
-            break  # Stop if recording fails
+    for row in bench_rows:
+        lab.record("bench", row)
     
     # Run knee table.
-    lab.record("debug", {"msg": "before_knee"})
     knee_rows = run_bench("bench_knee")
-    lab.record("debug", {"msg": f"knee done: {len(knee_rows)} rows"})
-    for i, row in enumerate(knee_rows):
-        try:
-            lab.record("bench", row)  # Both go into the bench dataset.
-        except Exception as e:
-            lab.record("error", {"msg": f"record knee row {i}: {e}"})
-            break
+    for row in knee_rows:
+        lab.record("bench", row)  # Both go into the bench dataset.
 
 
 if __name__ == "__main__":
