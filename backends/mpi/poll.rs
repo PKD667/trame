@@ -16,7 +16,7 @@ impl Transport {
     /// Whether a frame is an offer to this endpoint on one of `owned`, which it must own.
     pub fn offer(&mut self, owned: &[RouteId]) -> Result<bool, Error> {
         for &id in owned {
-            if self.route(id)?.to != self.me() {
+            if !self.route(id)?.received_by(self.me()) {
                 return Err(Error::NotYours(id));
             }
             if self.peek(id)?.is_some() {
@@ -28,10 +28,19 @@ impl Transport {
 
     /// Whether a send on route `id`, which this endpoint must send on, would find room: a lossy
     /// route always does, and a lossless one does when fewer than `cap` frames are outstanding.
-    pub fn room(&self, id: RouteId) -> Result<bool, Error> {
+    pub fn room(&mut self, id: RouteId) -> Result<bool, Error> {
         let r = *self.route(id)?;
-        if r.from != self.me() {
+        if !r.sent_by(self.me()) {
             return Err(Error::NotYours(id));
+        }
+        if r.remote.is_some() {
+            let me = self.me();
+            let super::cross::Lane::Out(o) = self.lane(id) else { unreachable!("a lane this endpoint sends on is Out") };
+            let (room, grew) = o.room();
+            if grew {
+                self.bump(me);
+            }
+            return Ok(room);
         }
         if r.lossy {
             return Ok(true);

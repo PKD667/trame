@@ -182,6 +182,8 @@ impl Topology {
             to,
             ty: TypeId::of::<M>(),
             name: type_name::<M>(),
+            #[cfg(feature = "mpi")]
+            wire: crate::io::tag::<M>(),
             size: size_of::<M>(),
             cap,
             lossy,

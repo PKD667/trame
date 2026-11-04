@@ -65,7 +65,9 @@ pub(crate) const OUT_STOPPED: u64 = 4;
 pub(crate) const OUT_FAILED: u64 = 5;
 
 /// A route as the host declares it: sender, receiver, tag, message size in bytes, capacity in
-/// frames, and whether it is lossy. A worker is named by its rank; the leader is `workers`.
+/// frames, and whether it is lossy. A worker is named by its rank; the leader is `workers`. A route
+/// to or from a worker of another host has `remote`: then the end on that host is its worker number
+/// there, and the route has no ring in the window (cross.rs).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Route {
     pub from: u32,
@@ -74,6 +76,20 @@ pub struct Route {
     pub size: usize,
     pub cap: u32,
     pub lossy: bool,
+    pub remote: Option<Remote>,
+}
+
+/// The end of a route on another host (cross.rs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Remote {
+    /// That end's host.
+    pub host: u32,
+    /// Whether that end is the receiver: the route leaves this host.
+    pub outgoing: bool,
+    /// That end's rank in the world.
+    pub world: i32,
+    /// The route's frames travel with MPI tag `2 lane`, its credits with `2 lane + 1` (cross.rs).
+    pub lane: i32,
 }
 
 /// The communication graph. Workers are ranks `0..workers`, the leader is rank `workers`; a route's
@@ -96,6 +112,19 @@ pub(crate) struct RouteLayout {
     pub base: usize,
     /// Bytes per slot: header plus payload rounded up to 8.
     pub stride: usize,
+    pub remote: Option<Remote>,
+}
+
+impl RouteLayout {
+    /// Whether the endpoint of rank `me` sends on this route. A route from another host is sent there.
+    pub(crate) fn sent_by(&self, me: u32) -> bool {
+        self.from == me && self.remote.is_none_or(|x| x.outgoing)
+    }
+
+    /// Whether the endpoint of rank `me` receives this route.
+    pub(crate) fn received_by(&self, me: u32) -> bool {
+        self.to == me && self.remote.is_none_or(|x| !x.outgoing)
+    }
 }
 
 #[derive(Clone, Debug)]

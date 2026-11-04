@@ -40,7 +40,7 @@ flowchart LR
 |---|---|---|---|
 | worker | one thread, one agent | one thread per agent, several per worker | one rank, several agents |
 | scheduler | reference agent, service 1 per step | reference agent, service in nanoseconds | reference agent, service in nanoseconds |
-| routes | rings under one lock | rings under one lock | rings in a shared window, relays across nodes |
+| routes | rings under one lock | rings under one lock | rings in a shared window, two-sided MPI between hosts |
 | wake | one counter of acts | one counter of acts | epoch words and futexes |
 | domain | the heap | the heap | a shared segment (`backends/mpi/segment.rs`) |
 | leader | a thread outside the baton | a thread | the last rank |
@@ -73,9 +73,10 @@ is pending.
 ## mpi
 
 mpi runs one MPI rank per worker, and the leader on the last rank, so `mpirun` needs W + 1 ranks.
-Workers of one shared-memory node share a window with one ring per route. An agent that waits sleeps
-on a futex word of its worker, and every act that can change its wait moves that word. Across
-nodes, a relay of two threads sends frames, credits and results between nodes.
+Each shared-memory node is a host. Workers of one host share a window with one ring per route. An
+agent that waits sleeps on a futex word of its worker, and every act that can change its wait moves
+that word. A route between hosts goes rank to rank by two-sided MPI, with credits back, and the
+agents of a worker with such a route poll instead of sleeping (`backends/mpi/HOSTS.md`).
 
 The backend never reports `Deadlock`. The design, tests and measurements are in
 `backends/mpi/README.md`, `HOSTS.md`, `SCALING.md` and `RESULT.md`. Edits, `take` and the pool on

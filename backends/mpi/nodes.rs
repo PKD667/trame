@@ -13,20 +13,15 @@ use mpi::collective::SystemOperation;
 use mpi::topology::{Color, SimpleCommunicator};
 use mpi::traits::*;
 
-/// The node table, by world rank. Node numbers are 0..count, in order of each node's lowest world rank.
+/// The node table. Node numbers are 0..count, in order of each node's lowest world rank.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Nodes {
-    /// The node of each world rank: len W + 1, the leader's rank last.
-    pub node_of: Vec<u32>,
     /// This rank's node.
     pub me: u32,
     /// The number of nodes.
     pub count: u32,
-    /// Per node, the lowest world rank on it: the rank that hosts the node's relay.
-    pub relay_rank: Vec<i32>,
-    /// The agent ranks on this rank's node, in rank order: the workers, then the leader's rank W if the
-    /// leader is here. The relay's per-wake scans run over this.
-    pub local: Vec<u32>,
+    /// Per node, its world ranks in order: rank k of the node's communicator is `members[node][k]`.
+    pub members: Vec<Vec<i32>>,
 }
 
 /// The value of TRAME_MPI_NODE_RANKS: `Ok(None)` when unset, `Ok(Some(k))` for k >= 1. Each rank reads
@@ -42,7 +37,7 @@ pub(crate) fn node_ranks_setting() -> Result<Option<i32>, String> {
 }
 
 /// Cut the shared-memory communicator `shared` into groups of `k` consecutive world ranks. Collective
-/// over `shared`. The result is the node communicator for the window and the relay.
+/// over `shared`. The result is the node communicator, for the window and the segment.
 pub(crate) fn split_groups(
     world: &SimpleCommunicator,
     shared: &SimpleCommunicator,
@@ -59,12 +54,14 @@ pub(crate) fn discover(world: &SimpleCommunicator, node: &SimpleCommunicator) ->
     node.all_reduce_into(&rank, &mut low, SystemOperation::min());
     let mut lows: Vec<i32> = std::vec![0i32; world.size() as usize];
     world.all_gather_into(&low, &mut lows[..]);
-    let mut relay_rank = lows.clone();
-    relay_rank.sort_unstable();
-    relay_rank.dedup();
-    let node_of: Vec<u32> =
-        lows.iter().map(|l| relay_rank.binary_search(l).expect("every lowest rank is in the table") as u32).collect();
-    let me = node_of[rank as usize];
-    let local: Vec<u32> = (0..node_of.len() as u32).filter(|&w| node_of[w as usize] == me).collect();
-    Nodes { node_of, me, count: relay_rank.len() as u32, relay_rank, local }
+    let mut firsts = lows.clone();
+    firsts.sort_unstable();
+    firsts.dedup();
+    let node_of = |l: &i32| firsts.binary_search(l).expect("every lowest rank is in the table");
+    // The node communicator is split with the world rank as key, so its ranks are in world order.
+    let mut members = std::vec![Vec::new(); firsts.len()];
+    for (r, l) in lows.iter().enumerate() {
+        members[node_of(l)].push(r as i32);
+    }
+    Nodes { me: node_of(&low) as u32, count: firsts.len() as u32, members }
 }

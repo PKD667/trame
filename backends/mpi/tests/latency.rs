@@ -58,8 +58,8 @@ fn main() {
     let topo = Topology {
         workers: 2,
         routes: vec![
-            Route { from: 0, to: 1, tag: 0, size: BYTES, cap: 8, lossy: false },
-            Route { from: 1, to: 0, tag: 0, size: BYTES, cap: 8, lossy: false },
+            Route { from: 0, to: 1, tag: 0, size: BYTES, cap: 8, lossy: false, remote: None },
+            Route { from: 1, to: 0, tag: 0, size: BYTES, cap: 8, lossy: false, remote: None },
         ],
     };
     let mut t = match launch(&world, &topo).unwrap_or_else(|e| panic!("refused: {e}")) {

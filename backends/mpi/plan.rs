@@ -1,6 +1,7 @@
 // The backend's view of a plan: its exact encoding (what ranks agree on), the transport's topology,
 // and the route table each endpoint looks its routes up in. Ranks are workers `0..W` and the leader
-// `W`; `Leader` in the surface is the leader's rank.
+// `W`; `Leader` in the surface is the leader's rank. An end is a `Peer`: its host, `HERE` for this
+// one, and its rank there.
 
 extern crate std;
 
@@ -10,8 +11,9 @@ use std::vec;
 use std::vec::Vec;
 
 use crate::launch::{Plan, Refused};
-use crate::topology::End;
+use crate::topology::{End, HERE};
 
+use super::layout::Remote;
 use super::{Route, RouteId, Topology};
 
 /// A hasher that keeps every byte it is given. A `TypeId` hashes its own bytes, so this encodes the
@@ -33,12 +35,20 @@ fn type_bytes(ty: TypeId) -> Vec<u8> {
     c.0
 }
 
-/// The rank of an agent: a worker's index, or `workers` for the leader.
-pub(super) fn rank_of(id: End, workers: u32) -> u32 {
+/// An end of a route: (host, rank), the host `HERE` for this host's.
+pub(super) type Peer = (u32, u32);
+
+/// The end of an agent: a worker's index on its host, or `workers` for this host's leader.
+pub(super) fn rank_of(id: End, workers: u32) -> Peer {
     match id {
-        End::Worker(w) => w.0,
-        End::Leader => workers,
+        End::Worker(w) => (w.1, w.0),
+        End::Leader => (HERE, workers),
     }
+}
+
+/// This host's end of rank `me`.
+pub(super) fn here(me: u32) -> Peer {
+    (HERE, me)
 }
 
 fn put_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
@@ -57,8 +67,10 @@ pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
     put_bytes(&mut out, &[]);
     out.extend_from_slice(&(plan.routes.len() as u64).to_le_bytes());
     for r in &plan.routes {
-        out.extend_from_slice(&rank_of(r.from, u32::MAX).to_le_bytes());
-        out.extend_from_slice(&rank_of(r.to, u32::MAX).to_le_bytes());
+        for (h, k) in [rank_of(r.from, u32::MAX), rank_of(r.to, u32::MAX)] {
+            out.extend_from_slice(&h.to_le_bytes());
+            out.extend_from_slice(&k.to_le_bytes());
+        }
         put_bytes(&mut out, &type_bytes(r.ty));
         put_bytes(&mut out, r.name.as_bytes());
         out.extend_from_slice(&(r.size as u64).to_le_bytes());
@@ -69,9 +81,12 @@ pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
 }
 
 /// The transport's topology for a checked plan. Each distinct message type is a tag, numbered in the
-/// order the plan first uses it, so every rank numbers them the same.
+/// order the plan first uses it, so every rank numbers them the same. A route to or from another
+/// host's worker gets its `Remote`: that worker's world rank, and the route's lane (cross.rs).
 pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
     let workers = u32::try_from(plan.workers.len()).map_err(|_| Refused::Backend { reason: "too many workers".into() })?;
+    let h = super::hosts::host();
+    let g = |e: End| super::cross::global(e, workers, h.id);
     let mut tags: Vec<TypeId> = Vec::new();
     let mut routes = Vec::with_capacity(plan.routes.len());
     for r in &plan.routes {
@@ -84,22 +99,48 @@ pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
         };
         let cap = u32::try_from(r.cap)
             .map_err(|_| Refused::Backend { reason: "a route's capacity does not fit in 32 bits".into() })?;
+        let (from, to) = (rank_of(r.from, workers), rank_of(r.to, workers));
+        let remote = match (from.0 == HERE, to.0 == HERE) {
+            (true, true) => None,
+            (here_from, _) => {
+                let (far, outgoing) = if here_from { (to, true) } else { (from, false) };
+                if (here_from && r.from == End::Leader) || (!here_from && r.to == End::Leader) {
+                    return Err(Refused::Backend {
+                        reason: alloc::format!(
+                            "MPI: a route of {} joins the leader to a worker of host {}; leaders talk over the peer channel (Run::leader_send)",
+                            r.name, far.0
+                        ),
+                    });
+                }
+                let members = &h.members[far.0 as usize];
+                let world = *members.get(far.1 as usize).filter(|_| (far.1 as usize) + 1 < members.len()).ok_or_else(|| {
+                    Refused::Backend { reason: alloc::format!("MPI: host {} has no worker {} for the route of {}", far.0, far.1, r.name) }
+                })?;
+                // The lane: this route's place, by F4 tag, among the routes with its sender and receiver.
+                let lane = plan.routes.iter().filter(|q| g(q.from) == g(r.from) && g(q.to) == g(r.to) && q.wire < r.wire).count();
+                let lane = i32::try_from(lane).ok().filter(|l| *l < 16_000).ok_or_else(|| Refused::Backend {
+                    reason: "MPI: more than 16000 routes between two workers of two hosts".into(),
+                })?;
+                Some(Remote { host: far.0, outgoing, world, lane })
+            }
+        };
         routes.push(Route {
-            from: rank_of(r.from, workers),
-            to: rank_of(r.to, workers),
+            from: from.1,
+            to: to.1,
             tag: tag as u64,
             size: r.size,
             cap,
             lossy: r.lossy,
+            remote,
         });
     }
     Ok(Topology { workers, routes })
 }
 
-/// One route as an endpoint looks it up: sender and receiver ranks, its message type, and its id.
+/// One route as an endpoint looks it up: sender and receiver, its message type, and its id.
 pub(super) struct Entry {
-    pub from: u32,
-    pub to: u32,
+    pub from: Peer,
+    pub to: Peer,
     pub ty: TypeId,
     pub id: RouteId,
 }
@@ -122,7 +163,7 @@ pub(super) fn entries(plan: &Plan) -> Vec<Entry> {
 /// own rotation (see recv.rs), so the group of one type never shares a rotation with another.
 pub(super) fn inbox(entries: &[Entry], me: u32) -> Vec<(TypeId, Vec<RouteId>)> {
     let mut groups: Vec<(TypeId, Vec<RouteId>)> = Vec::new();
-    for e in entries.iter().filter(|e| e.to == me) {
+    for e in entries.iter().filter(|e| e.to == here(me)) {
         match groups.iter_mut().find(|(t, _)| *t == e.ty) {
             Some((_, ids)) => ids.push(e.id),
             None => groups.push((e.ty, vec![e.id])),
@@ -139,10 +180,10 @@ pub(super) fn owned(inbox: &[(TypeId, Vec<RouteId>)], ty: TypeId) -> &[RouteId] 
 /// The routes rank `from` sends, in plan order. The position of a route in this sequence is the index
 /// `Backend::worker_route` answers, so the sequential backend and this one number them alike.
 pub(super) fn outgoing(entries: &[Entry], from: u32) -> impl Iterator<Item = &Entry> {
-    entries.iter().filter(move |e| e.from == from)
+    entries.iter().filter(move |e| e.from == here(from))
 }
 
 /// The route from `from` to `to` with message type `ty`, if the plan has one.
-pub(super) fn find(entries: &[Entry], from: u32, to: u32, ty: TypeId) -> Option<RouteId> {
+pub(super) fn find(entries: &[Entry], from: Peer, to: Peer, ty: TypeId) -> Option<RouteId> {
     entries.iter().find(|e| e.from == from && e.to == to && e.ty == ty).map(|e| e.id)
 }

@@ -2,9 +2,9 @@
 // `MPI_Comm_split_type(SHARED)`, cut into groups of TRAME_MPI_NODE_RANKS consecutive ranks for tests on
 // one machine (nodes.rs). Hosts are numbered 0..count in order of their lowest world rank (F1). Each
 // host launches on its own communicator, as a one-node backend: its own window, segment, leader (its
-// last rank) and workers. Frames never leave a host here; a route to another host is refused at
-// launch. The leaders of the hosts form a communicator of their own, the peer channel (F6), ranked by
-// host.
+// last rank) and workers. A route between workers of two hosts goes rank to rank on `cross`, a
+// duplicate of the world (cross.rs). The leaders of the hosts form a communicator of their own, the
+// peer channel (F6), ranked by host.
 //
 // The table is made at the first call, collectively over the world: every rank of the world calls
 // `host` before its launch (imp.rs `agree`), so every rank reaches the splits.
@@ -32,6 +32,10 @@ pub(super) struct Host {
     pub pending: Vec<(u32, u64, Vec<u8>)>,
     /// Peer messages received so far, for the leader's `wait` (leader.rs).
     pub arrivals: u32,
+    /// Per host, its world ranks: worker k of host h is `members[h][k]`, its leader the last.
+    pub members: Vec<Vec<i32>>,
+    /// The world, duplicated for the frames and credits of routes between hosts (cross.rs).
+    pub cross: SimpleCommunicator,
 }
 
 /// One peer message tag for every peer message: the F4 tag travels in the first 8 bytes.
@@ -55,6 +59,7 @@ pub(super) fn host() -> &'static mut Host {
         let leader = comm.rank() == comm.size() - 1;
         let colour = if leader { Color::with_value(0) } else { Color::undefined() };
         let peers = w.split_by_color_with_key(colour, nodes.me as i32);
+        let cross = w.duplicate();
         local().host = Some(Host {
             comm,
             id: nodes.me,
@@ -62,6 +67,8 @@ pub(super) fn host() -> &'static mut Host {
             peers,
             pending: Vec::new(),
             arrivals: 0,
+            members: nodes.members,
+            cross,
         });
     }
     local().host.as_mut().expect("the host was just set")

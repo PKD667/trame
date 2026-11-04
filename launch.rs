@@ -55,6 +55,9 @@ pub(crate) struct Route {
     pub to: End,
     pub ty: TypeId,
     pub name: &'static str,
+    /// The type's tag across hosts (CONTRACT.md, F4).
+    #[cfg(feature = "mpi")]
+    pub wire: u64,
     pub size: usize,
     pub cap: usize,
     pub lossy: bool,
@@ -116,12 +119,18 @@ pub(crate) fn build_all(plan: &mut Plan) {
 pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
     let n = plan.workers.len();
     for (i, r) in plan.routes.iter().enumerate() {
+        // A worker of this host must be declared; a worker of another host must be on a host of the
+        // deployment, and its host checks the rest (F3). A route names at least one end of this host.
         for end in [r.from, r.to] {
             if let End::Worker(w) = end
-                && (w.1 != crate::topology::HERE || w.0 as usize >= n)
+                && (if w.1 == crate::topology::HERE { w.0 as usize >= n } else { w.1 >= crate::io::hosts() })
             {
                 return Err(Refused::UnknownWorker(w));
             }
+        }
+        let remote = |e: End| matches!(e, End::Worker(w) if w.1 != crate::topology::HERE);
+        if let (true, true, End::Worker(w)) = (remote(r.from), remote(r.to), r.from) {
+            return Err(Refused::UnknownWorker(w));
         }
         if r.cap == 0 {
             return Err(Refused::ZeroCapacity { name: r.name });

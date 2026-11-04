@@ -41,7 +41,7 @@ backend.
 label of T.
 
 **R2 Progress.** No check proves it. Programs terminate with their expected output. The TLA+ models
-check liveness of the MPI wake-up, credit and abort protocols.
+check liveness of the MPI wake-up protocol and of a lane between hosts.
 
 **L1 Refusal.** Programs `refuse` and `refuse_dup`, and the seq launch tests. On MPI, every refusal
 is decided by a collective reduction (`backends/mpi/open.rs`).
@@ -76,7 +76,7 @@ Replay, since S6 is part of `may_start`.
 **S9 Trace.** Replay checks the traces it is given. Nothing checks that a trace is complete.
 
 **T1 Order, T2 Capacity, T3 Delivery.** Programs; on MPI, `backends/mpi/tests` (FIFO with
-verification, overwrite, fairness, large routes, node splits) and the TLA+ model `Credit`.
+verification, overwrite, fairness, large routes, node splits).
 
 **P1 Writer.** By type: a step takes the pool as `&P`, and `#[trame::step]` refuses `&mut`.
 
@@ -105,7 +105,23 @@ the plan's references until `join`, and leaks them when the run is dropped witho
 workers read the segment's free list as their state, and the run would hang. No test drops a run
 without its join on MPI.
 
-**E1 Abort.** Programs `abort`, `abort_join`, `leader_panics`; TLA+ model `Abort`.
+**F1 Identity.** By construction: `hosts.rs` numbers hosts by their lowest world rank. Program
+`peers` on two hosts.
+
+**F3 Port agreement.** Program `refuse_ports` on two hosts: a capacity that differs refuses both,
+naming the route (`cross.rs` `connect`). No test declares a route on one host only, which waits.
+
+**F4 Tag.** By construction (`io.rs` `tag`): a hash of the type's path and size. Programs `peers`
+and `xhost_ring` on two hosts compile each type once, so they do not test two compilations.
+
+**F5 Routes between hosts.** Program `xhost_ring` on two hosts: 2000 items per worker over lossless
+lanes of capacity 4, each receiver asserting order and once-only delivery, and lossy ticks asserted
+to increase. TLA+ model `Lane` (`proofs/mpi/Lane.tla`): order, room by credits, every frame finds
+its posted receive, every frame taken and credited. Lossy lanes and the end have no model.
+
+**F6 Peer channel.** Program `peers` on two hosts.
+
+**E1 Abort.** Programs `abort`, `abort_join`, `leader_panics`.
 
 **E2 Join.** Programs; the outcome check.
 

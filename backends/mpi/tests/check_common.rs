@@ -69,7 +69,7 @@ pub(crate) fn random_topology(seed: u64, n: u32) -> Topology {
         }
         let size = [16, 200, FRAME][rng.below(3) as usize];
         let cap = 1 + rng.below(8) as u32;
-        routes.push(Route { from, to, tag, size, cap, lossy: false });
+        routes.push(Route { from, to, tag, size, cap, lossy: false, remote: None });
     }
     Topology { workers: n, routes }
 }

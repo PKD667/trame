@@ -1,0 +1,4 @@
+host 0 worker 0 from 2 count 2000 sum 6011000
+host 0 worker 1 from 0 count 2000 sum 2013000
+host 0 worker 2 from 1 count 2000 sum 4012000
+outcomes: [Returned, Returned, Returned]

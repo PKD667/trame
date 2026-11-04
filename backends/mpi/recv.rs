@@ -22,7 +22,7 @@ impl Transport {
     /// head of the first route in rotating order that has one. Returns `Empty` when none does.
     pub fn recv(&mut self, owned: &[RouteId], out: &mut [u8]) -> Result<Received, Error> {
         for &id in owned {
-            if self.route(id)?.to != self.me() {
+            if !self.route(id)?.received_by(self.me()) {
                 return Err(Error::NotYours(id));
             }
         }
@@ -54,6 +54,15 @@ impl Transport {
     /// The index of the head of route `id`, or None when it has no frame.
     pub(super) fn peek(&mut self, id: RouteId) -> Result<Option<u64>, Error> {
         let r = *self.route(id)?;
+        if r.remote.is_some() {
+            let me = self.me();
+            let super::cross::Lane::In(i) = self.lane(id) else { unreachable!("a lane this endpoint receives is In") };
+            let ((here, now), index) = (i.head(), i.consumed());
+            if now {
+                self.bump(me);
+            }
+            return Ok(here.then_some(index));
+        }
         let p = self.win().word(r.base).load(Acquire);
         if r.lossy {
             let mut start = self.cursor_mut()[id.0 as usize].max(p.saturating_sub(r.cap));
@@ -87,6 +96,20 @@ impl Transport {
     fn take(&mut self, id: RouteId, r: &RouteLayout, index: u64, out: &mut [u8]) -> Result<bool, Error> {
         let tracing = self.trace.is_some();
         let before = if tracing { clock() } else { 0 };
+        if r.remote.is_some() {
+            let me = self.me();
+            let super::cross::Lane::In(i) = self.lane(id) else { unreachable!("a lane this endpoint receives is In") };
+            let (took, now) = i.take(out);
+            if now {
+                self.bump(me);
+            }
+            if took != Some(index) {
+                return Err(Error::Broken("a lane's head moved between peek and take"));
+            }
+            let after = if tracing { clock() } else { 0 };
+            self.push(Event::Consume { route: id.0, index, before, after });
+            return Ok(true);
+        }
         if !self.read_slot(r, index, Some(out))? {
             if !r.lossy {
                 return Err(Error::Broken("published frame was overwritten"));

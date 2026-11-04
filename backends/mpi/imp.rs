@@ -129,9 +129,15 @@ fn agents_for(obj: &dyn Erased, t: &Transport, cap: Option<usize>) -> usize {
 impl Backend for Selected {
     type Run = Leader;
 
+    /// The ranks of the host agree on the plan, then the hosts on the routes between them (F3,
+    /// cross.rs `connect`). The launch checks run here too, so that a host refused by them still
+    /// takes part in the connect, and the hosts it shares routes with are refused with it.
     fn agree(plan: &Plan) -> Result<(), Refused> {
         let ranks = plan.workers.len() as u32 + 1;
-        agree(&super::hosts::host().comm, &encode_plan(plan), ranks).map_err(refused)
+        let here = agree(&super::hosts::host().comm, &encode_plan(plan), ranks).map_err(refused);
+        let checked = here.and_then(|()| crate::launch::check(plan));
+        let joined = super::cross::connect(plan, checked.is_ok());
+        checked.and(joined)
     }
 
     fn launch(mut plan: Plan) -> Result<Leader, Refused> {

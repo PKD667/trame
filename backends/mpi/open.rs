@@ -97,7 +97,8 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
         let why = mapped.err().unwrap_or_else(|| "another rank could not map the segment".to_string());
         return Err(Refusal::Memory { need: segment::LEN, why });
     }
-    let t = Transport::new(me, win, lay);
+    let mut t = Transport::new(me, win, lay);
+    t.open_lanes();
     if first {
         // No worker has run yet. The launch barrier below keeps every worker out until this is written.
         t.win().zero();

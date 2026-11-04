@@ -14,12 +14,14 @@
 //! - A lossy send never reads C. A slot is a seqlock, so a receiver that reads a slot the sender
 //!   is overwriting detects it and skips the frame.
 //! - Results and aborts are futex words (results.rs). Agents sleep on their worker's epoch (epoch.rs), and
-//!   every act that can change what an agent waits for bumps it. Every epoch and futex word is 32 bits. No
-//!   MPI call after launch.
+//!   every act that can change what an agent waits for bumps it. Every epoch and futex word is 32 bits.
+//! - A route between workers of two hosts is a lane (cross.rs): two-sided MPI from rank to rank, with
+//!   credits back. Those are the only MPI calls after launch, and only ranks with a lane make them.
 
 mod epoch;
 mod futex;
 mod harness;
+mod cross;
 mod imp;
 mod layout;
 mod leader;
@@ -72,6 +74,8 @@ pub struct Transport {
     /// Per owned route set, where `recv` starts its scan (recv.rs). Indexed by the set's first route.
     rr: Vec<usize>,
     trace: Option<Vec<Event>>,
+    /// Per route, this endpoint's lane when the route joins it to another host (cross.rs).
+    lanes: Vec<Option<cross::Lane>>,
 }
 
 impl Drop for Transport {
@@ -93,7 +97,40 @@ impl Transport {
             cursor: vec![0; routes],
             rr: vec![0; routes],
             trace: None,
+            lanes: Vec::new(),
         }
+    }
+
+    /// Post this endpoint's lanes (cross.rs). At launch, once, when a route joins hosts.
+    pub(crate) fn open_lanes(&mut self) {
+        if self.lay.routes.iter().any(|r| r.remote.is_some()) {
+            self.lanes = cross::lanes(&self.lay, self.me);
+        }
+    }
+
+    /// Whether this endpoint has a lane: then its agents poll instead of sleeping (worker.rs `idle`).
+    pub(crate) fn has_lanes(&self) -> bool {
+        self.lanes.iter().any(Option::is_some)
+    }
+
+    /// Progress every lane; an arrival moves this endpoint's epoch (S3).
+    pub(crate) fn poll_lanes(&mut self) {
+        let mut any = false;
+        for l in self.lanes.iter_mut().flatten() {
+            any |= l.poll();
+        }
+        if any {
+            self.bump(self.me);
+        }
+    }
+
+    /// Before MPI_Finalize (state.rs): complete this endpoint's lanes (cross.rs `quiesce`).
+    pub(crate) fn quiesce(&mut self) {
+        cross::quiesce(&mut self.lanes);
+    }
+
+    fn lane(&mut self, id: RouteId) -> &mut cross::Lane {
+        self.lanes.get_mut(id.0 as usize).and_then(Option::as_mut).expect("trame: a route between hosts has its lane")
     }
 
     /// This endpoint's rank: a worker's index, or `workers` for the leader.

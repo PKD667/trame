@@ -35,13 +35,12 @@ EpochFlag:MCEpochFlag:Invariant NoLostWakeup is violated
 EpochFlagAnnounced:MCEpochFlagAnnounced:Invariant Announced is violated
 EpochFlagXport:MCEpochFlagXport:No error has been found
 EpochWrap:MCEpochWrap:Invariant NoLostWakeup is violated
-Credit:MCCredit:No error has been found
-CreditStale:MCCreditFull:Invariant StaleFull is violated
-Abort:MCAbort:No error has been found
-AbortEarly:MCAbortEarly:Temporal properties were violated
+Lane:MCLane:No error has been found
+Lane3:MCLane3:No error has been found
+LaneOver:MCLaneOver:Invariant Chain is violated
 MODELS
 items="[${items%,}]"
-printf '{"holds":%s,"gaps":[{"id":"not-modelled","why":"memory orderings weaker than SeqCst; timeouts of sleep_on; the kernel futex beyond compare-and-sleep; MPI progress beyond weak fairness; two routes per node; lossy routes; process exit and MPI_Finalize; the relay out thread may scan at any time in the model, a superset of its wakes. See proofs/README.md"}],"counterexamples":%s}\n' "$holds" "$items" > "$out/outcome.json"
+printf '{"holds":%s,"gaps":[{"id":"not-modelled","why":"memory orderings weaker than SeqCst; timeouts of sleep_on; the kernel futex beyond compare-and-sleep; MPI progress beyond weak fairness; several lanes; lossy routes; process exit, quiesce and MPI_Finalize. See proofs/README.md"}],"counterexamples":%s}\n' "$holds" "$items" > "$out/outcome.json"
 rm -rf "$work"
 cat "$out/results.txt"
 [ "$holds" = true ]

@@ -6,7 +6,9 @@
 // (state.rs). So every operation holds `XPORT`, the rank's transport lock, for its whole duration; steps
 // still compute in parallel, only their effects are serialised. `idle` holds it through the futex
 // sleep: an agent idles only when no step of its worker runs and none can start, so another agent that
-// needs the lock meanwhile has nothing to do that the same epoch change would not also wake.
+// needs the lock meanwhile has nothing to do that the same epoch change would not also wake. A worker
+// with a lane (cross.rs) cannot sleep: a frame from another host moves no futex. Its idle agents poll
+// the lanes instead, taking the lock for each poll only, until the epoch moves or the deadline passes.
 
 extern crate std;
 
@@ -56,9 +58,8 @@ fn parts() -> (&'static mut Transport, &'static [Entry]) {
 }
 
 fn route(entries: &[Entry], t: &Transport, to: End, ty: TypeId, name: &str) -> RouteId {
-    let to_rank = rank_of(to, t.lay().workers);
-    plan::find(entries, t.me(), to_rank, ty)
-        .unwrap_or_else(|| panic!("trame: worker {} has no route of {name} to rank {to_rank}", t.me()))
+    plan::find(entries, plan::here(t.me()), rank_of(to, t.lay().workers), ty)
+        .unwrap_or_else(|| panic!("trame: worker {} has no route of {name} to {to:?}", t.me()))
 }
 
 pub(super) fn send(to: End, ty: TypeId, name: &str, bytes: &[u8]) -> Result<(), Full> {
@@ -101,8 +102,8 @@ pub(super) fn offer(ty: TypeId) -> bool {
 pub(super) fn route_index(to: End, ty: TypeId) -> Option<usize> {
     let _x = xport();
     let (t, entries) = parts();
-    let to_rank = rank_of(to, t.lay().workers);
-    plan::outgoing(entries, t.me()).position(|e| e.to == to_rank && e.ty == ty)
+    let to = rank_of(to, t.lay().workers);
+    plan::outgoing(entries, t.me()).position(|e| e.to == to && e.ty == ty)
 }
 
 /// Whether the outgoing route at index `route` has room, as `route_index` numbers it.
@@ -197,8 +198,25 @@ pub(super) fn epoch() -> u64 {
 
 /// Sleep on the epoch `epoch` came from (see `epoch`). The narrowing is exact: the value was a u32.
 pub(super) fn idle(until: Option<u64>, epoch: u64) {
-    let _x = xport();
-    parts().0.sleep(epoch as u32, until);
+    let x = xport();
+    let t = parts().0;
+    if !t.has_lanes() {
+        t.sleep(epoch as u32, until);
+        return;
+    }
+    drop(x);
+    let (e, _, _) = fast();
+    loop {
+        let x = xport();
+        let t = parts().0;
+        t.poll_lanes();
+        let late = until.is_some_and(|u| t.elapsed() >= u);
+        drop(x);
+        if late || e.load(SeqCst) != epoch as u32 {
+            return;
+        }
+        std::hint::spin_loop();
+    }
 }
 
 /// Run `f` on this rank's endpoint under the transport lock (imp.rs: results and aborts).

@@ -9,8 +9,8 @@ How the MPI backend runs on several shared-memory nodes (`CONTRACT.md`, Federati
   `hosts()` the number of hosts.
 - **Each host launches alone.** A host's communicator is the world of its launch: its ranks agree
   on its plan, it maps its own window and segment, and its last rank is its leader. Within a host
-  the backend is the one-node backend of `README.md`; nothing of one host's launch waits for another
-  host.
+  the backend is the one-node backend of `README.md`. A launch waits for another host only when the
+  two share routes (below).
 - **Each host runs the whole program.** Every leader declares its own topology, with workers
   numbered from 0; a program that wants different work on each host branches on `host()`.
 - **Clocks.** Each host's clock is `CLOCK_MONOTONIC` from its own start, and its `ClockId` is the
@@ -29,9 +29,32 @@ leader's epoch or the count of peer arrivals moves. On one host it sleeps as bef
 
 ## Routes between hosts
 
-A route to another host's worker is refused at launch (`Refused::UnknownWorker`). Frames between
-hosts, sent rank to rank with two-sided MPI and no relay thread, are the next part of this backend;
-the experiment `mpi_cross_host` records the measurements behind that choice.
+A route joins a worker of this host to a worker of another (`WorkerId::from((HostId(h), k))`). Both
+hosts declare it, with the same ends, type, kind and capacity (F3). At launch each leader sends the
+routes it shares with each other host to that host's leader, and compares them with what that host
+sends back; any difference refuses the launch of both hosts, with a message naming the route. Only
+hosts that share routes wait for each other. A host that declares a route with a host that declares
+none back waits for that host's next launch that does.
+
+A route between hosts is a lane (`cross.rs`): frames go from the sending worker's rank to the
+receiving worker's rank by two-sided MPI, on a duplicate of the world, with no thread between. The
+receiver keeps one posted receive per slot of the capacity and sends a credit back for each frame it
+takes; the sender sends only while it has room by the credits it has, so every frame finds a posted
+receive and `Full` means the capacity is used. MPI keeps the order of one sender's messages of one
+tag, which keeps T1. A route between the leader and another host's worker is refused: leaders talk
+over the peer channel.
+
+A frame from another host moves no futex, so a worker with a lane does not sleep: its idle agents
+poll the lanes, taking the transport lock for each poll only. An arrival moves the worker's epoch,
+and the agents' wait ends as for a frame of its own host. At the end every rank completes its sends
+and meets the others in a nonblocking barrier before `MPI_Finalize`; a lossy frame still waiting for
+room is dropped.
+
+The choice rests on the experiment `mpi_cross_host` (`experiments/mpi_cross_host`): between two
+machines of Lille, a one-way 8-byte frame took a median 30.6 us rank to rank and 49.6 us through a
+relay thread, and polling a shared flag between MPI tests cost nothing measurable (29.9 us).
+Deadlock across hosts is not detected: a worker that waits on a lane forever is not reported as
+`Deadlock`.
 
 ## Testing on one machine
 

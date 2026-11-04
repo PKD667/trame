@@ -122,8 +122,17 @@ and a run dropped without its join leaks its states rather than free them under 
 fixed by deployment; `host()` answers it. Workers are numbered from 0 on each host; a worker of
 another host is named by its host and its number there.
 
+**F3 Port agreement.** A route between workers of two hosts is declared on both, with the same
+ends, message type, kind and capacity. Hosts whose declarations differ are refused at launch (L1),
+both of them, with a message naming the route. Only hosts that share routes wait for each other's
+launch.
+
 **F4 Tag.** A message crossing hosts is identified by a tag equal in two compilations of the same
 type: a hash of its path and its size. `TypeId` does not cross hosts.
+
+**F5 Routes between hosts.** A route between workers of two hosts keeps T1–T3 while both workers
+run. A route between a leader and a worker of another host is refused at launch. A worker that waits
+on such a route forever is not reported as `Deadlock`.
 
 **F6 Peer channel.** Leaders exchange messages over a peer channel that is not a route. A host is not
 its own peer; a send to a host that is not a peer panics.

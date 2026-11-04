@@ -23,7 +23,7 @@ pub(crate) fn overwrite(world: &mpi::topology::SimpleCommunicator, args: &[Strin
     assert!(n >= 2, "overwrite wants two workers");
     let topo = Topology {
         workers: n,
-        routes: vec![Route { from: 0, to: 1, tag: 0, size: 64, cap, lossy: true }],
+        routes: vec![Route { from: 0, to: 1, tag: 0, size: 64, cap, lossy: true, remote: None }],
     };
     let mut t = match worker(world, &topo) {
         Ok(t) => t,

@@ -21,7 +21,7 @@ pub(crate) fn big(world: &mpi::topology::SimpleCommunicator, _args: &[String]) {
     let me = world.rank() as u32;
     let n = world.size() as u32 - 1;
     assert!(n == 2, "bigroute wants two workers and the leader: three ranks");
-    let route = Route { from: 0, to: 1, tag: 0, size: ROUTE, cap: 2, lossy: false };
+    let route = Route { from: 0, to: 1, tag: 0, size: ROUTE, cap: 2, lossy: false, remote: None };
     let topo = Topology { workers: n, routes: vec![route] };
     let mut t = match worker(world, &topo) {
         Ok(t) => t,

@@ -25,10 +25,15 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
     let mut at = header;
     let mut routes = Vec::with_capacity(topo.routes.len());
     for (rank, r) in topo.routes.iter().enumerate() {
-        if r.from > topo.workers || r.to > topo.workers {
+        // The end on this host must be a worker of the launch; on another host, a worker there (cross.rs).
+        let here = match r.remote {
+            None => r.from <= topo.workers && r.to <= topo.workers,
+            Some(x) => (if x.outgoing { r.from } else { r.to }) < topo.workers,
+        };
+        if !here {
             return Err(refuse(format!("route {rank} names an agent outside the launch")));
         }
-        if !seen.insert((r.from, r.to, r.tag)) {
+        if !seen.insert((r.from, r.to, r.tag, r.remote.map(|x| (x.host, x.outgoing)))) {
             return Err(refuse(format!("two routes with sender {}, receiver {}, tag {}", r.from, r.to, r.tag)));
         }
         if r.cap == 0 {
@@ -40,7 +45,9 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
             .checked_mul(8)
             .and_then(|b| b.checked_add(SLOT_HEAD))
             .ok_or_else(|| refuse("slot size overflows"))?;
-        let body = (r.cap as usize).checked_mul(stride).ok_or_else(|| refuse("route size overflows"))?;
+        // A route to another host has no ring here: its frames land in the receiver's buffers (cross.rs).
+        let slots = if r.remote.is_some() { 0 } else { r.cap as usize };
+        let body = slots.checked_mul(stride).ok_or_else(|| refuse("route size overflows"))?;
         let base = at;
         at = base
             .checked_add(2 * LINE)
@@ -54,6 +61,7 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
             lossy: r.lossy,
             base,
             stride,
+            remote: r.remote,
         });
     }
     Ok(Layout { workers: topo.workers, routes, total: at })
@@ -72,6 +80,15 @@ pub fn encode(topo: &Topology) -> Vec<u8> {
         out.extend_from_slice(&(r.size as u64).to_le_bytes());
         out.extend_from_slice(&r.cap.to_le_bytes());
         out.push(u8::from(r.lossy));
+        match r.remote {
+            None => out.push(0),
+            Some(x) => {
+                out.push(1 + u8::from(x.outgoing));
+                out.extend_from_slice(&x.host.to_le_bytes());
+                out.extend_from_slice(&x.world.to_le_bytes());
+                out.extend_from_slice(&x.lane.to_le_bytes());
+            }
+        }
     }
     out
 }

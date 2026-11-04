@@ -20,7 +20,7 @@ pub(crate) fn fair(world: &mpi::topology::SimpleCommunicator, args: &[String]) {
     let msgs = arg_num(args, "--msgs", 16);
     let me = world.rank() as u32;
     assert!(world.size() == 4, "fair wants two senders, a receiver and the leader: four ranks");
-    let route = |from| Route { from, to: 2, tag: 0, size: 64, cap: msgs as u32, lossy: false };
+    let route = |from| Route { from, to: 2, tag: 0, size: 64, cap: msgs as u32, lossy: false, remote: None };
     let topo = Topology { workers: 3, routes: vec![route(0), route(1)] };
     let mut t = match worker(world, &topo) {
         Ok(t) => t,

@@ -73,15 +73,26 @@ pub(super) fn world() -> &'static SimpleCommunicator {
 /// is called only after this rank's result is final (see the README, Finalization).
 pub fn finalize() {
     let (mut up, mut done): (i32, i32) = (0, 0);
-    // SAFETY: each query takes one out-pointer; MPI_Finalize takes none. The check is on MPI itself,
-    // not on `world()`: a test harness that initialises MPI on its own never sets `world`.
+    // SAFETY: each query takes one out-pointer. The check is on MPI itself, not on `world()`: a test
+    // harness that initialises MPI on its own never sets `world`.
     unsafe {
         mpi::ffi::MPI_Initialized(&mut up);
         mpi::ffi::MPI_Finalized(&mut done);
-        if up != 0 && done == 0 {
-            mpi::ffi::MPI_Finalize();
+    }
+    if up == 0 || done != 0 {
+        return;
+    }
+    // Every rank that made the hosts takes part in the lanes' end (cross.rs `quiesce`), with or
+    // without lanes of its own: the leader's endpoint has none.
+    let l = local();
+    if l.host.is_some() {
+        match l.endpoint.as_mut() {
+            Some(t) => t.quiesce(),
+            None => super::cross::quiesce(&mut []),
         }
     }
+    // SAFETY: MPI is up and not finalized; every lane's message is complete.
+    unsafe { mpi::ffi::MPI_Finalize() };
 }
 
 /// Map a transport refusal to the surface's, with its message whole (refusal.rs).

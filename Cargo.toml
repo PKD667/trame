@@ -191,3 +191,11 @@ path = "examples/overlap.rs"
 [[example]]
 name = "peers"
 path = "programs/peers.rs"
+
+[[example]]
+name = "xhost_ring"
+path = "programs/xhost_ring.rs"
+
+[[example]]
+name = "refuse_ports"
+path = "programs/refuse_ports.rs"

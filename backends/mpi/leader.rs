@@ -69,8 +69,8 @@ impl Leader {
 /// The route the leader sends on to `to` with message type `ty`. Panics when there is none.
 fn route(entries: &[Entry], t: &Transport, to: WorkerId, ty: TypeId, name: &str) -> RouteId {
     let to_rank = rank_of(End::Worker(to), t.lay().workers);
-    plan::find(entries, t.me(), to_rank, ty)
-        .unwrap_or_else(|| panic!("trame: the leader has no route of {name} to rank {to_rank}"))
+    plan::find(entries, plan::here(t.me()), to_rank, ty)
+        .unwrap_or_else(|| panic!("trame: the leader has no route of {name} to {to:?}"))
 }
 
 pub(super) fn send(run: &Leader, to: WorkerId, ty: TypeId, name: &str, bytes: &[u8]) -> Result<(), Full> {

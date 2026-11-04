@@ -30,11 +30,14 @@ impl Transport {
     /// Send `msg` on route `id`, which this worker must send on.
     pub fn send(&mut self, id: RouteId, msg: &[u8]) -> Result<Answer, Error> {
         let r = *self.route(id)?;
-        if r.from != self.me() {
+        if !r.sent_by(self.me()) {
             return Err(Error::NotYours(id));
         }
         if msg.len() != r.size {
             return Err(Error::BadSize { route: id, expected: r.size, got: msg.len() });
+        }
+        if r.remote.is_some() {
+            return Ok(self.send_far(id, msg));
         }
         let tracing = self.trace.is_some();
         let p_at = r.base;
@@ -62,6 +65,21 @@ impl Transport {
         }
         self.push(Event::Send { route: id.0, index: p, read: c, before, after, answer });
         Ok(answer)
+    }
+
+    /// Send on a lane (cross.rs). The trace records the credit the answer read as `read`.
+    fn send_far(&mut self, id: RouteId, msg: &[u8]) -> Answer {
+        let me = self.me();
+        let before = if self.trace.is_some() { clock() } else { 0 };
+        let super::cross::Lane::Out(o) = self.lane(id) else { unreachable!("a lane this endpoint sends on is Out") };
+        let (index, read) = o.counts();
+        let (answer, grew) = o.send(msg);
+        if grew {
+            self.bump(me);
+        }
+        let after = if self.trace.is_some() { clock() } else { 0 };
+        self.push(Event::Send { route: id.0, index, read, before, after, answer });
+        answer
     }
 
     /// Write frame `index` into its slot as a seqlock writer: odd sequence, payload, even sequence.
