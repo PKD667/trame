@@ -97,8 +97,8 @@ mod seq;
 #[path = "backends/local/routes.rs"]
 mod local_routes;
 
-/// The MPI backend: one rank per worker, the leader on the last rank (backends/mpi/README.md).
-/// Stop, edit and pools are not yet carried to other ranks: see docs/worker-model.md, stage 2.
+/// The MPI backend: one rank per worker, one host per shared-memory node with its leader on the
+/// node's last rank (backends/mpi/README.md, backends/mpi/HOSTS.md).
 #[cfg(feature = "mpi")]
 #[path = "backends/mpi/mod.rs"]
 mod mpi;

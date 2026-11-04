@@ -81,10 +81,6 @@ impl Run {
         &self.joined
     }
 
-    pub(crate) fn workers(&self) -> usize {
-        self.workers
-    }
-
     pub(crate) fn pool(&self) -> Option<*const ()> {
         self.pool
     }

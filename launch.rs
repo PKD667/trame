@@ -102,6 +102,7 @@ pub(crate) type Builder = alloc::boxed::Box<dyn FnOnce() + Send>;
 
 /// Run every builder: the backends whose leader builds every state in its own memory (seq, threads)
 /// call this at launch.
+#[cfg(any(feature = "seq", feature = "threads"))]
 pub(crate) fn build_all(plan: &mut Plan) {
     if let Some(b) = plan.pool_builder.take() {
         crate::domain::arena(b);

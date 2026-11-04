@@ -138,6 +138,7 @@ impl<S: State> Core<S> {
     }
 
     /// The address of the block, for a worker in another process to adopt (`adopt`).
+    #[cfg(feature = "mpi")]
     pub(crate) fn addr(&self) -> usize {
         self.block.load(Ordering::Acquire) as usize
     }
@@ -147,6 +148,7 @@ impl<S: State> Core<S> {
     ///
     /// # Safety
     /// `addr` is the `addr()` of a `Core<S>` of the same type, filled, in a mapped domain.
+    #[cfg(feature = "mpi")]
     pub(crate) unsafe fn adopt(&self, addr: usize) {
         let was = self.block.swap(addr as *mut Block<S>, Ordering::AcqRel);
         assert!(was.is_null(), "trame: a worker adopted a state it already had");
@@ -242,6 +244,7 @@ impl<P> PoolCore<P> {
         assert!(was.is_null(), "trame: the pool was built twice");
     }
 
+    #[cfg(feature = "mpi")]
     pub(crate) fn addr(&self) -> usize {
         self.value.load(Ordering::Acquire) as usize
     }
@@ -250,6 +253,7 @@ impl<P> PoolCore<P> {
     ///
     /// # Safety
     /// `addr` is the `addr()` of a filled `PoolCore<P>`, in a mapped domain.
+    #[cfg(feature = "mpi")]
     pub(crate) unsafe fn adopt(&self, addr: usize) {
         let was = self.value.swap(addr as *mut P, Ordering::AcqRel);
         assert!(was.is_null(), "trame: a worker adopted a pool it already had");
@@ -280,9 +284,11 @@ impl<P> PoolCore<P> {
 pub(crate) trait ErasedPool: Send + Sync {
     /// For a step's downcast to `PoolCore<P>` (`Erased::run`).
     fn any(&self) -> &(dyn Any + Send + Sync);
+    #[cfg(feature = "mpi")]
     fn addr(&self) -> usize;
     /// # Safety
     /// As `PoolCore::adopt`.
+    #[cfg(feature = "mpi")]
     unsafe fn adopt(&self, addr: usize);
 }
 
@@ -290,9 +296,11 @@ impl<P: Send + Sync + 'static> ErasedPool for PoolCore<P> {
     fn any(&self) -> &(dyn Any + Send + Sync) {
         self
     }
+    #[cfg(feature = "mpi")]
     fn addr(&self) -> usize {
         PoolCore::addr(self)
     }
+    #[cfg(feature = "mpi")]
     unsafe fn adopt(&self, addr: usize) {
         // SAFETY: the caller's.
         unsafe { PoolCore::adopt(self, addr) }
@@ -333,9 +341,11 @@ pub(crate) trait Erased: Send + Sync {
     fn pool_name(&self) -> &'static str;
     fn frame_offered(&self, i: usize) -> bool;
     /// The state block's address (`Core::addr`), and its adoption by a worker in another process.
+    #[cfg(feature = "mpi")]
     fn addr(&self) -> usize;
     /// # Safety
     /// As `Core::adopt`.
+    #[cfg(feature = "mpi")]
     unsafe fn adopt(&self, addr: usize);
     fn tags(&self, i: usize) -> Tags;
     /// Run step i. A failure is kept here for the leader, and answered as `Err(())`.
@@ -362,9 +372,11 @@ impl<S: State> Erased for Core<S> {
     fn frame_offered(&self, i: usize) -> bool {
         S::frame_offered(i)
     }
+    #[cfg(feature = "mpi")]
     fn addr(&self) -> usize {
         Core::addr(self)
     }
+    #[cfg(feature = "mpi")]
     unsafe fn adopt(&self, addr: usize) {
         // SAFETY: the caller's.
         unsafe { Core::adopt(self, addr) }
@@ -451,10 +463,9 @@ impl Slot {
         self.changed.notify_all();
     }
 
-    /// Edit: wait until no step runs, keep any from starting, run `f`, and wake every step. The
-    /// backend then wakes the agents. A worker with a result is not edited: `f` is not run.
     /// Hold `fields` for an edit (S4): from now no step touching one starts; returns once none
     /// runs. Answers whether the worker is live (no result, not dead). Give them back with `release`.
+    #[cfg(any(feature = "seq", feature = "threads"))]
     pub(crate) fn hold(&self, fields: u64) -> bool {
         let mut g = self.lock();
         if g.dead {
@@ -469,6 +480,7 @@ impl Slot {
     }
 
     /// Give back `fields` after an edit: every step touching one is woken (S3).
+    #[cfg(any(feature = "seq", feature = "threads"))]
     pub(crate) fn release(&self, fields: u64) {
         let mut g = self.lock();
         if !g.dead {
@@ -479,6 +491,7 @@ impl Slot {
     }
 
     /// Edit `fields` of this worker: hold, run `f` if the worker is live, release.
+    #[cfg(any(feature = "seq", feature = "threads"))]
     pub(crate) fn edit(&self, fields: u64, f: &mut dyn FnMut()) -> bool {
         let live = self.hold(fields);
         if live {
@@ -585,6 +598,7 @@ fn ended(r: Result<Status, ()>, clock: time::ClockId, service: u64) -> (Ended, W
 /// Edit the pool (S4 over the POOL bit): hold it in every live worker, run `f`, release everywhere.
 /// Holding one slot after another cannot deadlock: only the leader holds more than one, and a step
 /// never waits for a hold.
+#[cfg(any(feature = "seq", feature = "threads"))]
 pub(crate) fn edit_pool(slots: &[Arc<Slot>], f: &mut dyn FnMut()) {
     use crate::sched::POOL;
     for s in slots {

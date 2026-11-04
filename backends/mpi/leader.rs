@@ -45,15 +45,16 @@ impl Transport {
 /// A launched run, as the leader holds it: the leader's endpoint, and the workers and pool it built.
 /// Their blocks are in the segment, where the workers use them; the leader process owns them, and a
 /// block is freed when its last `Arc` goes. The program may drop its `Worker` and `Pool` handles
-/// right after `set`, so the run keeps the plan's references until it ends (CONTRACT.md, M1).
-pub struct Leader(UnsafeCell<Transport>, #[allow(dead_code)] Built);
+/// right after `set`, so the run keeps the plan's references until `join` (CONTRACT.md, M7). A run
+/// dropped without `join` leaves its workers running, so it leaks them instead of freeing.
+pub struct Leader(UnsafeCell<Transport>, core::mem::ManuallyDrop<Built>);
 
 /// What the leader built, kept alive for the run (see `Leader`).
 pub(super) type Built = (Vec<std::sync::Arc<dyn crate::worker::Erased>>, Option<crate::backend::PoolRef>);
 
 impl Leader {
     pub(super) fn new(t: Transport, built: Built) -> Leader {
-        Leader(UnsafeCell::new(t), built)
+        Leader(UnsafeCell::new(t), core::mem::ManuallyDrop::new(built))
     }
 
     /// The endpoint. Each call is one leader operation, which ends before the next begins.
@@ -190,5 +191,7 @@ pub(super) fn join(run: Leader) -> Vec<Outcome> {
         .collect();
     run.get().end_run();
     finalize();
+    // Every worker has its result: no step uses a block now.
+    drop(core::mem::ManuallyDrop::into_inner(run.1));
     out
 }

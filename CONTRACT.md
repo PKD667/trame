@@ -112,8 +112,9 @@ answers null and allocates nothing outside the domain; the process then stops wi
 allocation failure, after the backend has said that the domain is full. A full domain is not a
 `Refused`: no program can continue from it.
 
-**M7 Lifetime.** A state and the pool live from the launch until the run ends, whatever the program
-does with its `Worker` and `Pool` handles. A handle dropped after `set` frees nothing a step uses.
+**M7 Lifetime.** A state and the pool live from the launch until the join, whatever the program
+does with its `Worker` and `Pool` handles. A handle dropped after `set` frees nothing a step uses,
+and a run dropped without its join leaks its states rather than free them under running workers.
 
 ## Federation
 
