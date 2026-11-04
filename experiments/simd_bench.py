@@ -91,8 +91,17 @@ def machine_info() -> dict:
 
 
 def main():
+    # Get experiment parameters (required by nixsci)
+    params = lab.params()
+    
     # Record machine info once per job.
     lab.record("debug", {"stage": "start"})
+    try:
+        bin_path = f"{os.environ['BIN']}/bench"
+        lab.record("debug", {"bin_path": bin_path, "exists": Path(bin_path).exists()})
+    except Exception as e:
+        lab.record("debug", {"bin_check_error": str(e)})
+    
     info = machine_info()
     lab.record("machine", info)
     lab.record("debug", {"stage": "machine_info_done"})
