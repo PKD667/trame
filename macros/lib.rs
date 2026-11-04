@@ -42,7 +42,13 @@ fn expand_message(attr: TokenStream2, item: TokenStream) -> syn::Result<TokenStr
     }
     s.attrs.push(parse_quote!(#[derive(::core::clone::Clone, ::core::marker::Copy, ::trame::__bytemuck::Pod, ::trame::__bytemuck::Zeroable)]));
     s.attrs.push(parse_quote!(#[bytemuck(crate = "::trame::__bytemuck")]));
-    Ok(quote! { #s })
+    let name = &s.ident;
+    // A message is its bytes (Pod), so it is plain too: a state may hold it.
+    Ok(quote! {
+        #s
+        // SAFETY: a Pod type is its bytes (CONTRACT.md M2, M3).
+        unsafe impl ::trame::Plain for #name {}
+    })
 }
 
 /// A field type may not name a reference, a raw pointer or a function pointer (spec.md 3). The
@@ -187,6 +193,13 @@ fn expand_parallel(input: TokenStream2) -> syn::Result<TokenStream2> {
 }
 
 mod state;
+
+/// `#[derive(trame::Plain)]` on a struct or enum: implements `trame::Plain` (CONTRACT.md M2, M3)
+/// when every field's type is plain; a field that is not is a compile error at that field.
+#[proc_macro_derive(Plain)]
+pub fn derive_plain(item: TokenStream) -> TokenStream {
+    state::derive_plain(item.into()).unwrap_or_else(|e| e.to_compile_error()).into()
+}
 
 /// `#[trame::state(steps(a, b), stop = f, pool = P, error = E)]` on a struct with named fields: the
 /// struct is a worker's state (spec.md 5.3). Without `--cfg trame_checked` it is a compile error.

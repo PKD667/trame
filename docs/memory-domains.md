@@ -56,12 +56,13 @@ into the domain. The cost outside arena mode is one thread-local read, and on fr
 
 ## Bound
 
-A domain has a size fixed at launch. A builder that does not fit refuses the launch. An edit that
-does not fit fails, and allocates nothing outside the domain (`CONTRACT.md`, M6).
+A domain has a size fixed at launch. An allocation that does not fit allocates nothing outside the
+domain: the backend says the domain is full, and the process stops (`CONTRACT.md`, M6).
 
 ## What a state holds
 
 A state holds no value whose meaning depends on the process that made it: no reference, raw
-pointer, function pointer, trait object, `Rc` or handle. Steps neither allocate nor free
-(`CONTRACT.md`, M2 to M4). The driver refuses allocation in items, and `tests/alloc.rs` counts
+pointer, function pointer, trait object, `Rc` or handle. This is a type, `trame::Plain`, which
+every field must have; a user type gets it from `#[derive(trame::Plain)]`, which requires it of
+every field in turn. Steps neither allocate nor free (`CONTRACT.md`, M2 to M4). The driver refuses allocation in items, and `tests/alloc.rs` counts
 allocations in steps (`PROOFS.md`, M4).

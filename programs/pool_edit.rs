@@ -15,6 +15,7 @@ const WORKERS: u32 = 3;
 const ROUNDS: u32 = 10;
 
 /// The pool: the round the leader last edited in, and every round so far.
+#[derive(trame::Plain)]
 struct Round {
     round: u32,
     all: Vec<u32>,

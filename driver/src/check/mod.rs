@@ -8,7 +8,6 @@
 
 mod lists;
 mod scan;
-mod state;
 mod trust;
 
 use std::collections::VecDeque;
@@ -103,21 +102,12 @@ pub fn run(tcx: TyCtxt<'_>) -> usize {
         }
     }
     let mut roots: Vec<(Level, Instance<'_>, Instance<'_>)> = Vec::new();
-    let mut types: Vec<(state::Held, Instance<'_>)> = Vec::new();
     for marker in instances {
         let InstanceKind::Item(def) = marker.def else { continue };
         let level = match canon(tcx, def).as_str() {
             "trame::__check::item" => Level::Item,
             "trame::__check::step" => Level::Step,
             "trame::__check::worker" => Level::Worker,
-            "trame::__check::state" => {
-                types.push((state::Held::State, marker));
-                continue;
-            }
-            "trame::__check::pool" => {
-                types.push((state::Held::Pool, marker));
-                continue;
-            }
             _ => continue,
         };
         match root_target(tcx, marker) {
@@ -160,11 +150,6 @@ pub fn run(tcx: TyCtxt<'_>) -> usize {
     }
     if debug {
         eprintln!("trame-driver: {} functions checked", order.len());
-    }
-
-    // State memory: what a state and its pool hold (state.rs).
-    for (held, marker) in &types {
-        errors += state::check(tcx, *held, marker.args.type_at(0));
     }
 
     // Trust: a body reached only by trusted edges is read for effects, edges and allocations (trust.rs).

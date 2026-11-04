@@ -71,8 +71,10 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for Alloc<A> {
         if arena_on() {
             let _ = ARENA_ALLOCS.try_with(|c| c.set(c.get() + 1));
             if let Some(p) = Selected::domain_alloc(layout) {
-                // SAFETY: `p` has `layout.size()` writable bytes.
-                unsafe { core::ptr::write_bytes(p, 0, layout.size()) };
+                if !p.is_null() {
+                    // SAFETY: `p` is not null, so it has `layout.size()` writable bytes (M1).
+                    unsafe { core::ptr::write_bytes(p, 0, layout.size()) };
+                }
                 return p;
             }
         }

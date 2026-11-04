@@ -1,5 +1,6 @@
 // spec: Requirement (All levels): no unsafe, and drop glue counts as a call. Dropping a Vec<X> runs X::drop
 // (core's drop_in_place loops over the elements); X::drop holds unsafe code. The step drops the Vec by overwriting it.
+#[derive(trame::Plain)]
 struct X(u32);
 
 impl Drop for X {
@@ -14,6 +15,7 @@ struct M {
     n: u32,
 }
 
+#[derive(trame::Plain)]
 struct Q {
     v: Vec<X>,
 }

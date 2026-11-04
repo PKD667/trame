@@ -1,5 +1,6 @@
 // spec: Requirement (All levels): no unsafe, and a user Clone impl is user code. The step clones an array of X;
 // `[X; N]::clone` is core code that calls X::clone, whose body holds an unsafe block.
+#[derive(trame::Plain)]
 struct X(u32);
 
 impl Clone for X {
@@ -16,6 +17,7 @@ struct M {
     n: u32,
 }
 
+#[derive(trame::Plain)]
 struct Q {
     a: [X; 2],
 }

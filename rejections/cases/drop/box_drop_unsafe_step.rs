@@ -1,5 +1,6 @@
 // spec: Requirement (All levels): drop glue counts as a call, and a program's own Drop impl is judged in full. Dropping
 // Box<X> calls the glue of Box, which reaches X::drop (the Own edge). X::drop holds unsafe code, so the step is refused.
+#[derive(trame::Plain)]
 struct X(u32);
 
 impl Drop for X {
@@ -14,6 +15,7 @@ struct M {
     n: u32,
 }
 
+#[derive(trame::Plain)]
 struct Q {
     b: Box<X>,
 }

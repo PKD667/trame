@@ -56,10 +56,9 @@ pub fn host() -> crate::topology::HostId {
     crate::topology::HostId(Selected::host())
 }
 
-/// The number of hosts of the deployment, numbered from 0. Hidden until the surface has a name for
-/// the federation's membership.
-#[doc(hidden)]
-pub fn __hosts() -> u32 {
+/// The number of hosts of the deployment. Hosts are numbered from 0, so `HostId(h)` names a peer for
+/// every `h < hosts()`; membership is fixed for the run (CONTRACT.md, Federation). On seq it is 1.
+pub fn hosts() -> u32 {
     Selected::hosts()
 }
 

@@ -6,6 +6,7 @@ struct M {
     n: u32,
 }
 
+#[derive(trame::Plain)]
 struct Node {
     kids: Vec<Node>,
 }
@@ -18,6 +19,7 @@ impl Clone for Node {
     }
 }
 
+#[derive(trame::Plain)]
 struct Q {
     tree: Node,
 }

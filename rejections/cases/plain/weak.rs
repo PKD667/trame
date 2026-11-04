@@ -3,7 +3,7 @@ use std::sync::Weak;
 
 #[trame::state(steps(step))]
 struct Hold {
-    shared: Weak<u32>, //~ ERROR: [state-memory] Hold.shared: std::sync::Weak<u32> holds an Arc (a reference count in one process)
+    shared: Weak<u32>, //~ ERROR: cannot be held by a trame state or pool
 }
 
 #[trame::step(Hold)]

@@ -2,7 +2,7 @@
 
 #[trame::state(steps(step))]
 struct Hold {
-    names: Vec<&'static [u8]>, //~ ERROR: [state-memory] Hold.names: std::vec::Vec<&[u8]> holds a reference (an address in one process), found `&[u8]` (CONTRACT.md, M2)
+    names: Vec<&'static [u8]>, //~ ERROR: cannot be held by a trame state or pool
 }
 
 #[trame::step(Hold)]

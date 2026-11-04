@@ -3,7 +3,7 @@ use std::sync::RwLock;
 
 #[trame::state(steps(step))]
 struct Hold {
-    m: RwLock<Vec<u32>>, //~ ERROR: [state-memory] Hold.m: std::sync::RwLock<std::vec::Vec<u32>> holds a lock or a shared cell
+    m: RwLock<Vec<u32>>, //~ ERROR: cannot be held by a trame state or pool
 }
 
 #[trame::step(Hold)]

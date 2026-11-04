@@ -120,9 +120,12 @@ lists are trusted.
 > in place the buffers its state holds. It writes
 > only the fields of its write set $W(i)$ (Section 5.3).
 
-> **Requirement (State memory).** No field of a `#[trame::state]` struct, and nothing in its pool
-> type, holds a function pointer, a closure, a trait object, a reference, a raw pointer, an `Rc`,
-> an `Arc`, a cell, an atomic or a lock, at any depth of its layout (CONTRACT.md, M2, M3).
+> **Requirement (State memory).** Every field of a `#[trame::state]` struct, and its pool type, is
+> `trame::Plain` (CONTRACT.md, M2, M3). Numbers, `bool`, `char`, arrays, tuples, `Option`, `Vec`,
+> `Box`, `String`, the `alloc` collections, `Duration`, `Reading`, `WorkerId`, `HostId` and message
+> types are plain when what they hold is; a user type is plain by `#[derive(trame::Plain)]`. A
+> function pointer, a closure, a trait object, a reference, a raw pointer, an `Rc`, an `Arc`, a
+> cell, an atomic and a lock are not.
 
 > **Requirement (Item).** An item calls only items of $A_I$. Every loop is counted, and it neither
 > recurses nor allocates. It writes only its slot.

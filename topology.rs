@@ -103,7 +103,7 @@ impl Topology {
     /// Declare the pool: read-only data shared by every worker, of type `P`. A step reads it by
     /// taking `pool: &P`; only the leader writes it, with `Run::edit`. Its value is given with `set`.
     /// One pool per topology. A worker whose steps read a pool of another type is refused.
-    pub fn pool<P: Send + Sync + 'static>(&mut self) -> Pool<P> {
+    pub fn pool<P: crate::Plain>(&mut self) -> Pool<P> {
         assert!(self.plan.pool.is_none(), "trame: a topology has one pool");
         let core = Arc::new(PoolCore::empty());
         self.plan.pool = Some(core.clone());
@@ -199,14 +199,15 @@ pub(crate) mod sealed {
         fn set(&self, plan: &mut Plan, build: alloc::boxed::Box<dyn FnOnce() -> S + Send>) {
             let k = self.id.0 as usize;
             let ours = plan.workers.get(k).is_some_and(|c| core::ptr::addr_eq(Arc::as_ptr(c), Arc::as_ptr(&self.core)));
-            assert!(ours, "trame: Topology::set of a worker declared by another topology");
+            assert!(ours, "trame: Topology::set of a worker declared by another topology; set it on the topology whose `worker` made it");
             let core = self.core.clone();
             plan.builders[k] = Some(alloc::boxed::Box::new(move || core.fill(build())));
         }
         fn target(&self, run: &Run) -> Target {
-            let index = self.id.0 as usize;
-            assert!(index < run.workers(), "trame: Run::edit of a worker of another topology");
-            Target::Worker(index)
+            // A worker shares `joined` with its topology, and the run took that topology's (launch).
+            let ours = Arc::ptr_eq(&self.joined, run.joined());
+            assert!(ours, "trame: Run::edit of a worker declared by another topology; edit it through the run its topology launched");
+            Target::Worker(self.id.0 as usize)
         }
         unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut S)) {
             // SAFETY: the caller's.
@@ -218,13 +219,13 @@ pub(crate) mod sealed {
         type Value = P;
         fn set(&self, plan: &mut Plan, build: alloc::boxed::Box<dyn FnOnce() -> P + Send>) {
             let ours = plan.pool.as_ref().is_some_and(|p| core::ptr::addr_eq(Arc::as_ptr(p), Arc::as_ptr(&self.core)));
-            assert!(ours, "trame: Topology::set of a pool declared by another topology");
+            assert!(ours, "trame: Topology::set of a pool declared by another topology; set it on the topology whose `pool` made it");
             let core = self.core.clone();
             plan.pool_builder = Some(alloc::boxed::Box::new(move || core.fill(build())));
         }
         fn target(&self, run: &Run) -> Target {
             let ours = run.pool().is_some_and(|p| core::ptr::addr_eq(p, Arc::as_ptr(&self.core)));
-            assert!(ours, "trame: Run::edit of a pool of another topology");
+            assert!(ours, "trame: Run::edit of a pool declared by another topology; edit it through the run its topology launched");
             Target::Pool
         }
         unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut P)) {

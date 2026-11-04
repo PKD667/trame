@@ -80,9 +80,11 @@ Refused: `param_not_a_field` [error], `param_wrong_type` [error], `unsafe_fn_ste
 
 Accepted: `array_receives_ok`.
 
-## state-memory (25)
+## plain (24)
 
-Refused: `arc` [state-memory], `atomic` [state-memory], `cell_in_pool` [state-memory], `cell_rustc_first` [error], `dyn_box` [state-memory], `enum_variant` [state-memory], `file` [state-memory], `fn_pointer` [state-memory], `instant` [state-memory], `mutex` [state-memory], `nested_cell` [state-memory], `oncelock` [state-memory], `pool_not_a_struct` [state-memory], `raw_pointer_wrapper` [state-memory], `rc_rustc_first` [error], `rc_wrapper` [state-memory], `reference_in_vec` [state-memory], `reference_static` [state-memory], `rwlock` [state-memory], `vec_of_nested` [state-memory], `weak` [state-memory].
+What a state and its pool hold is the type `trame::Plain` (CONTRACT.md, M2, M3): rustc refuses, with E0277 "cannot be held by a trame state or pool", at the field.
+
+Refused: `arc`, `atomic`, `cell_in_pool`, `dyn_box`, `enum_variant`, `file`, `fn_pointer`, `instant`, `mutex`, `nested_cell`, `no_derive`, `oncelock`, `pool_not_a_struct`, `raw_pointer_wrapper`, `rc_wrapper`, `reference_in_vec`, `reference_static`, `rwlock`, `vec_of_nested`, `weak`.
 
 Accepted: `nested_ok`, `plain_ok`, `pool_ok`, `worker_id_ok`.
 

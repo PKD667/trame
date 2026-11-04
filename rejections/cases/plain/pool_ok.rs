@@ -1,5 +1,6 @@
 //@check-pass
 // CONTRACT.md, M2, M3: a plain pool type is accepted.
+#[derive(trame::Plain)]
 struct Table {
     weights: Vec<f32>,
     names: Vec<String>,

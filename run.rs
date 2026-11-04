@@ -76,6 +76,11 @@ impl Run {
         })
     }
 
+    /// Its topology's join flag, which that topology's handles share (topology.rs, `target`).
+    pub(crate) fn joined(&self) -> &Arc<AtomicBool> {
+        &self.joined
+    }
+
     pub(crate) fn workers(&self) -> usize {
         self.workers
     }

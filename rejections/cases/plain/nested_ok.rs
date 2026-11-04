@@ -1,17 +1,20 @@
 //@check-pass
-// CONTRACT.md, M2, M3: states and plain structs nest; a recursive type ends the walk, and a PhantomData holds nothing.
+// CONTRACT.md, M2, M3: states and plain structs nest; user types derive Plain, a recursive type checks, and a PhantomData holds nothing.
 use trame::WorkerId;
 
+#[derive(trame::Plain)]
 struct Node {
     v: u32,
     next: Option<Box<Node>>,
 }
 
+#[derive(trame::Plain)]
 enum Mode {
     Idle,
     Busy(u32, WorkerId),
 }
 
+#[derive(trame::Plain)]
 struct Inner {
     mode: Mode,
     list: Option<Box<Node>>,

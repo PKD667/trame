@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 #[trame::state(steps(step))]
 struct Hold {
-    m: Mutex<u32>, //~ ERROR: [state-memory] Hold.m: std::sync::Mutex<u32> holds a lock or a shared cell
+    m: Mutex<u32>, //~ ERROR: cannot be held by a trame state or pool
 }
 
 #[trame::step(Hold)]

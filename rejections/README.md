@@ -70,7 +70,7 @@ To add a case:
 
 Levels are `item`, `step`, `worker`. Rules, as the driver names them (`driver/src/check/`): `unsafe`, `ffi`, `indirect`,
 `static`, `std`, `deny`, `effects`, `allow-list`, `allocation`, `counted-loop`, `recursion`, `unbounded` (a user iterator
-passed to core code), `state-memory` (a field type of a state or pool, CONTRACT.md, M2, M3; no level). The driver also emits
+passed to core code). The driver also emits
 `unresolved` for a call it cannot check. No case refuses by it yet.
 A root-level message (`[root]`) has no level and is not used here.
 
@@ -94,9 +94,8 @@ Each finding is a disagreement between the checks and the spec, with the verbati
   a step it is also refused under `[unsafe]`, because the `format_args!` expansion calls core's `unsafe fn
   fmt::Arguments::new` (`std/println_item`, `std/println_step`). The second rule is correct and is named.
 - **E1, the macro before the driver.** A step declared `unsafe fn` is refused by `#[trame::step]` itself (`state/unsafe_fn_step`).
-  The driver's `unsafe` rule for the body is covered by `unsafe/block_step`. Likewise rustc refuses a state field that is not
-  `Send + Sync` (an `Rc`, a `Cell`) before the driver: `state-memory/rc_rustc_first`, `cell_rustc_first`. The driver's
-  state-memory rule is the second line, for what rustc accepts.
+  The driver's `unsafe` rule for the body is covered by `unsafe/block_step`.  What a state holds is not the driver's rule but the type
+  `trame::Plain`, which rustc checks (`plain/`).
 - **M1, message generics.** A message with a lifetime parameter is refused by the macro, `a message type cannot be
   generic`. The reference rule is not reached; the reference cases therefore use `&'static str`.
 - **W1, cfg warning in user crates.** Each `#[trame::state]` and `parallel!` in a user crate prints an `unexpected_cfgs`

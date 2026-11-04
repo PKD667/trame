@@ -3,7 +3,7 @@
 
 #[trame::state(steps(step))]
 struct Hold {
-    cb: fn(u32) -> u32, //~ ERROR: [state-memory] Hold.cb: fn(u32) -> u32 holds a function pointer (a code address) (CONTRACT.md, M2)
+    cb: fn(u32) -> u32, //~ ERROR: cannot be held by a trame state or pool
 }
 
 #[trame::step(Hold)]

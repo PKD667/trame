@@ -15,7 +15,7 @@ use std::time::Duration;
 use trame::{Outcome, Status, Topology};
 
 /// A step's control: xorshift state, steps left, and how wild it is.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, trame::Plain)]
 struct Ctl {
     rng: u64,
     left: u32,
@@ -163,6 +163,7 @@ fn traces_follow_the_model() {
 
 /// The pool of `Pooled`: the leader keeps `all.len() == n`, so a step that sees otherwise read a
 /// pool mid-edit (P2).
+#[derive(trame::Plain)]
 struct Pair {
     n: u64,
     all: Vec<u64>,

@@ -11,9 +11,10 @@
 //! `trame::__rt::State` by dispatching on the step index with a `match`. No trait object and no
 //! function pointer reaches a step.
 //!
-//! Both also emit the markers the driver reads (check.rs): `step` a hidden function of its struct that
-//! calls `__check::step(&f)`, and `state` one that calls `__check::state::<S>()` and, for `pool = P`,
-//! `__check::pool::<P>()`. They are non-generic and never called; a checked build collects them.
+//! `step` also emits the marker the driver reads (check.rs): a hidden function of its struct that
+//! calls `__check::step(&f)`, non-generic and never called; a checked build collects it. `state`
+//! implements `trame::Plain` for the struct with a bound per field, so a field that is not plain is a
+//! type error at that field (CONTRACT.md M2, M3); the pool is plain by `State::Pool`'s bound.
 
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
@@ -88,20 +89,17 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
     let pool_ty = args.pool;
     let pool = pool_ty.as_ref().map(|p| quote! { #p }).unwrap_or(quote! { () });
     let has_stop = args.stop.is_some();
-    let pool_marker = pool_ty.map(|p| quote! { ::trame::__check::pool::<#p>(); });
+    let plain = plain_check(fields.named.iter());
     Ok(quote! {
         #s
         #[cfg(not(trame_checked))]
         compile_error!("build with cargo trame");
+        // SAFETY: every field's type is plain, by the check below (CONTRACT.md M2, M3).
+        unsafe impl ::trame::Plain for #name {}
+        #plain
         #[allow(non_upper_case_globals)]
         impl #name {
             #(#consts)*
-            #[doc(hidden)]
-            #[allow(dead_code)]
-            pub fn __trame_check() {
-                ::trame::__check::state::<#name>();
-                #pool_marker
-            }
         }
         // SAFETY: each step's StepInfo is generated from its own parameters by #[trame::step], and its
         // __trame_run touches exactly those fields.
@@ -275,5 +273,41 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
             }
         }
         const _: () = ::core::assert!(#n_recv <= ::trame::__rt::MAX_OWNED, "#[trame::step] receives more message types than MAX_OWNED (16)");
+    })
+}
+
+/// A check that every field type of `fields` is plain, one call per field spanned at its type, so a
+/// field that is not plain is reported where it is written. A function body, not a where-clause: the
+/// impl it sits beside is unconditional, so a recursive type (`next: Option<Box<Node>>`) checks.
+fn plain_check<'a>(fields: impl Iterator<Item = &'a syn::Field>) -> TokenStream2 {
+    let calls = fields.map(|f| {
+        let t = &f.ty;
+        quote::quote_spanned! { syn::spanned::Spanned::span(t) => __trame_plain::<#t>(); }
+    });
+    quote! {
+        const _: () = {
+            fn __trame_plain<T: ::trame::Plain + ?Sized>() {}
+            #[allow(dead_code)]
+            fn __trame_fields() { #(#calls)* }
+        };
+    }
+}
+
+pub fn derive_plain(item: TokenStream2) -> syn::Result<TokenStream2> {
+    let d: syn::DeriveInput = syn::parse2(item)?;
+    if !d.generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(&d.generics, "#[derive(trame::Plain)] takes a type without generics"));
+    }
+    let fields: Vec<&syn::Field> = match &d.data {
+        syn::Data::Struct(s) => s.fields.iter().collect(),
+        syn::Data::Enum(e) => e.variants.iter().flat_map(|v| v.fields.iter()).collect(),
+        syn::Data::Union(u) => return Err(syn::Error::new_spanned(u.union_token, "a union is not plain: which field is live is not in its bytes")),
+    };
+    let check = plain_check(fields.into_iter());
+    let name = &d.ident;
+    Ok(quote! {
+        // SAFETY: every field's type is plain, by the check below (CONTRACT.md M2, M3).
+        unsafe impl ::trame::Plain for #name {}
+        #check
     })
 }

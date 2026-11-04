@@ -1,7 +1,7 @@
 # trame-driver
 
 Trame's compile-time checker (spec.md, Compile time): a rustc driver, and `cargo trame`, which runs cargo with it.
-The driver reads the optimized MIR of each root marker (`trame::__check::{item,step,worker}`, check.rs) and everything reachable from it, and refuses code that breaks the rules. It also reads the types of each state and pool (`trame::__check::{state,pool}`). Refusals are rustc errors: `error: [rule] <level> ...`, and `error: [state-memory] <field path>: <type> holds <what> (CONTRACT.md M2|M3)` for a type.
+The driver reads the optimized MIR of each root marker (`trame::__check::{item,step,worker}`, check.rs) and everything reachable from it, and refuses code that breaks the rules. Refusals are rustc errors: `error: [rule] <level> ...`. What a state and its pool may hold (CONTRACT.md M2, M3) is not the driver's: it is the type `trame::Plain`, which rustc checks.
 
 Run from driver/. The compiler is pinned in driver/rust-toolchain.toml and built by flake.nix.
 
@@ -15,7 +15,6 @@ Debug: `TRAME_DRIVER_DEBUG=1` prints each root and its level.
 The macros call these hidden functions of check.rs, from non-generic functions they emit. A checked build collects every non-generic function (`-Clink-dead-code`), so a step that nothing calls is still checked.
 - `#[trame::step]` emits `S::__trame_check()` on the step's struct, which calls `step(&f)` with the step function `f`: a Step root. A state's stop step is a step too.
 - `parallel!` calls `item(&f)`: an Item root.
-- `#[trame::state]` emits `S::__trame_check()`, which calls `state::<S>()` and, when the state says `pool = P`, `pool::<P>()`. The driver reads the type argument of each instance: this is the mechanism for the state-memory check, chosen because it adds no new scheme, only a generic function with a type argument.
 - `worker(&f)` is a Worker root: leader code, a builder, an edit. The library emits none yet: `Topology::set` and `Run::edit` would call it on their closure. The rejection cases call it directly.
 
 ## Checks
@@ -26,15 +25,6 @@ Per level (Item, Step, Worker, as in spec.md, Requirement per level), for every 
 - Core and alloc callees: judged by the lists (below).
 - Counted loops (Item, Step), recursion (Item, Step).
 - Allocation (Item, Step; CONTRACT.md, M4, D5): a step neither allocates nor frees. A call into `alloc` is refused unless the list names it by the alloc type's own key (`alloc::vec::Vec::len`, `alloc::vec::Vec::index_mut`, ...), so a call that only a trait path allows (`Extend::extend`, `Clone::clone`) is refused as `[allocation]`, as `Vec::push` is. A `Vec` made or dropped inside a step is refused through `Vec::new` or `Vec::drop`: the drop glue shows a free. A step may rewrite in place the buffers its state holds: an index assignment, `len`, `iter_mut`, a counted loop. The Worker level may allocate.
-- State memory (on a state's field types and the pool type; CONTRACT.md, M2, M3), below.
-
-## State memory
-
-For each `state::<S>()` and `pool::<P>()` instance the driver walks the field types of `S` (and of `P`, when it is a struct; otherwise `P` itself) and refuses, with the field path and the clause:
-- M2: a function pointer, a closure, a trait object (`dyn`), a reference (also `&'static`), a raw pointer (`NonNull` included), `Rc`, `Arc`, `Weak`, and the handles of one process: files, sockets, threads, processes, `Instant`.
-- M3: `Cell`, `RefCell`, `UnsafeCell`, `OnceCell`, atomics, `Mutex`, `RwLock` and the other types of `std::sync`.
-
-The walk goes through user structs, enums, tuples, arrays and slices by their fields, and through the generic arguments of the types of core, alloc and std (`Vec<T>`, `Box<T>`, `Option<T>`), whose own fields belong to the container. A user type with an `unsafe impl Send` and `Sync` over a `Cell` is found by its layout, not by the auto traits. A recursive type ends the walk. A `PhantomData` holds nothing. rustc refuses first what is not `Send + Sync` (`State`'s bounds, worker.rs), so the driver's check matters for what rustc accepts: `Arc`, atomics, locks, function pointers, `&'static`, `Box<dyn Fn + Send + Sync>`, and a wrapper with an unsafe auto trait. A closure type cannot be written in a non-generic struct on stable Rust, so that arm has no case. A refusal of a pool that is not a user struct has no source line (`pool_not_a_struct`).
 
 A function reached from several roots is checked at the strictest level that reaches it.
 

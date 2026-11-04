@@ -180,6 +180,11 @@ pub(crate) fn alloc(l: Layout) -> *mut u8 {
     let align = (1usize << c).min(PAGE).max(l.align());
     let at = (word(BUMP).load(Acquire) as usize).next_multiple_of(align);
     if at + (1 << c) > LEN {
+        // M6: nothing lands outside the domain. The null makes Rust abort the process; the message
+        // says why first, without allocating (this is the allocator).
+        const FULL: &[u8] = b"trame: the host's memory domain (16 GiB) is full: the states, the pool and what their builders and edits allocate do not fit\n";
+        // SAFETY: writes FULL's bytes to stderr.
+        let _ = unsafe { libc::write(2, FULL.as_ptr().cast(), FULL.len()) };
         return core::ptr::null_mut();
     }
     word(BUMP).store((at + (1 << c)) as u64, Release);

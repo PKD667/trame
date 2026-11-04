@@ -6,6 +6,7 @@ struct M {
     n: u32,
 }
 
+#[derive(trame::Plain)]
 struct Q {
     n: u32,
 }

@@ -16,6 +16,7 @@ fn bump(x: &Work, slot: &mut u32, _cx: &()) {
     *slot += x.by;
 }
 
+#[derive(trame::Plain)]
 struct Queue {
     n: u32,
 }

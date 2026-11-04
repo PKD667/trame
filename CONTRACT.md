@@ -98,13 +98,19 @@ it: no reference, raw pointer, function pointer, trait object, `Rc` or handle.
 **M3 Mutation.** A field changes only by a step that writes it, or by an edit. A state holds no
 interior mutability.
 
+M2 and M3 are the type `trame::Plain`: every field of a state, and the pool, is `Plain`, and a type
+is `Plain` by trame's own implementations, by `#[trame::message]`, or by `#[derive(trame::Plain)]`,
+which requires it of every field. An `unsafe impl Plain` written by hand is the program's promise.
+
 **M4 Allocation.** Steps neither allocate nor free.
 
 **M5 Visibility.** What a builder or an edit wrote is visible to every step that starts after it
 returns, and to no step that runs during it.
 
-**M6 Bound.** A domain has a size fixed at launch. A builder that does not fit refuses the launch.
-An edit that does not fit fails, and allocates nothing outside the domain.
+**M6 Bound.** A domain has a size fixed at launch. An allocation in the domain that does not fit
+answers null and allocates nothing outside the domain; the process then stops with Rust's
+allocation failure, after the backend has said that the domain is full. A full domain is not a
+`Refused`: no program can continue from it.
 
 ## Federation
 

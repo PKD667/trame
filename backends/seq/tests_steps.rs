@@ -21,6 +21,7 @@ pub(super) struct Ev {
 }
 
 /// A field shared by the steps of one worker. `inside` counts the steps that hold it.
+#[derive(crate::Plain)]
 pub(super) struct Gate {
     pub inside: u32,
     pub open: bool,

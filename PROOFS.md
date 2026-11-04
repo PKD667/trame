@@ -85,14 +85,18 @@ verification, overwrite, fairness, large routes, node splits) and the TLA+ model
 **M1 Placement.** On seq and threads the domain is the heap. On MPI, by construction (`segment.rs`).
 No check walks a built state to find a byte outside its domain.
 
-**M2 Meaning, M3 Mutation.** Not checked.
+**M2 Meaning, M3 Mutation.** By type: `#[trame::state]` requires `Plain` of each field and
+`State::Pool`. The rejection suite (`rejections/cases/plain/`) refuses each excluded kind, nested
+under user types too, and accepts plain nesting. The check is on types: a `usize` holding an
+address is plain, and an `unsafe impl Plain` is not checked.
 
 **M4 Allocation.** `tests/alloc.rs` counts zero allocations over 999 rounds of a step and over every
 call of `parallel!`. The driver refuses allocation in items, not in steps.
 
 **M5 Visibility.** As S4 within a process.
 
-**M6 Bound.** Not checked.
+**M6 Bound.** On MPI by construction: `segment::alloc` answers null past the segment's end, and
+`Alloc` writes through no null (`domain.rs`). No test fills a domain.
 
 **E1 Abort.** Programs `abort`, `abort_join`, `leader_panics`; TLA+ model `Abort`.
 

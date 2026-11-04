@@ -1,12 +1,13 @@
 // spec: CONTRACT.md, M2 (no process meaning): a variant of a user enum is read like a field.
+#[derive(trame::Plain)]
 enum Mode {
     Idle,
-    Call(fn()),
+    Call(fn()), //~ ERROR: cannot be held by a trame state or pool
 }
 
 #[trame::state(steps(step))]
 struct Hold {
-    mode: Mode, //~ ERROR: [state-memory] Hold.mode.0: fn() holds a function pointer (a code address) (CONTRACT.md, M2)
+    mode: Mode,
 }
 
 #[trame::step(Hold)]

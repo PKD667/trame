@@ -3,7 +3,7 @@ use std::fs::File;
 
 #[trame::state(steps(step))]
 struct Hold {
-    f: Option<File>, //~ ERROR: [state-memory] Hold.f: std::option::Option<std::fs::File> holds a file handle
+    f: Option<File>, //~ ERROR: cannot be held by a trame state or pool
 }
 
 #[trame::step(Hold)]

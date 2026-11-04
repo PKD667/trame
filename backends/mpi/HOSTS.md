@@ -6,7 +6,7 @@ How the MPI backend runs on several shared-memory nodes (`CONTRACT.md`, Federati
 
 - **Hosts are nodes.** `MPI_Comm_split_type(SHARED)` gives the nodes of the world. Each node is a
   host, numbered by its lowest world rank (`hosts.rs`); `host()` answers that number, and
-  `__hosts()` the number of hosts.
+  `hosts()` the number of hosts.
 - **Each host launches alone.** A host's communicator is the world of its launch: its ranks agree
   on its plan, it maps its own window and segment, and its last rank is its leader. Within a host
   the backend is the one-node backend of `README.md`; nothing of one host's launch waits for another

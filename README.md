@@ -153,7 +153,7 @@ and 5.4).
 | check | what it covers | explained in |
 |---|---|---|
 | the contract | the rules every other check enforces, and what a backend must not do | `spec.md`, `CONTRACT.md` |
-| the macros | `#[trame::message]` refuses references, pointers, function pointers and padding; `#[trame::step]` takes fields and the pool as `&` or `&mut`; `#[trame::state]` and `parallel!` need the cfg flag | `macros/lib.rs` |
+| the macros | `#[trame::message]` refuses references, pointers, function pointers and padding; `#[trame::step]` takes fields and the pool as `&` or `&mut`; `#[trame::state]` requires `trame::Plain` of every field and the pool; `#[trame::state]` and `parallel!` need the cfg flag | `macros/lib.rs` |
 | `cargo trame check` | the rustc driver judges the MIR of each level: effects, counted loops, recursion, allocation | `driver/README.md` |
 | rejection suite | cases the checks must refuse, and their matched accepted cases | `rejections/README.md` |
 | conformance by mutation | every rule has a program that fails on a backend which breaks it | `conformance/README.md` |

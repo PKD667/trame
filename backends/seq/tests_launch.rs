@@ -144,6 +144,7 @@ fn a_worker_declared_but_never_set_is_refused() {
 }
 
 /// The pool a step reads.
+#[derive(crate::Plain)]
 struct Config {
     #[allow(dead_code)]
     n: u32,

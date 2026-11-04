@@ -4,6 +4,7 @@
 // Refused [static] step: COUNT is a global; only consts are allowed.
 static mut COUNT: u32 = 0;
 
+#[derive(trame::Plain)]
 struct X;
 
 impl Drop for X {
@@ -20,6 +21,7 @@ struct M {
     n: u32,
 }
 
+#[derive(trame::Plain)]
 struct Q {
     v: Option<X>,
 }

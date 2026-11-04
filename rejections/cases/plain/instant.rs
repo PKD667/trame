@@ -3,7 +3,7 @@ use std::time::Instant;
 
 #[trame::state(steps(step))]
 struct Hold {
-    t: Instant, //~ ERROR: [state-memory] Hold.t: std::time::Instant holds an instant of one process's clock
+    t: Instant, //~ ERROR: cannot be held by a trame state or pool
 }
 
 #[trame::step(Hold)]

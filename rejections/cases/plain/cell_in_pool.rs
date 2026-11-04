@@ -1,8 +1,9 @@
-// spec: CONTRACT.md, M3 (no interior mutability): the pool is checked as a state is: a Cell under a user pool type that promises Sync.
+// spec: CONTRACT.md, M3 (no interior mutability): the pool is checked as a state is, by the derive on its type: a Cell under a user pool type that promises Sync.
 use std::cell::Cell;
 
+#[derive(trame::Plain)]
 struct Table {
-    hits: Cell<u64>, //~ ERROR: [state-memory] Table.hits: std::cell::Cell<u64> holds interior mutability (CONTRACT.md, M3)
+    hits: Cell<u64>, //~ ERROR: cannot be held by a trame state or pool
 }
 
 // SAFETY: for the case only.

@@ -10,6 +10,7 @@ struct Job {
     id: u32,
 }
 
+#[derive(trame::Plain)]
 struct Queue {
     n: u32,
 }

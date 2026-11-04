@@ -35,7 +35,7 @@ fn main() {
     // The worker's result is read from the leader only after join; the count it reaches is known.
     let mine = u64::from(me.0) * 100 + 10;
     if me.0 == 0 {
-        let hosts = trame::__hosts();
+        let hosts = trame::hosts();
         let mut got = vec![None; hosts as usize];
         got[0] = Some(mine);
         while got.iter().any(Option::is_none) {

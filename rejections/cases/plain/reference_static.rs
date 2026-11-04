@@ -2,7 +2,7 @@
 
 #[trame::state(steps(step))]
 struct Hold {
-    name: &'static str, //~ ERROR: [state-memory] Hold.name: &str holds a reference (an address in one process) (CONTRACT.md, M2)
+    name: &'static str, //~ ERROR: cannot be held by a trame state or pool
 }
 
 #[trame::step(Hold)]

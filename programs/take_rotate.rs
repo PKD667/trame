@@ -27,7 +27,7 @@ struct Ack;
 #[derive(Debug, PartialEq, Eq)]
 struct Got;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, trame::Plain)]
 enum Phase {
     Take,
     Report,

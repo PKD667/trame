@@ -44,7 +44,7 @@ pub unsafe trait State: Send + Sync + Sized + 'static {
     /// What a failing step returns. `Infallible` when no step can fail.
     type Error: Send + 'static;
     /// The type of the host's pool its steps read; `()` when they read none.
-    type Pool: Send + Sync + 'static;
+    type Pool: crate::Plain;
     /// The ordinary steps, then the stop step when `HAS_STOP`.
     const STEPS: &'static [StepInfo];
     const HAS_STOP: bool;
