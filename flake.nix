@@ -154,6 +154,33 @@
       programsMpiClosure = runnerClosure "programs-mpi" "programs.py" trameMpiBins;
       transportClosure = runnerClosure "transport-mpi" "transport.py" trameMpiBins;
       scaleClosure = runnerClosure "scale-local" "scale.py" trameMpiBins;
+      # The SIMD benchmark (experiments/simd/): a standalone crate with its own Cargo.lock, trame as path dep.
+      simdBin = pkgs.rustPlatform.buildRustPackage {
+        pname = "trame-simd-bench";
+        version = "0.1.0";
+        src = pkgs.lib.fileset.toSource {
+          root = ./experiments/simd;
+          fileset = pkgs.lib.fileset.difference ./experiments/simd (pkgs.lib.fileset.maybeMissing ./experiments/simd/target);
+        };
+        cargoLock.lockFile = ./experiments/simd/Cargo.lock;
+        # Overflow checks on (spec.md requirement).
+        RUSTFLAGS = "-C overflow-checks=on";
+        CARGO_BUILD_JOBS = "1";
+        cargoBuildFlags = [ "--release" "--bin" "bench" ];
+        doCheck = false;
+        installPhase = ''mkdir -p $out/bin; cp target/release/bench $out/bin/'';;
+      };
+      simdClosure = nixsci.lib.mkExperiment pkgs {
+        name = "simd-bench";
+        program = "${pkgs.python3}/bin/python3";
+        args = [ "${runners}/simd_bench.py" ];
+        env = {
+          PYTHONPATH = "${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
+          BIN = "${simdBin}/bin";
+          RUSTC_VERSION = pkgs.rustc.version;
+        };
+        runtime = [ pkgs.coreutils pkgs.procps pkgs.util-linux pkgs.gnugrep pkgs.python3 ];
+      };
       labLib = nixsci.lib.lab { inherit pkgs; project = self; };
       # MPI transport settings are machine configuration, recorded per job as mpi_config (experiments/mpirun.py).
       mpiConfigData = { columns = { source = "str"; text = "str"; }; };
@@ -166,6 +193,17 @@
         columns = { check = "str"; workers = "int"; seed = "int"; repeat = "int"; ok = "bool"; seconds = "float"; };
         key = [ "check" "workers" "seed" "repeat" ];
         noisy.seconds = 1.0;
+      };
+      simdBenchData = {
+        columns = {
+          machine = "str"; table = "str"; case = "str"; dist = "str"; slots = "int";
+          variant = "str"; items = "int"; median_mitems_s = "float"; min_mitems_s = "float";
+          max_mitems_s = "float"; eq = "str";
+        };
+        key = [ "machine" "table" "case" "dist" "slots" "variant" "items" ];
+      };
+      simdMachineData = {
+        columns = { hostname = "str"; model = "str"; avx2 = "bool"; avx512f = "bool"; kernel = "str"; rustc = "str"; };
       };
       scaleCols = { bench = "str"; impl = "str"; nodes = "int"; workers = "int"; per_node = "int"; };
       scaleData = {
@@ -231,6 +269,34 @@
           nodes = 1;
           span = 1;
           resources = { provider = "local"; hosts = 1; };
+        };
+        # SIMD benchmark: one experiment per CPU type, with replicates = 3, walltime = 30 min.
+        simd-bench-zen1 = labLib.experiment {
+          name = "simd-bench-zen1";
+          closures.${system} = simdClosure;
+          params = { cpu_type = "zen1"; };
+          resources = { provider = "g5k-lille-zen1"; hosts = 1; walltime = 1800; };
+          replicates = 3;
+          data.bench = simdBenchData;
+          data.machine = simdMachineData;
+        };
+        simd-bench-intel-avx512 = labLib.experiment {
+          name = "simd-bench-intel-avx512";
+          closures.${system} = simdClosure;
+          params = { cpu_type = "intel-avx512"; };
+          resources = { provider = "g5k-lille-xeon"; hosts = 1; walltime = 1800; };
+          replicates = 3;
+          data.bench = simdBenchData;
+          data.machine = simdMachineData;
+        };
+        simd-bench-zen2plus = labLib.experiment {
+          name = "simd-bench-zen2plus";
+          closures.${system} = simdClosure;
+          params = { cpu_type = "zen2plus"; };
+          resources = { provider = "g5k-besteffort-zen2"; hosts = 1; walltime = 1800; };
+          replicates = 3;
+          data.bench = simdBenchData;
+          data.machine = simdMachineData;
         };
       } // builtins.listToAttrs (map (n: {
         name = "scale-n${toString n}";
