@@ -165,8 +165,7 @@
         cargoLock.lockFile = ./experiments/simd/Cargo.lock;
         # Overflow checks on (spec.md requirement).
         RUSTFLAGS = "-C overflow-checks=on";
-        CARGO_BUILD_JOBS = "1";
-        cargoBuildFlags = [ "--release" "--bin" "bench" ];
+        cargoBuildFlags = [ "--bin" "bench" ];
         doCheck = false;
         installPhase = ''mkdir -p $out/bin; cp target/release/bench $out/bin/'';
       };
