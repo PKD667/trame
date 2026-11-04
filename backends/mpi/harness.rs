@@ -10,7 +10,7 @@ pub fn returned(t: &Transport) {
 }
 
 /// For the test harnesses: the leader's end of a run, as `leader::join` does it. Waits for every
-/// worker's result, then ends the relays (NODES.md, End).
+/// worker's result, then ends the run.
 pub fn leader_join(t: &Transport) {
     t.join();
     t.fail_if_aborted();

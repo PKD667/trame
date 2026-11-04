@@ -10,14 +10,10 @@
 //   LEADER_EPOCH           u32, moves on every act that can change the leader's wait: a frame to the
 //                          leader, a worker's result, an abort (epoch.rs)
 //   LEADER_SLEEP           1 while the leader sleeps on LEADER_EPOCH
-//   RELAY_EPOCH            u32, moves on every act a node's relay must act on (NODES.md); unused on one node
-//   RELAY_SLEEP            1 while the relay sleeps on RELAY_EPOCH
-//   END                    1 once the leader has joined (NODES.md, End); unused on one node
 //   ABORT_WORKER           the rank of the worker whose panic aborted the run (its first abort; the
 //                          message is the object `<window>-abort-0`, written before DONE's bit is set)
 //   ABORT_LEN              the length of that message
-//   STOP                   1 once the leader stopped the run (Run::stop); workers poll it (one node only:
-//                          the relay does not carry it yet)
+//   STOP                   1 once the leader stopped the run (Run::stop); workers poll it
 //   PER_WORKER             per worker, five lines each, kind k of worker w at PER_WORKER + 64 (k W + w):
 //                            k=0 OUTCOME  its result, 0 until set
 //                            k=1 EPOCH    u32, moves on every act that can change its wait conditions
@@ -40,10 +36,7 @@ pub(crate) const DONE: usize = 0;
 pub(crate) const START: usize = DONE + LINE;
 pub(crate) const LEADER_EPOCH: usize = START + LINE;
 pub(crate) const LEADER_SLEEP: usize = LEADER_EPOCH + LINE;
-pub(crate) const RELAY_EPOCH: usize = LEADER_SLEEP + LINE;
-pub(crate) const RELAY_SLEEP: usize = RELAY_EPOCH + LINE;
-pub(crate) const END: usize = RELAY_SLEEP + LINE;
-pub(crate) const ABORT_WORKER: usize = END + LINE;
+pub(crate) const ABORT_WORKER: usize = LEADER_SLEEP + LINE;
 pub(crate) const ABORT_LEN: usize = ABORT_WORKER + LINE;
 pub(crate) const STOP: usize = ABORT_LEN + LINE;
 pub(crate) const PER_WORKER: usize = STOP + LINE;

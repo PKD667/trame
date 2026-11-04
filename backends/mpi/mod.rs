@@ -31,11 +31,6 @@ mod poll;
 mod recv;
 mod refusal;
 mod hosts;
-mod relay;
-mod relay_control;
-mod relay_in;
-mod relay_out;
-mod relay_routes;
 mod results;
 mod ring;
 mod segment;
@@ -43,7 +38,6 @@ mod shape;
 mod shm;
 mod state;
 mod types;
-mod wire;
 mod worker;
 
 /// The backend the surface calls: `impl Backend for Selected` lives in imp.rs.
@@ -64,9 +58,7 @@ pub use harness::{leader_join, returned};
 pub use types::{Answer, Error, Event, Received, Role, RouteId, clock};
 
 use layout::{Layout, RouteLayout};
-use nodes::Nodes;
 use shm::Window;
-use std::sync::Arc;
 
 /// One endpoint's transport: a worker's, or the leader's. Not `Send`: it holds a pointer into the
 /// window, and it belongs to the rank's thread.
@@ -74,8 +66,6 @@ pub struct Transport {
     me: u32,
     win: Window,
     lay: Layout,
-    /// The node table: which node each rank is on (nodes.rs).
-    nodes: Arc<Nodes>,
     /// Lossy routes: the next index this endpoint will read. Local, because the receiver of a
     /// lossy route never publishes progress.
     cursor: Vec<u64>,
@@ -94,22 +84,16 @@ impl Drop for Transport {
 }
 
 impl Transport {
-    pub(crate) fn new(me: u32, win: Window, lay: Layout, nodes: Arc<Nodes>) -> Transport {
+    pub(crate) fn new(me: u32, win: Window, lay: Layout) -> Transport {
         let routes = lay.routes.len();
         Transport {
             me,
             win,
             lay,
-            nodes,
             cursor: vec![0; routes],
             rr: vec![0; routes],
             trace: None,
         }
-    }
-
-    /// The node table of this launch.
-    pub(crate) fn nodes(&self) -> &Nodes {
-        &self.nodes
     }
 
     /// This endpoint's rank: a worker's index, or `workers` for the leader.

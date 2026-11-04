@@ -16,7 +16,6 @@ use crate::launch::Refused;
 
 use super::plan::Entry;
 use super::refusal::Refusal;
-use super::relay::Relay;
 use super::{RouteId, Transport};
 
 pub(super) struct Local {
@@ -27,8 +26,6 @@ pub(super) struct Local {
     pub inbox: Vec<(core::any::TypeId, Vec<RouteId>)>,
     /// The worker endpoint, once this rank has opened the window as a worker.
     pub endpoint: Option<Transport>,
-    /// This node's relay threads, when this rank hosts them (relay.rs). `finalize` joins them.
-    pub relay: Option<Relay>,
     /// This process's host (hosts.rs).
     pub host: Option<super::hosts::Host>,
 }
@@ -49,7 +46,6 @@ pub(super) fn local() -> &'static mut Local {
         entries: Vec::new(),
         inbox: Vec::new(),
         endpoint: None,
-        relay: None,
         host: None,
     })
 }
@@ -76,10 +72,6 @@ pub(super) fn world() -> &'static SimpleCommunicator {
 /// Call MPI_Finalize once, if MPI is up and not yet finalized. Finalize waits for every rank, so it
 /// is called only after this rank's result is final (see the README, Finalization).
 pub fn finalize() {
-    // The relay threads call MPI, so they stop before MPI does (NODES.md, End).
-    if let Some(relay) = local().relay.take() {
-        relay.join();
-    }
     let (mut up, mut done): (i32, i32) = (0, 0);
     // SAFETY: each query takes one out-pointer; MPI_Finalize takes none. The check is on MPI itself,
     // not on `world()`: a test harness that initialises MPI on its own never sets `world`.
@@ -101,7 +93,6 @@ pub(super) fn refused(r: Refusal) -> Refused {
         Refusal::Ranks { .. } => "the world does not have one rank per worker plus the leader",
         Refusal::Memory { .. } => "the MPI backend could not allocate the shared memory the launch needs",
         Refusal::NodeRanks(_) => "TRAME_MPI_NODE_RANKS is not a number of ranks per node",
-        Refusal::Threads => "a launch over several nodes needs MPI_THREAD_MULTIPLE",
         Refusal::NotUnified => "the MPI window is not in the unified memory model",
         Refusal::Mpi(_) => "an MPI call failed",
     };

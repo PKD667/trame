@@ -7,20 +7,17 @@ extern crate std;
 use std::format;
 use std::mem::ManuallyDrop;
 use std::string::{String, ToString};
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::vec;
 
 use mpi::collective::SystemOperation;
-use mpi::environment::{Threading, threading_support};
 use mpi::topology::SimpleCommunicator;
 use mpi::traits::*;
 
 use super::Transport;
 use super::layout::Topology;
-use super::nodes::{discover, node_ranks_setting, split_groups};
+use super::nodes::node_ranks_setting;
 use super::refusal::Refusal;
-use super::relay;
 use super::shape::{encode, plan};
 use super::segment;
 use super::shm::Window;
@@ -52,40 +49,30 @@ pub fn agree(world: &SimpleCommunicator, bytes: &[u8], ranks: u32) -> Result<(),
     }
 }
 
-/// Open the window and give this rank its role. Collective over `world`, and every rank must have
-/// agreed on `topo` first (see `agree`). Refuses on every rank, or on none.
+/// Open the window and give this rank its role. Collective over `world`, the host's communicator
+/// (hosts.rs): its ranks share memory. Every rank must have agreed on `topo` first (see `agree`).
+/// Refuses on every rank, or on none.
 pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal> {
     let lay = plan(topo)?;
-    // A bad TRAME_MPI_NODE_RANKS is refused on every rank before any split, so no rank waits in one.
+    // A bad TRAME_MPI_NODE_RANKS is refused on every rank, so no rank waits in a collective alone.
     let setting = node_ranks_setting();
     let here = i32::from(setting.is_ok());
     let mut all = 0;
     world.all_reduce_into(&here, &mut all, SystemOperation::min());
-    let split = match setting {
-        Ok(k) if all == 1 => k,
+    match setting {
+        Ok(_) if all == 1 => {}
         Ok(_) => return Err(Refusal::NodeRanks("set to a bad value on another rank".to_string())),
         Err(text) => return Err(Refusal::NodeRanks(text)),
-    };
+    }
     // The shared communicator is kept for as long as the window exists. It is never freed: a
     // communicator free is a point where a rank could wait for others, so this leaks it instead.
-    let shared = world.split_shared(world.rank());
-    let node = match split {
-        Some(k) => {
-            let group = split_groups(world, &shared, k).expect("a rank's own colour is never undefined");
-            std::mem::forget(shared);
-            group
-        }
-        None => shared,
-    };
-    let node = ManuallyDrop::new(node);
-    let nodes = discover(world, &node);
-    let threads = i32::from(nodes.count == 1 || threading_support() == Threading::Multiple);
-    world.all_reduce_into(&threads, &mut all, SystemOperation::min());
+    let node = ManuallyDrop::new(world.split_shared(world.rank()));
+    let whole = i32::from(node.size() == world.size());
+    world.all_reduce_into(&whole, &mut all, SystemOperation::min());
     if all == 0 {
-        return Err(Refusal::Threads);
+        return Err(Refusal::Mpi("a host's ranks do not all share memory"));
     }
-    let host_rank = nodes.relay_rank[nodes.me as usize];
-    let name = window_name(world, host_rank);
+    let name = window_name(world);
     let seg = format!("{name}-seg");
     let win = Window::allocate(&node, lay.total, name)?;
     if win.len() != lay.total {
@@ -93,47 +80,40 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
     }
     let me = world.rank() as u32;
     let leader = me == topo.workers;
-    // The lowest rank of each node initialises that node's window: a replica of the whole layout.
-    let host = host_rank == world.rank();
-    // The node's segment (segment.rs): the host creates it, then every other rank of the node maps it.
-    // Refused on every rank if one rank of any node could not map it; the name is removed once the
-    // node's ranks have all tried, mapped or not.
-    let created = if host { segment::map(&seg, true, topo.workers) } else { Ok(()) };
+    // Rank 0 initialises the window and creates the segment (segment.rs); then every other rank maps
+    // it. Refused on every rank if one rank could not map it; the name is removed once every rank has
+    // tried, mapped or not.
+    let first = world.rank() == 0;
+    let created = if first { segment::map(&seg, true, topo.workers) } else { Ok(()) };
     node.barrier();
-    let mapped = if host { created } else { segment::map(&seg, false, topo.workers) };
+    let mapped = if first { created } else { segment::map(&seg, false, topo.workers) };
     let here = i32::from(mapped.is_ok());
     world.all_reduce_into(&here, &mut all, SystemOperation::min());
     node.barrier();
-    if host {
+    if first {
         segment::unlink(&seg);
     }
     if all == 0 {
-        let why = mapped.err().unwrap_or_else(|| "a rank of another node could not map its segment".to_string());
+        let why = mapped.err().unwrap_or_else(|| "another rank could not map the segment".to_string());
         return Err(Refusal::Memory { need: segment::LEN, why });
     }
-    let t = Transport::new(me, win, lay, Arc::new(nodes));
-    if host {
+    let t = Transport::new(me, win, lay);
+    if first {
         // No worker has run yet. The launch barrier below keeps every worker out until this is written.
         t.win().zero();
         t.set_start(clock());
-    }
-    if host && t.nodes().count > 1 {
-        // Several nodes: the relay runs before the launch barrier, so every rank's first act can reach it.
-        relay::start(&t, world.as_raw());
     }
     world.barrier();
     Ok(if leader { Role::Leader(t) } else { Role::Worker(t) })
 }
 
-/// The prefix of this launch's window objects (shm.rs `object`). The nonce comes from world rank 0, so
-/// two launches on one machine never share a name; the node's host rank keeps two nodes of one launch
-/// apart. Collective over `world`: every rank calls it.
-fn window_name(world: &SimpleCommunicator, host_rank: i32) -> String {
+/// The prefix of this launch's window objects (shm.rs `object`). The nonce comes from rank 0, so two
+/// launches on one machine never share a name. Collective over `world`: every rank calls it.
+fn window_name(world: &SimpleCommunicator) -> String {
     let mut nonce = if world.rank() == 0 { launch_nonce() } else { 0 };
     world.process_at_rank(0).broadcast_into(&mut nonce);
-    format!("/trame-{nonce:016x}-{host_rank}")
+    format!("/trame-{nonce:016x}")
 }
-
 fn launch_nonce() -> u64 {
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
     nanos ^ (u64::from(std::process::id()) << 32)

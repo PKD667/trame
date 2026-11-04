@@ -1,10 +1,8 @@
 # trame MPI transport
 
-The MPI backend runs a launched topology on one or more nodes (spec.md, Sections 4 and 5). Multi-node is the design
-in `NODES.md`: each node has its own window and a relay thread pair, and needs MPI_THREAD_MULTIPLE
-(without it, a multi-node launch is refused with `Refusal::Threads`). Wired into `programs/run.sh`,
-which runs each program on one node and on the `TRAME_MPI_NODE_RANKS=k` splits (k = 1, 2). Results:
-`RESULT.md`.
+The MPI backend runs a launched topology on one shared-memory node per host (spec.md, Sections 4
+and 5); several nodes are several hosts (`HOSTS.md`). Wired into `programs/run.sh`, which runs each
+program on one host and on two. Results: `RESULT.md`.
 
 ## Ranks
 
@@ -33,8 +31,8 @@ the leader runs no worker code.
 
 ## Testing on one machine
 
-`TRAME_MPI_NODE_RANKS=k` cuts each shared-memory node into groups of k ranks, each with its own window
-and relay, so the multi-node code runs on one machine. The design is in `NODES.md` (Testing on one machine).
+`TRAME_MPI_NODE_RANKS=k` cuts each shared-memory node into hosts of k ranks, so several hosts run on
+one machine (`HOSTS.md`, Testing on one machine).
 
 ## Tests (run inside `nix develop .#mpi`)
 

@@ -24,7 +24,7 @@ use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 use std::vec::Vec;
 
 use super::Transport;
-use super::layout::{ABORT_BIT, ABORT_LEN, ABORT_WORKER, DONE, END, K_OUTCOME, OUT_ABORT, RESULT, START, STOP};
+use super::layout::{ABORT_BIT, ABORT_LEN, ABORT_WORKER, DONE, K_OUTCOME, OUT_ABORT, RESULT, START, STOP};
 use super::object;
 use super::state::finalize;
 
@@ -86,16 +86,6 @@ impl Transport {
         self.finish(OUT_ABORT);
     }
 
-    /// The worker and the message of this node's abort record, for the relay to send. The bit must be
-    /// set: the record is complete before it.
-    pub(super) fn abort_record(&self) -> (u32, Vec<u8>) {
-        let worker = self.win().word(ABORT_WORKER).load(Acquire) as u32;
-        let len = self.win().word(ABORT_LEN).load(Acquire) as usize;
-        let bytes = object::read(&self.win().object("abort", 0), len)
-            .unwrap_or_else(|e| panic!("trame: could not read the abort message: {e}"));
-        (worker, bytes)
-    }
-
     /// Leader only. Block until every worker has a result, or until the run aborts. Answers one outcome
     /// word per worker, in rank order. After an abort the words may be unset: the caller checks
     /// `fail_if_aborted` before it reads them.
@@ -103,7 +93,7 @@ impl Transport {
         let workers = self.lay().workers;
         loop {
             let seen = self.win().word32(DONE).load(Acquire);
-            // An OUT_ABORT outcome: the abort may reach this node after the results (relay_control.rs), so wait for the bit.
+            // An OUT_ABORT outcome is set after the abort record (`abort`): wait for the bit.
             let aborting =
                 (0..workers).any(|w| self.win().word(self.lay().per_worker(K_OUTCOME, w)).load(Acquire) == OUT_ABORT);
             if seen & ABORT_BIT != 0 || (seen / RESULT >= workers && !aborting) {
@@ -142,16 +132,9 @@ impl Transport {
         self.win().word(START).store(nanos, Release);
     }
 
-    /// Leader only, after `join`: every result is in, so the relays may stop (NODES.md, End). On several
-    /// nodes the relays unlink the abort message when they stop (relay.rs `join`). On one node there is no
-    /// relay, so this unlinks it: no worker can still read it.
+    /// Leader only, after `join`: every result is in, so no worker can still read the abort message.
     pub(super) fn end_run(&self) {
-        if self.nodes().count > 1 {
-            self.win().word(END).store(1, Release);
-            self.bump_relay();
-        } else {
-            self.unlink_abort();
-        }
+        self.unlink_abort();
     }
 
     /// Unlink this window's abort message. Called only when no agent can still read it. An object that is

@@ -51,7 +51,6 @@ fn main() {
     }
     // Finalization: the universe is dropped here, after this rank's work.
     drop(world);
-    // The library's finalize joins the relay threads before MPI_Finalize (NODES.md, End).
     trame::__mpi::finalize();
     std::mem::forget(universe);
 }

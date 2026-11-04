@@ -23,8 +23,6 @@ pub enum Refusal {
     Memory { need: usize, why: String },
     /// TRAME_MPI_NODE_RANKS is set to something other than a number of ranks per node, 1 or more.
     NodeRanks(String),
-    /// A launch over several nodes needs MPI_THREAD_MULTIPLE: the relay threads call MPI concurrently.
-    Threads,
     /// The MPI library does not promise the unified memory model that direct loads and stores
     /// on a shared window need.
     NotUnified,
@@ -44,7 +42,6 @@ impl fmt::Display for Refusal {
             Refusal::NodeRanks(value) => {
                 write!(f, "TRAME_MPI_NODE_RANKS must be 1 or more, got {value:?}")
             }
-            Refusal::Threads => write!(f, "a launch over several nodes needs MPI_THREAD_MULTIPLE"),
             Refusal::NotUnified => write!(f, "MPI window is not in the unified memory model"),
             Refusal::Mpi(call) => write!(f, "MPI call {call} failed"),
         }

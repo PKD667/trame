@@ -222,6 +222,6 @@ pub(super) fn me() -> u32 {
 pub(super) fn now() -> (ClockId, u64) {
     let _x = xport();
     let (t, _) = parts();
-    // The clock is named by the node: each node has its own CLOCK_MONOTONIC start (NODES.md).
-    (ClockId::new(t.nodes().me + 1), t.elapsed())
+    // The clock is named by the host: each host has its own CLOCK_MONOTONIC start (hosts.rs).
+    (ClockId::new(super::hosts::host().id + 1), t.elapsed())
 }

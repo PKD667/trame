@@ -32,7 +32,7 @@ for the same binary, so a kept record must state where each rank ran.
 
 ## Not checked
 
-- Several real nodes. Multi-node runs are tested on one machine split into nodes (NODES.md,
+- Several real nodes. Several hosts are tested on one machine split into hosts (HOSTS.md,
   `TRAME_MPI_NODE_RANKS`); runs on separate machines are lab experiments (experiments/).
 - Other MPI implementations and other CPUs. Timings are on this machine only.
 - The traced build adds SeqCst fences, so trace checks exercise a more strongly ordered variant than production, which relies on the standard SPSC acquire/release and seqlock (Boehm 2012) argument.

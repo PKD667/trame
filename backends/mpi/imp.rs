@@ -28,7 +28,7 @@ use super::layout::{OUT_ABORT, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
 use super::leader::{self, Leader};
 use super::open::{agree, open};
 use super::plan::{encode_plan, entries, inbox, topology};
-use super::state::{finalize, local, refused, world};
+use super::state::{finalize, local, refused};
 use super::types::Role;
 use super::{Selected, Transport, segment, worker};
 use crate::run::panic_message;
@@ -85,12 +85,8 @@ fn run_worker(obj: Arc<dyn Erased>, agents: usize, pool: Option<PoolRef>, trace:
 /// dropped unrun. Collective over the world.
 fn build_or_adopt(plan: &mut Plan, t: &Transport) {
     use std::sync::atomic::Ordering::{Acquire, Release};
-    let nodes = t.nodes();
-    let me = t.me();
-    let leader = t.lay().workers;
-    let here = |rank: u32| nodes.node_of[rank as usize] == nodes.me;
-    let builder = if here(leader) { me == leader } else { i32::try_from(me).is_ok_and(|m| nodes.relay_rank[nodes.me as usize] == m) };
-    let mine: Vec<usize> = (0..plan.workers.len()).filter(|&w| here(w as u32)).collect();
+    let builder = t.me() == t.lay().workers;
+    let mine: Vec<usize> = (0..plan.workers.len()).collect();
     if builder {
         for &w in &mine {
             let b = plan.builders[w].take().expect("trame: the launch checked that every worker was set");
@@ -124,8 +120,7 @@ fn with_endpoint<R>(f: impl FnOnce(&Transport) -> R) -> R {
 
 /// Agents per worker: this node's cores shared among its ranks, at most the worker's steps.
 fn agents_for(obj: &dyn Erased, t: &Transport, cap: Option<usize>) -> usize {
-    let nodes = t.nodes();
-    let here = nodes.node_of.iter().filter(|&&n| n == nodes.me).count().max(1);
+    let here = t.lay().workers as usize + 1;
     let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let fair = (cores / here).max(1);
     cap.unwrap_or(fair).min(fair).min(obj.steps().len()).max(1)

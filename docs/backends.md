@@ -78,7 +78,7 @@ on a futex word of its worker, and every act that can change its wait moves that
 nodes, a relay of two threads sends frames, credits and results between nodes.
 
 The backend never reports `Deadlock`. The design, tests and measurements are in
-`backends/mpi/README.md`, `NODES.md`, `SCALING.md` and `RESULT.md`. Edits, `take` and the pool on
+`backends/mpi/README.md`, `HOSTS.md`, `SCALING.md` and `RESULT.md`. Edits, `take` and the pool on
 mpi live in the segment (`backends/mpi/segment.rs`).
 
 ## A new backend

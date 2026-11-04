@@ -82,4 +82,4 @@ neither allocates. Among the routes of a worker with a frame of the wanted type,
 recently is taken. A route that does not fit in memory refuses the launch (`Refused::Backend`).
 
 On mpi, a route is a ring in a shared window, with a counter owned by each end
-(`backends/mpi/README.md`). Routes between nodes go through relays (`backends/mpi/NODES.md`).
+(`backends/mpi/README.md`). Each shared-memory node is a host of its own (`backends/mpi/HOSTS.md`).

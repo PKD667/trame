@@ -94,36 +94,25 @@ pub(super) fn stop(run: &Leader) {
     run.get().stop()
 }
 
-/// The workers on the leader's node: their states and the pool are in its segment (segment.rs).
+/// The host's workers: their states and the pool are in its segment (segment.rs).
 pub(super) fn local_workers(run: &Leader) -> Vec<u32> {
-    let t = run.get();
-    let n = t.nodes();
-    (0..t.lay().workers).filter(|&w| n.node_of[w as usize] == n.me).collect()
+    (0..run.get().lay().workers).collect()
 }
 
 /// A leader edit (CONTRACT.md, S4, P2), by the handshake of layout.rs: ask each worker concerned to
 /// hold the fields (EDIT) and wake it; wait until each holds them (HELD) or has a result; run `f` in
 /// this process, on the segment; withdraw the request and wait until each gave them back or has a
 /// result. A worker edit answers false, without running `f`, when the worker has a result before it
-/// holds. Panics for a worker on another node, or a pool over several nodes: their segment has no
-/// leader in it.
+/// holds.
 pub(super) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
     let t = run.get();
     t.fail_if_aborted();
     let here = local_workers(run);
     let (ws, fields): (Vec<u32>, u64) = match target {
         Target::Worker(w) => {
-            let w = w as u32;
-            assert!(
-                here.contains(&w),
-                "trame: Run::edit of worker {w}, on another node: its state is in that node's segment, which has no leader"
-            );
-            (std::vec![w], crate::sched::STATE)
+            (std::vec![w as u32], crate::sched::STATE)
         }
-        Target::Pool => {
-            assert!(t.nodes().count == 1, "trame: a pool edit over several nodes needs a leader on each node");
-            (here, crate::sched::POOL)
-        }
+        Target::Pool => (here, crate::sched::POOL),
     };
     let word = |k: usize, w: u32| t.win().word(t.lay().per_worker(k, w));
     let ended = |w: u32| word(K_OUTCOME, w).load(SeqCst) != 0;
