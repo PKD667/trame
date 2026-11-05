@@ -150,41 +150,41 @@
     "programs-node": [
       {
         "facts": {
-          "closure": "/nix/store/dypp0bsi5qs57mr2f11vwgfc0ldl4zx9-experiment-programs-mpi",
+          "closure": "/nix/store/vyqbx86jfj00ajcwy5bczknb4gzjxv6g-experiment-programs-mpi",
           "format": "2.0",
-          "input_id": "7aa91545e831a85ceb1da85cbd19cb466aea65182462c8e7c1a8f85d63e30836",
-          "params": {
-            "backend": "mpi",
-            "repeats": 3,
-            "split": 2
-          },
-          "replicate": 1,
-          "run": "programs-node-7aa91545e831-r1",
-          "seed": null,
-          "state": "ok"
-        },
-        "name": "programs-node-7aa91545e831-r1",
-        "path": "/nix/store/cbcy1q92l7fiamvy71m9z1rfyqiikdmi-programs-node-7aa91545e831-r1",
-        "sha256": "sha256-B4tPPySPeCBEOXRGU9AeVtGZp2GP6j0QkH9xMdcRZfg="
-      },
-      {
-        "facts": {
-          "closure": "/nix/store/dypp0bsi5qs57mr2f11vwgfc0ldl4zx9-experiment-programs-mpi",
-          "format": "2.0",
-          "input_id": "efd4c67960742a3bcc2bd3454169edd150b21869006bbd46440678a66dc43f3f",
+          "input_id": "307977994645fc63b764edddd77e4babbedd6a5242eaff3d4cd37df448c397a4",
           "params": {
             "backend": "mpi",
             "repeats": 3,
             "split": 1
           },
           "replicate": 1,
-          "run": "programs-node-efd4c6796074-r1",
+          "run": "programs-node-307977994645-r1",
           "seed": null,
           "state": "ok"
         },
-        "name": "programs-node-efd4c6796074-r1",
-        "path": "/nix/store/aaxkqynb2bd4pykgi2widcij7hvphlyk-programs-node-efd4c6796074-r1",
-        "sha256": "sha256-p3cY1netF4YwJKdm68EaopOIFIgZPyp/HYs0CiBZflE="
+        "name": "programs-node-307977994645-r1",
+        "path": "/nix/store/shk4dziry88lgakmb31i85wka3l7r81j-programs-node-307977994645-r1",
+        "sha256": "sha256-aB67xgXn7xLPI1W5zq7Q1PUQG48XTKIv0LhF5d3OqP8="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyqbx86jfj00ajcwy5bczknb4gzjxv6g-experiment-programs-mpi",
+          "format": "2.0",
+          "input_id": "ed422d4017de6ce2085124c26589cb65a22c8d6e521435ef6f69b5f8a57ed1eb",
+          "params": {
+            "backend": "mpi",
+            "repeats": 3,
+            "split": 2
+          },
+          "replicate": 1,
+          "run": "programs-node-ed422d4017de-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-node-ed422d4017de-r1",
+        "path": "/nix/store/9cppvl4lr3wrl3k4cy6cj7fsihj942wy-programs-node-ed422d4017de-r1",
+        "sha256": "sha256-+YcMRcO59ctY83sZJrKl7ARyFw9Cl+51xNQP1YZIxH4="
       }
     ],
     "programs-seq-node": [
