@@ -82,7 +82,7 @@ def judge(res: proc.Result, got: str, expected: str | None, panic: str | None) -
     if panic is not None:
         # A program that must panic: non-zero status, and the panic line on stderr. Its stdout is judged
         # only when it has an .expected file.
-        if res.rc == 0 or panic not in res.stderr.split("\n"):
+        if res.rc == 0 or panic not in [ERR_TAG.sub("", line) for line in res.stderr.split("\n")]:
             return "exit"
         return "ok" if expected is None or got == expected else "diff"
     if res.rc != 0:
@@ -112,6 +112,7 @@ def command(backend: str, binary: str, ranks: int, params: dict) -> list[str]:
     return words + ["--output", "tag", binary]
 
 
+ERR_TAG = re.compile(r"^\[\d+,\d+\]<stderr>: ?")  # the same tag on stderr, dropped before the panic line is sought
 RANK_LINE = re.compile(r"^\[\d+,(\d+)\]<stdout>: ?(.*)$")  # mpirun --output tag; 5 writes a space after the colon
 
 
