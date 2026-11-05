@@ -197,3 +197,7 @@ path = "programs/xhost_ring.rs"
 [[example]]
 name = "refuse_ports"
 path = "programs/refuse_ports.rs"
+
+[[example]]
+name = "route_one_side"
+path = "programs/route_one_side.rs"

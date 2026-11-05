@@ -370,12 +370,34 @@ pub(super) fn quiesce(lanes: &mut [Option<Lane>]) {
     // SAFETY: `cross` is a communicator of every rank of the world, and every rank calls this once,
     // in `finalize` (F5; Foreign calls).
     ok(unsafe { ffi::MPI_Ibarrier(host().cross.as_raw(), &mut bar) }, "Ibarrier");
+    let mut answers = Vec::new();
     while !test(&mut bar) {
         all(lanes);
+        answer_connects(&mut answers);
         idle();
+    }
+    for (_, r) in &mut answers {
+        wait(r);
     }
     for l in lanes.iter_mut().flatten() {
         l.close();
+    }
+}
+
+/// On a leader that ends: answer the connect of every host still waiting for this one (F3). Such a
+/// host declares routes with this one, and this one declared none back, or it would have answered in
+/// its own `connect`: the answer is "no routes", and that host refuses its launch. A connect that
+/// arrives before the end waits for it: a host learns of a one-sided declaration at the latest when
+/// the other host ends, and no host waits for one it declares nothing with (F7). The replies stay
+/// in `out` until they complete.
+fn answer_connects(out: &mut Vec<(Vec<u8>, ffi::MPI_Request)>) {
+    let Some(peers) = host().peers.as_ref() else { return };
+    while let Some((msg, status)) = peers.any_process().immediate_matched_probe_with_tag(CONNECT_TAG) {
+        let mut b = std::vec![0u8; status.count(u8::equivalent_datatype()) as usize];
+        msg.matched_receive_into(&mut b[..]);
+        out.push((encode(true, &[]), null()));
+        let (reply, r) = out.last_mut().expect("just pushed");
+        isend(reply.as_ptr(), reply.len(), status.source_rank(), CONNECT_TAG, peers.as_raw(), r);
     }
 }
 
@@ -474,7 +496,7 @@ const CONNECT_TAG: i32 = 8;
 /// peer was not refused. The verdict goes to every rank of the host, so the launch is refused on all
 /// of them or none (L1). Only hosts that share routes wait for each other (F7): a host that declares
 /// no route with this one is not asked, and a host that declares routes with a host that declares
-/// none back waits for it. `fine` is whether this host's own checks passed; a host that fails them
+/// none back waits for its answer, which comes at the latest when that host ends (`answer_connects`). `fine` is whether this host's own checks passed; a host that fails them
 /// still answers, so its peers are refused too.
 pub(super) fn connect(plan: &Plan, fine: bool) -> Result<(), Refused> {
     let h = host();

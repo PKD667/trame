@@ -1,0 +1,2 @@
+host 0 refused: MPI: host 1 does not declare the route of route_one_side::Item from worker 0 of host 0 to worker 0 of host 1 (lossless, capacity 4); declare it there too
+host 1: [Returned]

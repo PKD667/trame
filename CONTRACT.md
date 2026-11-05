@@ -125,7 +125,8 @@ another host is named by its host and its number there.
 **F3 Port agreement.** A route between workers of two hosts is declared on both, with the same
 ends, message type, kind and capacity. Hosts whose declarations differ are refused at launch (L1),
 both of them, with a message naming the route. Only hosts that share routes wait for each other's
-launch.
+launch. A route that one host declares and the other does not is refused on the host that declares
+it, at the latest when the other host ends; the other host does not wait.
 
 **F4 Tag.** A message crossing hosts is identified by a tag equal in two compilations of the same
 type: a hash of its path and its size. `TypeId` does not cross hosts.

@@ -30,3 +30,4 @@ fanin_fifo 7
 pipeline_chain 7
 xhost_ring 4
 refuse_ports 2
+route_one_side 2
