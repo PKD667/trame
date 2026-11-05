@@ -187,7 +187,26 @@
         "sha256": "sha256-p3cY1netF4YwJKdm68EaopOIFIgZPyp/HYs0CiBZflE="
       }
     ],
-    "programs-seq-node": [],
+    "programs-seq-node": [
+      {
+        "facts": {
+          "closure": "/nix/store/5d0ajaqi17fk1i20qz2pcz1bwf6xa96q-experiment-programs-seq",
+          "format": "2.0",
+          "input_id": "b9386dca0061cde5c0c7d9472231e00ba8d041780bdfc40ad7392c342c2d9ae0",
+          "params": {
+            "backend": "seq",
+            "repeats": 3
+          },
+          "replicate": 1,
+          "run": "programs-seq-node-b9386dca0061-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-seq-node-b9386dca0061-r1",
+        "path": "/nix/store/8vfgwsg98dvhg9n6fz636iq53v194d2w-programs-seq-node-b9386dca0061-r1",
+        "sha256": "sha256-1T9FieYkaxB//NsYOIizXzRQRtlytPim9Xa9pgXEQO8="
+      }
+    ],
     "transport-cluster": [
       {
         "facts": {
