@@ -20,6 +20,7 @@ build_or_die --no-default-features --features mpi --release --bin latency
 B="$CARGO_TARGET_DIR/debug"
 R="$CARGO_TARGET_DIR/release"
 OUT="${OUT:-$(mktemp -d)}"
+mkdir -p "$OUT"
 MPI=(mpirun --oversubscribe)
 T=120
 
