@@ -3,7 +3,6 @@
 //! Stub: not yet implemented.
 
 use core::arch::x86_64::*;
-use super::{Lane, CmpOp};
 
 /// Check if the CPU supports AVX-512 (F, BW, DQ, VL) (used in the launch path only).
 /// Uses core::arch::x86_64::__cpuid for feature detection in no_std contexts.

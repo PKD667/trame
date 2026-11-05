@@ -1,4 +1,7 @@
 //! Lane sub-backends: the type and dispatch for parallel! lowering to explicit SIMD.
+//! Not yet wired into parallel! (awaiting macro token rewriting to generate lane companions).
+
+#![allow(dead_code)] // Lane trait and impls are infrastructure; real use awaits macro enhancement
 
 /// A lane sub-backend: one vector type, load/store and operations.
 /// 
