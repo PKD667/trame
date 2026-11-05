@@ -25,6 +25,8 @@ pub enum Refused {
     PoolUnset,
     /// A worker was declared but its state was never set (`Topology::set`).
     Unset { worker: WorkerId },
+    /// The CPU lacks the instruction set needed by the lane sub-backend. One-sentence remedy.
+    CpuFeature { feature: &'static str, remedy: &'static str },
     /// The backend could not allocate what the topology needs.
     Backend { reason: &'static str },
 }
@@ -93,8 +95,33 @@ pub(crate) fn build_all(plan: &mut Plan) {
     }
 }
 
+/// Check CPU features for the lane sub-backend, before any other check.
+#[inline]
+fn check_cpu_features() -> Result<(), Refused> {
+    #[cfg(feature = "lanes-avx2")]
+    {
+        if !crate::__lanes::avx2::has_avx2() {
+            return Err(Refused::CpuFeature {
+                feature: "AVX2",
+                remedy: "build without --features lanes-avx2 or run on a CPU with AVX2",
+            });
+        }
+    }
+    #[cfg(feature = "lanes-avx512")]
+    {
+        if !crate::__lanes::avx512::has_avx512() {
+            return Err(Refused::CpuFeature {
+                feature: "AVX-512",
+                remedy: "build without --features lanes-avx512 or run on a CPU with AVX-512 (F, BW, DQ, VL)",
+            });
+        }
+    }
+    Ok(())
+}
+
 /// The launch checks of spec.md section 4, in the order the spec states them.
 pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
+    check_cpu_features()?;
     let n = plan.workers.len();
     for (i, r) in plan.routes.iter().enumerate() {
         for end in [r.from, r.to] {

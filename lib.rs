@@ -51,6 +51,11 @@ pub use trame_macros::step;
 #[path = "parallel.rs"]
 pub mod __rt;
 
+/// Lane sub-backends for parallel! (features: lanes-avx2, lanes-avx512). Not for direct use.
+#[doc(hidden)]
+#[path = "parallel/mod.rs"]
+mod __lanes;
+
 /// Level markers the macros emit and the driver reads. Not for direct use.
 #[doc(hidden)]
 #[path = "check.rs"]
@@ -77,6 +82,12 @@ pub use topology::{Handle, LEADER, Pool, Topology, Worker, WorkerId};
 
 #[cfg(any(all(feature = "seq", feature = "mpi"), all(feature = "seq", feature = "threads"), all(feature = "threads", feature = "mpi")))]
 compile_error!("features `seq`, `threads` and `mpi` are exclusive: one backend per build (threads: --no-default-features --features threads)");
+
+#[cfg(all(feature = "lanes-avx2", feature = "lanes-avx512"))]
+compile_error!("features `lanes-avx2` and `lanes-avx512` are exclusive: choose at most one lane backend");
+
+#[cfg(all(any(feature = "lanes-avx2", feature = "lanes-avx512"), not(target_arch = "x86_64")))]
+compile_error!("lane features `lanes-avx2` and `lanes-avx512` are only available on x86_64 (target_arch)");
 
 /// The threads backend: several agents per worker, steps truly in parallel (backends/threads).
 #[cfg(feature = "threads")]

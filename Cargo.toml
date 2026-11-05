@@ -15,12 +15,17 @@ libc = { version = "=0.2.191", optional = true }
 
 # A backend is chosen at compile time, one per build, so every participant agrees by construction.
 # `seq`, `threads` and `mpi` are exclusive: lib.rs refuses a build that enables two.
+# Lane sub-backends for parallel!: choose at most one. No feature means scalar fold (the reference).
 [features]
 default = ["seq"]
 seq = []
 # Workers run by several agent threads each, steps of one worker truly in parallel (backends/threads).
 threads = []
 mpi = ["dep:mpi", "dep:libc"]
+# AVX2 (x86-64-v3: AVX2, FMA) lane kernels for parallel! items. Exclusive with lanes-avx512.
+lanes-avx2 = []
+# AVX-512 (x86-64-v4: F, BW, DQ, VL) lane kernels for parallel! items. Exclusive with lanes-avx2.
+lanes-avx512 = []
 
 # The MPI transport's checks and latency run (backends/mpi/tests/run.sh, backends/mpi/README.md).
 [[bin]]
