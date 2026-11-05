@@ -42,6 +42,7 @@
           ./macros
           ./math
           ./backends/seq
+          ./backends/local
           ./programs
           ./tests
           ./scale
