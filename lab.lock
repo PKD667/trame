@@ -51,22 +51,21 @@
     "programs-cluster": [
       {
         "facts": {
-          "closure": "/nix/store/1vkx39y09wixn7c18x2ari43fs8a149d-experiment-programs-mpi",
+          "closure": "/nix/store/35jbvq9mc26kjx88jdpm5qq1683bgz7c-experiment-programs-mpi",
           "format": "2.0",
-          "input_id": "b0796bb99c01462ffc7f9621fedb9a0dfe4e9c6da6676b5e8d74acd0e39b754c",
+          "input_id": "4009695eb69c31d399016bc9260f2810c8d74c7c0c9b075b3b72cc756492c9dd",
           "params": {
             "backend": "mpi",
-            "node_ranks": 0,
             "repeats": 3
           },
           "replicate": 1,
-          "run": "programs-cluster-b0796bb99c01-r1",
+          "run": "programs-cluster-4009695eb69c-r1",
           "seed": null,
           "state": "ok"
         },
-        "name": "programs-cluster-b0796bb99c01-r1",
-        "path": "/nix/store/nbgy1swp8wwvg3gaj01avd56g8ccdmpk-programs-cluster-b0796bb99c01-r1",
-        "sha256": "sha256-TjmmrhzmPIv2Uay42tLmgC+SbVsmaxXSEOsVMnrd+xI="
+        "name": "programs-cluster-4009695eb69c-r1",
+        "path": "/nix/store/01g3qw9bp13wknx1jr5nvarqrx5ns5q4-programs-cluster-4009695eb69c-r1",
+        "sha256": "sha256-rTm7/9PgmB+hAzy54N9VqwbNc8QzVbKcl30ZV8z7MbY="
       }
     ],
     "programs-cluster4": [

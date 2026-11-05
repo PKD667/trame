@@ -12,7 +12,7 @@ Dataset `run`, one row per program and repeat. verdict is one of
   timeout  the timeout ended it
 On mpi a host is one machine's ranks, or a split of them (TRAME_MPI_NODE_RANKS, backends/mpi/hosts.rs), and
 every host runs the whole program with its own leader: a job of H hosts starts H times the program's
-ranks, each rank's stdout to its own file. A host's output is its ranks' files in rank order, with
+ranks, each line tagged with its rank (--output tag). A host's output is its ranks' lines in rank order, with
 consecutive duplicate lines collapsed (refuse prints once per rank), as programs/run.sh. With one host
 it must equal <name>.expected. With H hosts: the hosts' outputs one after the other must equal
 <name>.h<H>.expected when it exists; a program that has an .h<K>.expected for another K only (it is
@@ -28,9 +28,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
+import re
 import sys
-import tempfile
 from pathlib import Path
 
 from nixsci import lab
@@ -97,7 +96,7 @@ def hosts_of_job(params: dict) -> tuple[int, int]:
     return machines, machines * int(params.get("split", 1))
 
 
-def command(backend: str, binary: str, ranks: int, params: dict, out: Path) -> list[str]:
+def command(backend: str, binary: str, ranks: int, params: dict) -> list[str]:
     """seq: the binary. mpi: every host gets `ranks` ranks, a machine `split` hosts of them."""
     if backend == "seq":
         return [binary]
@@ -110,19 +109,24 @@ def command(backend: str, binary: str, ranks: int, params: dict, out: Path) -> l
     else:
         os.environ.pop("TRAME_MPI_NODE_RANKS", None)
     words = mpi.command(ranks * hosts, per_node=ranks * split, bind=str(params.get("bind", "none")), export=export)
-    return words + ["--output", f"filename={out}/o", binary]
+    return words + ["--output", "tag", binary]
 
 
-def host_outputs(out: Path, ranks: int, hosts: int) -> list[str]:
-    """Each host's stdout: its ranks' files in rank order, consecutive duplicates collapsed."""
-    total = ranks * hosts
-    width = len(str(total - 1))
+RANK_LINE = re.compile(r"^\[\d+,(\d+)\]<stdout>: ?(.*)$")  # mpirun --output tag; 5 writes a space after the colon
+
+
+def host_outputs(stdout: str, ranks: int, hosts: int) -> list[str]:
+    """Each host's stdout: its ranks' lines (mpirun --output tag) in rank order, each rank's in its own
+    order, consecutive duplicates collapsed. Tagged lines reach mpirun from every machine, unlike
+    --output filename, whose files stay on the machine of the rank."""
+    per_rank: dict[int, list[str]] = {}
+    for line in stdout.split("\n"):
+        m = RANK_LINE.match(line)
+        if m:
+            per_rank.setdefault(int(m.group(1)), []).append(m.group(2))
     texts = []
     for h in range(hosts):
-        lines: list[str] = []
-        for k in range(h * ranks, (h + 1) * ranks):
-            for f in out.glob(f"o*/rank.{k}/stdout") or out.glob(f"o.*@*.{k:0{width}d}.out"):
-                lines += f.read_text().splitlines()
+        lines = [x for k in range(h * ranks, (h + 1) * ranks) for x in per_rank.get(k, [])]
         texts.append(normalise("".join(x + "\n" for x in lines), True))
     return texts
 
@@ -164,22 +168,20 @@ def main() -> None:
             continue
         mode, expected = how
         for repeat in range(1, repeats + 1):
-            out = Path(tempfile.mkdtemp(prefix=f"{name}.", dir=os.environ.get("NIX_LAB_DIR")))
-            res = proc.run(command(backend, str(bindir / name), ranks, params, out), timeout)
+            res = proc.run(command(backend, str(bindir / name), ranks, params), timeout)
             if res.stderr:
                 (stderr_dir / f"{name}.{repeat}.txt").write_text(res.stderr)
             if backend == "seq":
                 got = normalise(res.stdout, False)
                 verdict = judge(res, got, expected, panic)
             else:
-                each = host_outputs(out, ranks, hosts)
+                each = host_outputs(res.stdout, ranks, hosts)
                 if mode == "all":
                     got = "".join(each)
                     verdict = judge(res, got, expected, panic)
                 else:
                     got = each[0]
                     verdict = next((v for v in (judge(res, g, expected, panic) for g in each) if v != "ok"), "ok")
-            shutil.rmtree(out, ignore_errors=True)
             verdicts[verdict] = verdicts.get(verdict, 0) + 1
             lab.record("run", {
                 "program": name,

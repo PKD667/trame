@@ -17,8 +17,6 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-import shutil
-import tempfile
 
 from nixsci import lab
 
@@ -70,12 +68,10 @@ def main() -> None:
         if judged is None:
             continue
         expected = judged[1]
-        out = Path(tempfile.mkdtemp(prefix=f"{mutant}.{name}.", dir=os.environ.get("NIX_LAB_DIR")))
-        res = proc.run(programs.command(backend, str(root / "bin" / name), ranks, params, out), timeout)
+        res = proc.run(programs.command(backend, str(root / "bin" / name), ranks, params), timeout)
         if res.stderr:
             (stderr_dir / f"{mutant}.{name}.txt").write_text(res.stderr)
-        got = programs.host_outputs(out, ranks, 1)[0] if backend == "mpi" else programs.normalise(res.stdout, False)
-        shutil.rmtree(out, ignore_errors=True)
+        got = programs.host_outputs(res.stdout, ranks, 1)[0] if backend == "mpi" else programs.normalise(res.stdout, False)
         how = programs.judge(res, got, expected, panic)
         record(mutant, rule, expect, name, how != "ok", how)
 
