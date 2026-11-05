@@ -322,6 +322,61 @@
             builtins.attrValues (builtins.mapAttrs (name: value: "export ${name}=${value}") dependencies.env)
           );
         };
+      # SIMD benchmark analysis and figures
+      # Note: draft = true because locked runs are from older code (analysis is not clean).
+      # The runs are good; the code has just evolved; figures are still valid.
+      labLib' = nixsci.lib.lab { inherit pkgs; project = self; };
+      simdAnalysis = labLib'.analysis {
+        name = "simd-analysis";
+        draft = true;
+        use = {
+          zen1 = experiments."simd-bench-zen1";
+          avx512 = experiments."simd-bench-avx512";
+        };
+        pipelines.process = {
+          script = ./analysis/simd_process.py;
+          language = "python";
+          packages = [ pkgs.python3Packages.matplotlib pkgs.python3Packages.pandas ];
+        };
+      };
+      simdFiguresDrv = pkgs.runCommand "simd-figures" {
+        nativeBuildInputs = [ pkgs.texlive.combined.scheme-basic pkgs.ghostscript ];
+      } ''
+        mkdir -p $out
+        # Copy TSVs and PDFs from the analysis (files are in root of simdAnalysis)
+        cp ${simdAnalysis}/*.tsv $out/ || true
+        cp ${simdAnalysis}/*.pdf $out/ || true
+        
+        # Create a combined sheet with pdflatex
+        cat > $out/simd_figures_sheet.tex <<'LATEX'
+\documentclass[a4paper]{article}
+\usepackage[margin=1cm]{geometry}
+\usepackage{graphicx}
+
+\begin{document}
+
+\section*{SIMD Benchmark Figures}
+
+\subsection*{Figure 1: Speedup at 1M items}
+\includegraphics[width=0.9\textwidth]{simd_speedup.pdf}
+
+\newpage
+
+\subsection*{Figure 2: Throughput vs Item Count (log scale)}
+\includegraphics[width=0.9\textwidth]{simd_throughput.pdf}
+
+\end{document}
+LATEX
+        
+        # Try to build the combined sheet
+        if command -v pdflatex > /dev/null 2>&1; then
+          cd $out
+          pdflatex -interaction=nonstopmode simd_figures_sheet.tex 2>&1 | grep -E "(! |Output written|Error)" || true
+          if [ -f simd_figures_sheet.pdf ]; then
+            echo "Combined sheet PDF created successfully"
+          fi
+        fi
+      '';
     in {
       validate.${system} = suite;
       # The verdicts, and one style for the Rust sources (rustfmt.toml). rejections/ is left out: its cases
@@ -338,6 +393,7 @@
         trame-mpi-bins = trameMpiBins;
         trame-seq-bins = trameSeqBins;
         trame-simd-bench = simdBin;
+        simd-figures = simdFiguresDrv;
       };
       lab.${system}.experiments = experiments;
       # The mpi dev shell as a nixsci deployment, for `nixsci deploy shell ... dev -- CMD` on a cluster
