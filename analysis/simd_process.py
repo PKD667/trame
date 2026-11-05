@@ -276,8 +276,11 @@ if combined_rows:
             
             plt.tight_layout()
             speedup_pdf = out / 'simd_speedup.pdf'
+            speedup_png = out / 'speedup_final-1.png'
             plt.savefig(speedup_pdf, bbox_inches='tight', dpi=150)
+            plt.savefig(speedup_png, bbox_inches='tight', dpi=150)
             print(f"Saved speedup figure to {speedup_pdf}", flush=True)
+            print(f"Saved speedup figure to {speedup_png}", flush=True)
             plt.close()
         except Exception as e:
             print(f"Error generating speedup figure: {e}", flush=True)
@@ -299,7 +302,7 @@ if combined_rows:
                 axpy_data = df_all[(df_all['machine'] == machine) & (df_all['table'] == 'bench') &
                                   (df_all['case'] == 'axpy') & (df_all['dist'] == 'ident')]
                 
-                # Plot each (case, variant) combination separately with its own min-max band
+                # Plot each (case, variant) combination separately with vertical error bars
                 # Group by variant
                 for variant in ['scalar', 'avx2']:
                     variant_data = axpy_data[axpy_data['variant'] == variant]
@@ -308,15 +311,19 @@ if combined_rows:
                         if variant == 'scalar':
                             ax.plot(variant_data['items'], variant_data['median_Mitems/s'],
                                    marker='o', label='axpy / scalar', color=COLORS['purple'], linewidth=2)
-                            ax.fill_between(variant_data['items'], 
-                                           variant_data['min_Mitems/s'], variant_data['max_Mitems/s'],
-                                           alpha=0.2, color=COLORS['purple'])
+                            # Vertical error bars: min to max of runs
+                            ax.errorbar(variant_data['items'], variant_data['median_Mitems/s'],
+                                       yerr=[variant_data['median_Mitems/s'] - variant_data['min_Mitems/s'],
+                                             variant_data['max_Mitems/s'] - variant_data['median_Mitems/s']],
+                                       fmt='none', ecolor=COLORS['purple'], capsize=2, linewidth=0.8, alpha=0.6)
                         else:
                             ax.plot(variant_data['items'], variant_data['median_Mitems/s'],
                                    marker='s', label='axpy / avx2', color=COLORS['blue'], linewidth=2)
-                            ax.fill_between(variant_data['items'], 
-                                           variant_data['min_Mitems/s'], variant_data['max_Mitems/s'],
-                                           alpha=0.2, color=COLORS['blue'])
+                            # Vertical error bars: min to max of runs
+                            ax.errorbar(variant_data['items'], variant_data['median_Mitems/s'],
+                                       yerr=[variant_data['median_Mitems/s'] - variant_data['min_Mitems/s'],
+                                             variant_data['max_Mitems/s'] - variant_data['median_Mitems/s']],
+                                       fmt='none', ecolor=COLORS['blue'], capsize=2, linewidth=0.8, alpha=0.6)
                 
                 # sum32 uniform 8: include both bench and bench_knee tables
                 sum32_data = df_all[(df_all['machine'] == machine) & 
@@ -334,9 +341,11 @@ if combined_rows:
                     ax.plot(scalar_sum32_data['items'], scalar_sum32_data['median_Mitems/s'],
                            marker='o', linestyle='--', label='sum32 / scalar', 
                            color=COLORS['purple'], linewidth=2, alpha=0.6)
-                    ax.fill_between(scalar_sum32_data['items'], 
-                                   scalar_sum32_data['min_Mitems/s'], scalar_sum32_data['max_Mitems/s'],
-                                   alpha=0.2, color=COLORS['purple'])
+                    # Vertical error bars: min to max of runs
+                    ax.errorbar(scalar_sum32_data['items'], scalar_sum32_data['median_Mitems/s'],
+                               yerr=[scalar_sum32_data['median_Mitems/s'] - scalar_sum32_data['min_Mitems/s'],
+                                     scalar_sum32_data['max_Mitems/s'] - scalar_sum32_data['median_Mitems/s']],
+                               fmt='none', ecolor=COLORS['purple'], capsize=2, linewidth=0.8, alpha=0.6)
                 
                 # Plot first lane variant found
                 if len(lane_sum32_data) > 0:
@@ -345,9 +354,11 @@ if combined_rows:
                     ax.plot(lane_sum32_data['items'], lane_sum32_data['median_Mitems/s'],
                            marker='s', linestyle='--', label=f'sum32 / {lane_variant}', 
                            color=COLORS['blue'], linewidth=2, alpha=0.6)
-                    ax.fill_between(lane_sum32_data['items'], 
-                                   lane_sum32_data['min_Mitems/s'], lane_sum32_data['max_Mitems/s'],
-                                   alpha=0.2, color=COLORS['blue'])
+                    # Vertical error bars: min to max of runs
+                    ax.errorbar(lane_sum32_data['items'], lane_sum32_data['median_Mitems/s'],
+                               yerr=[lane_sum32_data['median_Mitems/s'] - lane_sum32_data['min_Mitems/s'],
+                                     lane_sum32_data['max_Mitems/s'] - lane_sum32_data['median_Mitems/s']],
+                               fmt='none', ecolor=COLORS['blue'], capsize=2, linewidth=0.8, alpha=0.6)
                 
                 # Set log scale
                 ax.set_xscale('log')
@@ -365,12 +376,16 @@ if combined_rows:
                 machine_short = machine.split('.')[0]
                 ax.set_title(f'{machine_short}', fontsize=10)
                 ax.grid(True, which='both', alpha=0.3)
-                ax.legend(fontsize=8, loc='best')
+                # Add note about error bars to legend
+                ax.legend(fontsize=8, loc='best', title='bars: min-max of runs', title_fontsize=7)
             
             plt.tight_layout()
             throughput_pdf = out / 'simd_throughput.pdf'
+            throughput_png = out / 'throughput_final-1.png'
             plt.savefig(throughput_pdf, bbox_inches='tight', dpi=150)
+            plt.savefig(throughput_png, bbox_inches='tight', dpi=150)
             print(f"Saved throughput figure to {throughput_pdf}", flush=True)
+            print(f"Saved throughput figure to {throughput_png}", flush=True)
             plt.close()
         except Exception as e:
             print(f"Error generating throughput figure: {e}", flush=True)

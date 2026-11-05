@@ -343,9 +343,10 @@
         nativeBuildInputs = [ pkgs.texlive.combined.scheme-basic pkgs.ghostscript ];
       } ''
         mkdir -p $out
-        # Copy TSVs and PDFs from the analysis (files are in root of simdAnalysis)
+        # Copy TSVs, PDFs, and PNGs from the analysis (files are in root of simdAnalysis)
         cp ${simdAnalysis}/*.tsv $out/ || true
         cp ${simdAnalysis}/*.pdf $out/ || true
+        cp ${simdAnalysis}/*.png $out/ || true
         
         # Create a combined sheet with pdflatex
         cat > $out/simd_figures_sheet.tex <<'LATEX'
