@@ -99,8 +99,10 @@ fn check_attr(a: &Attribute) -> syn::Result<()> {
 /// Marks `fn f(x: &I, slot: &mut S, cx: &C)` as a `parallel!` item and generates the hidden key
 /// function `__trame_key_f(x: &I) -> usize`, whose body is the given expression (spec.md 5.4).
 /// The function itself is unchanged. The expression may name the first parameter.
+/// Optional: `lanes` (not yet implemented: would generate lane companion by token rewrite).
 ///
 /// `#[trame::item(key = x.index as usize)]`
+/// `#[trame::item(key = x.index as usize, lanes)]`
 #[proc_macro_attribute]
 pub fn item(attr: TokenStream, item: TokenStream) -> TokenStream {
     expand_item(attr.into(), item).unwrap_or_else(|e| e.to_compile_error()).into()
@@ -108,12 +110,16 @@ pub fn item(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 fn expand_item(attr: TokenStream2, item: TokenStream) -> syn::Result<TokenStream2> {
     let mut key: Option<Expr> = None;
+    let mut _lanes: bool = false;
     let parser = syn::meta::parser(|m: ParseNestedMeta| {
         if m.path.is_ident("key") {
             key = Some(m.value()?.parse()?);
             Ok(())
+        } else if m.path.is_ident("lanes") {
+            _lanes = true;
+            Ok(())
         } else {
-            Err(m.error("#[trame::item] takes only `key = <expr>`"))
+            Err(m.error("#[trame::item] takes `key = <expr>` and optionally `lanes`"))
         }
     });
     parser.parse2(attr)?;

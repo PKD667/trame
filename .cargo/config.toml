@@ -1,0 +1,3 @@
+# Set trame_checked for tests and binaries (normally set by the driver)
+[build]
+rustflags = ["--cfg", "trame_checked"]
