@@ -37,7 +37,7 @@ pub(crate) trait Backend {
     /// 0 when it asks none. The agent loop holds them (`Event::Hold`), answers
     /// `worker_edit_held(true)` once no step touching them runs, and, once the request is 0 again,
     /// gives them back (`Event::Edit`) and answers `worker_edit_held(false)`. A backend whose leader
-    /// edits in the workers' process (seq, threads) never asks.
+    /// edits in the workers' process (seq) never asks.
     fn worker_edit_request() -> u64 {
         0
     }
@@ -48,7 +48,7 @@ pub(crate) trait Backend {
     }
 
     /// M1: `layout.size()` bytes of the domain of this process's launch, for a builder or an edit
-    /// (alloc.rs, arena mode). `None`: this process's heap is the domain (seq, threads; or no launch
+    /// (alloc.rs, arena mode). `None`: this process's heap is the domain (seq; or no launch
     /// yet). A full domain answers a null pointer, which the allocation reports (M6).
     fn domain_alloc(_layout: core::alloc::Layout) -> Option<*mut u8> {
         None

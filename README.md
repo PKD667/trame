@@ -181,8 +181,8 @@ stops.
 ## Repository map
 
 - `docs/`: the system design, one file per part. `docs/overview.md` is the entry.
-- `backends/`: `seq` is the reference, `threads` runs several agents per worker, `mpi` runs on MPI
-  ranks, memory windows and relays, and `local` holds the routes that seq and threads share.
+- `backends/`: `seq` is the reference, `mpi` runs on MPI ranks, a shared window per host and
+  two-sided routes between hosts, and `local` holds seq's routes.
 - `conformance/`: mutants of each backend, and the runner that checks the programs kill them.
 - `driver/`: the rustc driver that judges MIR, and `cargo trame`.
 - `experiments/`: the lab runners and the claims they test.
@@ -200,9 +200,8 @@ stops.
 
 ## Limits
 
-- Backends: seq, threads and mpi, one per build. The MPI backend runs several nodes only on one
-  machine, through `TRAME_MPI_NODE_RANKS`, and has not run on a real network
-  (`backends/mpi/README.md`, Not checked).
+- Backends: seq and mpi, one per build. On mpi a host is one shared-memory node; several hosts on one
+  machine come from `TRAME_MPI_NODE_RANKS` (`backends/mpi/HOSTS.md`).
 - The driver fuzzer is not a verdict: run it as `driver/fuzz/README.md` says.
 - The MPI backend never reports `Deadlock` and does not detect a leader whose `wait` can never
   return. Seq does both (`backends/seq/stuck.rs`). Spec.md, Definition (Deadlock), allows a backend

@@ -80,20 +80,15 @@ pub use status::Status;
 pub use time::{Reading, now};
 pub use topology::{End, Handle, HostId, Leader, Pool, Topology, Worker, WorkerId};
 
-#[cfg(any(all(feature = "seq", feature = "mpi"), all(feature = "seq", feature = "threads"), all(feature = "threads", feature = "mpi")))]
-compile_error!("features `seq`, `threads` and `mpi` are exclusive: one backend per build (threads: --no-default-features --features threads)");
-
-/// The threads backend: several agents per worker, steps truly in parallel (backends/threads).
-#[cfg(feature = "threads")]
-#[path = "backends/threads/mod.rs"]
-mod threads;
+#[cfg(all(feature = "seq", feature = "mpi"))]
+compile_error!("features `seq` and `mpi` are exclusive: one backend per build (mpi: --no-default-features --features mpi)");
 
 #[cfg(feature = "seq")]
 #[path = "backends/seq/mod.rs"]
 mod seq;
 
-/// The routes of the backends whose agents share memory (seq, threads).
-#[cfg(any(feature = "seq", feature = "threads"))]
+/// The routes of seq, whose workers share one address space.
+#[cfg(feature = "seq")]
 #[path = "backends/local/routes.rs"]
 mod local_routes;
 
@@ -125,20 +120,17 @@ mod worker;
 /// What a step returns, and the condition it waits for (spec.md 5.3).
 mod status;
 
-#[cfg(all(feature = "seq", not(feature = "mpi"), not(feature = "threads")))]
+#[cfg(all(feature = "seq", not(feature = "mpi")))]
 use seq as selected;
 
-#[cfg(all(feature = "threads", not(feature = "seq"), not(feature = "mpi")))]
-use threads as selected;
-
 // `self::`: the crate also depends on an external crate named `mpi`, and a bare `mpi` is ambiguous.
-#[cfg(all(feature = "mpi", not(feature = "seq"), not(feature = "threads")))]
+#[cfg(all(feature = "mpi", not(feature = "seq")))]
 use self::mpi as selected;
 
 /// Without a backend module, every launch is refused (see unselected.rs).
-#[cfg(not(any(feature = "seq", feature = "mpi", feature = "threads")))]
+#[cfg(not(any(feature = "seq", feature = "mpi")))]
 mod unselected;
-#[cfg(not(any(feature = "seq", feature = "mpi", feature = "threads")))]
+#[cfg(not(any(feature = "seq", feature = "mpi")))]
 use unselected as selected;
 
 // The lib's own test binary installs the wrapper like any trame program (domain.rs).

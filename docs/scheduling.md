@@ -6,8 +6,8 @@ must be one the model allows (`CONTRACT.md`, S2).
 
 ## Agents
 
-An *agent* is a thread that runs a worker's steps. A worker has one agent on seq, and up to as many
-as the host has cores on threads, never more than the worker has steps. The reference agent,
+An *agent* is a thread that runs a worker's steps. A worker has one agent on seq, and on mpi up to as
+many as its rank's share of the host's cores, never more than the worker has steps. The reference agent,
 `agent` in `worker.rs`, loops: read the conditions, ask the model for the next step, run it, record
 its end, sleep when nothing can start.
 
@@ -78,13 +78,12 @@ raised to at least the started step's pass.
 ## Service
 
 *Service* is the backend's measure of what a step used. It is 1 per step on seq, which keeps seq
-deterministic, and nanoseconds on threads, which makes the shares shares of time.
+deterministic, and nanoseconds on mpi, which makes the shares shares of time.
 
 | backend | service | choice |
 |---|---|---|
 | seq | 1 per step | follows `Sched::choose` exactly |
-| threads | nanoseconds | any start that `may_start` allows, with the reference agent's choice |
-| mpi | nanoseconds | as threads |
+| mpi | nanoseconds | any start that `may_start` allows, with the reference agent's choice |
 
 `shares_follow_weights` in `tests/conformance.rs` measured the shares on seq: weights 1, 1/2, 1/4
 and 0 on one contended field, 22 923 steps, gave 13 098 : 6 550 : 3 275 : 0, that is 0.5714 :

@@ -1,4 +1,4 @@
-//! The routes of a backend whose agents share one address space (seq, threads): each route a ring of
+//! The routes of a backend whose agents share one address space (seq): each route a ring of
 //! frames allocated at launch. Used under the backend's lock. spec.md 5.2: Send, Full, Overwrite, and
 //! the fairness of takes across routes (spec.md 6, Progress).
 

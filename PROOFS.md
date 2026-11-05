@@ -48,7 +48,7 @@ is decided by a collective reduction (`backends/mpi/open.rs`).
 
 **L2 Agreement.** `agree` in `backends/mpi/open.rs`. No test gives two processes different plans.
 
-**L3 Building.** By construction: `launch::build_all` on seq and threads, `imp.rs` on MPI.
+**L3 Building.** By construction: `launch::build_all` on seq, `imp.rs` on MPI.
 `tests/no_alloc.rs` checks that a launch is refused when the builders cannot reach the domain.
 
 **S1 Exclusion.** Model, replay, witness. A mutant that edits while a step runs is killed by the
@@ -82,7 +82,7 @@ verification, overwrite, fairness, large routes, node splits).
 
 **P2 Edit.** As S4; program `pool_edit`.
 
-**M1 Placement.** On seq and threads the domain is the heap. On MPI, by construction (`segment.rs`).
+**M1 Placement.** On seq the domain is the heap. On MPI, by construction (`segment.rs`).
 No check walks a built state to find a byte outside its domain.
 
 **M2 Meaning, M3 Mutation.** By type: `#[trame::state]` requires `Plain` of each field and

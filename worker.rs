@@ -465,7 +465,7 @@ impl Slot {
 
     /// Hold `fields` for an edit (S4): from now no step touching one starts; returns once none
     /// runs. Answers whether the worker is live (no result, not dead). Give them back with `release`.
-    #[cfg(any(feature = "seq", feature = "threads"))]
+    #[cfg(feature = "seq")]
     pub(crate) fn hold(&self, fields: u64) -> bool {
         let mut g = self.lock();
         if g.dead {
@@ -480,7 +480,7 @@ impl Slot {
     }
 
     /// Give back `fields` after an edit: every step touching one is woken (S3).
-    #[cfg(any(feature = "seq", feature = "threads"))]
+    #[cfg(feature = "seq")]
     pub(crate) fn release(&self, fields: u64) {
         let mut g = self.lock();
         if !g.dead {
@@ -491,7 +491,7 @@ impl Slot {
     }
 
     /// Edit `fields` of this worker: hold, run `f` if the worker is live, release.
-    #[cfg(any(feature = "seq", feature = "threads"))]
+    #[cfg(feature = "seq")]
     pub(crate) fn edit(&self, fields: u64, f: &mut dyn FnMut()) -> bool {
         let live = self.hold(fields);
         if live {
@@ -598,7 +598,7 @@ fn ended(r: Result<Status, ()>, clock: time::ClockId, service: u64) -> (Ended, W
 /// Edit the pool (S4 over the POOL bit): hold it in every live worker, run `f`, release everywhere.
 /// Holding one slot after another cannot deadlock: only the leader holds more than one, and a step
 /// never waits for a hold.
-#[cfg(any(feature = "seq", feature = "threads"))]
+#[cfg(feature = "seq")]
 pub(crate) fn edit_pool(slots: &[Arc<Slot>], f: &mut dyn FnMut()) {
     use crate::sched::POOL;
     for s in slots {

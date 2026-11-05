@@ -13,9 +13,9 @@ the leader runs no worker code.
 
 ## Mechanism
 
-- One `MPI_Win_allocate_shared` window per node, on the node communicator. The root node's leader
-  owns the root window. Every route, counter and result word lives in a node's window.
-  Outside the relay threads, no MPI call after launch except the launch barrier. The window is never freed (`MPI_Win_free` is collective and would wait for peers).
+- One `MPI_Win_allocate_shared` window per host, on the host's communicator. Every route within the
+  host, counter and result word lives in its window. After launch the only MPI calls are the launch
+  barrier and the two-sided lanes of routes between hosts (`HOSTS.md`). The window is never freed (`MPI_Win_free` is collective and would wait for peers).
 - Each route has its own ring of `cap` slots, sized from that route's declared message size
   (`layout.rs`), not from a frame limit. Window bytes per route: 128 + cap × (align8(size) + 8).
 - Lossless: the sender owns P, the receiver owns C. `Full` is decided by an acquire load of C.

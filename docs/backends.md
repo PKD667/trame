@@ -2,7 +2,7 @@
 
 A backend runs a launched topology. It implements the trait `Backend` in `backend.rs`, the one seam
 between the surface and the hardware, and keeps the clauses of `CONTRACT.md`. A build selects one
-backend by a cargo feature: `seq` (the default), `threads` or `mpi`. The features are exclusive.
+backend by a cargo feature: `seq` (the default) or `mpi`. The features are exclusive.
 
 ## Seam
 
@@ -25,26 +25,23 @@ checked plan or refuses it, and has allocated everything the plan needs when it 
 flowchart LR
   S["surface<br/>io, run, topology, status"] --> T{"trait Backend<br/>backend.rs"}
   T --> Q["seq<br/>backends/seq"]
-  T --> H["threads<br/>backends/threads"]
   T --> M["mpi<br/>backends/mpi"]
   Q --> RT["local routes<br/>backends/local"]
-  H --> RT
   Q --> A["reference agent<br/>worker.rs"]
-  H --> A
   M --> A
 ```
 
 ## How each backend maps the parts
 
-| part | seq | threads | mpi |
-|---|---|---|---|
-| worker | one thread, one agent | one thread per agent, several per worker | one rank, several agents |
-| scheduler | reference agent, service 1 per step | reference agent, service in nanoseconds | reference agent, service in nanoseconds |
-| routes | rings under one lock | rings under one lock | rings in a shared window, two-sided MPI between hosts |
-| wake | one counter of acts | one counter of acts | epoch words and futexes |
-| domain | the heap | the heap | a shared segment (`backends/mpi/segment.rs`) |
-| leader | a thread outside the baton | a thread | the last rank |
-| `Deadlock` | reported | reported | never reported |
+| part | seq | mpi |
+|---|---|---|
+| worker | one thread, one agent | one rank, several agents |
+| scheduler | reference agent, service 1 per step | reference agent, service in nanoseconds |
+| routes | rings under one lock | rings in a shared window, two-sided MPI between hosts |
+| wake | one counter of acts | epoch words and futexes |
+| domain | the heap | a shared segment (`backends/mpi/segment.rs`) |
+| leader | a thread outside the baton | the last rank |
+| `Deadlock` | reported | never reported |
 
 ## seq
 
@@ -59,16 +56,6 @@ leader whose `wait` can never return (`backends/seq/stuck.rs`).
 
 `TRAME_SEQ_STEP_LIMIT=n` ends the process at the baton's step n + 1, with a message and exit status
 3. The mutant checks use it to kill a mutant that loops for ever.
-
-## threads
-
-threads runs the workers in one process with no baton. Each worker has up to as many agents as the
-host has cores, never more than its steps. Steps of one worker whose fields do not conflict run truly
-in parallel, and so do steps of different workers.
-
-A worker's result is set once every one of its agents has returned, so `join` hands the leader a
-state that no agent touches. `Deadlock` is judged as on seq: no agent can move now, and no deadline
-is pending.
 
 ## mpi
 

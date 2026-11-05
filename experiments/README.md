@@ -25,7 +25,7 @@ records.
 
 ## Verdicts (deterministic checks)
 
-A check that depends only on the code, not on threads, the network or hardware, is a validate verdict,
+A check that depends only on the code, not on concurrency, the network or hardware, is a validate verdict,
 not a lab experiment: `experiments/validate.nix`, built by `nixsci.lib.validate` (validate/README.md in the
 nixsci repository). Each check states its property (spec.md section), model, subject, checker and scope,
 and writes `$out/outcome.json`. A verdict is a derivation. The flake exposes them as
@@ -42,7 +42,7 @@ and writes `$out/outcome.json`. A verdict is a derivation. The flake exposes the
 `TRAME_SEQ_STEP_LIMIT` (`backends/seq/limit.rs`) bounds the seq scheduler's steps, and a run over the limit
 exits 3. It counts steps, not seconds, so a looping mutant is a count and not a timing.
 
-Lab experiments remain for what needs threads, a network or hardware: `programs-mpi`, `transport-mpi`,
+Lab experiments remain for what needs concurrency, a network or hardware: `programs-mpi`, `transport-mpi`,
 `mutants-mpi` and the scale experiments.
 
 Scope numbers are measured, not guessed: `scheduler-exhaustive` states and end checks, `seq-tests`

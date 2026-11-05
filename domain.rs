@@ -9,7 +9,7 @@
 //! is always freed and resized there, whoever does it, so a state taken by the leader can be dropped or
 //! grown by it.
 //!
-//! seq and threads answer `None` (their domain is the process heap), so there the wrapper only forwards.
+//! seq answers `None` (their domain is the process heap), so there the wrapper only forwards.
 //! The cost outside arena mode is one thread-local read and, on free, one range check.
 //!
 //! The launch checks that the wrapper is installed (`installed`), on every backend, so a program's
