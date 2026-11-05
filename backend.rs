@@ -139,6 +139,16 @@ pub(crate) trait Backend {
         false
     }
 
+    /// The agent's turns, told under the worker's lock, for a backend that shows a worker stuck from
+    /// another process (mpi; spec.md 5, Deadlock): a step starts, a step ends, or an agent is about to
+    /// idle with no step running, at `epoch`, with or without a deadline. Under the lock, so a quiet
+    /// mark is never told after a start that followed it. seq decides stuckness itself.
+    fn worker_mark_start() {}
+
+    fn worker_mark_end() {}
+
+    fn worker_mark_quiet(_epoch: u64, _deadline: bool) {}
+
     /// Leave the worker without a result of this agent's own: another agent's step unwound mid-way
     /// (the run aborts), so this agent must not run on. Unwinds with the backend's marker.
     fn worker_abandon() -> !;

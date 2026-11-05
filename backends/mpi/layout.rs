@@ -14,7 +14,9 @@
 //                          message is the object `<window>-abort-0`, written before DONE's bit is set)
 //   ABORT_LEN              the length of that message
 //   STOP                   1 once the leader stopped the run (Run::stop); workers poll it
-//   PER_WORKER             per worker, five lines each, kind k of worker w at PER_WORKER + 64 (k W + w):
+//   DEADLOCK               1 once the leader showed every worker without a result stuck (detect.rs);
+//                          each ends with OUT_DEADLOCK at its next round
+//   PER_WORKER             per worker, eight lines each, kind k of worker w at PER_WORKER + 64 (k W + w):
 //                            k=0 OUTCOME  its result, 0 until set
 //                            k=1 EPOCH    u32, moves on every act that can change its wait conditions
 //                            k=2 SLEEP    how many of the worker's agents sleep on EPOCH (epoch.rs)
@@ -22,9 +24,16 @@
 //                                         if none (written by the leader; leader.rs `edit`)
 //                            k=4 HELD     1 while the worker holds them for the leader (written by
 //                                         the worker; worker.rs `edit_held`)
+//                            k=5 RUN      steps of the worker running now
+//                            k=6 ACTS     steps it ever started
+//                            k=7 IDLE     EPOCH + 1 when an agent went quiet with no deadline, 0 otherwise
+//                                         (5-7 written under the worker's lock by the worker_mark_* hooks,
+//                                         read by the leader's detector, detect.rs)
 //   ROUTES                 per route, in rank order:
 //                            +0    P: frames ever sent on the route (written by the sender only)
 //                            +64   C: frames ever consumed (written by the receiver only; lossless)
+//                          A route between hosts has no ring: P counts the messages this end of its
+//                          lane sent, C those it saw arrive, frames and credits alike (cross.rs).
 //                            +128  cap slots, each: seq (8), payload (8 * words)
 
 extern crate std;
@@ -39,14 +48,18 @@ pub(crate) const LEADER_SLEEP: usize = LEADER_EPOCH + LINE;
 pub(crate) const ABORT_WORKER: usize = LEADER_SLEEP + LINE;
 pub(crate) const ABORT_LEN: usize = ABORT_WORKER + LINE;
 pub(crate) const STOP: usize = ABORT_LEN + LINE;
-pub(crate) const PER_WORKER: usize = STOP + LINE;
+pub(crate) const DEADLOCK: usize = STOP + LINE;
+pub(crate) const PER_WORKER: usize = DEADLOCK + LINE;
 /// Header lines per worker, one per kind listed above.
-pub(crate) const WORKER_LINES: usize = 5;
+pub(crate) const WORKER_LINES: usize = 8;
 pub(crate) const K_OUTCOME: usize = 0;
 pub(crate) const K_EPOCH: usize = 1;
 pub(crate) const K_SLEEP: usize = 2;
 pub(crate) const K_EDIT: usize = 3;
 pub(crate) const K_HELD: usize = 4;
+pub(crate) const K_RUN: usize = 5;
+pub(crate) const K_ACTS: usize = 6;
+pub(crate) const K_IDLE: usize = 7;
 pub(crate) const SLOT_HEAD: usize = 8;
 /// Bit 0 of DONE: some agent panicked, and the run is aborted.
 pub(crate) const ABORT_BIT: u32 = 1;
@@ -56,8 +69,7 @@ pub(crate) const RESULT: u32 = 2;
 /// OUT_ABORT only so that its own result is set: the leader panics before it reads any word (results.rs).
 pub(crate) const OUT_RETURNED: u64 = 1;
 pub(crate) const OUT_ABORT: u64 = 2;
-/// The worker ended with Deadlock (spec.md 5, Deadlock). No code on this backend sets it yet: the
-/// leader maps it to `Outcome::Deadlock` so that a detector can.
+/// The worker ended with Deadlock (spec.md 5, Deadlock): the leader showed it stuck (detect.rs).
 pub(crate) const OUT_DEADLOCK: u64 = 3;
 /// Every step of the worker ended after a stop (spec.md, Stop).
 pub(crate) const OUT_STOPPED: u64 = 4;

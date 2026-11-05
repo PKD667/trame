@@ -7,13 +7,9 @@ extern crate std;
 use super::shm::Window;
 
 impl Window {
-    /// Sleep while the 32-bit word at `off` equals `seen`. May return spuriously, so the caller
-    /// re-checks. Without FUTEX_PRIVATE_FLAG, so it works across the processes that map the window.
-    pub(crate) fn wait(&self, off: usize, seen: u32) {
-        self.wait_for(off, seen, None);
-    }
-
-    /// As `wait`, and give up after `timeout` (relative). A timeout returns the same way a wake does.
+    /// Sleep while the 32-bit word at `off` equals `seen`, and give up after `timeout` (relative) if
+    /// given. May return spuriously, so the caller re-checks; a timeout returns the same way a wake
+    /// does. Without FUTEX_PRIVATE_FLAG, so it works across the processes that map the window.
     pub(crate) fn wait_for(&self, off: usize, seen: u32, timeout: Option<std::time::Duration>) {
         let at = self.ptr(off, 4) as *mut u32;
         let spec = timeout

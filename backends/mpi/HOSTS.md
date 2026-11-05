@@ -53,8 +53,24 @@ room is dropped.
 The choice rests on the experiment `mpi_cross_host` (`experiments/mpi_cross_host`): between two
 machines of Lille, a one-way 8-byte frame took a median 30.6 us rank to rank and 49.6 us through a
 relay thread, and polling a shared flag between MPI tests cost nothing measurable (29.9 us).
-Deadlock across hosts is not detected: a worker that waits on a lane forever is not reported as
-`Deadlock`.
+
+## Stuck runs across hosts
+
+Each end of a lane counts, in its route's two window words, the messages it sent and those it saw
+arrive, frames and credits alike; an end that has ended keeps observing its posted receives until
+the final barrier. The leaders run rounds of a nonblocking allreduce on the peer channel's
+communicator while they wait, join or have ended (`detect.rs`). A round sums the leaders whose
+snapshot of their host's words moved since their last round, the messages sent and those arrived,
+and the leaders that have not ended. A round with nothing moved and as many arrived as sent shows an
+instant at which no step runs, no message is in flight and no epoch can move: every worker without
+a result is stuck. A joining leader then ends its workers with `Deadlock`, and a waiting leader
+panics, as on seq. An abort on one host is the common case: the other host's worker that waits on
+a lane from it ends with `Deadlock` instead of hanging both hosts.
+
+A leader that runs its own code holds the rounds, so nothing is shown while it does; that is sound,
+since it may still send. A route that one host declares and the other does not is refused on the
+declaring host when the other host's leader ends, since the ending leader answers every connect
+still waiting for it.
 
 ## Testing on one machine
 

@@ -24,7 +24,7 @@ use crate::run::Outcome;
 use crate::time::ClockId;
 use crate::topology::{End, WorkerId};
 
-use super::layout::{OUT_ABORT, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
+use super::layout::{OUT_ABORT, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
 use super::leader::{self, Leader};
 use super::open::{agree, open};
 use super::plan::{encode_plan, entries, inbox, topology};
@@ -36,7 +36,8 @@ use crate::run::panic_message;
 /// Run this worker: `agents` agents of the reference scheduler (worker.rs), the main thread one of
 /// them. A panic in a step records the abort at once (results.rs `abort`), which wakes every sleeping
 /// agent of the run so it unwinds; an abort that reached this worker first records only its own result.
-/// Otherwise the worker's answer is its result. The result is recorded before anything waits on a
+/// An agent the leader showed stuck unwinds with `Deadlocked` (worker.rs), and then the result is
+/// OUT_DEADLOCK. Otherwise the worker's answer is its result. The result is recorded before anything waits on a
 /// peer: then MPI_Finalize (state.rs), which waits for every rank, and then the process ends.
 fn run_worker(obj: Arc<dyn Erased>, agents: usize, pool: Option<PoolRef>, trace: bool) -> ! {
     worker::fast_init();
@@ -44,9 +45,14 @@ fn run_worker(obj: Arc<dyn Erased>, agents: usize, pool: Option<PoolRef>, trace:
     let pool = pool.as_deref().map(|p| p.any());
     let start = std::time::Instant::now();
     let clock = || u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);
+    let stuck = std::sync::atomic::AtomicBool::new(false);
     let one = || {
         let r = catch_unwind(AssertUnwindSafe(|| agent(&slot, &clock, pool)));
         if let Err(p) = &r
+            && p.is::<worker::Deadlocked>()
+        {
+            stuck.store(true, std::sync::atomic::Ordering::Relaxed);
+        } else if let Err(p) = &r
             && !p.is::<worker::Aborted>()
         {
             // The first panic of the run; a later one is ignored by `abort` (results.rs).
@@ -60,7 +66,10 @@ fn run_worker(obj: Arc<dyn Erased>, agents: usize, pool: Option<PoolRef>, trace:
         out.extend(others.into_iter().map(|h| h.join().unwrap_or(None)));
         out
     });
+    // The scope joined every agent, so `stuck` is final.
+    let deadlocked = stuck.load(std::sync::atomic::Ordering::Relaxed) && !with_endpoint(|t| t.aborted());
     let word = match answers.iter().flatten().next() {
+        _ if deadlocked => OUT_DEADLOCK,
         _ if answers.iter().any(Option::is_none) => OUT_ABORT,
         Some(Answer::Returned) => OUT_RETURNED,
         Some(Answer::Stopped) => OUT_STOPPED,
@@ -160,6 +169,7 @@ impl Backend for Selected {
         match role {
             Role::Leader(t) => {
                 l.inbox = inbox(&l.entries, t.me());
+                super::detect::watch(&t);
                 Ok(Leader::new(t, (core::mem::take(&mut plan.workers), plan.pool.take())))
             }
             Role::Worker(t) => {
@@ -199,6 +209,18 @@ impl Backend for Selected {
 
     fn worker_idle(until: Option<u64>, epoch: u64) {
         worker::idle(until, epoch)
+    }
+
+    fn worker_mark_start() {
+        worker::mark_start()
+    }
+
+    fn worker_mark_end() {
+        worker::mark_end()
+    }
+
+    fn worker_mark_quiet(epoch: u64, deadline: bool) {
+        worker::mark_quiet(epoch, deadline)
     }
 
     fn worker_now() -> (ClockId, u64) {

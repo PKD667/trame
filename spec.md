@@ -331,7 +331,7 @@ stuck. One case is cheap. Once the leader is in `join`, a worker is stuck when n
 worker can start, now or after time passes. A worker waiting for a frame before then is never
 reported, since the leader may still send. A leader blocked in `wait` is stuck when no worker can
 move now or after time passes, since only a worker can change what it sees. The seq backend shows
-this case. The MPI backend does not, as the rule permits.
+this case. The MPI backend shows it too, once every host's leader waits, joins or has ended.
 
 ### 5.1 Time
 
@@ -703,7 +703,7 @@ A backend that does nothing satisfies safety. Progress rules it out.
 > - if the premises of **Start** hold for $p$ from some point on, then $p$ is eventually started,
 > - if **Hold** has added $\varphi$ to $E(w)$, then **Edit** eventually fires for it.
 
-Three backends are in the tree: `seq`, `threads` and `mpi`, one per build. Each is tested on the
+Two backends are in the tree: `seq` and `mpi`, one per build. Each is tested on the
 programs of `programs/`, and `programs/run.sh` checks that each prints the expected output.
 
 The sequential backend (`backends/seq`) is the reference. It runs one agent at a time, on Rust's own
@@ -712,16 +712,12 @@ workers at every effect, so exactly one agent executes at any moment and the sch
 deterministic. When every worker that can move has moved, and no idle worker has seen a change,
 after `join` the run is stuck: the backend ends each remaining worker with $\mathsf{deadlock}$.
 
-The threads backend (`backends/threads`) runs the workers in one process with several agents per
-worker and no baton, so steps whose fields do not conflict run in parallel.
-
 The MPI backend (`backends/mpi`, described in its `README.md`) runs one MPI rank per worker, with the
-leader on the last rank, so `mpirun` needs W + 1 ranks. Workers on one shared-memory node share one
-memory window, with one ring per route, and an agent that waits sleeps on a futex word in that
-window. Across nodes, each node runs a relay: two threads that send the node's frames, credits and
-results to the other nodes and apply what arrives. Each node has its own clock. A launch over
-several nodes needs `MPI_THREAD_MULTIPLE`, and is refused without it. This backend reports no
-$\mathsf{deadlock}$, which the rule above permits and does not require.
+leader on the last rank of each host, so `mpirun` needs W + 1 ranks per host. Workers of one host
+share one memory window, with one ring per route, and an agent that waits sleeps on a futex word in
+that window. A route between hosts goes rank to rank by two-sided MPI with credits. Each host has its
+own clock. The leaders show a worker stuck by rounds over the hosts' counters (`backends/mpi/detect.rs`),
+and the backend then ends it with $\mathsf{deadlock}$ as seq does.
 
 The scheduling model is `sched.rs`. A backend may drive it with the reference agent of `worker.rs`
 or schedule by itself. `CONTRACT.md` states what a backend must keep, and `PROOFS.md` says how each

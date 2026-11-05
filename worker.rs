@@ -639,6 +639,7 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn A
         match pick {
             Some(i) => {
                 g.s.start(i);
+                Selected::worker_mark_start();
                 Slot::record(&mut g, Event::Start { i, now });
                 drop(g);
                 let start = service();
@@ -652,6 +653,7 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn A
                 let (e, w) = ended(r, clock, service().saturating_sub(start).max(1));
                 let mut g = slot.lock();
                 g.s.end(i, e);
+                Selected::worker_mark_end();
                 g.waits[i] = w;
                 Slot::record(&mut g, Event::End { i, e });
                 slot.changed.notify_all();
@@ -662,6 +664,7 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn A
             }
             None => {
                 let deadline = next_deadline(&g.s, &g.waits);
+                Selected::worker_mark_quiet(epoch, deadline.is_some());
                 drop(g);
                 Selected::worker_idle(deadline, epoch);
             }

@@ -1,7 +1,7 @@
 //! leader_stuck: two workers return at once and send nothing. The leader waits for a `Never` frame that no
 //! one sends. Its wait can never return: the seq backend panics the call with
 //! `trame: deadlock: the leader waits and nothing can arrive` (leader_stuck.panics; spec.md 5, Deadlock).
-//! Seq only: it has no row in backends/mpi/deploy/ranks.txt, so it does not run on MPI (on MPI the leader would hang).
+//! On MPI the leaders' detector shows the same (backends/mpi/detect.rs), and the leader panics alike.
 
 use trame::{Leader, Status, Topology};
 

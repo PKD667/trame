@@ -9,6 +9,11 @@
 // needs the lock meanwhile has nothing to do that the same epoch change would not also wake. A worker
 // with a lane (cross.rs) cannot sleep: a frame from another host moves no futex. Its idle agents poll
 // the lanes instead, taking the lock for each poll only, until the epoch moves or the deadline passes.
+//
+// Deadlock (spec.md 5). The scheduler tells its turns (`mark_*`, under its own lock) into the
+// worker's RUN, ACTS and IDLE words, which the leader's detector reads (detect.rs). When the detector
+// shows every worker of the host stuck, the leader sets DEADLOCK and wakes every agent; each unwinds at
+// its next round with `Deadlocked`, and the worker's result is OUT_DEADLOCK (imp.rs).
 
 extern crate std;
 
@@ -23,7 +28,7 @@ use std::sync::atomic::Ordering::{Acquire, SeqCst};
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
-use super::layout::{ABORT_BIT, DONE, K_EDIT, K_HELD, STOP};
+use super::layout::{ABORT_BIT, DEADLOCK, DONE, K_ACTS, K_EDIT, K_HELD, K_IDLE, K_RUN, STOP};
 
 use super::plan::{self, Entry, rank_of};
 use super::state::local;
@@ -39,6 +44,9 @@ fn xport() -> MutexGuard<'static, ()> {
 
 /// The payload of the unwind that ends an aborted worker. Not a panic: the hook never runs for it.
 pub(super) struct Aborted;
+
+/// The payload of the unwind that ends a worker the leader showed stuck (detect.rs). Not a panic.
+pub(super) struct Deadlocked;
 
 
 /// End this worker if the run aborted.
@@ -136,6 +144,10 @@ struct Fast {
     held: usize,
     leader_epoch: usize,
     leader_sleep: usize,
+    deadlock: usize,
+    run: usize,
+    acts: usize,
+    idle: usize,
 }
 
 /// Record this worker's round words (imp.rs, before the agents start).
@@ -153,6 +165,10 @@ pub(super) fn fast_init() {
         held: at(t.lay().per_worker(K_HELD, t.me())),
         leader_epoch: at(leader_epoch),
         leader_sleep: at(leader_sleep),
+        deadlock: at(DEADLOCK),
+        run: at(t.lay().per_worker(K_RUN, t.me())),
+        acts: at(t.lay().per_worker(K_ACTS, t.me())),
+        idle: at(t.lay().per_worker(K_IDLE, t.me())),
     });
 }
 
@@ -165,6 +181,27 @@ fn fast() -> (&'static AtomicU32, &'static AtomicU64, &'static AtomicU32) {
 fn word64(addr: usize) -> &'static AtomicU64 {
     // SAFETY: as `fast`.
     unsafe { &*(addr as *const AtomicU64) }
+}
+
+/// A step starts (Backend::worker_mark_start): under the scheduler's lock, so without XPORT.
+pub(super) fn mark_start() {
+    let f = FAST.get().expect("trame: fast_init runs before the agents");
+    word64(f.run).fetch_add(1, SeqCst);
+    word64(f.acts).fetch_add(1, SeqCst);
+    word64(f.idle).store(0, SeqCst);
+}
+
+/// A step ends.
+pub(super) fn mark_end() {
+    let f = FAST.get().expect("trame: fast_init runs before the agents");
+    word64(f.run).fetch_sub(1, SeqCst);
+    word64(f.idle).store(0, SeqCst);
+}
+
+/// An agent idles at `epoch`: IDLE says so when it has no deadline (layout.rs IDLE).
+pub(super) fn mark_quiet(epoch: u64, deadline: bool) {
+    let f = FAST.get().expect("trame: fast_init runs before the agents");
+    word64(f.idle).store(if deadline { 0 } else { epoch + 1 }, SeqCst);
 }
 
 /// The fields the leader asks this worker to hold, 0 if none (layout.rs EDIT). Without the lock.
@@ -192,6 +229,10 @@ pub(super) fn epoch() -> u64 {
     let (e, _, d) = fast();
     if d.load(SeqCst) & ABORT_BIT != 0 {
         resume_unwind(Box::new(Aborted));
+    }
+    let f = FAST.get().expect("trame: fast_init runs before the agents");
+    if word64(f.deadlock).load(SeqCst) != 0 {
+        resume_unwind(Box::new(Deadlocked));
     }
     u64::from(e.load(SeqCst))
 }

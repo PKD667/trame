@@ -30,8 +30,12 @@ pub(super) struct Host {
     pub peers: Option<SimpleCommunicator>,
     /// Peer messages received but not yet taken: (host, tag, bytes).
     pub pending: Vec<(u32, u64, Vec<u8>)>,
-    /// Peer messages received so far, for the leader's `wait` (leader.rs).
-    pub arrivals: u32,
+    /// Peer messages received and sent so far: for the leader's `wait` (leader.rs), and as messages
+    /// in flight for the detector (detect.rs).
+    pub arrivals: u64,
+    pub sent: u64,
+    /// The leader's deadlock detector, from its launch on (detect.rs).
+    pub watch: Option<super::detect::Watch>,
     /// Per host, its world ranks: worker k of host h is `members[h][k]`, its leader the last.
     pub members: Vec<Vec<i32>>,
     /// The world, duplicated for the frames and credits of routes between hosts (cross.rs).
@@ -67,6 +71,8 @@ pub(super) fn host() -> &'static mut Host {
             peers,
             pending: Vec::new(),
             arrivals: 0,
+            sent: 0,
+            watch: None,
             members: nodes.members,
             cross,
         });
@@ -83,6 +89,7 @@ pub(super) fn send(to: u32, tag: u64, bytes: &[u8]) {
     msg.extend_from_slice(&tag.to_le_bytes());
     msg.extend_from_slice(bytes);
     peers.process_at_rank(to as i32).send_with_tag(&msg[..], PEER_TAG);
+    h.sent += 1;
 }
 
 /// Move every peer message MPI holds for this leader into `pending`. Answers whether one came.
@@ -96,7 +103,7 @@ pub(super) fn drain() -> bool {
         msg.matched_receive_into(&mut bytes[..]);
         let tag = u64::from_le_bytes(bytes[..8].try_into().expect("a peer message starts with its tag"));
         h.pending.push((status.source_rank() as u32, tag, bytes[8..].to_vec()));
-        h.arrivals = h.arrivals.wrapping_add(1);
+        h.arrivals += 1;
         any = true;
     }
     any

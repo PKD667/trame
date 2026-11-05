@@ -24,14 +24,23 @@
 // frames' latency. Every arrival of a frame or of a credit that a test observes moves the worker's
 // epoch, whoever observed it, so a waiter that read the epoch before cannot miss it.
 //
+// Counts (detect.rs). Each end counts in the window, in its route's P and C words, the messages it
+// sent and those it saw arrive, frames and credits alike. A credit counts as sent when it falls due,
+// since it is sent at a later poll however long the end idles; a frame counts as arrived when a test
+// observes it, at any slot, not only the head's, so a frame that waits behind an untaken head is
+// counted. An end that has ended keeps testing its posted receives until the nonbarrier completes.
+// Then a message in flight is exactly a difference of the sums of the two counts over every end.
+//
 // End. MPI_Finalize needs every message complete. `quiesce`, before it on every rank: complete this
 // rank's sends, which always match a posted receive; then a nonbarrier, MPI_Ibarrier on `cross`,
 // progressing all the while; once it completes no rank has a send outstanding, and the posted
 // receives are cancelled. A pending lossy frame is dropped; frames sent to a worker that has ended are
-// not received (federation: a route is lossless while both ends run).
+// not taken (federation: a route is lossless while both ends run), though they are counted.
 
 extern crate std;
 
+use core::sync::atomic::AtomicU64;
+use core::sync::atomic::Ordering::SeqCst;
 use std::boxed::Box;
 use std::format;
 use std::string::String;
@@ -44,6 +53,7 @@ use crate::launch::{Plan, Refused};
 use crate::topology::{End, HERE};
 
 use super::hosts::host;
+use super::shm::Window;
 use super::layout::{Layout, RouteLayout};
 use super::types::Answer;
 
@@ -92,6 +102,21 @@ fn isend(buf: *const u8, n: usize, peer: i32, tag: i32, comm: ffi::MPI_Comm, r: 
     ok(unsafe { ffi::MPI_Isend(buf.cast(), n as i32, ffi::RSMPI_UINT8_T, peer, tag, comm, r) }, "Isend");
 }
 
+/// A count word of the window (`Counts` above): the route's P or C word, written by this end only.
+struct Count(*const AtomicU64);
+
+impl Count {
+    fn at(win: &Window, off: usize) -> Count {
+        Count(win.ptr(off, 8) as *const AtomicU64)
+    }
+
+    fn add(&self) {
+        // SAFETY: an aligned word of the window, which stays mapped until MPI_Finalize, after the
+        // lanes are closed (shm.rs; F5).
+        unsafe { &*self.0 }.fetch_add(1, SeqCst);
+    }
+}
+
 /// The sending end of a lane.
 pub(super) struct Out {
     comm: ffi::MPI_Comm,
@@ -111,6 +136,9 @@ pub(super) struct Out {
     /// A lossy frame waiting for room.
     pending: Option<Box<[u8]>>,
     spare: Box<[u8]>,
+    /// Frames sent, credits arrived (`Counts`).
+    sent: Count,
+    got: Count,
 }
 
 /// The receiving end of a lane.
@@ -130,6 +158,9 @@ pub(super) struct In {
     credit_req: ffi::MPI_Request,
     /// A credit to send once the last one has gone.
     due: bool,
+    /// Credits sent (from when they fall due), frames arrived (`Counts`).
+    sent: Count,
+    got: Count,
 }
 
 pub(super) enum Lane {
@@ -139,15 +170,16 @@ pub(super) enum Lane {
 
 /// The lanes of the endpoint of rank `me`, by route: one per route between hosts that it sends or
 /// receives. Posts the receives. Allocates: called at launch, before any step.
-pub(super) fn lanes(lay: &Layout, me: u32) -> Vec<Option<Lane>> {
+pub(super) fn lanes(lay: &Layout, me: u32, win: &Window) -> Vec<Option<Lane>> {
     let mut out = Vec::with_capacity(lay.routes.len());
     for r in &lay.routes {
-        out.push(r.remote.filter(|_| r.sent_by(me) || r.received_by(me)).map(|x| lane(r, x)));
+        out.push(r.remote.filter(|_| r.sent_by(me) || r.received_by(me)).map(|x| lane(r, x, win)));
     }
     out
 }
 
-fn lane(r: &RouteLayout, x: super::layout::Remote) -> Lane {
+fn lane(r: &RouteLayout, x: super::layout::Remote, win: &Window) -> Lane {
+    let (sent, got) = (Count::at(win, r.base), Count::at(win, r.base + super::layout::LINE));
     let comm = host().cross.as_raw();
     let n = r.size;
     let cap = r.cap as usize;
@@ -169,6 +201,8 @@ fn lane(r: &RouteLayout, x: super::layout::Remote) -> Lane {
             credit_req: null(),
             pending: None,
             spare: std::vec![0u8; n].into_boxed_slice(),
+            sent,
+            got,
         };
         o.post_credit();
         Lane::Out(o)
@@ -186,6 +220,8 @@ fn lane(r: &RouteLayout, x: super::layout::Remote) -> Lane {
             credit: Box::new(0),
             credit_req: null(),
             due: false,
+            sent,
+            got,
         };
         for s in 0..cap {
             i.post(s);
@@ -204,6 +240,7 @@ impl Out {
     pub(super) fn poll(&mut self) -> bool {
         let mut grew = false;
         while test(&mut self.credit_req) {
+            self.got.add();
             if *self.credit > self.c {
                 self.c = *self.credit;
                 grew = true;
@@ -226,6 +263,7 @@ impl Out {
         let at = &mut self.bufs[s * self.size..(s + 1) * self.size];
         at.copy_from_slice(msg);
         isend(at.as_ptr(), self.size, self.peer, 2 * self.lane, self.comm, &mut self.reqs[s]);
+        self.sent.add();
         self.p += 1;
     }
 
@@ -299,7 +337,23 @@ impl In {
         }
         let now = test(&mut self.reqs[s]);
         self.arrived[s] = now;
+        if now {
+            self.got.add();
+        }
         (now, now)
+    }
+
+    /// Observe every frame that has arrived, at any slot (`Counts`). Answers whether one did.
+    fn observe(&mut self) -> bool {
+        let mut any = false;
+        for s in 0..self.reqs.len() {
+            if !self.arrived[s] && test(&mut self.reqs[s]) {
+                self.arrived[s] = true;
+                self.got.add();
+                any = true;
+            }
+        }
+        any
     }
 
     /// Take frame C into `out` if it has arrived: its buffer gets the receive of frame C + cap, and a
@@ -315,15 +369,20 @@ impl In {
         self.post(s);
         let index = self.c;
         self.c += 1;
+        if !self.due {
+            self.sent.add();
+        }
         self.due = true;
         self.credit();
         (Some(index), now)
     }
 
-    /// Complete the last credit; send no more. Answers whether it is complete.
+    /// Send the credit that is due, which counts as sent already; send no more after it; observe
+    /// the frames that arrive (`Counts`). Answers whether the last credit is complete.
     fn drain(&mut self) -> bool {
-        self.due = false;
-        test(&mut self.credit_req)
+        self.credit();
+        self.observe();
+        !self.due && test(&mut self.credit_req)
     }
 
     fn close(&mut self) {
@@ -340,7 +399,10 @@ impl Lane {
     pub(super) fn poll(&mut self) -> bool {
         match self {
             Lane::Out(o) => o.poll(),
-            Lane::In(i) => i.head().1,
+            Lane::In(i) => {
+                let head = i.head().1;
+                i.observe() || head
+            }
         }
     }
 
@@ -371,6 +433,13 @@ pub(super) fn quiesce(lanes: &mut [Option<Lane>]) {
     // in `finalize` (F5; Foreign calls).
     ok(unsafe { ffi::MPI_Ibarrier(host().cross.as_raw(), &mut bar) }, "Ibarrier");
     let mut answers = Vec::new();
+    // A leader takes part in the detector's rounds until every leader has ended (detect.rs).
+    if host().peers.is_some() {
+        while super::detect::round(true) != super::detect::Verdict::Over {
+            answer_connects(&mut answers);
+            idle();
+        }
+    }
     while !test(&mut bar) {
         all(lanes);
         answer_connects(&mut answers);

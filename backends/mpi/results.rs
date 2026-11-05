@@ -99,7 +99,11 @@ impl Transport {
             if seen & ABORT_BIT != 0 || (seen / RESULT >= workers && !aborting) {
                 break;
             }
-            self.win().wait(DONE, seen);
+            let pause = std::time::Duration::from_nanos(super::detect::pause());
+            self.win().wait_for(DONE, seen, Some(pause));
+            if super::detect::round(false) == super::detect::Verdict::Stuck {
+                super::detect::end_stuck(self);
+            }
         }
         (0..workers).map(|w| self.win().word(self.lay().per_worker(K_OUTCOME, w)).load(Acquire)).collect()
     }

@@ -133,7 +133,8 @@ type: a hash of its path and its size. `TypeId` does not cross hosts.
 
 **F5 Routes between hosts.** A route between workers of two hosts keeps T1–T3 while both workers
 run. A route between a leader and a worker of another host is refused at launch. A worker that waits
-on such a route forever is not reported as `Deadlock`.
+on such a route forever is stuck, and ends with `Deadlock` once every leader waits, joins or has
+ended (`spec.md`, Definition (Deadlock)).
 
 **F6 Peer channel.** Leaders exchange messages over a peer channel that is not a route. A host is not
 its own peer; a send to a host that is not a peer panics.

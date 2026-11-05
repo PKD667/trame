@@ -22,6 +22,7 @@ mod epoch;
 mod futex;
 mod harness;
 mod cross;
+mod detect;
 mod imp;
 mod layout;
 mod leader;
@@ -104,7 +105,7 @@ impl Transport {
     /// Post this endpoint's lanes (cross.rs). At launch, once, when a route joins hosts.
     pub(crate) fn open_lanes(&mut self) {
         if self.lay.routes.iter().any(|r| r.remote.is_some()) {
-            self.lanes = cross::lanes(&self.lay, self.me);
+            self.lanes = cross::lanes(&self.lay, self.me, &self.win);
         }
     }
 

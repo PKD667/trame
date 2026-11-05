@@ -41,7 +41,7 @@ flowchart LR
 | wake | one counter of acts | epoch words and futexes |
 | domain | the heap | a shared segment (`backends/mpi/segment.rs`) |
 | leader | a thread outside the baton | the last rank |
-| `Deadlock` | reported | never reported |
+| `Deadlock` | reported | reported once every leader waits, joins or has ended |
 
 ## seq
 
@@ -65,7 +65,12 @@ agent that waits sleeps on a futex word of its worker, and every act that can ch
 that word. A route between hosts goes rank to rank by two-sided MPI, with credits back, and the
 agents of a worker with such a route poll instead of sleeping (`backends/mpi/HOSTS.md`).
 
-The backend never reports `Deadlock`. The design, tests and measurements are in
+The leaders show a run stuck by rounds of a nonblocking allreduce over their hosts' words: each
+round sums the leaders whose snapshot moved, the messages sent between hosts and those arrived. Two
+equal rounds with nothing moved and nothing in flight show every worker stuck, and the backend then
+ends each with `Deadlock`, or panics a waiting leader, as seq does (`backends/mpi/detect.rs`). A
+leader that runs its own code holds the rounds, so a deadlock is shown only once every leader waits,
+joins or has ended. The design, tests and measurements are in
 `backends/mpi/README.md`, `HOSTS.md`, `SCALING.md` and `RESULT.md`. Edits, `take` and the pool on
 mpi live in the segment (`backends/mpi/segment.rs`).
 

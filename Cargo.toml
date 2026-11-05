@@ -201,3 +201,11 @@ path = "programs/refuse_ports.rs"
 [[example]]
 name = "route_one_side"
 path = "programs/route_one_side.rs"
+
+[[example]]
+name = "xhost_abort"
+path = "programs/xhost_abort.rs"
+
+[[example]]
+name = "xhost_deadlock"
+path = "programs/xhost_deadlock.rs"

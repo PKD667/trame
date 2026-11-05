@@ -80,6 +80,13 @@ impl Transport {
         }
     }
 
+    /// Sleep while the leader's epoch equals `seen`, at most `nanos`: the leader's wait between the
+    /// detector's rounds (detect.rs).
+    pub(crate) fn leader_nap(&self, seen: u32, nanos: u64) {
+        let until = self.elapsed().saturating_add(nanos);
+        self.sleep_on(LEADER_EPOCH, LEADER_SLEEP, seen, Some(until));
+    }
+
     /// The leader's epoch now: read before checking a condition the leader waits for, then pass it
     /// to `leader_wait`, so an act after the read is not missed.
     pub(crate) fn leader_epoch(&self) -> u64 {

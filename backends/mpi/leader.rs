@@ -152,23 +152,37 @@ pub(super) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
     run_it
 }
 
-/// Block until the leader's epoch differs from `seen`, and answer the new value (epoch.rs).
+/// Block until the leader's epoch differs from `seen`, and answer the new value (epoch.rs). Panics
+/// when the detector shows that nothing can arrive (detect.rs), as seq does (spec.md 5, Deadlock).
 pub(super) fn wait(run: &Leader, seen: u64) -> u64 {
     run.get().fail_if_aborted();
+    let stuck = || {
+        if super::detect::round(false) == super::detect::Verdict::Stuck {
+            panic!("trame: deadlock: the leader waits and nothing can arrive");
+        }
+    };
     // With peers, a peer message is a change too, and nothing on this host can wake the leader for
     // it (it arrives through MPI, not the window): the leader spins on both.
     let e = if super::hosts::host().count > 1 {
         // The seen word is the epoch in the low half and the count of peer arrivals in the high half.
         loop {
             super::hosts::drain();
-            let e = run.get().leader_epoch() | u64::from(super::hosts::host().arrivals) << 32;
+            let e = run.get().leader_epoch() | (super::hosts::host().arrivals & 0xffff_ffff) << 32;
             if e != seen {
                 break e;
             }
+            stuck();
             core::hint::spin_loop();
         }
     } else {
-        run.get().leader_wait(seen)
+        loop {
+            let e = run.get().leader_epoch();
+            if e != seen {
+                break e;
+            }
+            stuck();
+            run.get().leader_nap(e as u32, super::detect::pause());
+        }
     };
     run.get().fail_if_aborted();
     e
