@@ -201,78 +201,79 @@ if combined_rows:
                 cases_dists = [(c, d) for c in speedup_cases for d in speedup_dists]
                 x_pos = np.arange(len(cases_dists))
                 
-                # Plot bars: scalar and lanes (avx2 or avx512)
-                scalar_vals = []
+                # Determine the variant to use (prefer avx2 over avx2-reg/avx2-window)
+                available_variants = mdata['variant'].unique()
+                # Get base variants (avx2, avx512, etc) not the register variants
+                base_variants = [v for v in available_variants if not ('reg' in v or 'window' in v or 'scalar' in v)]
+                if not base_variants:
+                    base_variants = [v for v in available_variants if 'scalar' not in v]
+                
+                variant_to_use = base_variants[0] if base_variants else 'avx2'
+                
+                # Plot bars: lanes only (no scalar)
                 lanes_vals = []
-                scalar_err_min = []
-                scalar_err_max = []
                 lanes_err_min = []
                 lanes_err_max = []
                 
                 for case, dist in cases_dists:
-                    # Scalar
-                    scalar_row = mdata[(mdata['case'] == case) & (mdata['dist'] == dist) & 
-                                      (mdata['variant'] == 'scalar')]
-                    if len(scalar_row) > 0:
-                        scalar_vals.append(scalar_row['median_Mitems/s'].values[0])
-                        scalar_err_min.append(scalar_row['median_Mitems/s'].values[0] - scalar_row['min_Mitems/s'].values[0])
-                        scalar_err_max.append(scalar_row['max_Mitems/s'].values[0] - scalar_row['median_Mitems/s'].values[0])
-                    else:
-                        scalar_vals.append(0)
-                        scalar_err_min.append(0)
-                        scalar_err_max.append(0)
-                    
                     # Find lanes variant
-                    lanes_variants = mdata[(mdata['case'] == case) & (mdata['dist'] == dist) & 
-                                          (~mdata['variant'].str.contains('scalar'))]
-                    if len(lanes_variants) > 0:
-                        v = lanes_variants.iloc[0]
-                        lanes_vals.append(v['median_Mitems/s'])
-                        lanes_err_min.append(v['median_Mitems/s'] - v['min_Mitems/s'])
-                        lanes_err_max.append(v['max_Mitems/s'] - v['median_Mitems/s'])
+                    lanes_row = mdata[(mdata['case'] == case) & (mdata['dist'] == dist) & 
+                                     (mdata['variant'] == variant_to_use)]
+                    if len(lanes_row) > 0:
+                        v = lanes_row.iloc[0]
+                        # Get scalar throughput for speedup calculation
+                        scalar_row = mdata[(mdata['case'] == case) & (mdata['dist'] == dist) & 
+                                          (mdata['variant'] == 'scalar')]
+                        if len(scalar_row) > 0:
+                            scalar_val = scalar_row.iloc[0]['median_Mitems/s']
+                            speedup_val = v['median_Mitems/s'] / scalar_val if scalar_val > 0 else 0
+                            lanes_vals.append(speedup_val)
+                            lanes_err_min.append((v['median_Mitems/s'] - v['min_Mitems/s']) / scalar_val if scalar_val > 0 else 0)
+                            lanes_err_max.append((v['max_Mitems/s'] - v['median_Mitems/s']) / scalar_val if scalar_val > 0 else 0)
+                        else:
+                            lanes_vals.append(0)
+                            lanes_err_min.append(0)
+                            lanes_err_max.append(0)
                     else:
                         lanes_vals.append(0)
                         lanes_err_min.append(0)
                         lanes_err_max.append(0)
                 
-                # Plot with intervals
-                width = 0.35
-                x_scalar = x_pos - width/2
-                x_lanes = x_pos + width/2
-                
-                # Convert throughput to speedup
-                scalar_vals = np.array(scalar_vals)
                 lanes_vals = np.array(lanes_vals)
-                speedup = np.where(scalar_vals > 0, lanes_vals / scalar_vals, 0)
-                speedup_err_min = np.where(scalar_vals > 0, 
-                                          np.array(lanes_err_min) / scalar_vals, 0)
-                speedup_err_max = np.where(scalar_vals > 0, 
-                                          np.array(lanes_err_max) / scalar_vals, 0)
+                lanes_err_min = np.array(lanes_err_min)
+                lanes_err_max = np.array(lanes_err_max)
                 
-                # Plot
-                ax.bar(x_scalar, [1]*len(x_pos), width=width, 
-                      label='scalar', color='white', edgecolor=COLORS['purple'], linewidth=1.5)
-                ax.bar(x_lanes, speedup, width=width, 
-                      label='lanes', color=COLORS['blue'], alpha=0.7)
+                # Plot bars (blue only, no scalar bars)
+                ax.bar(x_pos, lanes_vals, width=0.6, color=COLORS['blue'], alpha=0.8, edgecolor='none')
                 
-                # Add interval bars
-                ax.errorbar(x_lanes, speedup, 
-                           yerr=[speedup_err_min, speedup_err_max],
+                # Add error bars
+                ax.errorbar(x_pos, lanes_vals, 
+                           yerr=[lanes_err_min, lanes_err_max],
                            fmt='none', ecolor=COLORS['blue'], capsize=3, linewidth=1)
                 
-                # Reference line at 1.0
-                ax.axhline(y=1.0, color=COLORS['red'], linestyle='-', linewidth=1, alpha=0.5)
+                # Add value labels above bars
+                for i, (val, err_max) in enumerate(zip(lanes_vals, lanes_err_max)):
+                    if val > 0:
+                        label_y = val + err_max + 0.15
+                        ax.text(i, label_y, f'{val:.1f}×', ha='center', va='bottom', 
+                               fontsize=8, color=COLORS['ink'])
+                
+                # Reference line at 1.0 (ink color, thin dashed)
+                ax.axhline(y=1.0, color=COLORS['ink'], linestyle='--', linewidth=0.8)
                 
                 # Labels and formatting
                 ax.set_xticks(x_pos)
                 ax.set_xticklabels([f'{c}\n{d}' for c, d in cases_dists], fontsize=8, rotation=0)
                 ax.set_ylabel('Speedup', fontsize=10)
-                ax.set_title(f'{machine}', fontsize=10)
-                max_speedup = max(speedup) if max(speedup) > 0 else 2
+                
+                # Build panel title with machine name and variant
+                machine_short = machine.split('.')[0]
+                ax.set_title(f'{machine_short} · {variant_to_use}', fontsize=10)
+                
+                max_speedup = max(lanes_vals) if max(lanes_vals) > 0 else 2
                 ax.set_ylim([0, max_speedup * 1.2])
                 ax.grid(axis='y', alpha=0.3)
             
-            plt.suptitle('SIMD Speedup (lanes/scalar) at 1M items', fontsize=12, y=0.98)
             plt.tight_layout()
             speedup_pdf = out / 'simd_speedup.pdf'
             plt.savefig(speedup_pdf, bbox_inches='tight', dpi=150)
@@ -294,58 +295,78 @@ if combined_rows:
             for ax_idx, machine in enumerate(machines):
                 ax = axes[ax_idx]
                 
-                # Filter: axpy ident
+                # Filter: axpy ident from bench table only
                 axpy_data = df_all[(df_all['machine'] == machine) & (df_all['table'] == 'bench') &
                                   (df_all['case'] == 'axpy') & (df_all['dist'] == 'ident')]
                 
-                # Separate by variant
-                scalar_axpy = axpy_data[axpy_data['variant'] == 'scalar']
-                if len(scalar_axpy) > 0:
-                    scalar_axpy = scalar_axpy.sort_values('items')
-                    ax.plot(scalar_axpy['items'], scalar_axpy['median_Mitems/s'],
-                           marker='o', label='scalar (axpy)', color=COLORS['purple'], linewidth=2)
-                    ax.fill_between(scalar_axpy['items'], 
-                                   scalar_axpy['min_Mitems/s'], scalar_axpy['max_Mitems/s'],
-                                   alpha=0.2, color=COLORS['purple'])
+                # Plot each (case, variant) combination separately with its own min-max band
+                # Group by variant
+                for variant in ['scalar', 'avx2']:
+                    variant_data = axpy_data[axpy_data['variant'] == variant]
+                    if len(variant_data) > 0:
+                        variant_data = variant_data.sort_values('items')
+                        if variant == 'scalar':
+                            ax.plot(variant_data['items'], variant_data['median_Mitems/s'],
+                                   marker='o', label='axpy / scalar', color=COLORS['purple'], linewidth=2)
+                            ax.fill_between(variant_data['items'], 
+                                           variant_data['min_Mitems/s'], variant_data['max_Mitems/s'],
+                                           alpha=0.2, color=COLORS['purple'])
+                        else:
+                            ax.plot(variant_data['items'], variant_data['median_Mitems/s'],
+                                   marker='s', label='axpy / avx2', color=COLORS['blue'], linewidth=2)
+                            ax.fill_between(variant_data['items'], 
+                                           variant_data['min_Mitems/s'], variant_data['max_Mitems/s'],
+                                           alpha=0.2, color=COLORS['blue'])
                 
-                # Lane variants
-                lanes_axpy = axpy_data[~axpy_data['variant'].str.contains('scalar')]
-                if len(lanes_axpy) > 0:
-                    lanes_axpy = lanes_axpy.sort_values('items')
-                    ax.plot(lanes_axpy['items'], lanes_axpy['median_Mitems/s'],
-                           marker='s', label='lanes (axpy)', color=COLORS['blue'], linewidth=2)
-                    ax.fill_between(lanes_axpy['items'], 
-                                   lanes_axpy['min_Mitems/s'], lanes_axpy['max_Mitems/s'],
-                                   alpha=0.2, color=COLORS['blue'])
-                
-                # sum32 uniform 8 keys
-                sum32_data = df_all[(df_all['machine'] == machine) & (df_all['table'] == 'bench') &
+                # sum32 uniform 8: include both bench and bench_knee tables
+                sum32_data = df_all[(df_all['machine'] == machine) & 
                                    (df_all['case'] == 'sum32') & (df_all['dist'] == 'uniform') & (df_all['slots'] == 8)]
                 
-                scalar_sum32 = sum32_data[sum32_data['variant'] == 'scalar']
-                if len(scalar_sum32) > 0:
-                    scalar_sum32 = scalar_sum32.sort_values('items')
-                    ax.plot(scalar_sum32['items'], scalar_sum32['median_Mitems/s'],
-                           marker='o', linestyle='--', label='scalar (sum32)', 
-                           color=COLORS['purple'], linewidth=2, alpha=0.6)
+                # Plot each variant separately
+                # Get all unique variants and separate into scalar and lane variants
+                sum32_variants = sum32_data['variant'].unique()
+                scalar_sum32_data = sum32_data[sum32_data['variant'] == 'scalar']
+                lane_sum32_data = sum32_data[sum32_data['variant'] != 'scalar']
                 
-                lanes_sum32 = sum32_data[~sum32_data['variant'].str.contains('scalar')]
-                if len(lanes_sum32) > 0:
-                    lanes_sum32 = lanes_sum32.sort_values('items')
-                    ax.plot(lanes_sum32['items'], lanes_sum32['median_Mitems/s'],
-                           marker='s', linestyle='--', label='lanes (sum32)', 
+                # Plot scalar
+                if len(scalar_sum32_data) > 0:
+                    scalar_sum32_data = scalar_sum32_data.sort_values('items')
+                    ax.plot(scalar_sum32_data['items'], scalar_sum32_data['median_Mitems/s'],
+                           marker='o', linestyle='--', label='sum32 / scalar', 
+                           color=COLORS['purple'], linewidth=2, alpha=0.6)
+                    ax.fill_between(scalar_sum32_data['items'], 
+                                   scalar_sum32_data['min_Mitems/s'], scalar_sum32_data['max_Mitems/s'],
+                                   alpha=0.2, color=COLORS['purple'])
+                
+                # Plot first lane variant found
+                if len(lane_sum32_data) > 0:
+                    lane_variant = lane_sum32_data['variant'].iloc[0]
+                    lane_sum32_data = lane_sum32_data[lane_sum32_data['variant'] == lane_variant].sort_values('items')
+                    ax.plot(lane_sum32_data['items'], lane_sum32_data['median_Mitems/s'],
+                           marker='s', linestyle='--', label=f'sum32 / {lane_variant}', 
                            color=COLORS['blue'], linewidth=2, alpha=0.6)
+                    ax.fill_between(lane_sum32_data['items'], 
+                                   lane_sum32_data['min_Mitems/s'], lane_sum32_data['max_Mitems/s'],
+                                   alpha=0.2, color=COLORS['blue'])
                 
                 # Set log scale
                 ax.set_xscale('log')
                 ax.set_yscale('log')
+                
+                # Use plain tick labels for log scale (not 10^x notation)
+                # Set custom yticks with plain labels
+                yticks = [300, 1000, 3000, 10000]
+                ax.set_yticks(yticks)
+                ax.set_yticklabels([str(y) for y in yticks])
+                
                 ax.set_xlabel('Items', fontsize=10)
                 ax.set_ylabel('Throughput (Mitems/s)', fontsize=10)
-                ax.set_title(f'{machine}', fontsize=10)
+                
+                machine_short = machine.split('.')[0]
+                ax.set_title(f'{machine_short}', fontsize=10)
                 ax.grid(True, which='both', alpha=0.3)
                 ax.legend(fontsize=8, loc='best')
             
-            plt.suptitle('Throughput vs Item Count (log scale)', fontsize=12, y=0.98)
             plt.tight_layout()
             throughput_pdf = out / 'simd_throughput.pdf'
             plt.savefig(throughput_pdf, bbox_inches='tight', dpi=150)
