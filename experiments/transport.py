@@ -8,9 +8,9 @@ node_ranks 1 and 2 are `multi 1` and `multi 2`. mpirun.argv sets TRAME_MPI_NODE_
 Parameters: repeats (default 1), timeout (seconds, default 120), and the mpirun parameters of
 mpirun.py. Environment: BIN (the check and latency binaries), NIX_LAB_DIR.
 
-Dataset `check`, one row per check run. `workers` and `seed` are the numbers run.sh gives each check:
+Dataset `check`, one row per check run. `workers` and `case_seed` are the numbers run.sh gives each check:
 the fifo checks start workers+1 ranks (the leader is the last); the checks without a --seed (fair,
-deadlock, publication) record seed 0. A fifo-verify row starts no ranks: it reads the directory of its
+deadlock, publication) record case_seed 0. A fifo-verify row starts no ranks: it reads the directory of its
 fifo run. latency is the release binary `latency`. Logs go to $NIX_LAB_DIR/logs.
 """
 
@@ -25,7 +25,7 @@ from pathlib import Path
 from nixsci import lab
 
 import mpirun
-import proc
+from nixsci.lab import proc
 
 LATENCY = ["--samples", "6636", "--max-gap-ns", "500000", "--seed", "20261026"]
 
@@ -42,10 +42,16 @@ class Case:
 
 def fifo(root: Path, workers: int, seed: int) -> list[Case]:
     d = root / f"fifo-{workers}-{seed}"
-    return [
-        Case("fifo", workers, seed, workers + 1, ["fifo", "--seed", str(seed), "--dir", str(d)]),
-        Case("fifo-verify", workers, seed, None, ["verify", str(d)]),
-    ]
+    cases = [Case("fifo", workers, seed, workers + 1, ["fifo", "--seed", str(seed), "--dir", str(d)])]
+    # verify reads one log per rank from one directory and compares timestamps across ranks. Over several hosts
+    # that is wrong twice: each rank writes its log on its own host, and the timestamps come from different
+    # machines' CLOCK_MONOTONIC (spec 5.1: each node has its own clock), so "C was read before the consume began"
+    # compares two clocks. It is not run there. The fifo run itself still checks, at the receiver and without a
+    # clock, that every route delivers its frames in order, once, with their content. What stays unchecked over
+    # several hosts is the credit bound (Full exactly at cap), which needs a common clock.
+    if len(mpirun.hosts()) <= 1:
+        cases.append(Case("fifo-verify", workers, seed, None, ["verify", str(d)]))
+    return cases
 
 
 def first_part(root: Path) -> list[Case]:
@@ -106,8 +112,9 @@ def main() -> None:
                 lab.record("check", {
                     "check": case.name,
                     "workers": case.workers,
-                    "seed": case.seed,
+                    "case_seed": case.seed,
                     "repeat": repeat,
+                    "ran": ok or bool(res.stdout.strip()),  # a check that ran printed its lines; a dead launcher did not
                     "ok": ok,
                     "seconds": float(res.seconds),
                 })

@@ -148,6 +148,16 @@ uncounted loop or block: it returns a `Status` (spec.md, Sections 3 and 5.3).
 It may not perform an effect, allocate, recurse or use an uncounted loop (spec.md, Sections 3
 and 5.4).
 
+## Build and run: `trame`
+
+    nix run .#trame -- build [--mpi] [--check] [cargo args]     # e.g. --example ping_pong
+    nix run .#trame -- run   [--mpi] [-n RANKS] [--node-ranks K] PROGRAM [-- args]
+
+The backend is chosen at build time, so `--mpi` goes to both. `--check` builds with the compile-time checker
+(`cargo trame`, on the driver's own pinned rustc). `run --mpi` asks the program how many ranks it needs
+(`TRAME_PROBE=ranks`, which prints `trame-ranks N` and stops) and starts `mpirun` with that many. Inside a nixsci job
+on several hosts the hostfile, the placement and the launch agent come from `nixsci.lab.mpi`. `cli/check.sh` tests it.
+
 ## What is checked, and how
 
 | check | what it covers | explained in |

@@ -7,10 +7,16 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$root/backends/mpi"
 export CARGO_TARGET_DIR="$root/target/mpi"
-cargo build -q --no-default-features --features mpi --bins 2>&1 | grep -v 'Git tree' || true
+# A build that fails stops the script: a stale binary would otherwise pass the checks.
+build_or_die() {
+  local out
+  if ! out="$(cargo build -q "$@" 2>&1)"; then echo "$out" >&2; echo "FAIL build: cargo build -q $*" >&2; exit 1; fi
+  grep -v 'Git tree' <<<"$out" >&2 || true
+}
+build_or_die --no-default-features --features mpi --bins
 # The latency timings are a release-build claim (record/README.md), so the latency check runs
 # the release binary. The rest are checks, run in the debug build with overflow checks on.
-cargo build -q --no-default-features --features mpi --release --bin latency 2>&1 | grep -v 'Git tree' || true
+build_or_die --no-default-features --features mpi --release --bin latency
 B="$CARGO_TARGET_DIR/debug"
 R="$CARGO_TARGET_DIR/release"
 OUT="${OUT:-$(mktemp -d)}"

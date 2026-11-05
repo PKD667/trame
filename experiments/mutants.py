@@ -22,7 +22,7 @@ from nixsci import lab
 
 import mpirun
 import programs
-import proc
+from nixsci.lab import proc
 
 
 def header(path: Path, key: str) -> str:

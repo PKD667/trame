@@ -26,7 +26,7 @@ from pathlib import Path
 from nixsci import lab
 
 import mpirun
-import proc
+from nixsci.lab import proc
 
 
 def programs() -> list[tuple[str, int]]:
@@ -115,6 +115,7 @@ def main() -> None:
             lab.record("run", {
                 "program": name,
                 "repeat": repeat,
+                "ran": verdict in ("ok", "diff"),  # nixsci's health check: every row false = the launch never worked
                 "ok": verdict == "ok",
                 "verdict": verdict,
                 "seconds": float(res.seconds),

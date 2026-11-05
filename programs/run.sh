@@ -13,6 +13,12 @@ cd "$root"
 which_backend="${1:-both}"
 case "$which_backend" in seq|mpi|both) ;; *) echo "usage: $0 [seq|mpi|both]" >&2; exit 2 ;; esac
 export RUSTFLAGS='--cfg trame_checked'
+# A build that fails stops the script: a stale binary would otherwise pass the checks.
+build_or_die() {
+  local out
+  if ! out="$(cargo build -q "$@" 2>&1)"; then echo "$out" >&2; echo "FAIL build: cargo build -q $*" >&2; exit 1; fi
+  grep -v 'Git tree' <<<"$out" >&2 || true
+}
 # seq: every programs/*.rs. Each needs its [[example]] in Cargo.toml, checked here.
 seq_programs=()
 for f in "$root"/programs/*.rs; do
@@ -58,7 +64,7 @@ emit() { if [[ -n "$1" ]]; then echo "$1"; fi; }
 
 if [[ "$which_backend" != mpi ]]; then
   # seq: the default build, one process per run.
-  cargo build -q --examples 2>&1 | grep -v 'Git tree' || true
+  build_or_die --examples
   B="${CARGO_TARGET_DIR:-$root/target}/debug/examples"
   for p in "${seq_programs[@]}"; do
     rc=0
@@ -71,7 +77,7 @@ if [[ "$which_backend" != seq ]]; then
   # mpi: W + 1 ranks, the leader last. Every rank runs the program's host code, so refuse prints once per
   # rank: the lines are collapsed to one. The exit status of mpirun is the program's, and must be 0.
   export CARGO_TARGET_DIR="$root/target/mpi"
-  cargo build -q --no-default-features --features mpi --examples 2>&1 | grep -v 'Git tree' || true
+  build_or_die --no-default-features --features mpi --examples
   B="$CARGO_TARGET_DIR/debug/examples"
   # Every program runs on one host, then on two: two hosts of one machine, cut by
   # TRAME_MPI_NODE_RANKS (backends/mpi/hosts.rs). Each host runs the whole program with its own leader,

@@ -170,12 +170,12 @@
         "narHash": "sha256-H3kSGrjSm4Bp4u7Eva1mGvY3JTscBRjhjig1QGEDIX4=",
         "owner": "PKD667",
         "repo": "nixsci",
-        "rev": "5c2389aae1fc5154b7baf235a318245e7496ace1",
+        "rev": "3eefdd65d957897237c42012721cdf21732f6fdd",
         "type": "github"
       },
       "original": {
         "owner": "PKD667",
-        "ref": "validate",
+        "ref": "main",
         "repo": "nixsci",
         "type": "github"
       }

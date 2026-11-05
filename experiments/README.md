@@ -59,7 +59,7 @@ Dataset `run`: `program` str, `repeat` int, `ok` bool, `verdict` str (`ok`, `dif
 **transport** (`transport-mpi`, and `transport-cluster` with `span = 2`): the checks of
 `backends/mpi/tests/run.sh` (`transport.py`). The sweep of `node_ranks` (0, 1, 2) is run.sh's whole set:
 0 is its first part, 1 and 2 are its `multi 1` and `multi 2` parts. Dataset `check`: `check` str, `workers`
-int, `seed` int, `repeat` int, `ok` bool, `seconds` float. Key: `check`, `workers`, `seed`, `repeat`. The
+int, `case_seed` int, `repeat` int, `ok` bool, `seconds` float. Key: `check`, `workers`, `case_seed`, `repeat`. The
 dataset has no `node_ranks` column, so rows of different splits share a key: `flake.nix` `transportData`
 needs that column before an analysis merges them (not changed here).
 

@@ -134,6 +134,13 @@ impl Backend for Selected {
     /// takes part in the connect, and the hosts it shares routes with are refused with it.
     fn agree(plan: &Plan) -> Result<(), Refused> {
         let ranks = plan.workers.len() as u32 + 1;
+        // `trame run` (cli/trame) asks how many ranks the program needs: TRAME_PROBE=ranks prints this host's
+        // count and stops, on one rank, before any collective, so a world of one rank is enough to ask.
+        if std::env::var("TRAME_PROBE").as_deref() == Ok("ranks") {
+            std::println!("trame-ranks {ranks}");
+            super::state::finalize();
+            std::process::exit(0);
+        }
         let here = agree(&super::hosts::host().comm, &encode_plan(plan), ranks).map_err(refused);
         let checked = here.and_then(|()| crate::launch::check(plan));
         let joined = super::cross::connect(plan, checked.is_ok());

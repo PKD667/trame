@@ -8,9 +8,9 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
   # The lab experiments (experiments/README.md) and their deployment to hosts. Pinned; nixsci's only input is nixpkgs.
-  # The validate branch: nixsci.lib.validate (validate/README.md) is not on main yet.
+  # nixsci main (health check, MPI helper, target-side cache fetch, --hosts).
   inputs.nixsci = {
-    url = "github:PKD667/nixsci/validate";
+    url = "github:PKD667/nixsci/main";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
@@ -152,19 +152,20 @@
         runtime = labRuntime;
       };
       programsMpiClosure = runnerClosure "programs-mpi" "programs.py" trameMpiBins;
+      programsSeqClosure = runnerClosure "programs-seq" "programs.py" trameSeqBins;
       transportClosure = runnerClosure "transport-mpi" "transport.py" trameMpiBins;
       scaleClosure = runnerClosure "scale-local" "scale.py" trameMpiBins;
       labLib = nixsci.lib.lab { inherit pkgs; project = self; };
       # MPI transport settings are machine configuration, recorded per job as mpi_config (experiments/mpirun.py).
       mpiConfigData = { columns = { source = "str"; text = "str"; }; };
       runData = {
-        columns = { program = "str"; repeat = "int"; ok = "bool"; verdict = "str"; seconds = "float"; stdout_sha256 = "str"; };
+        columns = { program = "str"; repeat = "int"; ran = "bool"; ok = "bool"; verdict = "str"; seconds = "float"; stdout_sha256 = "str"; };
         key = [ "program" "repeat" ];
         noisy.seconds = 1.0;
       };
       transportData = {
-        columns = { check = "str"; workers = "int"; seed = "int"; repeat = "int"; ok = "bool"; seconds = "float"; };
-        key = [ "check" "workers" "seed" "repeat" ];
+        columns = { check = "str"; workers = "int"; case_seed = "int"; repeat = "int"; ran = "bool"; ok = "bool"; seconds = "float"; };
+        key = [ "check" "workers" "case_seed" "repeat" ];
         noisy.seconds = 1.0;
       };
       scaleCols = { bench = "str"; impl = "str"; nodes = "int"; workers = "int"; per_node = "int"; };
@@ -217,6 +218,42 @@
           data.run = runData;
           data.mpi_config = mpiConfigData;
         };
+        # One host of the cluster reservation: the real hardware, the host splits of HOSTS.md, no daemon tree.
+        programs-node = labLib.experiment {
+          name = "programs-node";
+          closures.${system} = programsMpiClosure;
+          params = { backend = "mpi"; repeats = 3; };
+          sweep.node_ranks = [ 0 1 2 ];
+          resources = { provider = "cluster"; hosts = 1; walltime = 60; };
+          data.run = runData;
+          data.mpi_config = mpiConfigData;
+        };
+        # The same programs on seq on the same hardware: equal stdout_sha256 per program is the equivalence.
+        programs-seq-node = labLib.experiment {
+          name = "programs-seq-node";
+          closures.${system} = programsSeqClosure;
+          params = { backend = "seq"; repeats = 3; };
+          resources = { provider = "cluster"; hosts = 1; walltime = 60; };
+          data.run = runData;
+        };
+        transport-node = labLib.experiment {
+          name = "transport-node";
+          closures.${system} = transportClosure;
+          sweep.node_ranks = [ 0 1 2 ];
+          resources = { provider = "cluster"; hosts = 1; walltime = 60; };
+          data.check = transportData;
+          data.mpi_config = mpiConfigData;
+        };
+        # Four hosts, one per machine: the cross-host routes between non-adjacent hosts.
+        programs-cluster4 = labLib.experiment {
+          name = "programs-cluster4";
+          span = 4;
+          closures.${system} = programsMpiClosure;
+          params = { backend = "mpi"; repeats = 3; node_ranks = 0; };
+          resources = { provider = "cluster"; hosts = 4; walltime = 60; opts.stage = "fanout"; };
+          data.run = runData;
+          data.mpi_config = mpiConfigData;
+        };
         transport-cluster = labLib.experiment {
           name = "transport-cluster";
           span = 2;
@@ -261,6 +298,15 @@
             builtins.attrValues (builtins.mapAttrs (name: value: "export ${name}=${value}") dependencies.env)
           );
         };
+      # `trame build|run` (cli/trame): the backend as a flag, the rank count asked of the program, hosts from nixsci.
+      trameCli = pkgs.runCommand "trame-cli" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+        install -Dm755 ${./cli/trame} $out/bin/trame
+        patchShebangs $out/bin/trame
+        wrapProgram $out/bin/trame \
+          --prefix PYTHONPATH : ${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages} \
+          --prefix PATH : ${trameDriver}/bin \
+          --set TRAME_TOOLCHAIN ${driverToolchain}/bin
+      '';
     in {
       validate.${system} = suite;
       # The verdicts, and one style for the Rust sources (rustfmt.toml). rejections/ is left out: its cases
@@ -273,6 +319,7 @@
         '';
       };
       packages.${system} = {
+        trame = trameCli;
         trame-driver = trameDriver;
         trame-mpi-bins = trameMpiBins;
         trame-seq-bins = trameSeqBins;
@@ -289,7 +336,9 @@
           runtime = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt pkgs.gcc pkgs.git pkgs.gnumake pkgs.time pkgs.bashInteractive pkgs.gnugrep pkgs.gnused pkgs.gawk pkgs.findutils pkgs.diffutils ] ++ dependencies.packages;
           env = dependencies.env;
         };
-      apps.${system} = builtins.mapAttrs (_: e: e.run) experiments;
+      apps.${system} = builtins.mapAttrs (_: e: e.run) experiments // {
+        trame = { type = "app"; program = "${trameCli}/bin/trame"; };
+      };
       devShells.${system} = {
         default = pkgs.mkShell { packages = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt ]; };
         # GNU time: experiments/scale.py measures per-rank CPU with it.

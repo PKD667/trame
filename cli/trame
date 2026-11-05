@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""trame: build a trame program for a backend, and run it.
+
+  trame build [--mpi] [--check] [CARGO ARGS]    cargo build --release, with the backend and the checks on
+  trame run   [--mpi] [-n RANKS] [--node-ranks K] PROGRAM [-- ARGS]
+
+The backend is a build choice (README: one per build), so `--mpi` is given to both. seq is the default.
+`run --mpi` needs no rank count: it starts the program once on one rank with TRAME_PROBE=ranks (backends/mpi/imp.rs),
+which prints the count it needs and stops, and starts it again on that many. On several hosts (a job of nixsci, which sets
+NIX_DEPLOY_HOSTFILE) the hostfile, the placement and the launch agent come from nixsci.lab.mpi."""
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+def die(msg):
+    sys.exit(f"trame: {msg}")
+
+
+def target_dir(mpi):
+    return Path(os.environ.get("CARGO_TARGET_DIR") or ("target/mpi" if mpi else "target"))
+
+
+def build(argv):
+    mpi = "--mpi" in argv
+    check = "--check" in argv
+    rest = [a for a in argv if a not in ("--mpi", "--check")]
+    env = dict(os.environ)
+    if check:
+        # cargo trame sets the wrapper, the cfg and <target>/trame itself; the driver wants its own rustc
+        cmd = ["cargo", "trame", "build"]
+        if os.environ.get("TRAME_TOOLCHAIN"):
+            env["PATH"] = os.environ["TRAME_TOOLCHAIN"] + ":" + env["PATH"]
+    else:
+        cmd = ["cargo", "build"]
+        env["RUSTFLAGS"] = (env.get("RUSTFLAGS", "") + " --cfg trame_checked").strip()
+    env["CARGO_TARGET_DIR"] = str(target_dir(mpi))
+    cmd += ["--release"] + (["--no-default-features", "--features", "mpi"] if mpi else []) + rest
+    os.execvpe(cmd[0], cmd, env)
+
+
+def find(name, mpi):
+    """A path, or the newest bin or example called `name` under this backend's target dir (a checked build
+    lives in <target>/trame)."""
+    if "/" in name and Path(name).is_file():
+        return str(Path(name).resolve())
+    base = target_dir(mpi)
+    found = [p for d in (base, base / "trame") for prof in ("release", "debug") for sub in ("", "examples")
+             if (p := d / prof / sub / name).is_file()]
+    if not found:
+        die(f"no program {name!r} under {base}; run 'trame build{' --mpi' if mpi else ''}' first")
+    return str(max(found, key=lambda p: p.stat().st_mtime).resolve())
+
+
+def mpirun(ranks, extra_env):
+    try:
+        from nixsci.lab import mpi
+        return mpi.command(ranks, export=list(extra_env))
+    except ImportError:  # outside nixsci: one host, plain mpirun
+        cmd = ["mpirun", "--oversubscribe", "-n", str(ranks), "--bind-to", "none"]
+        for k in extra_env:
+            cmd += ["-x", k]
+        return cmd
+
+
+def workers_of(binary, args):
+    """Ask the program how many ranks it needs: with TRAME_PROBE=ranks it prints the count and stops."""
+    p = subprocess.run(["mpirun", "--oversubscribe", "-n", "1", "-x", "TRAME_PROBE", binary, *args],
+                       capture_output=True, text=True, env={**os.environ, "TRAME_PROBE": "ranks"})
+    m = re.search(r"^trame-ranks (\d+)$", p.stdout, re.M)
+    if not m:
+        sys.stderr.write(p.stdout + p.stderr)
+        die("the program did not report its rank count (is it built with --mpi, from this trame?)")
+    return int(m.group(1))
+
+
+def run(argv):
+    mpi, ranks, node_ranks, prog, args = False, None, None, None, []
+    it = iter(argv)
+    for a in it:
+        if a == "--":
+            args = list(it)
+        elif a == "--mpi":
+            mpi = True
+        elif a == "-n":
+            ranks = int(next(it))
+        elif a == "--node-ranks":
+            node_ranks = int(next(it))
+        elif prog is None and not a.startswith("-"):
+            prog = a
+        else:
+            die(f"unknown argument {a!r}")
+    if prog is None:
+        die("usage: trame run [--mpi] [-n RANKS] [--node-ranks K] PROGRAM [-- ARGS]")
+    binary = find(prog, mpi)
+    if not mpi:
+        os.execv(binary, [binary, *args])
+    env = dict(os.environ)
+    if node_ranks:
+        env["TRAME_MPI_NODE_RANKS"] = str(node_ranks)
+    ranks = ranks or workers_of(binary, args)
+    cmd = mpirun(ranks, ["TRAME_MPI_NODE_RANKS"] if node_ranks else []) + [binary, *args]
+    os.execvpe(cmd[0], cmd, env)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or sys.argv[1] not in ("build", "run"):
+        die("usage: trame build|run ...")
+    (build if sys.argv[1] == "build" else run)(sys.argv[2:])
