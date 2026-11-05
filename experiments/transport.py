@@ -1,9 +1,7 @@
 """The MPI transport checks of backends/mpi/tests/run.sh, as run.sh runs them.
 
-run.sh has two parts. Its first part runs the checks on one world (no node split). Its `multi k`
-part runs a shorter list with TRAME_MPI_NODE_RANKS = k (nodes of k ranks on this machine). So the
-sweep of node_ranks in flake.nix (0, 1, 2) is run.sh's whole set: node_ranks 0 is the first part,
-node_ranks 1 and 2 are `multi 1` and `multi 2`. mpirun.argv sets TRAME_MPI_NODE_RANKS from node_ranks.
+The checks run on one host: a split or several machines would make several hosts, each with too few
+ranks for the check. Routes between hosts are checked by the programs (programs.py, xhost_ring, peers).
 
 Parameters: repeats (default 1), timeout (seconds, default 120), and the mpirun parameters of
 mpirun.py. Environment: BIN (the check and latency binaries), NIX_LAB_DIR.
@@ -54,46 +52,24 @@ def fifo(root: Path, workers: int, seed: int) -> list[Case]:
     return cases
 
 
-def first_part(root: Path) -> list[Case]:
-    """run.sh's first part: the fifo runs of W = 3, 4, 6 with seeds 1-5, then the other checks."""
+def plan(root: Path) -> list[Case]:
+    """backends/mpi/tests/run.sh: the fifo runs of W = 3, 4, 6 with seeds 1-5, then the other checks. The
+    transport checks run on one host; routes between hosts are checked by programs (xhost_ring, peers)."""
     cases = [c for w in (3, 4, 6) for s in range(1, 6) for c in fifo(root, w, s)]
     cases += [
         Case("overwrite", 3, 7, 3, ["overwrite", "--seed", "7", "--cap", "4", "--msgs", "20000"]),
         Case("overwrite-late", 3, 7, 3, ["overwrite", "--seed", "7", "--cap", "4", "--msgs", "20000", "--late"]),
         Case("fair", 4, 0, 4, ["fair", "--msgs", "16"]),
-        Case("barrier", 6, 3, 6, ["barrier", "--seed", "3", "--rounds", "300"]),
-        Case("deadlock", 5, 0, 5, ["deadlock"]),
-        Case("publication", 3, 0, 3, ["publication"]),
+        Case("bigroute", 3, 0, 3, ["bigroute"]),
         Case("latency", 3, 20261026, 3, LATENCY + ["--dir", str(root / "latency")], binary="latency"),
     ]
     return cases
-
-
-def multi_part(root: Path) -> list[Case]:
-    """run.sh's `multi k` part (the same for every k): fifo seeds 1, 2 with W = 3, then the other checks."""
-    cases = [c for s in (1, 2) for c in fifo(root, 3, s)]
-    cases += [
-        Case("overwrite", 3, 7, 3, ["overwrite", "--seed", "7", "--cap", "4", "--msgs", "20000"]),
-        Case("overwrite-late", 3, 7, 3, ["overwrite", "--seed", "7", "--cap", "4", "--msgs", "20000", "--late"]),
-        Case("fair", 4, 0, 4, ["fair", "--msgs", "16"]),
-        Case("barrier", 6, 3, 6, ["barrier", "--seed", "3", "--rounds", "300"]),
-        Case("deadlock", 5, 0, 5, ["deadlock"]),
-        Case("publication", 3, 0, 3, ["publication"]),
-        Case("latency", 3, 20261026, 3, LATENCY + ["--dir", str(root / "latency")], binary="latency"),
-    ]
-    return cases
-
-
-def plan(root: Path, node_ranks: int) -> list[Case]:
-    """The checks of run.sh for one node_ranks value: 0 is the first part, k > 0 is `multi k`."""
-    return first_part(root) if node_ranks == 0 else multi_part(root)
 
 
 def main() -> None:
     params = lab.params()
     repeats = int(params.get("repeats", 1))
     timeout = float(params.get("timeout", 120))
-    node_ranks = int(params.get("node_ranks", 0))
     mpirun.record_config()
     logs = Path(os.environ["NIX_LAB_DIR"]) / "logs"
     logs.mkdir(parents=True, exist_ok=True)
@@ -101,7 +77,7 @@ def main() -> None:
     failed = 0
     try:
         for repeat in range(1, repeats + 1):
-            for case in plan(tmp / f"r{repeat}", node_ranks):
+            for case in plan(tmp / f"r{repeat}"):
                 cmd = [str(Path(os.environ["BIN"]) / case.binary)] + case.args
                 if case.ranks is not None:
                     cmd = mpirun.argv(case.ranks, params) + cmd

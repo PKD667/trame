@@ -50,18 +50,18 @@ count. A change to either fails the check until its scope is updated.
 
 ## Experiments and datasets
 
-**programs** (`programs-mpi`, and `programs-cluster` with `span = 2`): every
-program of `programs/` against its `.expected` output on mpi. The seq run is a verdict (below). Parameters: `backend`, `node_ranks` (0 is
-the real node layout, k splits one machine into nodes of k ranks), `repeats`.
-Dataset `run`: `program` str, `repeat` int, `ok` bool, `verdict` str (`ok`, `diff`, `exit`,
-`timeout`), `seconds` float, `stdout_sha256` str. Key: `program`, `repeat`.
+**programs** (`programs-mpi` and `programs-node` on one machine, `programs-cluster` on two, `programs-cluster4`
+on four; `programs-seq-node` is seq on the same machine): every program of `programs/` against its
+`.expected` output. Parameters: `backend`, `split` (trame hosts per machine, 1 or 2; HOSTS.md), `repeats`.
+On H hosts each host runs the whole program and is judged alone, except a program with `<name>.h<H>.expected`,
+judged on the hosts' outputs in order (programs.py). Dataset `run`: `program` str, `repeat` int, `ran` bool,
+`ok` bool, `verdict` str (`ok`, `diff`, `exit`, `timeout`), `seconds` float, `stdout_sha256` str. Key:
+`program`, `repeat`. Equal `stdout_sha256` per program between `programs-node` and `programs-seq-node` is
+the seq equivalence on that machine.
 
-**transport** (`transport-mpi`, and `transport-cluster` with `span = 2`): the checks of
-`backends/mpi/tests/run.sh` (`transport.py`). The sweep of `node_ranks` (0, 1, 2) is run.sh's whole set:
-0 is its first part, 1 and 2 are its `multi 1` and `multi 2` parts. Dataset `check`: `check` str, `workers`
-int, `case_seed` int, `repeat` int, `ok` bool, `seconds` float. Key: `check`, `workers`, `case_seed`, `repeat`. The
-dataset has no `node_ranks` column, so rows of different splits share a key: `flake.nix` `transportData`
-needs that column before an analysis merges them (not changed here).
+**transport** (`transport-mpi`): the checks of `backends/mpi/tests/run.sh` on one host (`transport.py`).
+Dataset `check`: `check` str, `workers` int, `case_seed` int, `repeat` int, `ran` bool, `ok` bool,
+`seconds` float. Key: `check`, `workers`, `case_seed`, `repeat`.
 
 **scale** (`scale-local`, and `scale-n<N>` with `span = N` for N in 1, 2, 4, 8, 16, 32): the
 programs of `scale/` and their plain-MPI baselines. One job runs one benchmark with one

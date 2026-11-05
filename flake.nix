@@ -196,7 +196,7 @@
           name = "programs-mpi";
           closures.${system} = programsMpiClosure;
           params = { backend = "mpi"; repeats = 3; };
-          sweep.node_ranks = [ 0 1 2 ];
+          sweep.split = [ 1 2 ];
           resources = { provider = "local"; hosts = 1; };
           data.run = runData;
           data.mpi_config = mpiConfigData;
@@ -204,7 +204,6 @@
         transport-mpi = labLib.experiment {
           name = "transport-mpi";
           closures.${system} = transportClosure;
-          sweep.node_ranks = [ 0 1 2 ];
           resources = { provider = "local"; hosts = 1; };
           data.check = transportData;
           data.mpi_config = mpiConfigData;
@@ -213,17 +212,17 @@
           name = "programs-cluster";
           span = 2;
           closures.${system} = programsMpiClosure;
-          params = { backend = "mpi"; repeats = 3; node_ranks = 0; };
+          params = { backend = "mpi"; repeats = 3; };
           resources = { provider = "cluster"; hosts = 2; walltime = 60; opts.stage = "fanout"; };
           data.run = runData;
           data.mpi_config = mpiConfigData;
         };
-        # One host of the cluster reservation: the real hardware, the host splits of HOSTS.md, no daemon tree.
+        # One machine of the cluster reservation: one host, then two hosts split from it (HOSTS.md).
         programs-node = labLib.experiment {
           name = "programs-node";
           closures.${system} = programsMpiClosure;
           params = { backend = "mpi"; repeats = 3; };
-          sweep.node_ranks = [ 0 1 2 ];
+          sweep.split = [ 1 2 ];
           resources = { provider = "cluster"; hosts = 1; walltime = 60; };
           data.run = runData;
           data.mpi_config = mpiConfigData;
@@ -236,31 +235,14 @@
           resources = { provider = "cluster"; hosts = 1; walltime = 60; };
           data.run = runData;
         };
-        transport-node = labLib.experiment {
-          name = "transport-node";
-          closures.${system} = transportClosure;
-          sweep.node_ranks = [ 0 1 2 ];
-          resources = { provider = "cluster"; hosts = 1; walltime = 60; };
-          data.check = transportData;
-          data.mpi_config = mpiConfigData;
-        };
         # Four hosts, one per machine: the cross-host routes between non-adjacent hosts.
         programs-cluster4 = labLib.experiment {
           name = "programs-cluster4";
           span = 4;
           closures.${system} = programsMpiClosure;
-          params = { backend = "mpi"; repeats = 3; node_ranks = 0; };
+          params = { backend = "mpi"; repeats = 3; };
           resources = { provider = "cluster"; hosts = 4; walltime = 60; opts.stage = "fanout"; };
           data.run = runData;
-          data.mpi_config = mpiConfigData;
-        };
-        transport-cluster = labLib.experiment {
-          name = "transport-cluster";
-          span = 2;
-          closures.${system} = transportClosure;
-          params = { node_ranks = 0; };
-          resources = { provider = "cluster"; hosts = 2; walltime = 60; opts.stage = "fanout"; };
-          data.check = transportData;
           data.mpi_config = mpiConfigData;
         };
         scale-local = scaleExperiment {

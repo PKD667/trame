@@ -17,6 +17,8 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+import shutil
+import tempfile
 
 from nixsci import lab
 
@@ -60,16 +62,21 @@ def main() -> None:
         return
     stderr_dir = Path(os.environ["NIX_LAB_DIR"]) / "stderr"
     stderr_dir.mkdir(parents=True, exist_ok=True)
-    collapse = backend == "mpi"
     if backend == "mpi":
         mpirun.record_config()
     for name, ranks in programs.programs():
         panic = programs.panic_line(name)
-        expected = programs.read_expected(root / "share" / "expected", name, panic)
-        res = proc.run(programs.command(backend, str(root / "bin" / name), ranks, params), timeout)
+        judged = programs.expected_for(root / "share" / "expected", name, 1, panic)
+        if judged is None:
+            continue
+        expected = judged[1]
+        out = Path(tempfile.mkdtemp(prefix=f"{mutant}.{name}.", dir=os.environ.get("NIX_LAB_DIR")))
+        res = proc.run(programs.command(backend, str(root / "bin" / name), ranks, params, out), timeout)
         if res.stderr:
             (stderr_dir / f"{mutant}.{name}.txt").write_text(res.stderr)
-        how = programs.judge(res, programs.normalise(res.stdout, collapse), expected, panic)
+        got = programs.host_outputs(out, ranks, 1)[0] if backend == "mpi" else programs.normalise(res.stdout, False)
+        shutil.rmtree(out, ignore_errors=True)
+        how = programs.judge(res, got, expected, panic)
         record(mutant, rule, expect, name, how != "ok", how)
 
 
