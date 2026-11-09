@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
-# Mutation runner (check/mutants/README.md). For each patch in check/mutants/<backend>/, restore a
+# Mutation runner (check/mutants/README.md). For each patch in src/backends/<backend>/mutants/, restore a
 # copy of the working tree, apply the patch, build, and run check/programs/run.sh for that backend. A mutant is
 # killed when a program fails (stdout differs, non-zero exit or timeout); a mutant that does not build is
 # reported as BUILD and counts as a failure of the catalogue, not as a kill.
-#   nix develop .#mpi --command check/mutants/mutate.sh [seq|mpi|both] [mutant-id-regex]
-# The two backends run concurrently, each in its own copy, /tmp/trame-mutate/<backend> (or $TRAME_MUTATE_DIR/<backend>),
+#   nix develop .#<backend> --command check/mutants/mutate.sh [BACKEND|all] [mutant-id-regex]
+# BACKEND is a directory of src/backends/ with mutants/ (all: each of them). Backends run concurrently, each in its own copy, /tmp/trame-mutate/<backend> (or $TRAME_MUTATE_DIR/<backend>),
 # which is kept between runs with its target directory, so Cargo rebuilds only what a patch changed. A lock
 # on the copy refuses a second run of the same backend while one runs. Exits non-zero when a verdict
 # contradicts its header: a `killed` mutant survives, or an `equivalent` one is killed, or a build fails.
 set -uo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-which_backend="${1:-both}"
+which_backend="${1:-all}"
 filter="${2:-.}"
-case "$which_backend" in seq|mpi|both) ;; *) echo "usage: $0 [seq|mpi|both] [regex]" >&2; exit 2 ;; esac
-backends=(seq mpi)
-[[ "$which_backend" == both ]] || backends=("$which_backend")
+backends=()
+for d in "$root"/src/backends/*/mutants; do [[ -d "$d" ]] && backends+=("$(basename "$(dirname "$d")")"); done
+if [[ "$which_backend" != all ]]; then
+  [[ " ${backends[*]} " == *" $which_backend "* ]] || { echo "usage: $0 [${backends[*]}|all] [regex]" >&2; exit 2; }
+  backends=("$which_backend")
+fi
 out="$(mktemp -d)"
 scratch="${TRAME_MUTATE_DIR:-/tmp/trame-mutate}"
 
@@ -23,7 +26,7 @@ sync_copy() {
   local work="$1"
   mkdir -p "$work"
   rsync -rlD --delete --no-times --checksum \
-    --exclude=/target/ --exclude=/.git --exclude=/src/backends/mpi/mpi-rma/ \
+    --exclude=/target/ --exclude=/.git --exclude=/src/backends/*/mpi-rma/ \
     "$root/" "$work/"
 }
 
@@ -35,24 +38,20 @@ run_backend() {
   exec {lock}>"$scratch/$b.lock"
   flock -n "$lock" || { echo "mutate.sh: another run holds $work ($scratch/$b.lock)" >&2; exit 2; }
   : > "$tsv"
-  for patch in "$root/check/mutants/$b"/*.patch; do
+  for patch in "$root/src/backends/$b/mutants"/*.patch; do
     local id header expect rule verdict prog detail
     id="$(basename "$patch" .patch)"
     [[ "$id" =~ $filter ]] || continue
     header="$(grep -m1 '^# violates:' "$patch" | sed 's/^# violates: *//')"
     expect="$(grep -m1 '^# expect:' "$patch" | sed 's/^# expect: *//')"
     sync_copy "$work"
-    if ! (cd "$work" && git apply "$patch" 2>"$out/$b.$id.apply"); then
+    if ! (cd "$work" && git apply --directory=src "$patch" 2>"$out/$b.$id.apply"); then
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$b" "$expect" APPLY "-" "$(head -c 200 "$out/$b.$id.apply")" >> "$tsv"
       continue
     fi
     # Build first: a mutant that does not compile must not look like a program failure.
     # Same flags and target directory as check/programs/run.sh, so run.sh's build is then a no-op.
-    if [[ "$b" == seq ]]; then
-      (cd "$work" && RUSTFLAGS='--cfg trame_checked' cargo build -q --examples >"$out/$b.$id.build" 2>&1)
-    else
-      (cd "$work" && CARGO_TARGET_DIR="$work/target/mpi" RUSTFLAGS='--cfg trame_checked' cargo build -q --no-default-features --features mpi --examples >"$out/$b.$id.build" 2>&1)
-    fi
+    (cd "$work" && CARGO_TARGET_DIR="$work/target/$b" RUSTFLAGS='--cfg trame_checked' cargo build -q --no-default-features --features "$b" --examples >"$out/$b.$id.build" 2>&1)
     if [[ $? -ne 0 ]]; then
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$b" "$expect" BUILD "-" "$(grep -m1 error "$out/$b.$id.build" | head -c 200)" >> "$tsv"
       continue

@@ -56,7 +56,7 @@ pub fn host() -> crate::topology::HostId {
 }
 
 /// The number of hosts of the deployment. Hosts are numbered from 0, so `HostId(h)` names a peer for
-/// every `h < hosts()`; membership is fixed for the run (CONTRACT.md, Federation). On seq it is 1.
+/// every `h < hosts()`; membership is fixed for the run (CONTRACT.md, Federation). A backend whose deployment is one host answers 1.
 pub fn hosts() -> u32 {
     Selected::hosts()
 }

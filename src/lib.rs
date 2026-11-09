@@ -80,30 +80,13 @@ pub use status::Status;
 pub use time::{Reading, now};
 pub use topology::{End, Handle, HostId, Leader, Pool, Topology, Worker, WorkerId};
 
-#[cfg(all(feature = "seq", feature = "mpi"))]
-compile_error!("features `seq` and `mpi` are exclusive: one backend per build (mpi: --no-default-features --features mpi)");
+/// The backends and the choice among them (src/backends/mod.rs).
+#[path = "backends/mod.rs"]
+mod backends;
 
-#[cfg(feature = "seq")]
-#[path = "backends/seq/mod.rs"]
-mod seq;
-
-/// The routes of seq, whose workers share one address space.
-#[cfg(feature = "seq")]
-#[path = "backends/local/routes.rs"]
-mod local_routes;
-
-/// The MPI backend: one rank per worker, one host per shared-memory node with its leader on the
-/// node's last rank (src/backends/mpi/README.md, src/backends/mpi/HOSTS.md).
-#[cfg(feature = "mpi")]
-#[path = "backends/mpi/mod.rs"]
-mod mpi;
-
-/// The MPI backend's transport, for the test binaries under src/backends/mpi/tests. Not API.
-#[cfg(feature = "mpi")]
+/// The selected backend's own items, for its test binaries. Not API.
 #[doc(hidden)]
-pub mod __mpi {
-    pub use crate::mpi::*;
-}
+pub use backends::__backend;
 
 /// Internal: the seam between the surface and the selected backend (see backend.rs).
 mod backend;
@@ -119,19 +102,6 @@ mod worker;
 
 /// What a step returns, and the condition it waits for (INTERFACE.md 5.3).
 mod status;
-
-#[cfg(all(feature = "seq", not(feature = "mpi")))]
-use seq as selected;
-
-// `self::`: the crate also depends on an external crate named `mpi`, and a bare `mpi` is ambiguous.
-#[cfg(all(feature = "mpi", not(feature = "seq")))]
-use self::mpi as selected;
-
-/// Without a backend module, every launch is refused (see unselected.rs).
-#[cfg(not(any(feature = "seq", feature = "mpi")))]
-mod unselected;
-#[cfg(not(any(feature = "seq", feature = "mpi")))]
-use unselected as selected;
 
 // The lib's own test binary installs the wrapper like any trame program (domain.rs).
 #[cfg(test)]

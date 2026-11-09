@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# The trame CLI against check/programs/*.expected: run each named program (default: three) on seq and on mpi with the
-# rank count asked of the program, and compare stdout. Run in the MPI shell:
-#   nix develop .#mpi --command crates/cli/check.sh [program...]
+# The trame CLI against check/programs/*.expected: build the named programs (default: three) for each backend and run
+# them through its launch, comparing stdout. Backends: -b NAME (repeatable), or every backend of src/backends/.
+#   nix develop .#<backend> --command crates/cli/check.sh [-b NAME]... [program...]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 trame=crates/cli/trame
-progs=("$@"); [[ ${#progs[@]} -gt 0 ]] || progs=(ping_pong halo_rule90 fanin_fifo)
+backends=(); progs=()
+while [[ $# -gt 0 ]]; do
+  case $1 in -b) backends+=("$2"); shift 2 ;; *) progs+=("$1"); shift ;; esac
+done
+[[ ${#backends[@]} -gt 0 ]] || mapfile -t backends < <($trame backends)
+[[ ${#progs[@]} -gt 0 ]] || progs=(ping_pong halo_rule90 fanin_fifo)
 ex=(); for p in "${progs[@]}"; do ex+=(--example "$p"); done
-$trame build "${ex[@]}" >/dev/null 2>&1
-$trame build --mpi "${ex[@]}" >/dev/null 2>&1
-for p in "${progs[@]}"; do
-  diff -u "check/programs/$p.expected" <($trame run "$p") >/dev/null || { echo "FAIL seq $p"; exit 1; }
-  diff -u "check/programs/$p.expected" <($trame run --mpi "$p" 2>/dev/null | uniq) >/dev/null || { echo "FAIL mpi $p"; exit 1; }
-  echo "ok   $p"
+for b in "${backends[@]}"; do
+  $trame build --backend "$b" "${ex[@]}" >/dev/null 2>&1 || { echo "FAIL $b build"; exit 1; }
+  for p in "${progs[@]}"; do
+    # A launch that collapses the ranks' duplicate lines (a refusal prints once per rank) does not alter a program's output.
+    diff -u "check/programs/$p.expected" <($trame run --backend "$b" "$p" 2>/dev/null) >/dev/null || { echo "FAIL $b $p"; exit 1; }
+    echo "ok   $b $p"
+  done
 done

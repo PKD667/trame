@@ -56,7 +56,7 @@ pub(crate) struct Route {
     pub ty: TypeId,
     pub name: &'static str,
     /// The type's tag across hosts (CONTRACT.md, F4).
-    #[cfg(feature = "mpi")]
+    #[allow(dead_code)] // read by a backend with routes between hosts
     pub wire: u64,
     pub size: usize,
     pub cap: usize,
@@ -102,18 +102,6 @@ impl Default for Plan {
 
 /// Builds one worker's state and puts it in place (worker.rs `Core::fill`).
 pub(crate) type Builder = alloc::boxed::Box<dyn FnOnce() + Send>;
-
-/// Run every builder: the backends whose leader builds every state in its own memory (seq)
-/// call this at launch.
-#[cfg(feature = "seq")]
-pub(crate) fn build_all(plan: &mut Plan) {
-    if let Some(b) = plan.pool_builder.take() {
-        crate::domain::arena(b);
-    }
-    for b in plan.builders.iter_mut() {
-        crate::domain::arena(b.take().expect("trame: the launch checked that every worker was set"));
-    }
-}
 
 /// The launch checks of INTERFACE.md section 4, in the order the spec states them.
 pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {

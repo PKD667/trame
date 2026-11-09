@@ -1,9 +1,9 @@
-/* Plain-MPI baseline for scale_graph: W ranks on the circulant graph of lab/scale/graph_net.rs, with the same
+/* Plain-MPI baseline for bench_graph: W ranks on the circulant graph of lab/bench/graph_net.rs, with the same
  * splitmix64, offsets and xorshift64 recurrence, so each rank's checksum equals the trame worker's. Each
  * step a rank computes ITERS rounds, posts MPI_Irecv from each in-neighbour and MPI_Isend to each
  * out-neighbour, then MPI_Waitall. The first WARM steps are a warm-up; the clock runs for STEPS steps.
  * Rank 0 gathers the spans and prints one JSON line per rank (bench "mpi_graph", "worker" = rank).
- * Build: mpicc -O2 -o mpi_graph lab/scale/baseline/graph.c
+ * Build: mpicc -O2 -o mpi_graph src/backends/mpi/bench/graph.c
  * Run:   mpirun -n W ./mpi_graph W STEPS SIZE DEGREE ITERS SEED   (SIZE 64 or 1024) */
 #include <mpi.h>
 #include <stdio.h>
@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
             if (get64(rbuf + (size_t)k * sz) != s) fail(rank, "a frame out of order");
     }
     double span = MPI_Wtime() - t0;
-    /* Checksum as lab/scale/graph.rs: the state XOR the sum over every frame received, ((sender+1) << 32 | (step+1)). */
+    /* Checksum as lab/bench/graph.rs: the state XOR the sum over every frame received, ((sender+1) << 32 | (step+1)). */
     u64 acc = 0;
     for (k = 0; k < (int)degree; k++)
         for (s = 0; s < total; s++)

@@ -51,7 +51,7 @@ fn main() {
     }
     // Finalization: the universe is dropped here, after this rank's work.
     drop(world);
-    trame::__mpi::finalize();
+    trame::__backend::finalize();
     std::mem::forget(universe);
 }
 

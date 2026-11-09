@@ -1,4 +1,4 @@
-//! The graph of scale_graph and the recurrence it computes, shared with lab/scale/baseline/graph.c, which
+//! The graph of bench_graph and the recurrence it computes, shared with the baseline graph.c in a backend's bench directory, which
 //! implements the same two functions in C and must give the same numbers.
 
 /// splitmix64 (Steele, Lea and Flood, 2014): the generator of the offsets.

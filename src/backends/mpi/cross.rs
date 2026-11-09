@@ -629,6 +629,6 @@ pub(super) fn connect(plan: &Plan, fine: bool) -> Result<(), Refused> {
     if verdict.len() == 1 {
         Ok(())
     } else {
-        Err(Refused::Backend { reason: format!("MPI: {}", String::from_utf8_lossy(&verdict[1..])) })
+        Err(Refused::Backend { reason: String::from_utf8_lossy(&verdict[1..]).into_owned() })
     }
 }

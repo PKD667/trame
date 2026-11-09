@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
-use trame::__mpi::{
+use trame::__backend::{
     Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, launch, leader_join,
     returned,
 };
@@ -47,7 +47,7 @@ pub(crate) fn fair(world: &mpi::topology::SimpleCommunicator, args: &[String]) {
     let mut buf = [0u8; 64];
     let mut order = Vec::new();
     // One host: every frame is in shared memory before the barrier, so both routes hold frames at the
-    // start and the rotation is checked (lab/transport.py runs this check on one host only).
+    // start and the rotation is checked (src/backends/mpi/tests/transport.py runs this check on one host only).
     let mut next = [0u64; 2];
     for _ in 0..2 * msgs {
         let id = loop {

@@ -76,10 +76,10 @@ environment's business: its takes are not rules of T.
 
 ## Rings
 
-On seq, every route is a ring of `cap` slots of the message's size, allocated once at
-launch (`src/backends/local/routes.rs`). A send copies into a slot and a receive copies out of one, so
+On a backend whose workers share one process, every route is a ring of `cap` slots of the message's size,
+allocated once at launch (`src/backends/README.md`, Where each part lives). A send copies into a slot and a receive copies out of one, so
 neither allocates. Among the routes of a worker with a frame of the wanted type, the one taken least
 recently is taken. A route that does not fit in memory refuses the launch (`Refused::Backend`).
 
-On mpi, a route is a ring in a shared window, with a counter owned by each end
-(`src/backends/mpi/README.md`). Each shared-memory node is a host of its own (`src/backends/mpi/HOSTS.md`).
+On a backend whose workers share a window, a route is a ring in that window, with a counter owned by each
+end. Each shared-memory node is a host of its own on that backend (`src/backends/README.md`).

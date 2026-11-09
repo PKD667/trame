@@ -56,7 +56,7 @@ The Locality claim below tests the consequence: the relay's CPU time per frame d
 
 ## The proxy benchmark
 
-`scale_graph` is the shape of a simulation step, not of a microbenchmark. Each of W workers owns a
+`bench_graph` is the shape of a simulation step, not of a microbenchmark. Each of W workers owns a
 block of work. Each step it computes for a fixed number of iterations, sends one message to each of
 its D out-neighbours, receives one from each of its D in-neighbours, and starts the next step.
 

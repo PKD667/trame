@@ -5,7 +5,7 @@
 //! worker 0 of host 1, its frames and credits cross hosts, and worker 1 of each returns at once; the
 //! leaders' detector shows the cycle, and each host prints `host h: [Deadlock, Returned]`
 //! (xhost_deadlock.h2.expected). On one host the two are workers 0 and 1, and the
-//! leader prints `host 0: [Deadlock, Deadlock]`, as on seq (xhost_deadlock.expected).
+//! leader prints `host 0: [Deadlock, Deadlock]`, as in xhost_deadlock.expected.
 
 use trame::{HostId, Status, Topology, WorkerId};
 

@@ -107,19 +107,19 @@ pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
                 if (here_from && r.from == End::Leader) || (!here_from && r.to == End::Leader) {
                     return Err(Refused::Backend {
                         reason: alloc::format!(
-                            "MPI: a route of {} joins the leader to a worker of host {}; leaders talk over the peer channel (Run::leader_send)",
+                            "a route of {} joins the leader to a worker of host {}; leaders talk over the peer channel (Run::leader_send)",
                             r.name, far.0
                         ),
                     });
                 }
                 let members = &h.members[far.0 as usize];
                 let world = *members.get(far.1 as usize).filter(|_| (far.1 as usize) + 1 < members.len()).ok_or_else(|| {
-                    Refused::Backend { reason: alloc::format!("MPI: host {} has no worker {} for the route of {}", far.0, far.1, r.name) }
+                    Refused::Backend { reason: alloc::format!("host {} has no worker {} for the route of {}", far.0, far.1, r.name) }
                 })?;
                 // The lane: this route's place, by F4 tag, among the routes with its sender and receiver.
                 let lane = plan.routes.iter().filter(|q| g(q.from) == g(r.from) && g(q.to) == g(r.to) && q.wire < r.wire).count();
                 let lane = i32::try_from(lane).ok().filter(|l| *l < 16_000).ok_or_else(|| Refused::Backend {
-                    reason: "MPI: more than 16000 routes between two workers of two hosts".into(),
+                    reason: "more than 16000 routes between two workers of two hosts".into(),
                 })?;
                 Some(Remote { host: far.0, outgoing, world, lane })
             }

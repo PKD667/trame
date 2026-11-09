@@ -1,8 +1,8 @@
-# The mutants-seq check (check/mutants/README.md): each patch of check/mutants/seq is applied alone to
+# The mutants-seq check (check/mutants/README.md): each patch of ./mutants is applied alone to
 # the seq backend, built, and run on every program with a step limit. A `killed` mutant must fail some
 # program; an `equivalent` one must not. Deterministic: the step limit (TRAME_SEQ_STEP_LIMIT) counts steps,
 # not seconds, so a mutant that loops is killed by its count. The wall clock (60 s per run) is a crash guard.
-{ pkgs, v, cargoHomeWith, vendor, trameSrc, mutantsDir, seqPrograms }:
+{ pkgs, v, cargoHomeWith, vendor, trameSrc, mutantsDir, programs, launch }:
 let
   lib = pkgs.lib;
   limit = "1000000"; # a guard against looping mutants. Not a measured bound: no step count of a program is recorded in the tree
@@ -19,7 +19,7 @@ v.check {
   scope = {
     mutants = builtins.length patches;
     skipped = builtins.length skips;
-    programs = builtins.length seqPrograms;
+    programs = builtins.length programs;
     step_limit = limit;
     backend = "seq";
   };
@@ -36,20 +36,21 @@ v.check {
       rm -rf "$TMPDIR/src"; cp -r ${trameSrc} "$TMPDIR/src"; chmod -R u+w "$TMPDIR/src"
       cd "$TMPDIR/src"
       why=""
-      if ! git apply "$f" 2> "$TMPDIR/$id.apply"; then verdict=APPLY; why="$(head -c 300 "$TMPDIR/$id.apply")"
-      elif ! cargo build -q --examples > "$TMPDIR/$id.build" 2>&1; then verdict=BUILD; why="$(grep -m1 error "$TMPDIR/$id.build")"
+      if ! git apply --directory=src "$f" 2> "$TMPDIR/$id.apply"; then verdict=APPLY; why="$(head -c 300 "$TMPDIR/$id.apply")"
+      elif ! cargo build -q --no-default-features --features seq --examples > "$TMPDIR/$id.build" 2>&1; then verdict=BUILD; why="$(grep -m1 error "$TMPDIR/$id.build")"
       else
         verdict=survived
-        for p in ${lib.concatStringsSep " " seqPrograms}; do
-          rc=0; bad=""; err="$TMPDIR/$id.$p.err"; panic=""
-          [ -f "$TMPDIR/src/programs/$p.panics" ] && panic="$(cat "$TMPDIR/src/programs/$p.panics")"
-          got="$(timeout -k 5 60 "$TMPDIR/target/debug/examples/$p" 2>"$err")" || rc=$?
+        for p in ${lib.concatStringsSep " " programs}; do
+          rc=0; bad=""; run="$TMPDIR/$id.$p"; panic=""; progdir="$TMPDIR/src/check/programs"
+          [ -f "$progdir/$p.panics" ] && panic="$(cat "$progdir/$p.panics")"
+          ${launch}/bin/launch --timeout 60 --out "$run" -- "$TMPDIR/target/debug/examples/$p" > /dev/null 2> "$run.launch" || rc=$?
+          got="$(cat "$run/host0.out" 2>/dev/null)"; err="$run/host0.err"
           # As check/programs/run.sh: a .panics program must exit non-zero with its panic line; any other exits 0.
           if [ -n "$panic" ]; then { [ "$rc" -eq 0 ] || ! grep -F -x -q -- "$panic" "$err"; } && bad=1
           elif [ "$rc" -ne 0 ]; then bad=1; fi
           # As check/programs/run.sh: stdout is compared when <name>.expected exists; a program with no .expected must panic.
-          if [ -f "$TMPDIR/src/programs/$p.expected" ]; then
-            if ! diff -q "$TMPDIR/src/programs/$p.expected" <(if [ -n "$got" ]; then echo "$got"; fi) >/dev/null 2>&1; then bad=1; fi
+          if [ -f "$progdir/$p.expected" ]; then
+            if ! diff -q "$progdir/$p.expected" <(if [ -n "$got" ]; then echo "$got"; fi) >/dev/null 2>&1; then bad=1; fi
           elif [ -z "$panic" ]; then bad=1; fi
           if [ -n "$bad" ]; then
             verdict=killed; why="program $p: exit $rc, stdout differs or step limit"; break

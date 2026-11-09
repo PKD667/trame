@@ -4,7 +4,7 @@
 extern crate std;
 
 use super::limit;
-use crate::local_routes::Routes;
+use crate::backends::local_routes::Routes;
 use crate::backend::PoolRef;
 use crate::run::Outcome;
 use std::string::String;

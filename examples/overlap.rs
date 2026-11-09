@@ -2,8 +2,8 @@
 //! field, each running `rounds` times a fixed amount of work. The leader runs it with 1, 2, 4, 8, 16 and
 //! 32 agents (a test hook; the default is the cores) and prints the wall time from the return of launch
 //! to join and
-//! the speedup over one agent. Arguments: rounds per step (default 40), and on mpi the one agent count
-//! to run.
+//! the speedup over one agent. Arguments: rounds per step (default 40), and the one agent count to
+//! run, for a backend where a launch is once per process (below).
 //!
 //! An experiment, not a program with an .expected file: its numbers are measurements.
 
@@ -34,8 +34,8 @@ steps!(s0 x0, s1 x1, s2 x2, s3 x3, s4 x4, s5 x5, s6 x6, s7 x7, s8 x8, s9 x9, s10
 
 fn main() {
     let rounds: u64 = std::env::args().nth(1).map(|s| s.parse().expect("rounds")).unwrap_or(40);
-    // On mpi a worker rank does not return from launch, so one process runs one launch: pass the
-    // agent count as the second argument there.
+    // On a backend whose workers are processes of their own, a worker process does not return from
+    // launch, so one process runs one launch: pass the agent count as the second argument there.
     let only: Option<usize> = std::env::args().nth(2).map(|s| s.parse().expect("agents"));
     let counts: Vec<usize> = match only {
         Some(n) => vec![n],
@@ -51,7 +51,7 @@ fn main() {
             rounds, x0: 0, x1: 0, x2: 0, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0,
             x8: 0, x9: 0, x10: 0, x11: 0, x12: 0, x13: 0, x14: 0, x15: 0,
         });
-        // After launch: on mpi, launch includes MPI's start, the plan's agreement and the window.
+        // After launch: on a backend with workers in other processes, launch includes their start and the agreement on the plan.
         let run = t.launch().expect("launch");
         let start = Instant::now();
         assert_eq!(run.join(), [Outcome::Returned]);

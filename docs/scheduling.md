@@ -6,8 +6,9 @@ backend may schedule by itself, but every start it makes must be one the model a
 
 ## Agents
 
-An *agent* is a thread that runs a worker's steps. A worker has one agent on seq, and on mpi up to as
-many as its rank's share of the host's cores, never more than the worker has steps. The reference agent,
+An *agent* is a thread that runs a worker's steps. A worker has one agent on a backend that runs one
+thread per worker, and on a backend with ranks up to as many as its rank's share of the host's cores, never
+more than the worker has steps. The reference agent,
 `agent` in `worker.rs`, loops: read the conditions, ask the model for the next step, run it, record
 its end, sleep when nothing can start.
 
@@ -63,24 +64,20 @@ adds `service × 2^24 / weight` to the pass of a positive-weight step, sets the 
 status carries one, and sets `d` on every step that touches a field i writes. `answer()` derives the
 result once nothing runs.
 
-Weights are `Weight(u16)`, fixed point over [0, 1], so the arithmetic on seq is exact and the
-schedule deterministic. Passes grow by stride scheduling (Waldspurger and Weihl, 1995): a step of
+Weights are `Weight(u16)`, fixed point over [0, 1], so the arithmetic is exact and, on a backend that
+chooses as the model does, the schedule is deterministic. Passes grow by stride scheduling (Waldspurger and Weihl, 1995): a step of
 weight w receives service in proportion to w (S7).
 
 ## Service
 
-*Service* is the backend's measure of what a step used. It is 1 per step on seq, which keeps seq
-deterministic, and nanoseconds on mpi, which makes the shares shares of time.
+*Service* is the backend's measure of what a step used. Each backend states its measure and its choice of
+start in `src/backends/README.md` (How each backend meets the parts). A measure of 1 per step keeps a
+backend deterministic, and a measure of wall time makes the shares shares of time.
 
-| backend | service | choice |
-|---|---|---|
-| seq | 1 per step | follows `Sched::choose` exactly |
-| mpi | nanoseconds | any start that `may_start` allows, with the reference agent's choice |
-
-`shares_follow_weights` in `tests/conformance.rs` measured the shares on seq: weights 1, 1/2, 1/4
+`shares_follow_weights` in `tests/conformance.rs` measured the shares on the reference backend: weights 1, 1/2, 1/4
 and 0 on one contended field, 22 923 steps, gave 13 098 : 6 550 : 3 275 : 0, that is 0.5714 :
 0.2857 : 0.1429 against the model's 4/7 : 2/7 : 1/7. Command: `cargo test --test conformance shares`
-on gros-101, rustc 1.98.1, seq backend.
+on gros-101, rustc 1.98.1, reference backend.
 
 ## Edits and stop in the model
 

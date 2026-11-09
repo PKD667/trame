@@ -1,0 +1,95 @@
+{
+ "common": {
+  "bench": "str",
+  "impl": "str",
+  "backend": "str",
+  "machines": "int",
+  "hosts": "int",
+  "per_host": "int"
+ },
+ "ping": {
+  "seq": "int",
+  "size": "int",
+  "cap": "int",
+  "warm": "bool",
+  "gap_ns": "int",
+  "max_gap_ns": "int",
+  "ns": "int",
+  "placement": "str",
+  "bound_p50": "int?",
+  "bound_p99": "int?",
+  "over_p50": "bool?",
+  "over_p99": "bool?"
+ },
+ "flow": {
+  "pattern": "str",
+  "host": "int",
+  "per": "int",
+  "g": "int",
+  "size": "int",
+  "cap": "int",
+  "steps": "int",
+  "ns": "int"
+ },
+ "step": {
+  "host": "int",
+  "per": "int",
+  "k": "int",
+  "n": "int",
+  "worker": "int",
+  "step": "int",
+  "ns": "int"
+ },
+ "round": {
+  "workers": "int",
+  "worker": "int",
+  "rounds": "int",
+  "ns": "int"
+ },
+ "idle": {
+  "workers": "int",
+  "worker": "int",
+  "seconds": "int",
+  "ns": "int"
+ },
+ "fanin": {
+  "workers": "int",
+  "worker": "int?",
+  "msgs": "int",
+  "ns": "int"
+ },
+ "graph": {
+  "workers": "int",
+  "worker": "int",
+  "steps": "int",
+  "size": "int",
+  "degree": "int",
+  "iters": "int",
+  "ns": "int",
+  "compute_ns": "int",
+  "checksum": "str"
+ },
+ "cpu": {
+  "rank": "int",
+  "host": "int",
+  "machine": "str",
+  "user_s": "float",
+  "sys_s": "float",
+  "wall_s": "float"
+ },
+ "launch_config": {
+  "source": "str",
+  "text": "str"
+ },
+ "osu": {
+  "size": "int",
+  "value": "float",
+  "unit": "str",
+  "min": "float?",
+  "max": "float?"
+ },
+ "mpi_config": {
+  "source": "str",
+  "text": "str"
+ }
+}

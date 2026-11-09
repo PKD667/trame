@@ -10,8 +10,9 @@ publish = false
 # The dependencies of the cases. `cargo test` builds the cases' dependencies from this manifest, with the
 # driver as the compiler (tests/ui.rs). The library is empty: it exists so that cargo builds this manifest.
 [dependencies]
-# The real crate, with the seq backend (the default backend; INTERFACE.md, Section 8).
-trame = { path = "../..", default-features = false, features = ["seq"] }
+# The real crate, with no backend: the harness passes `--features trame/<backend>` for the backend of the run
+# (TRAME_BACKEND, tests/ui.rs), so the suite holds on every backend and this manifest names none.
+trame = { path = "../..", default-features = false }
 
 [dev-dependencies]
 # The harness: compiletest's engine (diagnostics as annotations, `//~ ERROR`), by Oli Obk.

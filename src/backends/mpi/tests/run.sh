@@ -5,7 +5,7 @@
 # Each check with W workers runs with W + 1 ranks: the leader is the last rank.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../../../.." && pwd)"
-cd "$root/backends/mpi"
+cd "$root"
 export CARGO_TARGET_DIR="$root/target/mpi"
 # A build that fails stops the script: a stale binary would otherwise pass the checks.
 build_or_die() {
@@ -14,11 +14,8 @@ build_or_die() {
   grep -v 'Git tree' <<<"$out" >&2 || true
 }
 build_or_die --no-default-features --features mpi --bins
-# The latency timings are a release-build claim (record/README.md), so the latency check runs
-# the release binary. The rest are checks, run in the debug build with overflow checks on.
-build_or_die --no-default-features --features mpi --release --bin latency
+# The checks run in the debug build with overflow checks on. Latency is lab/bench/ping.rs's (the `latency` experiment).
 B="$CARGO_TARGET_DIR/debug"
-R="$CARGO_TARGET_DIR/release"
 OUT="${OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"
 MPI=(mpirun --oversubscribe)
@@ -46,9 +43,6 @@ run -n 3 "$B/check" overwrite --seed 7 --cap 4 --msgs 20000 --late
 run -n 4 "$B/check" fair --msgs 16
 run -n 3 "$B/check" bigroute
 
-# Latency record: N = 6636 round trips between two workers, leader on rank 2, written to
-# $OUT/latency. See RESULT.md for the run that is kept.
-run -n 3 "$R/latency" --samples 6636 --max-gap-ns 500000 --seed 20261026 --dir "$OUT/latency"
 # Every object a run makes is unlinked when the run ends (object.rs). A leftover is a leak.
 leftover="$(ls /dev/shm 2>/dev/null | grep '^trame-' || true)"
 if [[ -n "$leftover" ]]; then

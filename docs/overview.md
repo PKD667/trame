@@ -33,9 +33,7 @@ flowchart TB
   S --> be
   wk --> sc
   wk --> be
-  be --> seq["src/backends/seq"]
-  be --> mpi["src/backends/mpi"]
-  seq --> loc["src/backends/local<br/>route rings"]
+  be --> bk["src/backends/<br/>one directory per backend"]
 ```
 
 | file | owns |
@@ -59,7 +57,7 @@ flowchart TB
 | `src/math/` | portable numeric functions |
 
 Around the crate: `crates/driver/` is the compile-time checker, `check/rejections/` its case suite, `check/programs/`
-the shared conformance programs, `check/mutants/` the mutants, `check/proofs/` the TLA+ models, `lab/scale/`
+the shared conformance programs, `check/mutants/` the mutants, `check/proofs/` the TLA+ models, `lab/bench/`
 the scaling runs and `lab/` the nix experiments.
 
 ## A step's path
@@ -75,4 +73,4 @@ Inside, `trame::send` becomes `Selected::worker_send` and `trame::recv` becomes
 `workers-and-steps.md` covers `worker.rs` and the macros. `scheduling.md` covers `sched.rs`.
 `leader.md` covers `topology.rs`, `launch.rs` and `run.rs`. `pool.md` covers `PoolCore` and pool
 edits. `transport.md` covers `io.rs`, `cells.rs` and the route rings. `memory-domains.md` covers
-`domain.rs`. `backends.md` covers `backend.rs` and the two backends.
+`domain.rs`. `src/backends/README.md` covers `backend.rs` and the backends.

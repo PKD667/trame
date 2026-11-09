@@ -1,2 +1,2 @@
-host 0 refused: MPI: this host declares the route of refuse_ports::Item from worker 0 of host 0 to worker 0 of host 1 (lossless, capacity 4), host 1 (lossless, capacity 8); declare it alike on both
-host 1 refused: MPI: this host declares the route of refuse_ports::Item from worker 0 of host 0 to worker 0 of host 1 (lossless, capacity 8), host 0 (lossless, capacity 4); declare it alike on both
+host 0 refused: this host declares the route of refuse_ports::Item from worker 0 of host 0 to worker 0 of host 1 (lossless, capacity 4), host 1 (lossless, capacity 8); declare it alike on both
+host 1 refused: this host declares the route of refuse_ports::Item from worker 0 of host 0 to worker 0 of host 1 (lossless, capacity 8), host 0 (lossless, capacity 4); declare it alike on both

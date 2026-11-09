@@ -22,8 +22,8 @@ flowchart LR
 `Arc<dyn Erased>`) and a `None` builder, and answers a `Worker<S>` holding the `Arc<Core<S>>` and its
 index. `pool::<P>()` does the same with a `PoolCore<P>`, and records `P`'s `TypeId` and name. `set`
 stores a boxed closure that runs the user's builder and fills the core with its value. `route` and
-`lossy` push a `launch::Route` with the message's `TypeId`, name, size, capacity, lossy flag and, on
-mpi, the cross-host tag `io::tag::<M>()`.
+`lossy` push a `launch::Route` with the message's `TypeId`, name, size, capacity, lossy flag and, where
+the backend crosses processes, the cross-host tag `io::tag::<M>()`.
 
 `WorkerId` is `(index, host)`, with `topology::HERE` (`u32::MAX`) as the host of a worker declared
 here. `End` is a worker or `Leader`; programs pass `WorkerId`, `(HostId, k)` or `Leader`, which
@@ -32,14 +32,14 @@ convert into it.
 ## Launching
 
 `Topology::launch` runs three stages, and nothing starts unless all pass. `Backend::agree` checks
-that every process of the launch built the same plan; on mpi this compares an exact encoding across
-ranks (`src/backends/mpi/shape.rs`). `launch::check` runs the surface checks in a fixed order and answers
+that every process of the launch built the same plan. A backend whose processes are ranks compares an
+exact encoding across them (`src/backends/README.md`, Where each part lives). `launch::check` runs the surface checks in a fixed order and answers
 the first `Refused`. `Backend::launch` allocates what the plan needs, runs the builders in arena mode
-(`launch::build_all` on seq), and answers the backend's run, or `Refused::Backend` with a message.
+(`launch::build_all`), and answers the backend's run, or `Refused::Backend` with a message.
 
 The checks live in one function so every backend refuses the same topologies for the same reasons
-(L1). A refusal on mpi is decided on every rank together, because `agree` runs before anything
-rank-specific.
+(L1). A refusal on a backend with several processes is decided on all of them together, because `agree`
+runs before anything process-specific.
 
 ## The run
 
@@ -58,9 +58,9 @@ rank-specific.
 
 `Run::edit` turns the handle into a target: a worker index with all of its field bits, or the pool
 with `POOL`. It checks the pool belongs to this run by its address. The closure runs in arena mode,
-so what it allocates lands in the domain. On seq the backend calls `Slot::edit` or
-`worker::edit_pool`; on mpi it writes a request word and waits for each agent's `remote_edit` to
-acknowledge (`src/backends/mpi/leader.rs`).
+so what it allocates lands in the domain. A backend whose leader shares the workers' process calls
+`Slot::edit` or `worker::edit_pool`. A backend whose leader is another process writes a request word and
+waits for each agent to acknowledge it (`src/backends/README.md`).
 
 ## Join and take
 

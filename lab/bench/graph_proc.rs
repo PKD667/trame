@@ -1,4 +1,4 @@
-//! The per-size state and step of scale_graph, stamped out by `graph!` (included by graph.rs with `#[macro_use]`). Its
+//! The per-size state and step of bench_graph, stamped out by `graph!` (included by graph.rs with `#[macro_use]`). Its
 //! names (WARM, CAP, Report, Leader, common) resolve where the macro is invoked, in graph.rs.
 
 /// One message type, state and step per size, stamped out as in ring.rs. `slot[s]` is the index in `rx` of the

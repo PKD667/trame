@@ -1,5 +1,5 @@
 //! refuse_dup: two routes with the same sender, receiver and tag. The launch checks refuse the topology
-//! before any worker starts (INTERFACE.md 4, Launch checks). Under MPI each rank refuses the same way.
+//! before any worker starts (INTERFACE.md 4, Launch checks). Where a launch has several processes, each refuses the same way.
 
 use trame::{Status, Topology};
 

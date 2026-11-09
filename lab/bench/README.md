@@ -1,9 +1,10 @@
 # Scaling benchmarks
 
-Five trame programs and three plain-MPI baselines. The trame programs are examples `scale_round`,
-`scale_ring`, `scale_idle`, `scale_fanin`, `scale_graph` (Cargo.toml). The baselines are `baseline/barrier.c`,
-`baseline/ring.c` and `baseline/graph.c`. The lab experiments `scale-local` and `scale-nN` run them (flake.nix,
-`lab/scale.py`): `nix run .#scale-local`.
+Five trame programs and three baselines. The trame programs are examples `bench_round`, `bench_flow`,
+`bench_idle`, `bench_fanin` and `bench_graph` (Cargo.toml). The baselines are written against a messaging
+library, not against trame: `barrier.c`, `flow.c` (the ring) and `graph.c`, in the multi-process backend's
+`bench/` directory (`src/backends/README.md`, Benchmarks). The lab experiments `scale-local` and `scale-nN` run
+them (flake.nix, `lab/perf.py`): `nix run .#scale-local`.
 
 Every trame worker times itself on its own clock and sends one report to the leader. The leader prints
 one JSON line per worker, then an outcomes line. Durations are never compared across workers, since
@@ -16,33 +17,33 @@ clocks have unknown offsets (INTERFACE.md 5.1).
   to each of the W workers, each worker answers `Ack`, and the leader sends the next `Go` when all W acks
   are in. A worker's clock runs from its first ack (the warm-up's) to its last (round ROUNDS), so its span
   is ROUNDS full rounds. It was `barrier` (ROUNDS `trame::barrier()` calls) before the barrier left the
-  model; the old name and its data are not comparable. The baseline is still ROUNDS `MPI_Barrier` calls
-  with one warm-up (`baseline/barrier.c`, run as `mpi_barrier`). The two do not measure one thing: a
-  barrier is W ranks agreeing among themselves, a round is W workers agreeing through the leader (W + 1
+  model; the old name and its data are not comparable. The baseline is still ROUNDS barrier calls of the
+  messaging library, with one warm-up (`barrier.c`, run as the barrier baseline). The two do not measure one
+  thing: a barrier is W ranks agreeing among themselves, a round is W workers agreeing through the leader (W + 1
   agents, 2W messages a round). The comparison is the cost of that choice, not of equal work.
 - **ring** (`W STEPS SIZE CAP`): W >= 3 workers in a ring. Each step, a worker sends one SIZE-byte
   message to each neighbour and receives one from each. The clock starts after 10 warm-up steps. The
-  baseline does the same with `MPI_Irecv`, `MPI_Isend` and `MPI_Waitall`. The trame program waits on
-  full routes (capacity CAP). MPI has no capacity, so its baseline has no CAP.
+  baseline does the same with nonblocking receives, nonblocking sends and a wait-all. The trame program waits on
+  full routes (capacity CAP). The baseline has no capacity, so it has no CAP.
 - **idle** (`W SECONDS`): every worker waits for SECONDS with nothing sent to it. The wall time is the
   wait, and the cost is CPU, which the runner reads per rank from GNU time.
 - **fanin** (`W MSGS`): every worker sends MSGS 64-byte messages to the leader. The leader's receive
   time is the time from its first `recv` to its last. Each worker reports its own send span.
-- **graph** (`W STEPS SIZE DEGREE ITERS SEED`): the proxy benchmark of `src/backends/mpi/SCALING.md` ('The proxy
-  benchmark' is its spec). Each step: ITERS xorshift rounds, one SIZE-byte message to each of DEGREE
-  out-neighbours on a seeded circulant graph, one from each in-neighbour. The baseline `baseline/graph.c`
-  (`mpi_graph`) does the same with `MPI_Irecv`, `MPI_Isend`, `MPI_Waitall`, and must print the same
-  checksum per rank. `graph.rs` and `graph_proc.rs` (the per-size process, a macro) are its sources. The
-  generator and recurrence are in `graph_net.rs`, which the C file repeats. Each worker's JSON line has
-  `ns` (STEPS steps), `compute_ns` (the recurrence alone) and `checksum`: the xorshift state XOR the sum of every frame received,
-  so it covers the graph, not only the recurrence. It is a u64, stored as text in the dataset.
-  W must exceed DEGREE, else scale_graph exits 2, and the lab skips such a job and records nothing.
+- **graph** (`W STEPS SIZE DEGREE ITERS SEED`): the proxy benchmark (`src/backends/README.md`, Benchmarks). Each
+  step: ITERS xorshift rounds, one SIZE-byte message to each of DEGREE out-neighbours on a seeded circulant
+  graph, one from each in-neighbour. The baseline `graph.c` does the same with nonblocking receives, nonblocking
+  sends and a wait-all, and must print the same checksum per rank. `graph.rs` and `graph_proc.rs` (the per-size
+  process, a macro) are its sources. The generator and recurrence are in `graph_net.rs`, which the C file repeats.
+  Each worker's JSON line has `ns` (STEPS steps), `compute_ns` (the recurrence alone) and `checksum`: the xorshift
+  state XOR the sum of every frame received, so it covers the graph, not only the recurrence. It is a u64, stored
+  as text in the dataset.
+  W must exceed DEGREE, else bench_graph exits 2, and the lab skips such a job and records nothing.
 
 Two measurement caveats are part of the design:
 
 - The fanin leader times itself with `std::time::Instant`, because `trame::now` panics outside a
   worker. That clock is outside the spec's contract: it is a host measurement.
-- The MPI ring baseline runs one `MPI_Barrier` before its timed steps, and the trame ring does not.
+- The ring baseline runs one barrier before its timed steps, and the trame ring does not.
   The two rings therefore start their clocks differently.
 
 ## What each benchmark can support
@@ -52,16 +53,16 @@ Two measurement caveats are part of the design:
   *Refuted by*: per-worker time that rises steadily with W on an otherwise idle machine, at one node.
 - **Round**: cost grows with W and with the number of nodes, since every round goes through one leader.
   Only one node is measured here, so the claim is about the one-node path. *Refuted by*: a per-round
-  cost that grows faster than linearly in W at fixed load. No claim is made against `MPI_Barrier`: a
+  cost that grows faster than linearly in W at fixed load. No claim is made against the barrier baseline: a
   round through the leader does more work than a barrier (see above), and its time is reported next to it.
-- **Ring vs. baseline**: trame's ring is no slower than the plain-MPI ring at the same W and SIZE.
+- **Ring vs. baseline**: trame's ring is no slower than the baseline ring at the same W and SIZE.
   *Refuted by*: a trame ring median that is consistently above the baseline's, with both runs at
   low load. The trame ring also pays for its checked build (`--cfg trame_checked`), which the baseline
   does not.
 - **Idle**: a waiting worker costs almost no CPU, so CPU seconds per idle worker is near zero. A
-  rank also pays for MPI startup and finalization, so a control run with SECONDS=0 is needed to read
-  the wait cost off the total. *Refuted by*: CPU seconds that grow with SECONDS, rather than staying
-  at the SECONDS=0 level. With nodes > 1, the relay (one core per node) is expected to be the only
+  rank also pays for the messaging library's startup and finalization, so a control run with SECONDS=0 is
+  needed to read the wait cost off the total. *Refuted by*: CPU seconds that grow with SECONDS, rather than
+  staying at the SECONDS=0 level. With nodes > 1, the relay (one core per node) is expected to be the only
   steady CPU cost. The single-node matrix cannot show it.
 - **Fanin**: the leader is a single sink, so its receive rate sets a ceiling on the total message
   rate. The claim is the ceiling, not the leader's latency. *Refuted by*: a leader time that grows
@@ -71,7 +72,7 @@ Two measurement caveats are part of the design:
 
 - Load. Another session's jobs share the machine in our runs. Repeated runs of one configuration
   can differ widely (no run in the tree measures how widely), so a single run supports no scaling claim. Each job records
-  `/proc/loadavg` at its start (dataset `mpi_config`, source `loadavg`). Read it before reading a number.
+  `/proc/loadavg` at its start (the `*_config` dataset, source `loadavg`). Read it before reading a number.
 - Nodes. `scale-local` is one node. `scale-nN` (N nodes) is defined in flake.nix, but no locked run is
   quoted here. The round and idle claims are about the one-node path until those runs exist.
 - Oversubscription. The runner passes `--oversubscribe`, so it would let ranks share fewer cores than
@@ -80,4 +81,5 @@ Two measurement caveats are part of the design:
   other benches do not have that rule.
 - Degree. The graph claims use DEGREE 8, which needs W >= 9. With `fill=half` on a 6-core host there
   are 3 workers per node, so the graph jobs of small N record nothing (see Graph above).
-- The seq backend. Its timings are scheduler timings and are not comparable with the MPI backend.
+- The reference backend. Its timings are scheduler timings and are not comparable with a multi-process
+  backend's timings.

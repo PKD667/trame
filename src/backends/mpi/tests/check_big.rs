@@ -7,7 +7,7 @@
 use crate::common::*;
 
 use mpi::traits::*;
-use trame::__mpi::{Answer, Received, Route, RouteId, Topology, leader_join, returned};
+use trame::__backend::{Answer, Received, Route, RouteId, Topology, leader_join, returned};
 
 /// The message type's size: 256 KiB.
 const ROUTE: usize = 256 * 1024;

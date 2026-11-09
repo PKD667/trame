@@ -37,9 +37,9 @@ those calls after monomorphization and checks the step's body at the step level.
 
 A worker's memory is a `Block<S>`: the state in a `ManuallyDrop`, a `failed` flag, and the error
 cell. It lies in the worker's domain. `Core<S>` is the handle every side shares, an `AtomicPtr` to
-the block plus a `taken` flag, null until the builder runs. On mpi a worker process that did not
-build the state adopts the leader's address (`Core::adopt`), which is valid because the segment is
-mapped at one address on every rank of a node.
+the block plus a `taken` flag, null until the builder runs. On a backend whose workers are other processes,
+a worker process that did not build the state adopts the leader's address, which is valid because the
+segment is mapped at one address in every process of a node (`src/backends/README.md`).
 
 `Core` never forms a `&Block<S>` or a `&S`. Steps hold `&mut` to single fields while other agents
 use the block, so every access projects a field from the raw pointer. The first step that fails sets
@@ -86,10 +86,10 @@ epoch, and `worker_idle` returns at once on a stale epoch. `ended` turns a `Stat
 `Ended` and checks that an `.until` reading is of this agent's clock. `Unwinding` is a drop guard
 around the call: a step that unwinds marks the slot dead, and every waiter then gives up.
 
-## Holds and edits on seq
+## Holds and edits
 
 `Slot::hold(fields)` adds the fields to `Sched::editing`, records a `Hold`, and waits on the condvar
 until `Sched::touching` is false. `Slot::release` calls `Sched::edited`, which wakes the touching
-steps, and records an `Edit`. `Slot::edit` is the two around the closure. On mpi the leader is in
-another process, so it asks through words in the segment, and each agent calls `remote_edit` once
-per turn to hold, acknowledge and release on the leader's behalf.
+steps, and records an `Edit`. `Slot::edit` is the two around the closure. On a backend whose leader is in
+another process, the leader asks through words in the segment, and each agent answers once per turn to hold,
+acknowledge and release on the leader's behalf (`src/backends/README.md`).

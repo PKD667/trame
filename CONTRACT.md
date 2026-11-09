@@ -167,21 +167,16 @@ one of its steps. A result is `Deadlock` only where the backend shows the worker
 call that can never return may be panicked with `trame: deadlock: the leader waits and nothing can
 arrive`, under the same condition.
 
-## Backends in the tree
+## Latency
 
-A build selects one backend by a cargo feature, `seq` (the default) or `mpi`; the features are
-exclusive. Each runs the programs of `check/programs/`, and `check/programs/run.sh` checks that each prints its
-expected output.
+T leaves latency to the environment, so no clause of T bounds it. Q states two clauses for a named reference
+deployment, and their numbers are set in the lab, not in this file.
 
-| | seq | mpi |
-|---|---|---|
-| worker | one thread, one agent | one rank, several agents |
-| service (S7) | 1 per step | nanoseconds |
-| choice (S2) | exactly `Sched::choose` | any start `Sched::may_start` allows |
-| routes | rings under one lock | rings in a shared window; two-sided MPI between hosts |
-| domain (M1) | the process heap | a shared segment of the node |
-| leader | a thread outside the baton | the last rank of each host |
-| `Deadlock` (E2) | shown when every agent that can move has moved | shown once every host's leader waits, joins or has ended |
-| trace (S9) | replayed exactly | replayed against `may_start` |
+**Q1 Median.** On the reference deployment, the median round trip of each placement and message size is within
+its bound.
 
-Latency is left to the environment by T, and no clause bounds it.
+**Q2 Tail.** On the reference deployment, the 99th percentile of round trips of each placement and size is within
+its bound.
+
+A backend is accepted only if its latency claims are supported. A bound that is not yet set is absent, and no
+clause is claimed for it.

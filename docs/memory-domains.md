@@ -49,10 +49,9 @@ into the domain. The cost outside arena mode is one thread-local read, and on fr
 
 ## Domains by backend
 
-**seq.** The domain is the process heap. The wrapper forwards every call.
-
-**mpi.** The domain is a shared segment of the node, mapped at one address in every rank of it
-(`src/backends/mpi/segment.rs`).
+A backend whose workers share the leader's process takes the process heap as the domain, and the wrapper
+forwards every call. A backend whose workers are other processes takes a shared segment of the node, mapped
+at one address in every process of it (`src/backends/README.md`, Where each part lives).
 
 ## Bound
 

@@ -10,6 +10,8 @@ quoted anywhere unless it comes from a locked run through an analysis.
 nix run .#<experiment>        measure: lease hosts, run the jobs, seal, lock (commit lab.lock)
 nix build .#<analysis>        derive: tables, figures and claims from the locked runs only
 nixsci lab verify <run>       re-measure one run from the closure it used
+nix run .#suite               every experiment for every backend (planned, see Suite and report)
+nix build .#suite-report      the report derived from the suite's locked runs (planned)
 ```
 
 Hosts come from a provider name. The flake says `local` or `cluster`. What `cluster` means
@@ -33,44 +35,53 @@ and writes `$out/outcome.json`. A verdict is a derivation. The flake exposes the
 
 | check | property | what it runs |
 |---|---|---|
-| `programs-seq` | every program prints its `.expected` and exits 0 on seq | the seq binaries, with a 120 s crash guard |
-| `seq-tests` | the root crate's seq tests pass in the checked build | `cargo test`, the exhaustive test excluded |
+| `programs-<reference>` | every program prints its `.expected` and exits 0 on the reference backend | the reference binaries, with a 120 s crash guard |
+| `<reference>-tests` | the root crate's tests pass on the reference backend in the checked build | `cargo test`, the exhaustive test excluded |
 | `scheduler-exhaustive` | start and end agree with the spec rule on all states up to 2 processes, 3 cells | `cargo test --release` of that one test |
 | `rejections` | every rejection case is judged as its expectation says | `check/rejections/run.sh` (driver pinned) |
-| `mutants-seq` | each seq mutant is killed or spared as its header says | one patch at a time, step limit (`check/mutants/README.md`) |
+| `mutants-<reference>` | each mutant of the reference backend is killed or spared as its header says | one patch at a time, step limit (`check/mutants/README.md`) |
 
-`TRAME_SEQ_STEP_LIMIT` (`src/backends/seq/limit.rs`) bounds the seq scheduler's steps, and a run over the limit
-exits 3. It counts steps, not seconds, so a looping mutant is a count and not a timing.
+`<reference>` and `<b>` stand for a backend's name. The names for each backend are in
+`src/backends/README.md` (Lab experiments by backend).
 
-Lab experiments remain for what needs concurrency, a network or hardware: `programs-mpi`, `transport-mpi`,
-`mutants-mpi` and the scale experiments.
+The reference backend's step limit (`src/backends/README.md`, Limits) bounds its scheduler's steps, and a run
+over the limit exits 3. It counts steps, not seconds, so a looping mutant is a count and not a timing.
 
-Scope numbers are measured, not guessed: `scheduler-exhaustive` states and end checks, `seq-tests`
-count. A change to either fails the check until its scope is updated.
+Lab experiments remain for what needs concurrency, a network or hardware: the experiments of the multi-process
+backends, the latency experiment and the scale experiments.
+
+Scope numbers are measured, not guessed: `scheduler-exhaustive` states and end checks, and the reference
+backend's tests count. A change to either fails the check until its scope is updated.
 
 ## Experiments and datasets
 
-**programs** (`programs-mpi` and `programs-node` on one machine, `programs-cluster` on two, `programs-cluster4`
-on four; `programs-seq-node` is seq on the same machine): every program of `check/programs/` against its
-`.expected` output. Parameters: `backend`, `split` (trame hosts per machine, 1 or 2; HOSTS.md), `repeats`.
+**programs** (`programs-<b>`, one per backend and placement, names in `src/backends/README.md`): every program
+of `check/programs/` against its `.expected` output. Parameters: `backend`, `split` (trame hosts per machine,
+1 or 2; `src/backends/README.md`, Launch), `repeats`.
 On H hosts each host runs the whole program and is judged alone, except a program with `<name>.h<H>.expected`,
 judged on the hosts' outputs in order (programs.py). Dataset `run`: `program` str, `repeat` int, `ran` bool,
 `ok` bool, `verdict` str (`ok`, `diff`, `exit`, `timeout`), `seconds` float, `stdout_sha256` str. Key:
-`program`, `repeat`. Equal `stdout_sha256` per program between `programs-node` and `programs-seq-node` is
-the seq equivalence on that machine.
+`program`, `repeat`. Equal `stdout_sha256` per program between a multi-process experiment and the reference
+experiment on the same machine is the equivalence of the two backends on that machine.
 
-**transport** (`transport-mpi`): the checks of `src/backends/mpi/tests/run.sh` on one host (`transport.py`).
-Dataset `check`: `check` str, `workers` int, `case_seed` int, `repeat` int, `ran` bool, `ok` bool,
-`seconds` float. Key: `check`, `workers`, `case_seed`, `repeat`.
+**transport** (`transport-<b>`, for a backend with its own transport checks): the checks of that backend's
+`tests/run.sh` on one host (`transport.py`). Dataset `check`: `check` str, `workers` int, `case_seed` int,
+`repeat` int, `ran` bool, `ok` bool, `seconds` float. Key: `check`, `workers`, `case_seed`, `repeat`.
+
+**latency** (`latency`, runner `lab/bench/ping.rs`): round trips between workers, with random gaps between them,
+placed on one host (same-host) or on two (cross-host), at several message sizes. Round trips in one run are
+autocorrelated, so each run is one sample, and the claims count runs. The bounds are the Q clauses of
+`CONTRACT.md`, set per placement and size in `lab/q.nix` for the reference deployment. A bound that is still
+null means the experiment measures and no claim is judged on it.
 
 **scale** (`scale-local`, and `scale-n<N>` with `span = N` for N in 1, 2, 4, 8, 16, 32): the
-programs of `lab/scale/` and their plain-MPI baselines. One job runs one benchmark with one
-implementation at one size. Parameters: `bench`, `impl` (`trame` or `mpi`), `nodes`, `fill`, and the
-bench's sizes. `fill` is `half` or `full`: workers per node are half the physical cores (at least 3)
+programs of `lab/bench/` and their baselines (`src/backends/README.md`, Benchmarks). One job runs one benchmark
+with one implementation at one size. Parameters: `bench`, `impl` (`trame`, or a baseline's name), `nodes`, `fill`,
+and the bench's sizes. `fill` is `half` or `full`: workers per node are half the physical cores (at least 3)
 or the physical cores less two, where the physical cores are the unique (SOCKET, CORE) pairs of
 `lscpu`. Every dataset repeats `bench`, `impl`, `nodes`, `workers` and `per_node` as columns, so claims
 can select on them.
-- `round`: `worker`, `rounds`, `ns` (impl `trame`: rounds through the leader; impl `mpi`: `MPI_Barrier` calls, lab/scale/README.md)
+- `round`: `worker`, `rounds`, `ns` (impl `trame`: rounds through the leader; a baseline: its barrier calls, `lab/bench/README.md`)
 - `ring`: `worker`, `steps`, `size`, `cap`, `ns`
 - `idle`: `worker`, `seconds`, `ns`
 - `fanin`: `worker` (-1 for the leader's total), `msgs`, `ns`
@@ -81,23 +92,37 @@ can select on them.
   (2000), `degree` (8), `seed` (1). A job with workers <= degree records nothing.
 - `cpu`: `rank`, `host`, `user_s`, `sys_s`, `wall_s`, from GNU time around each rank
 
-Each job also writes `mpi_config` rows (`mpirun.py`): the job's full mpirun command line (`argv`,
-scale only), the load average at its start (`loadavg`), and the MCA settings of the account.
+Each job also writes a `*_config` dataset, whose name carries the backend (`src/backends/README.md`): the job's
+full command line (`argv`, scale only), the load average at its start (`loadavg`), and the settings of the
+messaging library in the account.
 
 Timing columns are `noisy`, with `replicates = 3`.
 
-**mutants** (`mutants-mpi`, built by `checks.nix`, runner `mutants.py`): conformance by mutation (`check/mutants/`).
-Nix builds one mpi build per mutant, its patch applied, and one closure holds them all with the runner.
-The seq record is the validate verdict `mutants-seq`, not an experiment. Parameters: `backend`, `mutant` (a patch id, `none` for the unpatched control),
-`timeout` (120). The sweep is every id with a `.patch` or a `.skip` file of `check/mutants/<backend>`,
-so a mutant that cannot apply (`m23`, and `m17` on mpi) is one job that records `how` `skipped`.
+**mutants** (`mutants-<b>` for each multi-process backend, built by `checks.nix`, runner `mutants.py`): conformance
+by mutation (`check/mutants/`). Nix builds one build per mutant, its patch applied, and one closure holds them
+all with the runner. The reference backend's record is the validate verdict `mutants-<reference>`, not an
+experiment. Parameters: `backend`, `mutant` (a patch id, `none` for the unpatched control), `timeout` (120).
+The sweep is every id with a `.patch` or a `.skip` file of `check/mutants/<backend>`, so a mutant that cannot
+apply (`m23`, and `m17` on a multi-process backend) is one job that records `how` `skipped`.
 Dataset `kill`, one row per program: `mutant`, `rule`, `expect`, `program` (`-` when skipped), `killed`
 bool (true for `diff`, `exit` or `timeout`), `how` (`ok`, `diff`, `exit`, `timeout`, `skipped`).
-Key: `mutant`, `program`. Mpi also records `mpi_config`, as `programs-mpi` does.
+Key: `mutant`, `program`. A multi-process backend also records its `*_config` dataset, as its programs experiment does.
 `check/mutants/mutate.sh` is the quick local loop. The lab run is the record.
 
 The rejection suite is a validate verdict (above). The driver fuzzer is not a check: `crates/driver/fuzz/flake.nix`
 defines packages, not checks, and `crates/driver/fuzz/run.sh <seed> <batches> <K>` is run by hand.
+
+## Suite and report
+
+The suite runs every experiment for every backend, and the report is derived from the suite's locked runs. Both
+are planned, and none of the attribute names below is in the flake yet. `nix run .#suite` runs the suite, and
+`nix build .#suite-report` compiles the report.
+
+The report has two parts. The first is the latency validation: for each backend, the `latency` experiment is
+judged against the Q clauses of `CONTRACT.md`, as proportion claims judged with `nixsci.stats` (PROOFS.md, Latency).
+A backend is accepted only if its latency claims are supported. The second is a side-by-side performance
+comparison, with every backend on the same axes: bandwidth against message size, aggregate bandwidth against the
+number of hosts, step overhead, and idle CPU.
 
 ## Claims, stated before measuring
 
@@ -112,14 +137,15 @@ Analysis `scale`, each judged at 0.99 and reported as supported, contradicted or
 - **Idle workers sleep.** In `idle`, a rank that hosts no relay uses below 2% of its wall time
   in user plus system time.
 - **The relay costs one core.** On more than one node, the rank that hosts the relay uses
-  between 0.8 and 1.2 cores while the run lasts. This is the price of MPI's blocking receive.
+  between 0.8 and 1.2 cores while the run lasts. This is the price of the relay's blocking receive
+  (`src/backends/README.md`, Benchmarks).
 - **Weak scaling of neighbour exchange.** In `ring` at a fixed `per_node`, the median ns per
   step at N nodes is at most 1.5 times the median at one node, for every N measured.
 - **Round growth.** In `round`, the median ns per round grows at most linearly in N.
-- **Cost against plain MPI.** In `ring`, trame's median is at most 3 times the MPI baseline's at
+- **Cost against the baseline.** In `ring`, trame's median is at most 3 times the baseline's at
   the same `nodes`, `per_node` and size.
-- **The proxy benchmark.** The four claims of `src/backends/mpi/SCALING.md` (Claims) on `graph`:
-  overhead at most 1.10 against the MPI baseline, weak-scaling curve within 1.05 of the
+- **The proxy benchmark.** The four claims of the proxy benchmark's spec (`src/backends/README.md`, Benchmarks)
+  on `graph`: overhead at most 1.10 against the baseline, weak-scaling curve within 1.05 of the
   baseline's, relay CPU per frame flat in N, strong-scaling speedup at least 0.9 of the baseline's.
 
 When the analyses exist, they will compute the ratios with their intervals and write them to

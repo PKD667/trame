@@ -17,12 +17,12 @@
 //! that may start, the least pass among positive weights wins (ties: the lower index); a weight-0 step
 //! starts only when no positive-weight step may, and then the least recently started (ties: the lower
 //! index). End(i) adds service(i) · 2^24/w to i's pass, where service is the backend's measure of what
-//! the step used (1 per step on seq, nanoseconds on a threaded backend). So, under contention, the
+//! the step used (1 per step on a backend that runs one step at a time, nanoseconds on a threaded backend). So, under contention, the
 //! service of positive-weight steps is shared in proportion to their weights (stride scheduling,
 //! Waldspurger and Weihl 1995). A step that was not ready does not bank its absence: when a step
 //! starts, every waiting step's pass is raised to at least the started step's pass.
 //!
-//! seq follows `choose` exactly, and `check` can verify that. A backend with several agents may start
+//! A backend with `Backend::EXACT` follows `choose` exactly, and `check` can verify that. A backend with several agents may start
 //! any step `may_start` allows; its weights are checked by measured shares (conformance), not by
 //! replaying choices.
 
@@ -35,7 +35,7 @@ pub const POOL: u64 = 1 << 63;
 /// A whole-state edit (`Run::edit` of a worker): every field but the pool.
 pub const STATE: u64 = !POOL;
 
-/// A weight in [0, 1], fixed point: 0 is 0, `Weight::MAX` is 1. Fixed point keeps seq deterministic.
+/// A weight in [0, 1], fixed point: 0 is 0, `Weight::MAX` is 1. Fixed point keeps an exact backend deterministic.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Weight(pub u16);
 
@@ -390,7 +390,7 @@ pub enum Violation {
     Edit { n: usize },
 }
 
-/// Replay a trace against the model. `exact`: also require the model's choice at each start (seq).
+/// Replay a trace against the model. `exact`: also require the model's choice at each start (`Backend::EXACT`).
 /// Answers the final state, for the result check.
 pub fn check(mut s: Sched, trace: &[Event], exact: bool) -> Result<Sched, Violation> {
     for (n, ev) in trace.iter().enumerate() {

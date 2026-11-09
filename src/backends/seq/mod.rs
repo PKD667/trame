@@ -1,6 +1,7 @@
 /// The sequential backend (CONTRACT.md, Backends in the tree). Its state and operations come below.
 pub struct Selected;
 
+mod edit;
 mod limit;
 mod ops;
 mod state;

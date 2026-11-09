@@ -1,5 +1,5 @@
-//! refuse: a route of capacity 0 fails the launch checks (INTERFACE.md 4). Every rank refuses the same way,
-//! and no worker starts. Under MPI each rank prints the same line, so run.sh de-duplicates this output.
+//! refuse: a route of capacity 0 fails the launch checks (INTERFACE.md 4). Every process of the launch refuses the same way,
+//! and no worker starts. Where a launch has several processes each prints the same line, so run.sh de-duplicates this output.
 
 use trame::{Status, Topology};
 

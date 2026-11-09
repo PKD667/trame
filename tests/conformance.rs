@@ -5,7 +5,7 @@
 //! return: progress (sometimes with a new weight), a bare wait, a timed wait, or done when its budget
 //! is spent. So the seed decides the statuses and weights, and the shape decides who excludes and who
 //! wakes whom. Each run records its trace; `__check_traces` replays it against the model: exactly
-//! (choices included) on seq, safety only elsewhere (CONTRACT.md, S1-S6, S9).
+//! (choices included) where the backend is exact (`__rt::EXACT`), safety only elsewhere (CONTRACT.md, S1-S6, S9).
 //!
 //! A failure prints the shape and the seed; add the seed to REGRESSIONS so every later run tries it.
 //! Shares (S6) are checked by `shares` below.
@@ -146,7 +146,7 @@ fn one<S: trame::__rt::State>(name: &str, seed: u64, state: S, exact: bool) {
 
 #[test]
 fn traces_follow_the_model() {
-    let exact = cfg!(feature = "seq");
+    let exact = trame::__rt::EXACT;
     for seed in seeds() {
         one("Chain", seed, Chain::seeded(seed), exact);
         one("Hot", seed, Hot::seeded(seed), exact);
@@ -204,7 +204,7 @@ fn p2(c2: &mut Ctl, f0: &mut u64) -> Status {
 #[test]
 fn edits_follow_the_model() {
     use std::sync::atomic::Ordering::Relaxed;
-    let exact = cfg!(feature = "seq");
+    let exact = trame::__rt::EXACT;
     let (mut events, mut edits) = (0, 0);
     for seed in seeds() {
         let mut t = Topology::new();
@@ -306,8 +306,8 @@ fn shares_follow_weights() {
     );
     assert!(total > 1000.0, "too few steps to judge: {total}");
     assert_eq!(c.n0, 0, "a weight-0 step ran while positive-weight steps were ready");
-    // seq follows the model exactly: stride is off by at most one step per step.
-    let tol = if cfg!(feature = "seq") { 3.0 / total } else { 0.02 };
+    // An exact backend follows the model: stride is off by at most one step per step.
+    let tol = if trame::__rt::EXACT { 3.0 / total } else { 0.02 };
     for (got, want) in [(share(c.n1), 4.0 / 7.0), (share(c.n2), 2.0 / 7.0), (share(c.n4), 1.0 / 7.0)] {
         assert!((got - want).abs() <= tol, "share {got:.4}, model {want:.4}, tolerance {tol:.4}");
     }
@@ -366,15 +366,15 @@ fn disjoint_steps_overlap() {
     t.set(&w, move || Disjoint { x0: 0, x1: 0, x2: 0, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0 });
     let run = t.launch().expect("launch");
     let start = std::time::Instant::now();
-    let (out, checked) = run.__join_checked(cfg!(feature = "seq"));
+    let (out, checked) = run.__join_checked(trame::__rt::EXACT);
     let took = start.elapsed();
     assert_eq!(out, [Outcome::Returned]);
     checked.expect("the trace follows the model");
     let most = MOST.load(std::sync::atomic::Ordering::SeqCst);
     let s = w.take();
     eprintln!("overlap: steps={} most_at_once={most} wall_ms={:.1}", s.x0 + s.x1 + s.x2 + s.x3 + s.x4 + s.x5 + s.x6 + s.x7, took.as_secs_f64() * 1e3);
-    if cfg!(feature = "seq") {
-        assert_eq!(most, 1, "seq runs one step at a time");
+    if trame::__rt::EXACT {
+        assert_eq!(most, 1, "an exact backend runs one step at a time");
     } else if std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) >= 8 {
         assert!(most >= 4, "eight disjoint steps on eight or more cores ran at most {most} at once");
     }

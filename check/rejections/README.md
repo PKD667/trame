@@ -1,7 +1,7 @@
 # Rejection suite
 
-Each case is a small program checked against the real `trame` crate (the repository root, by path, `seq`
-feature). The checks are the driver (`crates/driver/`, a rustc driver that judges MIR) and the macros (`crates/macros/`).
+Each case is a small program checked against the real `trame` crate (the repository root, by path, with
+the reference backend's feature). The checks are the driver (`crates/driver/`, a rustc driver that judges MIR) and the macros (`crates/macros/`).
 The rules are in `INTERFACE.md`, Section 3 (Compile time), Sections 5.3-5.4, and Section 7. The cases are listed
 in `CATALOGUE.md`.
 

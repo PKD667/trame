@@ -4,12 +4,12 @@ The checks run on one host: a split or several machines would make several hosts
 ranks for the check. Routes between hosts are checked by the programs (programs.py, xhost_ring, peers).
 
 Parameters: repeats (default 1), timeout (seconds, default 120), and the mpirun parameters of
-mpirun.py. Environment: BIN (the check and latency binaries), NIX_LAB_DIR.
+mpirun.py. Environment: BIN (the check binary), NIX_LAB_DIR.
 
 Dataset `check`, one row per check run. `workers` and `case_seed` are the numbers run.sh gives each check:
 the fifo checks start workers+1 ranks (the leader is the last); the checks without a --seed (fair,
 deadlock, publication) record case_seed 0. A fifo-verify row starts no ranks: it reads the directory of its
-fifo run. latency is the release binary `latency`. Logs go to $NIX_LAB_DIR/logs.
+fifo run. Logs go to $NIX_LAB_DIR/logs.
 """
 
 from __future__ import annotations
@@ -25,7 +25,6 @@ from nixsci import lab
 import mpirun
 from nixsci.lab import proc
 
-LATENCY = ["--samples", "6636", "--max-gap-ns", "500000", "--seed", "20261026"]
 
 
 @dataclass(frozen=True)
@@ -61,7 +60,6 @@ def plan(root: Path) -> list[Case]:
         Case("overwrite-late", 3, 7, 3, ["overwrite", "--seed", "7", "--cap", "4", "--msgs", "20000", "--late"]),
         Case("fair", 4, 0, 4, ["fair", "--msgs", "16"]),
         Case("bigroute", 3, 0, 3, ["bigroute"]),
-        Case("latency", 3, 20261026, 3, LATENCY + ["--dir", str(root / "latency")], binary="latency"),
     ]
     return cases
 

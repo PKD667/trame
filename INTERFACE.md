@@ -196,7 +196,7 @@ at launch in the memory where the value is used; a second `set` replaces the fir
 is a worker (`w.id()`, or `(HostId(h), k)` for worker `k` of host `h`) or `Leader`. A route from the
 leader to itself panics. A topology has at most one pool.
 
-A backend may run the host program in several operating-system processes, as MPI does. Each process
+A backend may run the host program in several operating-system processes. Each process
 then runs the host code up to `launch` and builds $G$, and `launch` refuses unless every process built
 the same $G$. In the leader's process `launch` returns the run. In a worker's process it runs that
 worker and ends the process, so host code after `launch` runs only in the leader's.
@@ -520,7 +520,7 @@ $$
 
 In **End**, $\omega'(s)$ is the weight $s$ carries, or $\omega(p)$ when it carries none, and the pass
 grows only when $\omega(p) > 0$. The service is the backend's measure of what the step used: 1 per
-step on seq, nanoseconds on MPI. Under contention, steps of positive weight therefore receive service
+step on one backend, nanoseconds on another (`src/backends/README.md`). Under contention, steps of positive weight therefore receive service
 in proportion to their weights (stride scheduling, Waldspurger and Weihl, 1995), and a weight-0 step
 may wait for ever behind steps of positive weight.
 
@@ -642,8 +642,7 @@ step may send, so keep receiving until `join`.
 
 ## 6. Hosts
 
-A deployment may have several hosts. A host is one memory domain with one leader; on MPI it is one
-shared-memory node. Every host runs the whole program and declares its own topology, with its workers
+A deployment may have several hosts. A host is one memory domain with one leader. Every host runs the whole program and declares its own topology, with its workers
 numbered from 0, so a program that wants different work on each host branches on `trame::host()`.
 
 > **Definition (Hosts).** Hosts are numbered $0, \dots, H-1$, fixed for the run. `trame::host()`
@@ -689,7 +688,7 @@ root, except the functions of `trame::math`.
 | `me() -> WorkerId` | fn | $\mathsf{me}$ (5); panics outside a worker |
 | `now() -> Reading` | fn | $\mathsf{now}$ (5.1) |
 | `host() -> HostId` | fn | this host (6) |
-| `hosts() -> u32` | fn | the number of hosts $H$ (6); 1 on seq |
+| `hosts() -> u32` | fn | the number of hosts $H$ (6); 1 on a backend that runs one host |
 | `Reading` | type: `since`, `after` | a reading of one clock (5.1) |
 | `Status` | type: `Progress`, `Done`, `wait()` with `.frame()`, `.room::<M>(to)`, `.until(r)`, and `.weight(w)` | $\mathit{Status}$ (5.3) |
 | `Full` | type | the answer $\mathsf{full}$ (5.2) |
@@ -717,26 +716,15 @@ as its `#[global_allocator]`; `launch` refuses one that does not.
 
 ## 8. Backends and limits
 
-A build selects one backend by a cargo feature: `seq`, the default, or `mpi`
-(`--no-default-features --features mpi`). The two are exclusive, and a build with neither refuses
-every launch. Your source is the same for both.
-
-**seq** runs every worker in one process, one thread per worker, and one agent at a time. Its schedule
-is deterministic, and it reports `Deadlock` and a stuck leader `wait`.
-`TRAME_SEQ_STEP_LIMIT=n` ends the process after n scheduler steps, with exit status 3.
-
-**mpi** runs one rank per worker and the leader on the last rank of each host, so `mpirun` needs
-exactly W + 1 ranks per host; any other count is refused on every rank. Several agents of one worker
-rank run non-conflicting steps at once. Each shared-memory node is a host. `TRAME_MPI_NODE_RANKS=k`
-cuts a node into hosts of k ranks, for testing several hosts on one machine; it is never a default.
-`TRAME_PROBE=ranks` makes a program print `trame-ranks N` and stop, which `nix run .#trame -- run --mpi`
-uses to start `mpirun` with the right count.
+A build selects one backend by a cargo feature. The features are exclusive, and a build with none of them
+refuses every launch. `src/backends/README.md` lists the backends and what each one does with the clauses.
+Your source is the same for every backend.
 
 Limits, which are implementation limits, not part of $T$:
 - A state has at most 63 fields and at most 64 steps; a step receives at most 16 message types; a
   `.room` wait names one of a worker's first 64 routes. Exceeding one is refused or aborts with a
   message naming it.
 - A route between a leader and a worker of another host is refused.
-- On mpi a leader that runs its own code, rather than waiting or joining, holds back the detection of
-  a stuck run across hosts.
+- A backend may hold back the detection of a stuck run across hosts while a leader runs its own code
+  rather than waiting or joining.
 - No latency is guaranteed. $T$ leaves latency to the environment.

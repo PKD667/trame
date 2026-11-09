@@ -1,49 +1,73 @@
-# Conformance by mutation as a lab experiment on mpi (check/mutants/README.md; lab/README.md,
-# "mutants"). Called from flake.nix with the flake's own values. Its closure holds one build of the mpi
-# backend per mutant (the patch applied with the other sources unchanged), and the runner. The seq record
-# is the validate verdict mutants-seq (validate-mutants.nix), not this experiment. flake.nix passes
-# trameSeqBinsWith too; it is not used here (flake.nix:232 may drop it).
-{ pkgs, lib, labLib, system, trameSeqBinsWith, trameMpiBinsWith, runners, labRuntime, nixsci }:
+# Conformance as lab experiments, for every backend, built from its descriptor (lab/README.md, "programs" and
+# "mutants"). Called from flake.nix. Nothing here names a backend.
+#
+#   programs-<b>        every program of check/programs/ on backend <b>, one machine, locally, over the descriptor's splits
+#   programs-<b>-s<S>   the same on S machines (S in 1 2 4 within the descriptor's maxMachines), on the cluster
+#   mutants-<b>         conformance by mutation (src/backends/<b>/mutants/README via check/mutants/README.md): one build
+#                       per patch of the backend's own set, every program run on each. Only for a backend whose runs are
+#                       not a function of the program (`deterministic = false`): the others have the validate verdict
+#                       mutants-<b> (lab/validate.nix, the backend's validate.nix).
+# Answers a list of { name, kind, backend, span, exp } (as lab/perf.nix); span 0 is the local experiment.
+{ pkgs, lib, labLib, system, closure, backends, machines }:
 let
-  backends = {
-    mpi = { name = "mpi"; dir = ../check/mutants/mpi; bins = trameMpiBinsWith; };
+  runData = {
+    columns = { program = "str"; repeat = "int"; ran = "bool"; ok = "bool"; verdict = "str"; seconds = "float"; stdout_sha256 = "str"; };
+    key = [ "program" "repeat" ];
+    noisy.seconds = 1.0;
   };
-  # The ids of the files of `dir` with the given suffix: `.patch` (applied) or `.skip` (no patch, a reason).
-  idsWith = dir: suffix:
-    map (n: lib.removeSuffix suffix n)
-      (builtins.filter (n: lib.hasSuffix suffix n) (builtins.attrNames (builtins.readDir dir)));
-  # Every mutant of a backend, in order: the patched ones and the skipped ones.
-  mutantIds = dir: lib.sort lib.lessThan (lib.unique (idsWith dir ".patch" ++ idsWith dir ".skip"));
-  # One build per patched mutant, plus `none`: the unpatched build, the control. A skipped mutant has no build.
-  mutantFarm = b: pkgs.linkFarm "mutants-${b.name}" (
-    [ { name = "none"; path = b.bins [ ]; } ]
-    ++ map (id: { name = id; path = b.bins [ (b.dir + "/${id}.patch") ]; }) (idsWith b.dir ".patch")
-  );
-  mpiConfigData = { columns = { source = "str"; text = "str"; }; };
   killData = {
     columns = { mutant = "str"; rule = "str"; expect = "str"; program = "str"; killed = "bool"; how = "str"; };
     key = [ "mutant" "program" ];
   };
-  experiment = name: b: labLib.experiment {
-    inherit name;
-    closures.${system} = nixsci.lib.mkExperiment pkgs {
-      name = "mutants-${b.name}";
-      program = "${pkgs.python3}/bin/python3";
-      args = [ "${runners}/mutants.py" ];
-      env = {
-        PYTHONPATH = "${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
-        MUTANTS = "${mutantFarm b}";
-        PATCHES = "${b.dir}";
-        PANICS = "${../check/programs}";
-        RANKS_FILE = "${../src/backends/mpi/deploy/ranks.txt}";
-      };
-      runtime = labRuntime;
+
+  programs = n: b: span:
+    let name = if span == 0 then "programs-${n}" else "programs-${n}-s${toString span}"; in {
+      inherit name;
+      kind = "programs";
+      backend = n;
+      inherit span;
+      suite = span != 0;
+      exp = labLib.experiment ({
+        inherit name;
+        closures.${system} = closure { inherit name b; script = "programs.py"; };
+        params = { backend = n; repeats = 3; };
+        sweep.split = b.d.splits;
+        data.run = runData;
+      } // (if span == 0
+        then { resources = { provider = "local"; hosts = 1; }; }
+        else { inherit span; resources = { provider = "cluster"; hosts = span; walltime = 60; opts.stage = "fanout"; }; }));
     };
-    params = { backend = b.name; timeout = 120; };
-    sweep.mutant = mutantIds b.dir;
-    resources = { provider = "local"; hosts = 1; };
-    data = { kill = killData; } // lib.optionalAttrs (b.name == "mpi") { mpi_config = mpiConfigData; };
+
+  # The ids of the files of `dir` with the given suffix: `.patch` (applied) or `.skip` (no patch, a reason).
+  idsWith = dir: suffix:
+    map (n: lib.removeSuffix suffix n)
+      (builtins.filter (n: lib.hasSuffix suffix n) (builtins.attrNames (builtins.readDir dir)));
+  mutantIds = dir: lib.sort lib.lessThan (lib.unique (idsWith dir ".patch" ++ idsWith dir ".skip"));
+  # One build per patched mutant, plus `none`: the unpatched build, the control. A skipped mutant has no build.
+  mutantFarm = n: b: pkgs.linkFarm "mutants-${n}" (
+    [ { name = "none"; path = b.bins; } ]
+    ++ map (id: { name = id; path = b.binsWith [ (b.mutants + "/${id}.patch") ]; }) (idsWith b.mutants ".patch")
+  );
+  mutants = n: b: {
+    name = "mutants-${n}";
+    kind = "mutants";
+    backend = n;
+    span = 0;
+    exp = labLib.experiment {
+      name = "mutants-${n}";
+      closures.${system} = closure {
+        name = "mutants-${n}"; inherit b; script = "mutants.py";
+        env = { MUTANTS = "${mutantFarm n b}"; PATCHES = "${b.mutants}"; };
+      };
+      params = { backend = n; timeout = 120; };
+      sweep.mutant = mutantIds b.mutants;
+      resources = { provider = "local"; hosts = 1; };
+      data.kill = killData;
+    };
   };
-in {
-  mutants-mpi = experiment "mutants-mpi" backends.mpi;
-}
+
+  spans = b: lib.filter (s: s <= machines && s <= b.d.maxMachines) [ 1 2 4 ];
+in
+lib.concatLists (lib.mapAttrsToList (n: b:
+  [ (programs n b 0) ] ++ map (programs n b) (spans b)
+  ++ lib.optional (!b.d.deterministic && b.mutants != null) (mutants n b)) backends)

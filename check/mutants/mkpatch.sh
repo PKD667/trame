@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Writes one mutant patch, check/mutants/<backend>/<id>.patch, as a unified diff of one file.
+# Writes one mutant patch, src/backends/<backend>/mutants/<id>.patch, as a unified diff of one file.
 #   check/mutants/mkpatch.sh <backend> <id> <rule> <expect> <path> <perl-substitution>
+# <path> is relative to src/ (the patches apply with `git apply --directory=src`).
 # <expect> is `killed` or `equivalent: <argument>`. The substitution runs as `perl -0pi -e` on a copy of
 # <path>. It must change the file (a no-op is an error: the mutant would be vacuous), and the patch must
 # apply with `git apply --check` to the working tree (the header lines are skipped by git apply).
@@ -8,13 +9,13 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 backend="$1" id="$2" rule="$3" expect="$4" path="$5" subst="$6"
-dir="check/mutants/$backend"
+dir="src/backends/$backend/mutants"
 mkdir -p "$dir"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/a/$(dirname "$path")" "$tmp/b/$(dirname "$path")"
-cp "$path" "$tmp/a/$path"
-cp "$path" "$tmp/b/$path"
+cp "src/$path" "$tmp/a/$path"
+cp "src/$path" "$tmp/b/$path"
 perl -0pi -e "$subst" "$tmp/b/$path"
 if cmp -s "$tmp/a/$path" "$tmp/b/$path"; then
   echo "mkpatch: $id: the substitution did not change $path" >&2
@@ -26,5 +27,5 @@ out="$dir/$id.patch"
   echo "# expect: $expect"
   (cd "$tmp" && diff -u --label "a/$path" --label "b/$path" "a/$path" "b/$path") || true
 } > "$out"
-git apply --check "$out"
+git apply --check --directory=src "$out"
 echo "wrote $out"

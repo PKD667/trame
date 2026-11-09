@@ -46,8 +46,8 @@ impl From<(HostId, u32)> for WorkerId {
 }
 
 /// This host's leader, as the end of a route: `t.route::<M>(Leader, w.id(), 16)`. The leader is not
-/// a worker. It is the process outside the workers that built the topology and holds the `Run`: on
-/// MPI a rank of its own, on a device the host program. It has no steps, no state and no index.
+/// a worker. It is the process outside the workers that built the topology and holds the `Run`: with
+/// workers in other processes a process of its own, on a device the host program. It has no steps, no state and no index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Leader;
 
@@ -182,7 +182,6 @@ impl Topology {
             to,
             ty: TypeId::of::<M>(),
             name: type_name::<M>(),
-            #[cfg(feature = "mpi")]
             wire: crate::io::tag::<M>(),
             size: size_of::<M>(),
             cap,
@@ -191,7 +190,7 @@ impl Topology {
     }
 
     /// Test hook: run each worker with at most `n` agents; by default as many as the host has cores.
-    /// Not surface: deployment, not meaning. seq ignores it.
+    /// Not surface: deployment, not meaning. A backend that schedules one step at a time ignores it.
     #[doc(hidden)]
     pub fn __agents(&mut self, n: usize) {
         assert!(n >= 1, "trame: a worker needs at least one agent");

@@ -1,7 +1,7 @@
 //! leader_stuck: two workers return at once and send nothing. The leader waits for a `Never` frame that no
-//! one sends. Its wait can never return: the seq backend panics the call with
+//! one sends. Its wait can never return: a backend whose workers share the leader's process panics the call with
 //! `trame: deadlock: the leader waits and nothing can arrive` (leader_stuck.panics; INTERFACE.md 5, Deadlock).
-//! On MPI the leaders' detector shows the same (src/backends/mpi/detect.rs), and the leader panics alike.
+//! A backend that runs workers in other processes shows the same through the leaders' detector, and the leader panics alike.
 
 use trame::{Leader, Status, Topology};
 

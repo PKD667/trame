@@ -1,4 +1,4 @@
-//! scale_fanin W MSGS: every worker sends MSGS `Small` messages (64 bytes) to the leader on a route of
+//! bench_fanin W MSGS: every worker sends MSGS `Small` messages (64 bytes) to the leader on a route of
 //! capacity 64, waiting for room when it is full. The leader is the only sink. Each worker reports the
 //! span of its own sends on its own clock. The leader times its receives with `std::time::Instant`,
 //! because `trame::now` is not available to the leader; that clock is outside the contract, and the

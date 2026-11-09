@@ -1,4 +1,4 @@
-//! scale_graph W STEPS SIZE DEGREE ITERS SEED: W workers on the circulant graph of graph_net.rs. Worker w has a
+//! bench_graph W STEPS SIZE DEGREE ITERS SEED: W workers on the circulant graph of graph_net.rs. Worker w has a
 //! lossless route of capacity CAP to (w+o) mod W for each offset o, and receives from (w-o) mod W. Each step: ITERS
 //! xorshift rounds, one SIZE-byte frame to each out-neighbour, one from each in-neighbour. Payload: bytes 0..8 the
 //! step, 8..16 the sender. Warm-up 10 steps; each worker times STEPS steps and its compute part on its own clock.
@@ -39,7 +39,7 @@ fn main() {
     let iters: u64 = common::arg(5, "ITERS");
     let seed: u64 = common::arg(6, "SEED");
     if w < 2 || degree == 0 || degree > w - 1 || (size != 64 && size != 1024) || steps == 0 {
-        eprintln!("usage: scale_graph W>=2 STEPS>=1 SIZE in {{64,1024}} DEGREE in 1..W-1 ITERS SEED");
+        eprintln!("usage: bench_graph W>=2 STEPS>=1 SIZE in {{64,1024}} DEGREE in 1..W-1 ITERS SEED");
         std::process::exit(2);
     }
     let offs = graph_net::offsets(w as u64, degree as u64, seed);

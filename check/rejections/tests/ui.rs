@@ -23,6 +23,17 @@ fn driver_dir() -> PathBuf {
     dir.join("trame-driver")
 }
 
+/// The backend the suite runs against: TRAME_BACKEND, a directory of src/backends/ (its cargo feature has its name).
+/// The suite holds on every backend, so the harness takes one per run; Cargo.toml selects none.
+fn backend() -> String {
+    env::var("TRAME_BACKEND").expect("TRAME_BACKEND must name the backend to build trame with (see check/rejections/README.md)")
+}
+
+/// Cargo's arguments to build the dependencies with the backend's feature of the `trame` dependency.
+fn backend_args(deps: &mut DependencyBuilder) {
+    deps.program.args.push(format!("--features=trame/{}", backend()).into());
+}
+
 /// The rustc that the driver wraps. The driver was built for one rustc (`rustc -vV` at build time, crates/driver/build.rs),
 /// so RUSTC must be that one.
 fn rustc() -> String {
@@ -34,7 +45,7 @@ fn rustc() -> String {
 /// was before this harness: the verdict is the checks, not a link. `dir` is the build directory.
 fn common(dir: &str) -> Config {
     let mut config = Config::rustc("cases");
-    config.out_dir = PathBuf::from(dir);
+    config.out_dir = PathBuf::from(format!("{dir}-{}", backend()));
     config.output_conflict_handling = ignore_output_conflict;
     config.comment_defaults.base().set_custom("edition", Edition("2024".into()));
     config.program.args.extend(["--emit=metadata".into(), "-Awarnings".into()]);
@@ -52,6 +63,7 @@ fn driver_config(driver: &Path, rustc: &str) -> Config {
     deps.crate_manifest_path = PathBuf::from("Cargo.toml");
     // Cargo builds the dependencies with the driver as its compiler, as `cargo trame` does.
     deps.program.envs.push(("RUSTC_WRAPPER".into(), Some(driver.into())));
+    backend_args(&mut deps);
     config.comment_defaults.base().set_custom("dependencies", deps);
     config
 }
@@ -63,6 +75,7 @@ fn plain_config() -> Config {
     let mut deps = DependencyBuilder::default();
     deps.crate_manifest_path = PathBuf::from("Cargo.toml");
     deps.program.envs.push(("RUSTC_WRAPPER".into(), None));
+    backend_args(&mut deps);
     config.comment_defaults.base().set_custom("dependencies", deps);
     config
 }

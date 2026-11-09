@@ -1,4 +1,4 @@
-// spec: CONTRACT.md, M2 (no process meaning): a step's error is read by the leader from the worker's domain, on mpi from another process, so it is plain too. A `&'static str` names memory of the process that made it.
+// spec: CONTRACT.md, M2 (no process meaning): a step's error is read by the leader from the worker's domain, on a multi-process backend from another process, so it is plain too. A `&'static str` names memory of the process that made it.
 
 struct Why(&'static str);
 

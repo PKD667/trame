@@ -14,21 +14,20 @@ mpi = { version = "=0.8.2", optional = true }
 libc = { version = "=0.2.191", optional = true }
 
 # A backend is chosen at compile time, one per build, so every participant agrees by construction.
-# `seq` and `mpi` are exclusive: lib.rs refuses a build that enables both.
+# The one place outside src/backends/ that names the backends: cargo declares features in the manifest, so each
+# directory of src/backends/ with a backend.nix needs its feature here, of the same name (and its optional
+# dependencies). Nothing else lists them: the flake, the lab and the scripts discover them from the directory.
+# The features are exclusive and there is no default: every cargo command passes `--no-default-features --features
+# <backend>`, and a build with none is a compile error (src/backends/mod.rs).
 [features]
-default = ["seq"]
 seq = []
 mpi = ["dep:mpi", "dep:libc"]
 
-# The MPI transport's checks and latency run (src/backends/mpi/tests/run.sh, src/backends/mpi/README.md).
+# The MPI transport's own checks (src/backends/mpi/tests/run.sh), below the interface. Latency is measured by
+# lab/bench/ping.rs, which is written against the interface and runs on every backend.
 [[bin]]
 name = "check"
 path = "src/backends/mpi/tests/check.rs"
-required-features = ["mpi"]
-
-[[bin]]
-name = "latency"
-path = "src/backends/mpi/tests/latency.rs"
 required-features = ["mpi"]
 
 # Programs that run on every backend, with their expected stdout (check/programs/run.sh).
@@ -120,26 +119,35 @@ path = "check/programs/pipeline_chain.rs"
 name = "ring"
 path = "examples/ring.rs"
 
-# Scaling benchmarks (lab/scale/, lab/scale/README.md; run by lab/scale.py). Not part of the conformance set.
+# The benchmarks of the lab (lab/bench/, lab/README.md; run by lab/perf.py). Written against the interface only, so
+# they run on every backend. Not part of the conformance set.
 [[example]]
-name = "scale_round"
-path = "lab/scale/round.rs"
+name = "bench_round"
+path = "lab/bench/round.rs"
 
 [[example]]
-name = "scale_ring"
-path = "lab/scale/ring.rs"
+name = "bench_flow"
+path = "lab/bench/flow.rs"
 
 [[example]]
-name = "scale_idle"
-path = "lab/scale/idle.rs"
+name = "bench_ping"
+path = "lab/bench/ping.rs"
 
 [[example]]
-name = "scale_fanin"
-path = "lab/scale/fanin.rs"
+name = "bench_step"
+path = "lab/bench/step.rs"
 
 [[example]]
-name = "scale_graph"
-path = "lab/scale/graph.rs"
+name = "bench_idle"
+path = "lab/bench/idle.rs"
+
+[[example]]
+name = "bench_fanin"
+path = "lab/bench/fanin.rs"
+
+[[example]]
+name = "bench_graph"
+path = "lab/bench/graph.rs"
 
 [[example]]
 name = "start_order"

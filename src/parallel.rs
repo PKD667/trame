@@ -13,6 +13,10 @@ pub use crate::cells::{MAX_OWNED, Owning, Tags, owns};
 pub use crate::sched::{POOL, Weight};
 pub use crate::worker::{State, StepInfo};
 
+/// Whether the selected backend follows the scheduler's choice exactly (`Backend::EXACT`). Conformance
+/// tests read it to decide how a trace is replayed.
+pub const EXACT: bool = <crate::backend::Selected as crate::backend::Backend>::EXACT;
+
 /// Whether a frame of type `ty` is available to this worker. `#[trame::state]` calls it.
 pub fn offered(ty: core::any::TypeId) -> bool {
     use crate::backend::Backend;

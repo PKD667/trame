@@ -4,6 +4,9 @@ Each clause of the backend contract is checked by one or more of the methods bel
 of the backend, or some of its runs, never the backend whole. Each entry names the method and the
 point where it stops. A clause that nothing checks says so.
 
+Where a check belongs to one backend, this file says so and names the place in `src/backends/README.md`
+(section Checks by backend) that lists it.
+
 ## Methods
 
 **Model.** `sched.rs` is the scheduler as pure Rust: the premises of Start, the effects of End,
@@ -24,8 +27,8 @@ any scheduler, and panics on a conflict.
 **Programs.** `check/programs/*.rs` print their observations, and `check/programs/run.sh` compares each backend's
 output with `check/programs/*.expected`.
 
-**Model checking.** `check/proofs/mpi` holds TLA+ models of the MPI backend's protocols, checked by TLC
-with `check/proofs/mpi/run.sh`. A model is checked, not the code. The model follows the code by reading.
+**Model checking.** The TLA+ models in `check/proofs/` check protocols of some backends with TLC, through
+the run script in that directory. A model is checked, not the code. The model follows the code by reading.
 
 **Measurement.** A statistical clause is measured: a run, a command, a machine and a tolerance.
 
@@ -40,28 +43,30 @@ backend.
 **R1 Safety.** Replay, on the scheduling events. Programs, on fixed programs. No check covers every
 label of T.
 
-**R2 Progress.** No check proves it. Programs terminate with their expected output. The TLA+ models
-check liveness of the MPI wake-up protocol and of a lane between hosts.
+**R2 Progress.** No check proves it. Programs terminate with their expected output. Some backends have
+TLA+ models of their wake-up protocol and of their lanes between hosts (`src/backends/README.md`).
 
-**L1 Refusal.** Programs `refuse` and `refuse_dup`, and the seq launch tests. On MPI, every refusal
-is decided by a collective reduction (`src/backends/mpi/open.rs`).
+**L1 Refusal.** Programs `refuse` and `refuse_dup`, and each backend's launch tests. On a backend whose
+host is several processes, every refusal is decided on all of them together (`src/backends/README.md`).
 
-**L2 Agreement.** `agree` in `src/backends/mpi/open.rs`. No test gives two processes different plans.
+**L2 Agreement.** Each backend has an agreement check for its plans (`src/backends/README.md`). No test
+gives two processes different plans.
 
-**L3 Building.** By construction: `launch::build_all` on seq, `imp.rs` on MPI.
+**L3 Building.** By construction in each backend's builder path (`src/backends/README.md`).
 `tests/no_alloc.rs` checks that a launch is refused when the builders cannot reach the domain.
 
 **S1 Exclusion.** Model, replay, witness. A mutant that edits while a step runs is killed by the
 model's assertion in `Sched::edited`.
 
-**S2 Start.** Replay, exact on seq, safety only elsewhere.
+**S2 Start.** Replay, exact on a backend whose choice is `Sched::choose`, and safety only elsewhere.
 
 **S3 Wake.** Replay, and the outcome check: a run that ends in `Deadlock` must be one where nothing
-could start. On MPI, the TLA+ model `Epoch` checks that no wake-up is lost with one to three sleepers
-per word. A mutant that forgets deadlines on seq is killed by the outcome check.
+could start. A backend with a multi-process wake-up protocol has a TLA+ model of it
+(`src/backends/README.md`). A mutant that forgets deadlines is killed by the outcome check.
 
 **S4 Edit.** Model; replay of runs with racing edits (`edits_follow_the_model`), in which every step
-asserts the pool it reads is whole. The MPI edit handshake has no model.
+asserts the pool it reads is whole. A backend whose edits cross processes has its own handshake,
+which has no model (`src/backends/README.md`).
 
 **S5 Stop.** Model.
 
@@ -75,15 +80,15 @@ Replay, since S6 is part of `may_start`.
 
 **S9 Trace.** Replay checks the traces it is given. Nothing checks that a trace is complete.
 
-**T1 Order, T2 Capacity, T3 Delivery.** Programs; on MPI, `src/backends/mpi/tests` (FIFO with
-verification, overwrite, fairness, large routes, node splits).
+**T1 Order, T2 Capacity, T3 Delivery.** Programs, and the transport checks of each backend that has
+its own (`src/backends/README.md`).
 
 **P1 Writer.** By type: a step takes the pool as `&P`, and `#[trame::step]` refuses `&mut`.
 
 **P2 Edit.** As S4; program `pool_edit`.
 
-**M1 Placement.** On seq the domain is the heap. On MPI, by construction (`segment.rs`).
-No check walks a built state to find a byte outside its domain.
+**M1 Placement.** Every backend places a state in its domain by construction, and the placement of each is in
+`src/backends/README.md`. No check walks a built state to find a byte outside its domain.
 
 **M2 Meaning, M3 Mutation.** By type: `#[trame::state]` requires `Plain` of each field and
 `State::Pool`. The rejection suite (`check/rejections/cases/plain/`) refuses each excluded kind, nested
@@ -95,40 +100,39 @@ call of `parallel!`. The driver refuses allocation in items, not in steps.
 
 **M5 Visibility.** As S4 within a process.
 
-**M6 Bound.** On MPI by construction: `segment::alloc` answers null past the segment's end, and
-`Alloc` writes through no null (`domain.rs`). No test fills a domain.
+**M6 Bound.** Each backend's allocator answers null past its domain's end, by construction
+(`src/backends/README.md`). `Alloc` writes through no null (`domain.rs`). No test fills a domain.
 
 **M7 Lifetime.** By construction. Threads: every agent holds its worker's slot, which holds the
-state. Seq: the workers run only inside the leader's calls on the run. MPI: `leader.rs` `Leader` holds
-the plan's references until `join`, and leaks them when the run is dropped without it. Replay:
-`fanin_fifo` drops its handles after `set`; a leader that freed the blocks then would make its
-workers read the segment's free list as their state, and the run would hang. No test drops a run
-without its join on MPI.
+state. A backend whose workers run inside the leader's calls, and one whose processes outlive a run,
+keep the states live until the join (`src/backends/README.md`). Replay: `fanin_fifo` drops its handles
+after `set`; a leader that freed the blocks then would make its workers read the domain's free list as
+their state, and the run would hang. No test drops a run without its join on a multi-process backend.
 
-**F1 Identity.** By construction: `hosts.rs` numbers hosts by their lowest world rank. Program
+**F1 Identity.** By construction in each backend's host numbering (`src/backends/README.md`). Program
 `peers` on two hosts.
 
 **F3 Port agreement.** Program `refuse_ports` on two hosts: a capacity that differs refuses both,
-naming the route (`cross.rs` `connect`). No test declares a route on one host only, which waits.
+naming the route. No test declares a route on one host only, which waits.
 
-**F4 Tag.** By construction (`io.rs` `tag`): a hash of the type's path and size. Programs `peers`
+**F4 Tag.** By construction: a hash of the type's path and size (`src/backends/README.md`). Programs `peers`
 and `xhost_ring` on two hosts compile each type once, so they do not test two compilations.
 
 **F5 Routes between hosts.** Program `xhost_ring` on two hosts: 2000 items per worker over lossless
 lanes of capacity 4, each receiver asserting order and once-only delivery, and lossy ticks asserted
-to increase. TLA+ model `Lane` (`check/proofs/mpi/Lane.tla`): order, room by credits, every frame finds
-its posted receive, every frame taken and credited. Lossy lanes and the end have no model.
+to increase. A TLA+ model of a lane covers order, room by credits, every frame finding its posted
+receive, and every frame taken and credited (`src/backends/README.md`). Lossy lanes and the end have
+no model.
 
 **F6 Peer channel.** Program `peers` on two hosts.
 
 **E1 Abort.** Programs `abort`, `abort_join`, `leader_panics`.
 
-**E2 Join.** Programs; the outcome check. The detector of stuck runs across hosts
-(`src/backends/mpi/detect.rs`) is modelled in `check/proofs/mpi/Detect.tla`: `MCDetect` checks that a Stuck
-verdict is given only when every worker is quiet or done and nothing is in flight. `MCDetectOnce`,
-the mutant that skips the comparison with the previous round, must violate it, and does. Programs
-`xhost_deadlock` and `leader_stuck` run it on two hosts. The model has one worker per host, H = 2, three
-rounds and no timeouts.
+**E2 Join.** Programs; the outcome check. Where a backend detects stuck runs across hosts, its detector is
+modelled in `check/proofs/`: `MCDetect` checks that a Stuck verdict is given only when every worker is
+quiet or done and nothing is in flight. `MCDetectOnce`, the mutant that skips the comparison with the
+previous round, must violate it, and does. Programs `xhost_deadlock` and `leader_stuck` run it on two
+hosts. The model has one worker per host, H = 2, three rounds and no timeouts.
 
 ## Conformance
 
@@ -137,11 +141,15 @@ runs it sees, and progress rests on the programs ending and on the TLA+ liveness
 
 ## Latency
 
-T leaves latency to the environment, so no proof says anything about it. The MPI backend has a
-recorder, `src/backends/mpi/tests/latency.rs`, which writes round trips between workers in the nixsci
-record format and computes no verdict. No latency claim is checked: the tree holds no nixsci
-experiment that locks those records by content hash. A claim would have this form: the fraction of
-round trips whose half exceeds the fastest by more than 100 µs is below 0.1%, at confidence 0.99.
+T leaves latency to the environment, so no proof of T says anything about it. Latency is checked statistically,
+by the lab's latency experiment: round trips with random gaps between them, between workers on one host and
+across two, at several message sizes. Round trips in one run are autocorrelated, so each run is one sample, and
+the test counts runs, not round trips. A claim is a proportion: the fraction of round trips over the p99 bound
+is below 0.01, judged with `nixsci.stats` over the runs.
+
+The bounds are the Q clauses of the backend contract, set per placement and size in `lab/q.nix` for a named
+reference deployment. A bound that is still null is stated as absent: the experiment measures that placement and
+size, and no claim is judged on it.
 
 ## Unsafe code
 
@@ -150,11 +158,11 @@ it relies on. No tool checks trame's own `unsafe` code: the driver trusts it.
 
 ## Assumptions
 
-**Shared memory across processes.** The MPI backend's processes share memory through mappings of
-one object. The Rust memory model is defined within one process. The backend assumes that atomics
+**Shared memory across processes.** A backend whose processes share memory does so through mappings of
+one object. The Rust memory model is defined within one process. Such a backend assumes that atomics
 in a shared mapping order memory across processes as they do across threads, which holds on the
 hardware it runs on and is not a guarantee of the language.
 
-**Foreign calls.** MPI and the Linux futex and shared-memory calls behave as documented.
+**Foreign calls.** The system calls that a backend uses behave as documented.
 
 **Hardware.** Every agent that is not blocked keeps running: the hypothesis of R2.

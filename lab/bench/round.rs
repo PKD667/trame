@@ -1,4 +1,4 @@
-//! scale_round W ROUNDS: W workers and a round of messages through the leader. There is no barrier in the
+//! bench_round W ROUNDS: W workers and a round of messages through the leader. There is no barrier in the
 //! worker model, so this is the nearest thing it can measure: how long W workers take to be brought in step
 //! by the one agent that can do it. The leader sends `Go(r)` to every worker; a worker answers `Ack(r)` when
 //! its step takes it; the leader sends `Go(r + 1)` only when all W acks of round r are in. Round 0 is a
@@ -6,9 +6,9 @@
 //! its span is ROUNDS full rounds (ack, the leader's gather, the release, ack) on its own clock. It then
 //! sends one Report. The leader prints one JSON line per worker, then the outcomes.
 //!
-//! This is not `MPI_Barrier`'s measurement: a barrier is W ranks agreeing among themselves, and this is W
-//! workers and a leader (W + 1 agents) agreeing through the leader, with 2 x W messages a round. The plain-MPI
-//! baseline (baseline/barrier.c) is still ROUNDS `MPI_Barrier` calls on W ranks, the cost of the same
+//! This is not a library barrier's measurement: a barrier is W ranks agreeing among themselves, and this is W
+//! workers and a leader (W + 1 agents) agreeing through the leader, with 2 x W messages a round. The plain-process
+//! baseline (barrier.c, in a backend's bench directory) is still ROUNDS library barriers on W processes, the cost of the same
 //! synchronisation done by the library. Built with `--cfg trame_checked` (flake.nix sets it).
 
 #[path = "common.rs"]

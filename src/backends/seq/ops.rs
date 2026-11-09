@@ -9,7 +9,7 @@ extern crate std;
 use super::Selected;
 use super::limit;
 use super::state::{Abandoned, Phase, Shared, State};
-use crate::local_routes::Routes;
+use crate::backends::local_routes::Routes;
 use crate::backend::{Backend, Target};
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
@@ -120,11 +120,23 @@ fn worker_main(shared: Arc<Shared>, me: usize, slot: Arc<Slot>) {
     shared.changed.notify_all();
 }
 
+/// Run every builder in the leader's own memory, at launch.
+fn build_all(plan: &mut Plan) {
+    if let Some(b) = plan.pool_builder.take() {
+        crate::domain::arena(b);
+    }
+    for b in plan.builders.iter_mut() {
+        crate::domain::arena(b.take().expect("trame: the launch checked that every worker was set"));
+    }
+}
+
 impl Backend for Selected {
     type Run = Run;
 
+    const EXACT: bool = true;
+
     fn launch(mut plan: Plan) -> Result<Run, Refused> {
-        crate::launch::build_all(&mut plan);
+        build_all(&mut plan);
         let n = plan.workers.len();
         let routes = Routes::new(&plan.routes)?;
         let limit = limit::setting().map_err(|reason| Refused::Backend { reason: reason.into() })?;
@@ -277,7 +289,7 @@ impl Backend for Selected {
         let done = match target {
             Target::Worker(w) => run.slots[w].edit(crate::sched::STATE, f),
             Target::Pool => {
-                crate::worker::edit_pool(&run.slots, f);
+                super::edit::edit_pool(&run.slots, f);
                 true
             }
         };

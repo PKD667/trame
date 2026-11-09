@@ -33,11 +33,17 @@ pub(crate) trait Backend {
     /// The state of one launched run, owned by the leader.
     type Run;
 
+    /// Whether the backend follows the scheduler's choice exactly (sched.rs `Sched::choose`): one
+    /// step at a time, each costing 1 in service, so a trace replays against the model choice for
+    /// choice and shares are exact to a step. A backend that runs steps at once keeps the safety
+    /// clauses (CONTRACT.md, S1-S6, S9) and not the choices.
+    const EXACT: bool = false;
+
     /// S4 for a leader in another process (the handshake): the fields it asks this worker to hold,
     /// 0 when it asks none. The agent loop holds them (`Event::Hold`), answers
     /// `worker_edit_held(true)` once no step touching them runs, and, once the request is 0 again,
     /// gives them back (`Event::Edit`) and answers `worker_edit_held(false)`. A backend whose leader
-    /// edits in the workers' process (seq) never asks.
+    /// edits in the workers' process never asks.
     fn worker_edit_request() -> u64 {
         0
     }
@@ -48,7 +54,7 @@ pub(crate) trait Backend {
     }
 
     /// M1: `layout.size()` bytes of the domain of this process's launch, for a builder or an edit
-    /// (alloc.rs, arena mode). `None`: this process's heap is the domain (seq; or no launch
+    /// (alloc.rs, arena mode). `None`: this process's heap is the domain (or no launch
     /// yet). A full domain answers a null pointer, which the allocation reports (M6).
     fn domain_alloc(_layout: core::alloc::Layout) -> Option<*mut u8> {
         None
@@ -134,15 +140,15 @@ pub(crate) trait Backend {
     fn worker_now() -> (ClockId, u64);
 
     /// Whether the leader stopped the run, for a backend whose leader cannot reach the worker's
-    /// scheduler directly (mpi: another process). The reference agent polls it at each round.
+    /// scheduler directly (it runs in another process). The reference agent polls it at each round.
     fn worker_stop_requested() -> bool {
         false
     }
 
     /// The agent's turns, told under the worker's lock, for a backend that shows a worker stuck from
-    /// another process (mpi; INTERFACE.md 5, Deadlock): a step starts, a step ends, or an agent is about to
+    /// another process (INTERFACE.md 5, Deadlock): a step starts, a step ends, or an agent is about to
     /// idle with no step running, at `epoch`, with or without a deadline. Under the lock, so a quiet
-    /// mark is never told after a start that followed it. seq decides stuckness itself.
+    /// mark is never told after a start that followed it. A backend whose workers share the leader's process decides stuckness itself.
     fn worker_mark_start() {}
 
     fn worker_mark_end() {}
@@ -181,4 +187,4 @@ pub(crate) trait Backend {
 }
 
 /// The backend this build selected.
-pub(crate) type Selected = crate::selected::Selected;
+pub(crate) type Selected = crate::backends::selected::Selected;

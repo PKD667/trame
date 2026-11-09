@@ -8,7 +8,7 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
   # The lab experiments (lab/README.md) and their deployment to hosts. Pinned; nixsci's only input is nixpkgs.
-  # nixsci main (health check, MPI helper, target-side cache fetch, --hosts).
+  # nixsci main (health check, target-side cache fetch, --hosts).
   inputs.nixsci = {
     url = "github:PKD667/nixsci/main";
     inputs.nixpkgs.follows = "nixpkgs";
@@ -33,263 +33,166 @@
         # Tests compile fixture crates and need the tree; run them with `cargo test` (crates/driver/README.md).
         doCheck = false;
       };
-      # The root crate with the MPI backend, its examples and the check and latency bins. Only the
-      # files the build reads: never crates/driver/ or target/, and not the mpi-rma submodule.
-      trameFiles = pkgs.lib.fileset.unions ([
+      lib = pkgs.lib;
+
+      # The backends of the tree: every directory of src/backends/ with a backend.nix (src/backends/README.md, The
+      # descriptor). Nothing below names one. The cargo feature of a backend is the name of its directory.
+      backendDir = ./src/backends;
+      backendNames = builtins.attrNames (lib.filterAttrs
+        (n: t: t == "directory" && builtins.pathExists (backendDir + "/${n}/backend.nix"))
+        (builtins.readDir backendDir));
+      descriptors = lib.genAttrs backendNames (n: import (backendDir + "/${n}/backend.nix") { inherit pkgs; });
+
+      # The root crate and what its builds read: never crates/driver/ or target/, and not what a descriptor excludes.
+      trameFiles = lib.fileset.unions ([
           ./Cargo.toml
           ./Cargo.lock
           ./README.md
           ./INTERFACE.md
           ./crates/macros
           ./src/math
-          ./src/backends/seq
-          ./src/backends/local
           ./check/programs
           ./tests
-          ./lab/scale
+          ./lab/bench
           ./examples
-          (pkgs.lib.fileset.difference ./src/backends/mpi (pkgs.lib.fileset.maybeMissing ./src/backends/mpi/mpi-rma))
+          (lib.fileset.difference backendDir (lib.fileset.unions (lib.concatMap
+            (n: map (e: lib.fileset.maybeMissing (backendDir + "/${n}/${e}")) descriptors.${n}.exclude) backendNames)))
         ] ++ map (n: ./src + "/${n}") (
-          builtins.filter (n: pkgs.lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ./src))
+          builtins.filter (n: lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ./src))
         ));
-      trameMpiSrc = pkgs.lib.fileset.toSource { root = ./.; fileset = trameFiles; };
+      trameSrc = lib.fileset.toSource { root = ./.; fileset = trameFiles; };
       # The rejection suite (check/rejections/README.md) is a separate package that depends on the root crate by path.
-      rejectionsSrc = pkgs.lib.fileset.toSource {
+      rejectionsSrc = lib.fileset.toSource {
         root = ./.;
-        fileset = pkgs.lib.fileset.unions [ trameFiles (pkgs.lib.fileset.difference ./check/rejections (pkgs.lib.fileset.maybeMissing ./check/rejections/target)) ];
+        fileset = lib.fileset.unions [ trameFiles (lib.fileset.difference ./check/rejections (lib.fileset.maybeMissing ./check/rejections/target)) ];
       };
-      fmtSrc = pkgs.lib.fileset.toSource {
+      fmtSrc = lib.fileset.toSource {
         root = ./.;
-        fileset = pkgs.lib.fileset.unions [
+        fileset = lib.fileset.unions [
           ./rustfmt.toml
-          (pkgs.lib.fileset.difference (pkgs.lib.fileset.fileFilter (f: f.hasExt "rs") ./.) (pkgs.lib.fileset.unions [
+          (lib.fileset.difference (lib.fileset.fileFilter (f: f.hasExt "rs") ./.) (lib.fileset.unions ([
             ./check/rejections
-            (pkgs.lib.fileset.maybeMissing ./src/backends/nv)
-            (pkgs.lib.fileset.maybeMissing ./src/backends/mpi/mpi-rma)
-          ]))
+          ] ++ lib.concatMap
+            (n: map (e: lib.fileset.maybeMissing (backendDir + "/${n}/${e}")) descriptors.${n}.exclude) backendNames)))
         ];
       };
-      mpiDeps = import ./src/backends/mpi/dependencies.nix { inherit pkgs; };
-      trameMpiBinsWith = patches: pkgs.rustPlatform.buildRustPackage {
-        pname = "trame-mpi-bins";
+
+      # The programs of check/programs/ and the benchmarks of lab/bench/: the examples of Cargo.toml by path.
+      examples = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).example;
+      programNames = map (n: lib.removeSuffix ".rs" n)
+        (builtins.filter (n: lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ./check/programs)));
+      benchNames = map (e: e.name) (builtins.filter (e: lib.hasPrefix "lab/bench/" e.path) examples);
+
+      # One build of a backend: its feature, the programs and benchmarks, and the bins its descriptor lists, with the
+      # patches given (a mutant). Layout: programs/, bench/, bin/, share/expected/.
+      binsFor = name: d: patches: pkgs.rustPlatform.buildRustPackage {
+        pname = "trame-${name}-bins";
         version = "0.1.0";
-        src = trameMpiSrc;
-        patches = patches;
+        src = trameSrc;
+        inherit patches;
+        # The patches of src/backends/<b>/mutants are written against src/.
+        patchFlags = [ "-p1" "-d" "src" ];
         cargoLock.lockFile = ./Cargo.lock;
         buildNoDefaultFeatures = true;
-        buildFeatures = [ "mpi" ];
+        buildFeatures = [ name ];
         # Every program is built with the checked cfg (check/programs/run.sh).
         RUSTFLAGS = "--cfg trame_checked";
-        # mpicc is in openmpi's dev output, not in the default one that dependencies.nix names; and its
-        # MPICC points at the default output, where it is not. Both are set here.
-        nativeBuildInputs = mpiDeps.packages ++ [ pkgs.openmpi.dev ];
-        env = mpiDeps.env // { MPICC = "${pkgs.openmpi.dev}/bin/mpicc"; };
-        cargoBuildFlags = [ "--examples" "--bins" ];
-        # Tests run in the devshell (src/backends/mpi/tests/run.sh), not in the build.
+        nativeBuildInputs = d.packages;
+        inherit (d) env;
+        cargoBuildFlags = [ "--examples" ] ++ lib.concatMap (b: [ "--bin" b ]) d.bins;
+        # Tests run as checks (lab/validate.nix), not in the build.
         doCheck = false;
+        inherit (d) postInstall;
         installPhase = ''
           runHook preInstall
-          mkdir -p $out/bin $out/share/expected
+          mkdir -p $out/bin $out/programs $out/bench $out/share/expected
           rel=target/${pkgs.stdenv.hostPlatform.rust.rustcTarget}/release
-          for p in ${pkgs.lib.concatStringsSep " " mpiPrograms} scale_round scale_ring scale_idle scale_fanin scale_graph; do
-            cp $rel/examples/$p $out/bin/
-          done
-          cp $rel/check $rel/latency $out/bin/
-          mpicc -O2 -o $out/bin/mpi_barrier lab/scale/baseline/barrier.c
-          mpicc -O2 -o $out/bin/mpi_ring lab/scale/baseline/ring.c
-          mpicc -O2 -o $out/bin/mpi_graph lab/scale/baseline/graph.c
+          for p in ${lib.concatStringsSep " " programNames}; do cp $rel/examples/$p $out/programs/; done
+          for p in ${lib.concatStringsSep " " benchNames}; do cp $rel/examples/$p $out/bench/; done
+          for b in ${lib.concatStringsSep " " d.bins}; do cp $rel/$b $out/bin/; done
           cp check/programs/*.expected $out/share/expected/
           runHook postInstall
         '';
       };
-      trameMpiBins = trameMpiBinsWith [ ];
-      # The two program lists (check/programs/run.sh says the same in words). seq runs every check/programs/*.rs; mpi runs
-      # the rows of src/backends/mpi/deploy/ranks.txt (`<program> <ranks>` per line), so a program without a row is seq only.
-      seqPrograms = map (n: pkgs.lib.removeSuffix ".rs" n)
-        (builtins.filter (n: pkgs.lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ./check/programs)));
-      mpiPrograms = map (l: builtins.head (pkgs.lib.splitString " " l))
-        (builtins.filter (l: l != "" && !pkgs.lib.hasPrefix "#" l)
-          (pkgs.lib.splitString "\n" (builtins.readFile ./src/backends/mpi/deploy/ranks.txt)));
-      # The seq backend: the default build, one process per program (check/programs/run.sh, seq).
-      trameSeqBinsWith = patches: pkgs.rustPlatform.buildRustPackage {
-        pname = "trame-seq-bins";
-        version = "0.1.0";
-        src = trameMpiSrc;
-        patches = patches;
-        cargoLock.lockFile = ./Cargo.lock;
-        # Every program is built with the checked cfg (check/programs/run.sh).
-        RUSTFLAGS = "--cfg trame_checked";
-        cargoBuildFlags = map (p: "--example ${p}") seqPrograms;
-        doCheck = false;
-        installPhase = ''
-          runHook preInstall
-          mkdir -p $out/bin $out/share/expected
-          rel=target/${pkgs.stdenv.hostPlatform.rust.rustcTarget}/release
-          for p in ${pkgs.lib.concatStringsSep " " seqPrograms}; do
-            cp $rel/examples/$p $out/bin/
-          done
-          cp check/programs/*.expected $out/share/expected/
-          runHook postInstall
-        '';
-      };
-      trameSeqBins = trameSeqBinsWith [ ];
-      # The lab experiments (lab/README.md). Runners are the .py files of lab/ only.
-      runners = pkgs.lib.fileset.toSource {
+
+      labPy = "${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
+      # A backend's launch with what it needs on its PATH and the nixsci library, so it runs from anywhere.
+      launchFor = name: d: pkgs.runCommand "launch-${name}" { nativeBuildInputs = [ pkgs.makeWrapper pkgs.python3 pkgs.bash ]; } ''
+        install -Dm755 ${backendDir + "/${name}/launch"} $out/bin/launch
+        patchShebangs $out/bin/launch
+        wrapProgram $out/bin/launch --prefix PATH : ${lib.makeBinPath d.launchRuntime} --prefix PYTHONPATH : ${labPy}
+      '';
+
+      backends = lib.mapAttrs (n: d: rec {
+        inherit d;
+        src = trameSrc;
+        binsWith = binsFor n d;
+        bins = binsWith [ ];
+        launch = launchFor n d;
+        programs = programNames;
+        mutants = let dir = backendDir + "/${n}/mutants"; in if builtins.pathExists dir then dir else null;
+      }) descriptors;
+
+      # The lab (lab/README.md). Runners are the .py files of lab/ (and the columns they record) only.
+      runners = lib.fileset.toSource {
         root = ./lab;
-        fileset = pkgs.lib.fileset.fileFilter (f: f.hasExt "py") ./lab;
+        fileset = lib.fileset.unions [ (lib.fileset.fileFilter (f: f.hasExt "py") ./lab) ./lab/columns.json ];
       };
-      labRuntime = [ pkgs.openmpi pkgs.coreutils pkgs.time pkgs.procps pkgs.util-linux pkgs.gnugrep ];
-      # One closure: a runner over one set of binaries (BIN, EXPECTED, RANKS_FILE in its environment).
-      runnerClosure = name: script: bins: nixsci.lib.mkExperiment pkgs {
+      labLib = nixsci.lib.lab { inherit pkgs; project = self; };
+      # One closure: a runner over one backend's build and launch. The environment is the runners' contract: LAUNCH (the
+      # backend's launch), PROGRAMS, BENCH, BIN, EXPECTED (its build), PANICS (check/programs).
+      closure = { name, script, b, dir ? runners, env ? { } }: nixsci.lib.mkExperiment pkgs {
         inherit name;
         program = "${pkgs.python3}/bin/python3";
-        args = [ "${runners}/${script}" ];
+        args = [ "${dir}/${script}" ];
         env = {
-          PYTHONPATH = "${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
-          BIN = "${bins}/bin";
-          EXPECTED = "${bins}/share/expected";
-          RANKS_FILE = "${./src/backends/mpi/deploy/ranks.txt}";
+          PYTHONPATH = labPy;
+          LAUNCH = "${b.launch}/bin/launch";
+          PROGRAMS = "${b.bins}/programs";
+          BENCH = "${b.bins}/bench";
+          BIN = "${b.bins}/bin";
+          EXPECTED = "${b.bins}/share/expected";
           PANICS = "${./check/programs}";
-        };
-        runtime = labRuntime;
+        } // env;
+        runtime = b.d.launchRuntime;
       };
-      programsMpiClosure = runnerClosure "programs-mpi" "programs.py" trameMpiBins;
-      programsSeqClosure = runnerClosure "programs-seq" "programs.py" trameSeqBins;
-      transportClosure = runnerClosure "transport-mpi" "transport.py" trameMpiBins;
-      scaleClosure = runnerClosure "scale-local" "scale.py" trameMpiBins;
-      labLib = nixsci.lib.lab { inherit pkgs; project = self; };
-      # MPI transport settings are machine configuration, recorded per job as mpi_config (lab/mpirun.py).
-      mpiConfigData = { columns = { source = "str"; text = "str"; }; };
-      runData = {
-        columns = { program = "str"; repeat = "int"; ran = "bool"; ok = "bool"; verdict = "str"; seconds = "float"; stdout_sha256 = "str"; };
-        key = [ "program" "repeat" ];
-        noisy.seconds = 1.0;
+      # The machines of the suite (lab/suite.nix): the most a job of the suite spans.
+      machines = 4;
+      qm = import ./lab/q.nix { inherit lib; };
+      labArgs = { inherit pkgs lib labLib system closure backends machines; };
+      catalogue =
+        import ./lab/checks.nix labArgs
+        ++ import ./lab/perf.nix (labArgs // { q = qm; })
+        ++ lib.concatMap (n: backends.${n}.d.experiments (labArgs // { b = backends.${n}; data = import ./lab/data.nix { inherit lib; }; }))
+          backendNames;
+      experiments = builtins.listToAttrs (map (i: { inherit (i) name; value = i.exp; }) catalogue);
+      labSuite = import ./lab/suite.nix {
+        inherit pkgs lib labLib catalogue machines qm;
+        python = nixsci.packages.${system}.python;
       };
-      transportData = {
-        columns = { check = "str"; workers = "int"; case_seed = "int"; repeat = "int"; ran = "bool"; ok = "bool"; seconds = "float"; };
-        key = [ "check" "workers" "case_seed" "repeat" ];
-        noisy.seconds = 1.0;
-      };
-      scaleCols = { bench = "str"; impl = "str"; nodes = "int"; workers = "int"; per_node = "int"; };
-      scaleData = {
-        round = { columns = scaleCols // { worker = "int"; rounds = "int"; ns = "int"; }; noisy.ns = 1.0; };
-        ring = { columns = scaleCols // { worker = "int"; steps = "int"; size = "int"; cap = "int?"; ns = "int"; }; noisy.ns = 1.0; };
-        idle = { columns = scaleCols // { worker = "int"; seconds = "int"; ns = "int"; }; noisy.ns = 1.0; };
-        fanin = { columns = scaleCols // { worker = "int"; msgs = "int"; ns = "int"; }; noisy.ns = 1.0; };
-        graph = {
-          columns = scaleCols // { worker = "int"; steps = "int"; size = "int"; degree = "int"; iters = "int"; ns = "int"; compute_ns = "int"; checksum = "str"; };
-          noisy = { ns = 1.0; compute_ns = 1.0; };
-        };
-        cpu = {
-          columns = scaleCols // { rank = "int"; host = "str"; user_s = "float"; sys_s = "float"; wall_s = "float"; };
-          noisy = { user_s = 1.0; sys_s = 1.0; wall_s = 1.0; };
-        };
-      };
-      scaleExperiment = { name, nodes, span, resources }: labLib.experiment {
-        inherit name span resources;
-        closures.${system} = scaleClosure;
-        params = { inherit nodes; rounds = 10000; steps = 10000; msgs = 10000; seconds = 3; cap = 8; graph_iters = 100000; graph_steps = 2000; degree = 8; seed = 1; };
-        sweep = { bench = [ "round" "ring64" "ring4096" "idle" "fanin" "graph64" "graph1024" "graph1024s" ]; impl = [ "trame" "mpi" ]; fill = [ "half" "full" ]; };
-        replicates = 3;
-        data = scaleData // { mpi_config = mpiConfigData; };
-      };
-      experiments = {
-        programs-mpi = labLib.experiment {
-          name = "programs-mpi";
-          closures.${system} = programsMpiClosure;
-          params = { backend = "mpi"; repeats = 3; };
-          sweep.split = [ 1 2 ];
-          resources = { provider = "local"; hosts = 1; };
-          data.run = runData;
-          data.mpi_config = mpiConfigData;
-        };
-        transport-mpi = labLib.experiment {
-          name = "transport-mpi";
-          closures.${system} = transportClosure;
-          resources = { provider = "local"; hosts = 1; };
-          data.check = transportData;
-          data.mpi_config = mpiConfigData;
-        };
-        programs-cluster = labLib.experiment {
-          name = "programs-cluster";
-          span = 2;
-          closures.${system} = programsMpiClosure;
-          params = { backend = "mpi"; repeats = 3; };
-          resources = { provider = "cluster"; hosts = 2; walltime = 60; opts.stage = "fanout"; };
-          data.run = runData;
-          data.mpi_config = mpiConfigData;
-        };
-        # One machine of the cluster reservation: one host, then two hosts split from it (HOSTS.md).
-        programs-node = labLib.experiment {
-          name = "programs-node";
-          closures.${system} = programsMpiClosure;
-          params = { backend = "mpi"; repeats = 3; };
-          sweep.split = [ 1 2 ];
-          resources = { provider = "cluster"; hosts = 1; walltime = 60; };
-          data.run = runData;
-          data.mpi_config = mpiConfigData;
-        };
-        # The same programs on seq on the same hardware: equal stdout_sha256 per program is the equivalence.
-        programs-seq-node = labLib.experiment {
-          name = "programs-seq-node";
-          closures.${system} = programsSeqClosure;
-          params = { backend = "seq"; repeats = 3; };
-          resources = { provider = "cluster"; hosts = 1; walltime = 60; };
-          data.run = runData;
-        };
-        # Four hosts, one per machine: the cross-host routes between non-adjacent hosts.
-        programs-cluster4 = labLib.experiment {
-          name = "programs-cluster4";
-          span = 4;
-          closures.${system} = programsMpiClosure;
-          params = { backend = "mpi"; repeats = 3; };
-          resources = { provider = "cluster"; hosts = 4; walltime = 60; opts.stage = "fanout"; };
-          data.run = runData;
-          data.mpi_config = mpiConfigData;
-        };
-        scale-local = scaleExperiment {
-          name = "scale-local";
-          nodes = 1;
-          span = 1;
-          resources = { provider = "local"; hosts = 1; };
-        };
-      } // builtins.listToAttrs (map (n: {
-        name = "scale-n${toString n}";
-        value = scaleExperiment {
-          name = "scale-n${toString n}";
-          nodes = n;
-          span = n;
-          resources = { provider = "cluster"; hosts = n; walltime = 60; opts.stage = "fanout"; };
-        };
-      }) [ 1 2 4 8 16 32 ]) // import ./lab/checks.nix {
-        inherit pkgs system labLib trameSeqBinsWith trameMpiBinsWith runners labRuntime nixsci;
-        lib = pkgs.lib;
-      };
+
       # The deterministic checks: nixsci validate verdicts (lab/validate.nix).
       v = nixsci.lib.validate { inherit pkgs; };
       suite = v.suite (import ./lab/validate.nix {
-        inherit pkgs v trameSeqBins seqPrograms driverToolchain trameDriver;
-        trameSrc = trameMpiSrc;
-        rejectionsSrc = rejectionsSrc;
+        inherit pkgs v backends rejectionsSrc driverToolchain trameDriver;
       });
-      mkBackendShell = backend: extra:
-        let
-          dependencies = import (./src/backends + "/${backend}/dependencies.nix") { inherit pkgs; };
-        in
+      mkBackendShell = name: d:
         pkgs.mkShell {
-          packages = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt ] ++ dependencies.packages ++ extra;
+          packages = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt ] ++ d.packages ++ d.launchRuntime;
           shellHook = builtins.concatStringsSep "\n" (
-            builtins.attrValues (builtins.mapAttrs (name: value: "export ${name}=${value}") dependencies.env)
+            [ "export TRAME_BACKEND=${name}" ] ++ lib.mapAttrsToList (k: val: "export ${k}=${val}") d.env
           );
         };
-      # `trame build|run` (crates/cli/trame): the backend as a flag, the rank count asked of the program, hosts from nixsci.
+      # `trame build|run` (crates/cli/trame): the backend as a flag, the program started by that backend's launch.
+      launches = pkgs.linkFarm "trame-launches" (lib.mapAttrsToList (n: b: { name = n; path = "${b.launch}/bin"; }) backends);
       trameCli = pkgs.runCommand "trame-cli" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
         install -Dm755 ${./crates/cli/trame} $out/bin/trame
         patchShebangs $out/bin/trame
         wrapProgram $out/bin/trame \
-          --prefix PYTHONPATH : ${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages} \
+          --prefix PYTHONPATH : ${labPy} \
           --prefix PATH : ${trameDriver}/bin \
-          --set TRAME_TOOLCHAIN ${driverToolchain}/bin
+          --set TRAME_TOOLCHAIN ${driverToolchain}/bin \
+          --set TRAME_BACKENDS ${launches}
       '';
     in {
       validate.${system} = suite;
@@ -305,33 +208,42 @@
       packages.${system} = {
         trame = trameCli;
         trame-driver = trameDriver;
-        trame-mpi-bins = trameMpiBins;
-        trame-seq-bins = trameSeqBins;
+      } // lib.concatMapAttrs (n: b: {
+        "trame-${n}-bins" = b.bins;
+        "launch-${n}" = b.launch;
+      }) backends;
+      # An analysis is a derivation over runs in lab.lock, which a fresh clone may not have, and `nix flake check`
+      # evaluates packages: so the report is not under `packages` (nixsci's convention).
+      legacyPackages.${system} = {
+        suite-report = labSuite.report;
+        suite-report-draft = labSuite.reportDraft;
       };
-      lab.${system}.experiments = experiments;
-      # The mpi dev shell as a nixsci deployment, for `nixsci deploy shell ... dev -- CMD` on a cluster
-      # node: tests run there, not on a laptop. Same packages and env as devShells.mpi (one source:
-      # dependencies.nix). Stands in for a `deploy shell --devshell` (a proposal to nixsci).
-      deployments.${system}.dev =
-        let dependencies = import ./src/backends/mpi/dependencies.nix { inherit pkgs; };
-        in nixsci.lib.mkDeployment pkgs {
-          name = "trame-dev";
-          program = "${pkgs.bashInteractive}/bin/bash";
-          runtime = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt pkgs.gcc pkgs.git pkgs.gnumake pkgs.time pkgs.bashInteractive pkgs.gnugrep pkgs.gnused pkgs.gawk pkgs.findutils pkgs.diffutils ] ++ dependencies.packages;
-          env = dependencies.env;
-        };
+      lab.${system} = {
+        inherit experiments;
+        # The suite's jobs per backend: experiment, kind, machines of a job, and its jobs (sweep x seeds x replicates).
+        suiteMatrix = labSuite.matrix;
+      };
+      # The dev shell of each backend as a nixsci deployment, for `nixsci deploy shell ... dev-<backend> -- CMD` on a
+      # cluster node: tests run there, not on a laptop. Same packages and env as devShells.<backend>.
+      deployments.${system} = lib.mapAttrs' (n: d: lib.nameValuePair "dev-${n}" (nixsci.lib.mkDeployment pkgs {
+        name = "trame-dev-${n}";
+        program = "${pkgs.bashInteractive}/bin/bash";
+        runtime = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt pkgs.gcc pkgs.git pkgs.gnumake pkgs.time pkgs.bashInteractive pkgs.gnugrep pkgs.gnused pkgs.gawk pkgs.findutils pkgs.diffutils ] ++ d.packages;
+        env = d.env;
+      })) descriptors;
       apps.${system} = builtins.mapAttrs (_: e: e.run) experiments // {
         trame = { type = "app"; program = "${trameCli}/bin/trame"; };
+        # Every experiment of the suite, for every backend (lab/suite.nix), one after another.
+        suite = labSuite.app;
       };
       devShells.${system} = {
+        # No backend: the toolchain only. A cargo build names its backend (--no-default-features --features <name>).
         default = pkgs.mkShell { packages = [ pkgs.rustc pkgs.cargo pkgs.clippy pkgs.rustfmt ]; };
-        # GNU time: lab/scale.py measures per-rank CPU with it.
-        mpi = mkBackendShell "mpi" [ pkgs.time ];
         # The pinned nightly, for building crates/driver/ with `cargo` (see crates/driver/README.md). The shell
         # does not depend on the package, so entering it does not build the driver.
         driver = driverPkgs.mkShell {
           packages = [ driverToolchain ];
         };
-      };
+      } // lib.mapAttrs mkBackendShell descriptors;
     };
 }

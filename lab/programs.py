@@ -1,51 +1,42 @@
 """Every program of the table against its .expected output: as check/programs/run.sh checks them.
 
-Parameters: backend (seq or mpi), repeats (default 1), timeout (seconds, default 120), split (hosts per
-machine, default 1), and mpirun.py's bind. Environment (set by flake.nix): BIN (program binaries),
-EXPECTED (<program>.expected files), RANKS_FILE (the table `<program> <ranks>`), and PANICS (optional:
-the directory of <program>.panics files, the programs that must panic, as check/programs/run.sh).
+Parameters: backend (a directory of src/backends/), repeats (default 1), timeout (seconds, default 120), split (hosts
+per machine, default 1) and bind. Environment (set by flake.nix): LAUNCH (the backend's launch), PROGRAMS (the
+program binaries), EXPECTED (<program>.expected files) and PANICS (optional: the directory of <program>.panics files,
+the programs that must panic, as check/programs/run.sh). The programs are the files of PROGRAMS.
+
+Every run goes through the launch (lab/launch.py). A job of H hosts (machines x split) starts the whole program on
+each host, and the launch writes each host's stdout alone. With one host it must equal <name>.expected. With H hosts:
+the hosts' outputs one after the other must equal <name>.h<H>.expected when it exists; a program that has an
+.h<K>.expected for another K only (it is written for K hosts) is not run; any other program's every host must equal
+<name>.expected. A backend that refuses the job (the launch exits 2) records nothing for it.
 
 Dataset `run`, one row per program and repeat. verdict is one of
   ok       exit 0 and stdout equal to the expected text
   diff     exit 0, other stdout
   exit     nonzero exit status (a program with a .panics file: zero status, or no panic line on stderr)
   timeout  the timeout ended it
-On mpi a host is one machine's ranks, or a split of them (TRAME_MPI_NODE_RANKS, src/backends/mpi/hosts.rs), and
-every host runs the whole program with its own leader: a job of H hosts starts H times the program's
-ranks, each line tagged with its rank (--output tag). A host's output is its ranks' lines in rank order, with
-consecutive duplicate lines collapsed (refuse prints once per rank), as check/programs/run.sh. With one host
-it must equal <name>.expected. With H hosts: the hosts' outputs one after the other must equal
-<name>.h<H>.expected when it exists; a program that has an .h<K>.expected for another K only (it is
-written for K hosts) is not run; any other program's every host must equal <name>.expected.
-stdout_sha256 hashes the text compared (host 0's, when each host is compared alone), so it is equal to
-the seq run's for the same program.
+stdout_sha256 hashes the text compared (host 0's, when each host is compared alone), so it is equal between backends
+for the same program. Dataset `launch_config`: what the launch ran under (first run of the job).
 The job exits 0 when every run was recorded, whatever the verdicts: a failed program is a result.
 
-mutants.py imports panic_line, read_expected and judge from here: one rule for both runners.
+mutants.py imports panic_line, read_expected, judge, normalise and expected_for from here: one rule for both runners.
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
-import re
 import sys
 from pathlib import Path
 
+import launch
 from nixsci import lab
 
-import mpirun
-from nixsci.lab import mpi, proc
 
-
-def programs() -> list[tuple[str, int]]:
-    rows = []
-    for line in Path(os.environ["RANKS_FILE"]).read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            name, ranks = line.split()
-            rows.append((name, int(ranks)))
-    return rows
+def programs() -> list[str]:
+    """The programs of this build: the executable files of PROGRAMS, by name."""
+    return sorted(p.name for p in Path(os.environ["PROGRAMS"]).iterdir() if os.access(p, os.X_OK))
 
 
 def panic_line(name: str) -> str | None:
@@ -66,70 +57,25 @@ def read_expected(directory: Path, name: str, panic: str | None) -> str | None:
     return None
 
 
-def normalise(stdout: str, collapse: bool) -> str:
+def normalise(stdout: str) -> str:
     """The text that is compared: trailing newlines dropped, one newline per line."""
     text = stdout.rstrip("\n")
-    lines = text.split("\n") if text else []
-    if collapse:
-        lines = [line for i, line in enumerate(lines) if i == 0 or line != lines[i - 1]]
-    return "".join(line + "\n" for line in lines)
+    return text + "\n" if text else ""
 
 
-def judge(res: proc.Result, got: str, expected: str | None, panic: str | None) -> str:
+def judge(res: launch.Run, got: str, expected: str | None, panic: str | None) -> str:
     """The verdict of one run, as check/programs/run.sh: ok, diff, exit or timeout (the module docstring)."""
     if res.timed_out:
         return "timeout"
     if panic is not None:
         # A program that must panic: non-zero status, and the panic line on stderr. Its stdout is judged
         # only when it has an .expected file.
-        if res.rc == 0 or panic not in [ERR_TAG.sub("", line) for line in res.stderr.split("\n")]:
+        if res.rc == 0 or panic not in res.stderr.split("\n"):
             return "exit"
         return "ok" if expected is None or got == expected else "diff"
     if res.rc != 0:
         return "exit"
     return "ok" if got == expected else "diff"
-
-
-def hosts_of_job(params: dict) -> tuple[int, int]:
-    """(machines, hosts): the job's machines, and the trame hosts on them (split per machine)."""
-    machines = max(1, len(mpirun.hosts()))
-    return machines, machines * int(params.get("split", 1))
-
-
-def command(backend: str, binary: str, ranks: int, params: dict) -> list[str]:
-    """seq: the binary. mpi: every host gets `ranks` ranks, a machine `split` hosts of them."""
-    if backend == "seq":
-        return [binary]
-    split = int(params.get("split", 1))
-    _, hosts = hosts_of_job(params)
-    export = []
-    if split > 1:
-        os.environ["TRAME_MPI_NODE_RANKS"] = str(ranks)
-        export = ["TRAME_MPI_NODE_RANKS"]
-    else:
-        os.environ.pop("TRAME_MPI_NODE_RANKS", None)
-    words = mpi.command(ranks * hosts, per_node=ranks * split, bind=str(params.get("bind", "none")), export=export)
-    return words + ["--output", "tag", binary]
-
-
-ERR_TAG = re.compile(r"^\[\d+,\d+\]<stderr>: ?")  # the same tag on stderr, dropped before the panic line is sought
-RANK_LINE = re.compile(r"^\[\d+,(\d+)\]<stdout>: ?(.*)$")  # mpirun --output tag; 5 writes a space after the colon
-
-
-def host_outputs(stdout: str, ranks: int, hosts: int) -> list[str]:
-    """Each host's stdout: its ranks' lines (mpirun --output tag) in rank order, each rank's in its own
-    order, consecutive duplicates collapsed. Tagged lines reach mpirun from every machine, unlike
-    --output filename, whose files stay on the machine of the rank."""
-    per_rank: dict[int, list[str]] = {}
-    for line in stdout.split("\n"):
-        m = RANK_LINE.match(line)
-        if m:
-            per_rank.setdefault(int(m.group(1)), []).append(m.group(2))
-    texts = []
-    for h in range(hosts):
-        lines = [x for k in range(h * ranks, (h + 1) * ranks) for x in per_rank.get(k, [])]
-        texts.append(normalise("".join(x + "\n" for x in lines), True))
-    return texts
 
 
 def expected_for(directory: Path, name: str, hosts: int, panic: str | None) -> tuple[str, str | None] | None:
@@ -148,20 +94,16 @@ def expected_for(directory: Path, name: str, hosts: int, panic: str | None) -> t
 
 def main() -> None:
     params = lab.params()
-    backend = params.get("backend", "seq")
-    if backend not in ("seq", "mpi"):
-        raise SystemExit(f"backend must be seq or mpi, not {backend!r}")
+    backend = params["backend"]
     repeats = int(params.get("repeats", 1))
     timeout = float(params.get("timeout", 120))
-    bindir = Path(os.environ["BIN"])
     expected_dir = Path(os.environ["EXPECTED"])
+    bindir = Path(os.environ["PROGRAMS"])
     stderr_dir = Path(os.environ["NIX_LAB_DIR"]) / "stderr"
     stderr_dir.mkdir(parents=True, exist_ok=True)
-    hosts = hosts_of_job(params)[1] if backend == "mpi" else 1
-    if backend == "mpi":
-        mpirun.record_config()
+    hosts = launch.hosts_of_job(params)
     verdicts: dict[str, int] = {}
-    for name, ranks in programs():
+    for name in programs():
         panic = panic_line(name)
         how = expected_for(expected_dir, name, hosts, panic)
         if how is None:
@@ -169,20 +111,21 @@ def main() -> None:
             continue
         mode, expected = how
         for repeat in range(1, repeats + 1):
-            res = proc.run(command(backend, str(bindir / name), ranks, params), timeout)
+            argv = [str(bindir / name)]
+            res = launch.run(argv, params, timeout)
+            launch.record_config(res, argv)
+            if res.refused:
+                print(f"skip    {backend} {name}: the backend refuses {hosts} hosts", file=sys.stderr)
+                break
             if res.stderr:
                 (stderr_dir / f"{name}.{repeat}.txt").write_text(res.stderr)
-            if backend == "seq":
-                got = normalise(res.stdout, False)
+            each = [normalise(h) for h in res.hosts]
+            if mode == "all":
+                got = "".join(each)
                 verdict = judge(res, got, expected, panic)
             else:
-                each = host_outputs(res.stdout, ranks, hosts)
-                if mode == "all":
-                    got = "".join(each)
-                    verdict = judge(res, got, expected, panic)
-                else:
-                    got = each[0]
-                    verdict = next((v for v in (judge(res, g, expected, panic) for g in each) if v != "ok"), "ok")
+                got = each[0] if each else ""
+                verdict = next((v for v in (judge(res, g, expected, panic) for g in each or [""]) if v != "ok"), "ok")
             verdicts[verdict] = verdicts.get(verdict, 0) + 1
             lab.record("run", {
                 "program": name,

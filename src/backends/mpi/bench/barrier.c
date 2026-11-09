@@ -1,4 +1,4 @@
-/* Plain-MPI comparator for scale_round (a barrier, not the same work: lab/scale/README.md): W ranks, one warm-up MPI_Barrier, then ROUNDS timed MPI_Barrier
+/* Plain-MPI comparator for bench_round (a barrier, not the same work: lab/bench/README.md): W ranks, one warm-up MPI_Barrier, then ROUNDS timed MPI_Barrier
  * calls per rank. Each rank times its own loop on CLOCK_MONOTONIC; rank 0 gathers the spans and prints one
  * JSON line per rank, in the same shape as the trame program's lines (bench "mpi_barrier").
  * Build: mpicc -O2 -o barrier barrier.c

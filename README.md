@@ -95,8 +95,8 @@ fn main() {
 static ALLOC: trame::Alloc = trame::Alloc::new(std::alloc::System);
 ```
 
-Output, on seq and on MPI (five ranks), and on MPI with `TRAME_MPI_NODE_RANKS` set to 1 and to 2.
-The four outputs are identical:
+The output is the same on every backend, and on one host and split across hosts (`src/backends/README.md`,
+Build and run). The four runs below are identical:
 
 ```
 worker 0 total 9
@@ -112,25 +112,19 @@ The example does not handle a failed run. If a worker panics, the leader's next 
 
 ## Build and run
 
-Seq, the default backend and the reference:
+The default build uses the reference backend:
 
     nix develop
     RUSTFLAGS='--cfg trame_checked' cargo run --example ring
 
-MPI:
-
-    nix develop .#mpi
-    RUSTFLAGS='--cfg trame_checked' CARGO_TARGET_DIR=target/mpi \
-      cargo build --no-default-features --features mpi --example ring
-    mpirun --oversubscribe -n 5 target/mpi/debug/examples/ring
+The other backends, and the commands that run them, are in `src/backends/README.md` (Build and run).
 
 The cfg flag is needed because `#[trame::state]` and `parallel!` are compile errors without it. The driver
 sets it when it checks a build (INTERFACE.md, Section 3). Set by hand, it only lifts the error: it does not
 stop a deliberate unchecked build.
 
-`mpirun` needs W + 1 ranks: one per worker, and the leader on the last rank. With four workers, that
-is five. Any other count is refused on every rank before a worker starts. Open MPI may print
-`osc_ucx_component` errors on stderr on some machines. They come from Open MPI, not from the program.
+A backend that runs workers as processes needs a rank count that matches the topology. The count for each
+backend, and what it does with another one, is in `src/backends/README.md`.
 
 ## The levels
 
@@ -150,13 +144,13 @@ and 5.4).
 
 ## Build and run: `trame`
 
-    nix run .#trame -- build [--mpi] [--check] [cargo args]     # e.g. --example ping_pong
-    nix run .#trame -- run   [--mpi] [-n RANKS] [--node-ranks K] PROGRAM [-- args]
+    nix run .#trame -- build [BACKEND] [--check] [cargo args]     # e.g. --example ping_pong
+    nix run .#trame -- run   [BACKEND] [-n RANKS] [--node-ranks K] PROGRAM [-- args]
 
-The backend is chosen at build time, so `--mpi` goes to both. `--check` builds with the compile-time checker
-(`cargo trame`, on the driver's own pinned rustc). `run --mpi` asks the program how many ranks it needs
-(`TRAME_PROBE=ranks`, which prints `trame-ranks N` and stops) and starts `mpirun` with that many. Inside a nixsci job
-on several hosts the hostfile, the placement and the launch agent come from `nixsci.lab.mpi`. `crates/cli/check.sh` tests it.
+`BACKEND` is the flag of a backend, empty for the reference one; `src/backends/README.md` (Build and run) lists
+the flags. The backend is chosen at build time, so the flag goes to both. `--check` builds with the compile-time
+checker (`cargo trame`, on the driver's own pinned rustc). A backend that places ranks asks the program how many
+it needs, and the details are in `src/backends/README.md` (Build and run and Launch).
 
 ## What is checked, and how
 
@@ -168,12 +162,12 @@ on several hosts the hostfile, the placement and the launch agent come from `nix
 | rejection suite | cases the checks must refuse, and their matched accepted cases | `check/rejections/README.md` |
 | conformance by mutation | every rule has a program that fails on a backend which breaks it | `check/mutants/README.md` |
 | scheduler model | `sched.rs` unit and property tests; trace replay of random workloads | `PROOFS.md` |
-| crate tests | `cargo test` in the seq build | `tests/` |
-| programs | every program in `check/programs/` on seq and MPI, stdout compared with `.expected` | `check/programs/run.sh` |
-| MPI checks | the transport: FIFO, overwrite, fairness, large routes, on one node and split across nodes | `src/backends/mpi/tests/run.sh` |
-| TLA+ models | the MPI backend's wake-up, credit and abort protocols | `check/proofs/README.md` |
-| `nix flake check` | builds the verdicts that must hold: `programs-seq`, `seq-tests`, `rejections`, `mutants-seq` | `lab/validate.nix` |
-| lab experiments | `nix run .#<name>` runs real processes: `programs-mpi`, `transport-mpi`, `mutants-mpi`, `scale-local`, `scale-n1` to `scale-n32`, and the `-cluster` variants | `lab/README.md` |
+| crate tests | `cargo test` in the reference build | `tests/` |
+| programs | every program in `check/programs/` on every backend, stdout compared with `.expected` | `check/programs/run.sh` |
+| backend checks | each backend's own checks, such as the transport of a multi-process backend | `src/backends/README.md`, Checks by backend |
+| TLA+ models | the wake-up, credit and abort protocols of some backends | `check/proofs/README.md` |
+| `nix flake check` | builds the verdicts that must hold | `lab/README.md`, Verdicts |
+| lab experiments | `nix run .#<name>` runs real processes: the experiments of each backend, and the scale runs | `lab/README.md`, `src/backends/README.md` |
 
 `PROOFS.md` says, for each clause of `CONTRACT.md`, which of these checks it and where the check
 stops.
@@ -181,17 +175,17 @@ stops.
 ## Repository map
 
 - `docs/`: the system design, one file per part. `docs/overview.md` is the entry.
-- `src/backends/`: `seq` is the reference, `mpi` runs on MPI ranks, a shared window per host and
-  two-sided routes between hosts, and `local` holds seq's routes.
+- `src/backends/`: one directory per backend. `src/backends/README.md` describes all of them, and it is the only
+  place outside the code that names a backend.
 - `check/mutants/`: mutants of each backend, and the runner that checks the programs kill them.
 - `crates/driver/`: the rustc driver that judges MIR, and `cargo trame`.
 - `lab/`: the lab runners and the claims they test.
 - `crates/macros/`: the proc macros `message`, `state`, `step`, `item` and `parallel`.
 - `src/math/`: `trame::math::f32` and `trame::math::f64`, numeric functions with the same bits on every backend.
 - `check/programs/`: shared programs with their expected output, run by `check/programs/run.sh`.
-- `check/proofs/`: the TLA+ models of the MPI backend.
+- `check/proofs/`: the TLA+ models of some backends' protocols.
 - `check/rejections/`: cases the compile-time checks must refuse or accept.
-- `lab/scale/`: scaling benchmarks and their plain-MPI baselines.
+- `lab/bench/`: scaling benchmarks and their baselines (`src/backends/README.md`, Benchmarks).
 - `tests/`: crate tests for allocation, `parallel!`, conformance, and this README's example.
 - `examples/`: the example in this README.
 - Top level: `INTERFACE.md` (the behaviour), `CONTRACT.md` (what a backend keeps), `PROOFS.md` (how that is
@@ -200,16 +194,15 @@ stops.
 
 ## Limits
 
-- Backends: seq and mpi, one per build. On mpi a host is one shared-memory node; several hosts on one
-  machine come from `TRAME_MPI_NODE_RANKS` (`src/backends/mpi/HOSTS.md`).
+- Backends: one per build (`src/backends/README.md`).
 - The driver fuzzer is not a verdict: run it as `crates/driver/fuzz/README.md` says.
-- The MPI backend never reports `Deadlock` and does not detect a leader whose `wait` can never
-  return. Seq does both (`src/backends/seq/stuck.rs`). Spec.md, Definition (Deadlock), allows a backend
-  not to.
+- Every backend in the tree reports `Deadlock` for a worker it shows stuck, and panics a leader whose
+  `wait` can never return. A backend may hold the detection back, and `src/backends/README.md` (Limits) says
+  when. A backend that shows less is allowed (`CONTRACT.md`, E2).
 - The crate does not check the byte order of the target. Only the latency test does.
 - A state has at most 63 fields, and a worker at most 64 steps, the stop step included. A step
   receives at most 16 message types, and a `.room` wait names one of a worker's first 64 routes.
   Exceeding one is refused or aborts with a message naming it. These are implementation limits, not
   part of the contract.
-- No latency claim is checked: the MPI backend records round trips, and no nixsci experiment locks
+- No latency claim is checked: a backend may record round trips, and no nixsci experiment locks
   them (INTERFACE.md, Section 6).

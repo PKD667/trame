@@ -97,5 +97,5 @@ pub fn finalize() {
 
 /// Map a transport refusal to the surface's, with its message whole (refusal.rs).
 pub(super) fn refused(r: Refusal) -> Refused {
-    Refused::Backend { reason: alloc::format!("MPI: {r}") }
+    Refused::Backend { reason: alloc::format!("{r}") }
 }
