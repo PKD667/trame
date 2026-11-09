@@ -43,8 +43,8 @@ and writes `$out/outcome.json`. A verdict is a derivation. The flake exposes the
 `<b>` stands for a backend's name. The names for each backend are in
 `src/backends/README.md` (Lab experiments by backend).
 
-The reference backend's step limit (`src/backends/README.md`, Limits) bounds its scheduler's steps, and a run
-over the limit exits 3. It counts steps, not seconds, so a looping mutant is a count and not a timing.
+A deterministic backend (`deterministic = true` in its `backend.nix`) may bound its scheduler's steps
+(`src/backends/README.md`, Limits); a run over the limit exits 3. It counts steps, not seconds, so a looping mutant is a count and not a timing.
 
 Lab experiments remain for what needs concurrency, a network or hardware: the experiments of the multi-process
 backends, the latency experiment and the scale experiments.
@@ -59,8 +59,8 @@ of `check/programs/` against its `.expected` output. Parameters: `backend`, `spl
 On H hosts each host runs the whole program and is judged alone, except a program with `<name>.h<H>.expected`,
 judged on the hosts' outputs in order (programs.py). Dataset `run`: `program` str, `repeat` int, `ran` bool,
 `ok` bool, `verdict` str (`ok`, `diff`, `exit`, `timeout`), `seconds` float, `stdout_sha256` str. Key:
-`program`, `repeat`. Equal `stdout_sha256` per program between a multi-process experiment and the reference
-experiment on the same machine is the equivalence of the two backends on that machine.
+`program`, `repeat`. Equal `stdout_sha256` per program between two backends' experiments on the same machine
+is the equivalence of the two backends on that machine.
 
 **transport** (`transport-<b>`, for a backend with its own transport checks): the checks of that backend's
 `tests/run.sh` on one host (`transport.py`). Dataset `check`: `check` str, `workers` int, `case_seed` int,
@@ -98,7 +98,7 @@ Timing columns are `noisy`, with `replicates = 3`.
 
 **mutants** (`mutants-<b>` for each multi-process backend, built by `checks.nix`, runner `mutants.py`): conformance
 by mutation (`check/mutants/`). Nix builds one build per mutant, its patch applied, and one closure holds them
-all with the runner. The reference backend's record is the validate verdict `mutants-<reference>`, not an
+all with the runner. A deterministic backend's record is the validate verdict `mutants-<b>`, not an
 experiment. Parameters: `backend`, `mutant` (a patch id, `none` for the unpatched control), `timeout` (120).
 The sweep is every id with a `.patch` or a `.skip` file of `check/mutants/<backend>`, so a mutant that cannot
 apply (`m23`, and `m17` on a multi-process backend) is one job that records `how` `skipped`.

@@ -717,7 +717,7 @@ as its `#[global_allocator]`; `launch` refuses one that does not.
 ## 8. Backends and limits
 
 A build selects one backend by a cargo feature. The features are exclusive, and a build with none of them
-refuses every launch. `src/backends/README.md` lists the backends and what each one does with the clauses.
+does not compile. `src/backends/README.md` lists the backends and what each one does with the clauses.
 Your source is the same for every backend.
 
 Limits, which are implementation limits, not part of $T$:

@@ -9,7 +9,7 @@ different call.
 
 Trame writes the graph down. A program names its workers, its messages and the capacity of each
 route, and it cannot send outside them. The compiler checks the code, the launch fixes the graph, and
-the backend must not produce a behaviour the spec forbids (INTERFACE.md, Section 6).
+the backend must not produce a behaviour the spec forbids (CONTRACT.md).
 
 ## Example
 
@@ -204,5 +204,5 @@ stops.
   receives at most 16 message types, and a `.room` wait names one of a worker's first 64 routes.
   Exceeding one is refused or aborts with a message naming it. These are implementation limits, not
   part of the contract.
-- No latency claim is checked: a backend may record round trips, and no nixsci experiment locks
-  them (INTERFACE.md, Section 6).
+- No latency bound is set yet. The latency experiment measures every backend, and `lab/q.nix` holds
+  the bounds it will be judged against (CONTRACT.md, Q); they stay empty until measured.
