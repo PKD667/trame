@@ -1,4 +1,4 @@
-//! Launch checks (spec.md 4): a topology that breaks one is refused, and nothing runs.
+//! Launch checks (INTERFACE.md 4): a topology that breaks one is refused, and nothing runs.
 
 extern crate std;
 
@@ -8,7 +8,7 @@ use crate::launch::Refused;
 use crate::status::Status;
 use crate::topology::{Leader, Topology, WorkerId};
 
-/// A message of 256 KiB: no size limit applies, so it is one frame and launches (spec.md 4).
+/// A message of 256 KiB: no size limit applies, so it is one frame and launches (INTERFACE.md 4).
 #[crate::message]
 #[derive(Debug, PartialEq, Eq)]
 struct Large([u8; 256 * 1024]);

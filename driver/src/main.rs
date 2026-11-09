@@ -1,4 +1,4 @@
-//! `trame-driver`: rustc with trame's compile-time checks (spec.md, Compile time).
+//! `trame-driver`: rustc with trame's compile-time checks (INTERFACE.md, Compile time).
 //!
 //! Cargo runs it in place of rustc through `RUSTC_WORKSPACE_WRAPPER` (see `cargo-trame`):
 //! `trame-driver <rustc> <args...>`. A crate that depends on trame is compiled with

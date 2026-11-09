@@ -2,12 +2,12 @@
 
 Each case is a small program checked against the real `trame` crate (the repository root, by path, `seq`
 feature). The checks are the driver (`driver/`, a rustc driver that judges MIR) and the macros (`macros/`).
-The rules are in `spec.md`, Section 3 (Compile time), Sections 5.3-5.4, and Section 7. The cases are listed
+The rules are in `INTERFACE.md`, Section 3 (Compile time), Sections 5.3-5.4, and Section 7. The cases are listed
 in `CATALOGUE.md`.
 
 ## Theory
 
-1. **Every refusal has a case.** Each refusal that `spec.md` promises has a case that must be refused, with its rule named.
+1. **Every refusal has a case.** Each refusal that `INTERFACE.md` promises has a case that must be refused, with its rule named.
 2. **Every boundary has a matched pair.** A construct legal in one place and refused in another has an accepted case
    (`*_ok.rs`) and the smallest change that refuses it.
 3. **Over-refusal is a bug.** A construct the spec admits, which the checks refuse, is a finding. It is not a safe default.

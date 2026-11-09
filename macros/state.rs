@@ -1,5 +1,5 @@
 //! `#[trame::state(steps(a, b), stop = f, pool = P, error = E)]` on a struct, and
-//! `#[trame::step(S, receives = A, B, weight = 0.5)]` on a function (spec.md 5.3).
+//! `#[trame::step(S, receives = A, B, weight = 0.5)]` on a function (INTERFACE.md 5.3).
 //!
 //! `step` keeps the function and adds a braced struct of the same name (a braced struct lives only in
 //! the type namespace, so it does not clash with the function). The struct carries the step's

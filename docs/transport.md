@@ -1,7 +1,7 @@
 # Transport
 
 Workers and the leader exchange messages over routes. A route is declared in the topology and fixed
-at launch. This file describes routes and frames; `spec.md`, Section 5.2 defines their rules.
+at launch. This file describes routes and frames; `INTERFACE.md`, Section 5.2 defines their rules.
 
 ## Message
 
@@ -63,7 +63,7 @@ In the picture, `intake` owns `Job` on worker `b`, so it receives from two route
 
 A lossless route holds at most `cap` frames. A slot that a receiver has taken stays in use until the
 sender gets it back, so across a network a sender may be answered `Full` after the receiver took a
-frame (`spec.md`, Release). A program learns that a route has room only from `room` or from an `Ok`
+frame (`INTERFACE.md`, Release). A program learns that a route has room only from `room` or from an `Ok`
 answer (`CONTRACT.md`, T2).
 
 A lossy route may lose any frame except the newest. A receiver that keeps receiving ends up with the

@@ -1,4 +1,4 @@
-//! The f32 numeric functions of `trame::math` (spec.md 7).
+//! The f32 numeric functions of `trame::math` (INTERFACE.md 7).
 
 /// `e^x`, defined by this code on every backend: there is no backend-specific version, so every
 /// backend returns the same bits. Inputs in `[-30, 0]`, relative error below 2e-6 against `f64::exp`.

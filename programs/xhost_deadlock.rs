@@ -1,4 +1,4 @@
-//! xhost_deadlock: a cycle of full routes between two hosts (spec.md 5, Deadlock; CONTRACT.md F5).
+//! xhost_deadlock: a cycle of full routes between two hosts (INTERFACE.md 5, Deadlock; CONTRACT.md F5).
 //! Each of two workers sends ten items to the other over a lossless route of capacity 4 before it
 //! receives any. Both fill their route and wait for room, which only the other could make: neither
 //! step can run again. Each host has two workers. On two hosts the cycle joins worker 0 of host 0 and

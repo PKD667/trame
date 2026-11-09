@@ -1,8 +1,8 @@
 # Scheduling
 
 Scheduling decides which step of a worker starts next. `sched.rs` is the model: plain data and pure
-functions, with no clock, thread or I/O. A backend may schedule by itself, but every start it makes
-must be one the model allows (`CONTRACT.md`, S2).
+functions, with no clock, thread or I/O. The reference agent in `worker.rs` calls it under a lock. A
+backend may schedule by itself, but every start it makes must be one the model allows (S2).
 
 ## Agents
 
@@ -26,21 +26,28 @@ flowchart TD
   I --> A
 ```
 
-## Rank
+## Data
 
-Each step has a *rank*: positive weights before weight 0; among positive weights the lowest pass;
-among weight 0 the earliest last start; then the lowest index. A lower rank value is a better rank.
-The rank decides who gets a contended field first and who starts first.
+`Sched` is one worker's scheduler state, a `Copy` value of fixed size. `ps` holds one `Proc` per
+step: its read and write masks, its last status `St`, the wake flag `d`, `running`, its `weight`, its
+`pass` and `last`, the start count at its last start. `locks` counts the fields held by running steps,
+a written mask and a reader count per field. `editing` is the mask the leader holds for an edit,
+`stopping` is set by a stop, and `starts` counts starts. The backend passes the conditions that hold
+now as `Now`, three masks of one bit per step: `frame`, `room` and `until`.
 
-## Start
+## Functions
 
-`Sched::may_start` holds for step i when four things hold: i is enabled, i is not running, its
-fields are free, and no better-ranked step that wants to start conflicts with it. A step *wants* to
-start when it is enabled and the stop and failure rules allow it. `Sched::choose` answers the best
-ranked step that may start.
+`enabled(i, now)` is true for a `Fresh` or `Progress` step, and for a waiting step whose `d` is set
+or one of whose named conditions has its bit in `now`. `wants(i, now)` adds the stop rule and the
+failure rule. `rank(i)` is the triple `(weight == 0, pass or last, i)`, compared lexicographically,
+smaller first.
+
+`may_start(i, now)` holds when i wants to start, `locks.free` admits its masks, none of its fields is
+in `editing`, and no conflicting step of better rank wants to start. `choose(now)` walks the wanting
+steps in rank order and answers the first whose fields are free and that conflicts with no step
+passed over on the way.
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000','edgeLabelBackground':'#ffffff','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','actorLineColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','fontFamily':'monospace'},'themeCSS':'rect.actor,rect.note,.note rect,.statediagram-note rect{fill:#fff!important;stroke:#000!important} line,.actor-line{stroke:#000!important} .arrowheadPath,marker path{fill:#000!important;stroke:#000!important} circle.state-end{stroke:#000!important} text,.noteText,.state-note text{fill:#000!important}'}}%%
 flowchart TD
   A["steps that want to start<br/>enabled, not running, stop and failure rules"] --> O["order by rank"]
   O --> F{"walk in rank order:<br/>fields free of running steps and edits,<br/>no conflict with a step passed over?"}
@@ -49,31 +56,16 @@ flowchart TD
   P --> F
 ```
 
-A step passed over still holds its place: a lower-ranked step that conflicts with it does not start
-first. A writer of weight 1 therefore starts against two overlapping readers of weight 0.1
-(`CONTRACT.md`, S6).
+A step passed over keeps its place, so a writer of weight 1 starts against two overlapping readers
+of weight 0.1 (S6). `start(i)` takes the locks, sets `last`, and raises the pass of each waiting step
+to at least i's, so a waiting step banks no credit. `end(i, e)` frees the locks, stores the status,
+adds `service × 2^24 / weight` to the pass of a positive-weight step, sets the new weight if the
+status carries one, and sets `d` on every step that touches a field i writes. `answer()` derives the
+result once nothing runs.
 
-## Enabled
-
-Step i is enabled when it is `Fresh` or `Progress`, or when it waits and either a step that writes
-one of its fields has ended since it last ended, or a condition it named holds. The backend reports
-which conditions hold at each start, one bit per step: a frame for the worker, room on a route, a
-deadline reached.
-
-## Weights
-
-Each step has a weight in [0, 1], 0 by default. A static weight is set in the attribute
-(`weight = 0.5`); a status may replace it (`Status::Progress.weight(0.2)`), for instance from how
-full a queue is. Weights are 16-bit fixed point, so seq is deterministic.
-
-Each step also has a *pass*, a counter. When step i ends, its pass grows by the service it used
-times 2^24 divided by its weight. The best-ranked step is the one with the least pass, so a step of
-weight w receives service in proportion to w (stride scheduling, Waldspurger and Weihl, 1995;
-`CONTRACT.md`, S7). A step of weight 0 starts only when no step of positive weight can, and may
-wait behind them for ever.
-
-A step that waits does not bank its absence. When a step starts, the pass of every waiting step is
-raised to at least the started step's pass.
+Weights are `Weight(u16)`, fixed point over [0, 1], so the arithmetic on seq is exact and the
+schedule deterministic. Passes grow by stride scheduling (Waldspurger and Weihl, 1995): a step of
+weight w receives service in proportion to w (S7).
 
 ## Service
 

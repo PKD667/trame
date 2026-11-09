@@ -1,4 +1,4 @@
-//! Trame: one meaning for a program on every machine it runs on. `spec.md` is the contract for
+//! Trame: one meaning for a program on every machine it runs on. `INTERFACE.md` is the contract for
 //! humans; this crate is the same contract in Rust. A change to one is a change to the other.
 #![no_std]
 
@@ -27,16 +27,16 @@ pub use bytemuck as __bytemuck;
 pub use trame_macros::message;
 
 /// Marks `fn f(x: &I, slot: &mut S, cx: &C)` as a `parallel!` item, with its key:
-/// `#[trame::item(key = x.index as usize)]` (spec.md 5.4).
+/// `#[trame::item(key = x.index as usize)]` (INTERFACE.md 5.4).
 pub use trame_macros::item;
 
-/// `parallel!(f, &cx, &items, &mut slots)`: apply item `f` to `items` (spec.md 5.4). Without
+/// `parallel!(f, &cx, &items, &mut slots)`: apply item `f` to `items` (INTERFACE.md 5.4). Without
 /// `--cfg trame_checked` it is a compile error; rejections/ tests that. It has no doc test here,
 /// because doc tests are built without the flag.
 pub use trame_macros::parallel;
 
 /// `#[trame::state(steps(a, b), stop = f, pool = P, error = E)]` on a struct: the struct is a
-/// worker's state, and the listed functions are its steps (spec.md 5.3). `stop`, `pool` and `error`
+/// worker's state, and the listed functions are its steps (INTERFACE.md 5.3). `stop`, `pool` and `error`
 /// are optional. The leader builds the state and declares the worker with `Topology::worker`.
 pub use trame_macros::state;
 
@@ -46,7 +46,7 @@ pub use trame_macros::state;
 /// `Result<Status, E>`.
 pub use trame_macros::step;
 
-/// The runtime the macros call (spec.md 5.3, 5.4). Not for direct use.
+/// The runtime the macros call (INTERFACE.md 5.3, 5.4). Not for direct use.
 #[doc(hidden)]
 #[path = "parallel.rs"]
 pub mod __rt;
@@ -56,10 +56,10 @@ pub mod __rt;
 #[path = "check.rs"]
 pub mod __check;
 
-/// Numeric functions, grouped apart from the effects (spec.md 7).
+/// Numeric functions, grouped apart from the effects (INTERFACE.md 7).
 pub mod math;
 
-// The modules are private: the surface is the root re-exports below (spec.md 7). Their definition
+// The modules are private: the surface is the root re-exports below (INTERFACE.md 7). Their definition
 // paths (`trame::io::send`, `trame::time::now`, ...) are what the driver's effects.txt names.
 mod io;
 mod domain;
@@ -69,7 +69,7 @@ mod run;
 mod time;
 mod topology;
 
-/// The surface of spec.md 7: every public name of the crate, at the root and nowhere else.
+/// The surface of INTERFACE.md 7: every public name of the crate, at the root and nowhere else.
 pub use io::{Full, Message, host, hosts, me, recv, send};
 pub use domain::Alloc;
 pub use plain::Plain;
@@ -108,16 +108,16 @@ pub mod __mpi {
 /// Internal: the seam between the surface and the selected backend (see backend.rs).
 mod backend;
 
-/// The scheduling model every backend keeps: spec.md 5.3 (sched.rs).
+/// The scheduling model every backend keeps: INTERFACE.md 5.3 (sched.rs).
 mod sched;
 
-/// The message types a step receives (spec.md 5.2). Re-exported by __rt.
+/// The message types a step receives (INTERFACE.md 5.2). Re-exported by __rt.
 mod cells;
 
-/// A worker: its state, its steps, and the reference scheduler (spec.md 5.3). Re-exported by __rt.
+/// A worker: its state, its steps, and the reference scheduler (INTERFACE.md 5.3). Re-exported by __rt.
 mod worker;
 
-/// What a step returns, and the condition it waits for (spec.md 5.3).
+/// What a step returns, and the condition it waits for (INTERFACE.md 5.3).
 mod status;
 
 #[cfg(all(feature = "seq", not(feature = "mpi")))]

@@ -1,5 +1,5 @@
 // Round trips A -> B -> A between two ranks, recorded for nixsci. No verdict is computed here: the
-// importer states its claim over the records (spec.md, Latency).
+// importer states its claim over the records (PROOFS.md, Latency).
 //
 //   mpirun -n 3 latency [--samples N] [--max-gap-ns G] [--seed S] [--dir D]
 //

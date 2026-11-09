@@ -15,7 +15,7 @@ const A_I: &str = include_str!("../../lists/A_I.txt");
 const A_C: &str = include_str!("../../lists/A_C.txt");
 const A_W: &str = include_str!("../../lists/A_W.txt");
 
-/// One effect of spec.md's Sigma sets.
+/// One effect of INTERFACE.md's Sigma sets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Effect {
     Send,

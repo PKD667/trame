@@ -1,5 +1,5 @@
 // Why the MPI transport refuses a launch. Every refusal happens on every rank, before any worker
-// starts (spec.md 4, Acceptance): a refusal that only some ranks saw would leave the others waiting.
+// starts (INTERFACE.md 4, Acceptance): a refusal that only some ranks saw would leave the others waiting.
 
 extern crate std;
 

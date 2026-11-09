@@ -11,7 +11,7 @@ let
 in
 v.check {
   name = "mutants-seq";
-  property = "every mutant of the seq backend that the catalogue expects killed fails some program, and every one expected equivalent passes all (conformance/README.md; spec.md section 5 rules named in each patch header)";
+  property = "every mutant of the seq backend that the catalogue expects killed fails some program, and every one expected equivalent passes all (conformance/README.md; INTERFACE.md section 5 rules named in each patch header)";
   model = "one patch at a time, applied to the seq backend of the checked build (--cfg trame_checked). A kill is a program's stdout differing, exit non-zero, or a step limit of ${limit} steps. It shows the catalogue detects these violations in these programs, not that the programs cover every rule";
   subject = trameSrc;
   checker = pkgs.cargo;

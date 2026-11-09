@@ -1,7 +1,7 @@
-//! The MPI backend of trame, on one node (spec.md 6). `Selected` (imp.rs) is the backend the surface
+//! The MPI backend of trame, on one node (CONTRACT.md). `Selected` (imp.rs) is the backend the surface
 //! calls; the transport below it is what the test binaries use.
 //!
-//! `open` (open.rs) gives this rank a `Role` (spec.md 4): ranks `0..workers` get a worker endpoint,
+//! `open` (open.rs) gives this rank a `Role` (INTERFACE.md 4): ranks `0..workers` get a worker endpoint,
 //! and the last rank, `workers`, gets the leader endpoint. Both are `Transport`s: the leader is an
 //! endpoint like any other, with its own routes. `agree` checks that every rank built the same
 //! topology, and it runs before `open`, so a refusal is decided on every rank together.

@@ -2,7 +2,7 @@
 name = "trame"
 version = "0.1.0"
 edition = "2024"
-description = "One meaning for a program on every machine it runs on; spec.md is the contract."
+description = "One meaning for a program on every machine it runs on; INTERFACE.md is the contract."
 
 [lib]
 path = "lib.rs"
@@ -68,7 +68,7 @@ path = "programs/pool_edit.rs"
 name = "cells"
 path = "programs/cells.rs"
 
-# `trame_checked` is set by the driver (spec.md, Checked builds); it is not a feature.
+# `trame_checked` is set by the driver (INTERFACE.md, Checked builds); it is not a feature.
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trame_checked)'] }
 

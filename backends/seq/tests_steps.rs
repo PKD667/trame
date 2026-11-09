@@ -33,7 +33,7 @@ pub(super) fn report(v: u32) {
     assert!(io::send(Leader, Ev { v }).is_ok(), "a report did not fit");
 }
 
-/// Take a step's hold on the gate: no other step may hold it now (spec.md 5.3, Start).
+/// Take a step's hold on the gate: no other step may hold it now (INTERFACE.md 5.3, Start).
 pub(super) fn enter(g: &mut Gate) {
     g.inside += 1;
     assert_eq!(g.inside, 1, "two steps hold one field at once");

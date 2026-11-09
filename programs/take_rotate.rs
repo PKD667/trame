@@ -86,7 +86,7 @@ fn tx(to: &WorkerId) -> Status {
 }
 
 /// Send `m` to `to`, waiting while the route is full. Across nodes a credit can arrive after the `Took`
-/// that freed it (spec.md 5.2, Full); the leader's wait returns when it does.
+/// that freed it (INTERFACE.md 5.2, Full); the leader's wait returns when it does.
 fn send_when_room<M: trame::Message>(run: &trame::Run, to: trame::WorkerId, m: M) {
     while run.send(to, m).is_err() {
         run.wait();

@@ -1,6 +1,6 @@
 # trame MPI transport
 
-The MPI backend runs a launched topology on one shared-memory node per host (spec.md, Sections 4
+The MPI backend runs a launched topology on one shared-memory node per host (INTERFACE.md, Sections 4
 and 5); several nodes are several hosts (`HOSTS.md`). Wired into `programs/run.sh`, which runs each
 program on one host and on two. Results: `RESULT.md`.
 
@@ -24,7 +24,7 @@ the leader runs no worker code.
   slot change under its copy skips the frame (a Drop).
 - Receive: the head of the first owned route, in rotating order, that has a frame. The scan starts
   past the route the last receive took, so a route with frames is taken within n receives (n = owned
-  routes). Frames are ordered within a route only, as spec.md's Offers definition says.
+  routes). Frames are ordered within a route only, as INTERFACE.md's Offers definition says.
 - Wake-up. Each worker has an epoch word (`epoch.rs`). Every act that can change what one of its agents
   waits for bumps it, and an agent that must wait sleeps on it. A worker's result is its exit.
 - States, the pool, edits and `take` live in the node's segment (`segment.rs`).

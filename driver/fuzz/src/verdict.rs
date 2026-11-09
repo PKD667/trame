@@ -274,12 +274,12 @@ mod tests {
 
     const SAMPLE: &str = "\
 warning: unused variable
-error: [std] item calls std::io::stdio::_print: no std (spec.md, Requirement (All levels))
+error: [std] item calls std::io::stdio::_print: no std (INTERFACE.md, Requirement (All levels))
  --> examples/e0001.rs:1:16
   |
   = note: reached from root r0: r0
 
-error: [recursion] item recurses: f0 -> f0 (spec.md, Requirement (Item))
+error: [recursion] item recurses: f0 -> f0 (INTERFACE.md, Requirement (Item))
  --> examples/e0002.rs:1:32
 
 error: could not compile `pkg` (example \"e0001\") due to 1 previous error
@@ -311,7 +311,7 @@ error: could not compile `pkg` (example \"e0002\") due to 1 previous error
     #[test]
     fn internal_span_is_internal() {
         let p = parse(
-            "error: [unsafe] item contains dereference of a raw pointer: no unsafe code (spec.md, x)\n   --> /nix/store/x/core/ptr/mod.rs:809:1\n    = note: reached from root f: f -> core::ptr::drop_in_place\n\nerror: could not compile `pkg` (example \"e0009\") due to 1 previous error\n",
+            "error: [unsafe] item contains dereference of a raw pointer: no unsafe code (INTERFACE.md, x)\n   --> /nix/store/x/core/ptr/mod.rs:809:1\n    = note: reached from root f: f -> core::ptr::drop_in_place\n\nerror: could not compile `pkg` (example \"e0009\") due to 1 previous error\n",
         );
         assert!(p.harness.is_empty(), "{:?}", p.harness);
         assert!(p.units["e0009"].recs[0].internal);

@@ -22,7 +22,7 @@ use super::types::{Answer, Received};
 use super::{RouteId, Transport};
 
 impl Transport {
-    /// The leader's endpoint is dropped by a panic before `join`. A panic ends the run (spec.md 5, Abort): the
+    /// The leader's endpoint is dropped by a panic before `join`. A panic ends the run (INTERFACE.md 5, Abort): the
     /// workers unwind, and END stops the relays, without which the process hangs at exit. The panic hook has
     /// printed the message. END is set even when an abort is already recorded: one may have arrived from a
     /// worker before the leader's panic, and then nothing else ends the run (proofs/mpi, `MCAbortEarly`).
@@ -153,7 +153,7 @@ pub(super) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
 }
 
 /// Block until the leader's epoch differs from `seen`, and answer the new value (epoch.rs). Panics
-/// when the detector shows that nothing can arrive (detect.rs), as seq does (spec.md 5, Deadlock).
+/// when the detector shows that nothing can arrive (detect.rs), as seq does (INTERFACE.md 5, Deadlock).
 pub(super) fn wait(run: &Leader, seen: u64) -> u64 {
     run.get().fail_if_aborted();
     let stuck = || {

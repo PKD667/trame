@@ -23,7 +23,7 @@ in
   # (a) every program, on seq, against its .expected output.
   programs-seq = v.check {
     name = "programs-seq";
-    property = "every program of programs/*.rs, run on the seq backend, prints its .expected stdout and exits 0 (spec.md section 6)";
+    property = "every program of programs/*.rs, run on the seq backend, prints its .expected stdout and exits 0 (CONTRACT.md, R1)";
     model = "the seq backend's scheduler and launch, one process per program, the checked build (--cfg trame_checked). Not the mpi backend (lab: programs-mpi), not a node split, not timing";
     subject = trameSeqBins;
     checker = pkgs.diffutils;
@@ -56,7 +56,7 @@ in
   # (b) the root crate's tests on seq, checked build, offline. The exhaustive scheduler test is (c).
   seq-tests = v.check {
     name = "seq-tests";
-    property = "every test of the root crate's seq backend passes in the checked build (spec.md sections 4-6, as the tests state them)";
+    property = "every test of the root crate's seq backend passes in the checked build (INTERFACE.md sections 4-5 and CONTRACT.md, as the tests state them)";
     model = "cargo test of the root crate, seq feature, --cfg trame_checked, the exhaustive scheduler test excluded. The tests check the seq backend and its launch and scheduler with fixed programs and sampled states, not all executions";
     subject = trameSrc;
     checker = pkgs.cargo;
@@ -79,7 +79,7 @@ in
   # state up to 2 processes and 3 cells, in release. The test is in sched.rs (shared by the backends).
   scheduler-exhaustive = v.check {
     name = "scheduler-exhaustive";
-    property = "the scheduler's start and end (spec.md section 5.3 and 6) agree with the spec rule on every consistent state of up to 2 processes over 3 cells";
+    property = "the scheduler's start and end (INTERFACE.md section 5.3; CONTRACT.md S2) agree with the spec rule on every consistent state of up to 2 processes over 3 cells";
     model = "sched.rs start and end, on every state of the scheduler's inputs (process phase, cells, flags, running set) within the bounds. Not the backends' timing, not more processes or cells";
     subject = trameSrc;
     checker = pkgs.cargo;
@@ -110,7 +110,7 @@ in
   # real crate. Each case's diagnostics must be exactly its annotations (a file name cannot match one).
   rejections = v.check {
     name = "rejections";
-    property = "every rejection case is judged as its annotations say: accepted with no diagnostic, or refused with exactly the diagnostics it annotates (rule, level, message); spec.md sections 3, 5.3-5.4, 7";
+    property = "every rejection case is judged as its annotations say: accepted with no diagnostic, or refused with exactly the diagnostics it annotates (rule, level, message); INTERFACE.md sections 3, 5.3-5.4, 7";
     model = "the driver (driver/, pinned nightly) judging the cases of rejections/cases against the root crate's seq feature, with the lists of driver/lists. It samples the checker on chosen programs; it does not show the rules sound, nor the driver correct";
     subject = rejectionsSrc;
     checker = driverToolchain;

@@ -1,4 +1,4 @@
-// The Backend trait on the MPI transport (spec.md 6). Rank i < W is worker i; rank W is the leader.
+// The Backend trait on the MPI transport (CONTRACT.md). Rank i < W is worker i; rank W is the leader.
 // Every rank runs the host's code up to `launch`. Each node has a segment (segment.rs), its workers'
 // domain: the leader builds the states of the workers on its node, and the pool, in its node's
 // segment; the host rank of another node builds that node's. Every other rank adopts the addresses

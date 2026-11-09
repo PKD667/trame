@@ -1,14 +1,14 @@
 # A_W: what a worker (leader code, a builder or an edit) may call. Every line of A_C.txt is repeated here
-# (checked at start-up). A worker may loop without bound (spec.md, Requirement (Worker)), so the infinite
+# (checked at start-up). A worker may loop without bound (host code is not a level of INTERFACE.md, Section 1), so the infinite
 # constructors are not denied here, and it may allocate: only a builder or an edit does (backend.rs M4).
 
 core::option::*            # Option combinators: data only; closures they take are walked and checked here
 core::result::*            # Result combinators: data only, as Option
 core::cmp::*               # comparisons, min, max: data only; user impls are walked
-core::ops::*               # operators and indexing; overflow and bounds failures abort (spec.md, Run-time aborts)
+core::ops::*               # operators and indexing; overflow and bounds failures abort (INTERFACE.md, Run-time aborts)
 core::num::*               # integer methods (checked_*, wrapping_*, pow); the float functions are not listed (libm is not portable)
 core::bool::*              # bool::then and then_some: pure; the closure they take is walked and checked here
-# Floating point (spec.md, Requirement (Floating point)): the operations whose result Rust specifies bit for
+# Floating point (INTERFACE.md, Requirement (Floating point)): the operations whose result Rust specifies bit for
 # bit, at f32 and f64. The arithmetic operators, negation and comparisons are reached through core::ops and
 # core::cmp; these are the inherent methods. max and min are not listed: the sign of a zero result is
 # unspecified. round and the other std functions are std; the numeric functions come from trame::math.
@@ -45,14 +45,14 @@ core::array::*             # array methods and IntoIter: counted loops over arra
 core::iter::*              # iterator adapters and consumers; a worker may loop without bound
 core::str::*               # string slices: pure, bounded by their length
 core::char::*              # chars: pure
-core::time::*              # Duration: pure data; spans and timeouts are Durations (spec.md 5.1, Time)
+core::time::*              # Duration: pure data; spans and timeouts are Durations (INTERFACE.md 5.1, Time)
 core::mem::swap            # moves two places: no allocation
 core::mem::replace         # moves a value in and out: no allocation
 core::mem::take            # moves a default in: no allocation
-core::ptr::drop_in_place   # drop glue entry point (spec.md: drop glue counts as a call; glue is read)
+core::ptr::drop_in_place   # drop glue entry point (INTERFACE.md: drop glue counts as a call; glue is read)
 core::any::TypeId::*       # type ids, compared within one binary only
 core::fmt::*               # formatting machinery; a user Display or Debug impl reached through it is walked
-core::panicking::*         # panics abort the launch (spec.md, Definition (Abort)); they are not effects
+core::panicking::*         # panics abort the launch (INTERFACE.md, Definition (Abort)); they are not effects
 core::clone::*             # Clone: user impls are walked
 core::default::*           # Default: user impls are walked
 core::convert::*           # From, Into, AsRef: user impls are walked

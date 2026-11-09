@@ -82,7 +82,7 @@ Accepted: `array_receives_ok`.
 
 ## plain (24)
 
-What a state and its pool hold is the type `trame::Plain` (CONTRACT.md, M2, M3): rustc refuses, with E0277 "cannot be held by a trame state or pool", at the field.
+What a state and its pool hold is the type `trame::Plain` (CONTRACT.md, M2, M3): rustc refuses, with E0277 "cannot be held by a trame state, pool or error", at the field.
 
 Refused: `arc`, `atomic`, `cell_in_pool`, `dyn_box`, `enum_variant`, `file`, `fn_pointer`, `instant`, `mutex`, `nested_cell`, `no_derive`, `oncelock`, `pool_not_a_struct`, `raw_pointer_wrapper`, `rc_wrapper`, `reference_in_vec`, `reference_static`, `rwlock`, `vec_of_nested`, `weak`.
 

@@ -1,4 +1,4 @@
-// spec: Requirement (All levels): no std. Drop glue counts as a call (spec.md, Requirement (All levels)): the value
+// spec: Requirement (All levels): no std. Drop glue counts as a call (INTERFACE.md, Requirement (All levels)): the value
 // is dropped at the end of the item, and its Drop impl, which calls std, is reached and refused.
 struct Loud(u32);
 

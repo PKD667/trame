@@ -9,7 +9,7 @@ different call.
 
 Trame writes the graph down. A program names its workers, its messages and the capacity of each
 route, and it cannot send outside them. The compiler checks the code, the launch fixes the graph, and
-the backend must not produce a behaviour the spec forbids (spec.md, Section 6).
+the backend must not produce a behaviour the spec forbids (INTERFACE.md, Section 6).
 
 ## Example
 
@@ -107,7 +107,7 @@ outcomes: [Returned, Returned, Returned, Returned]
 ```
 
 The example does not handle a failed run. If a worker panics, the leader's next call panics too, with
-`trame: worker <w> panicked: <message>` (spec.md 5, Abort). `programs/abort.rs` shows the leader in
+`trame: worker <w> panicked: <message>` (INTERFACE.md 5, Abort). `programs/abort.rs` shows the leader in
 `Run::wait`, and `programs/abort_join.rs` the leader in `join`.
 
 ## Build and run
@@ -125,7 +125,7 @@ MPI:
     mpirun --oversubscribe -n 5 target/mpi/debug/examples/ring
 
 The cfg flag is needed because `#[trame::state]` and `parallel!` are compile errors without it. The driver
-sets it when it checks a build (spec.md, Section 3). Set by hand, it only lifts the error: it does not
+sets it when it checks a build (INTERFACE.md, Section 3). Set by hand, it only lifts the error: it does not
 stop a deliberate unchecked build.
 
 `mpirun` needs W + 1 ranks: one per worker, and the leader on the last rank. With four workers, that
@@ -134,18 +134,18 @@ is five. Any other count is refused on every rank before a worker starts. Open M
 
 ## The levels
 
-A program has three levels, each inside the one above it (spec.md, Section 1). Each one may do less.
+A program has three levels, each inside the one above it (INTERFACE.md, Section 1). Each one may do less.
 
 **Host, leader.** Any Rust. It declares the topology, launches it, and drives the run through `Run`:
 `send`, `recv`, `wait`, `edit`, `stop` and `join`. Nothing is checked here; it is the environment
-(spec.md, Sections 4 and 5.5).
+(INTERFACE.md, Sections 4 and 5.5).
 
 **Step.** A function over the fields of a worker's state, marked `#[trame::step]`. It may `send`,
 `recv`, `me`, `now` and `parallel!`, and use counted loops. It may not allocate, recurse, use an
-uncounted loop or block: it returns a `Status` (spec.md, Sections 3 and 5.3).
+uncounted loop or block: it returns a `Status` (INTERFACE.md, Sections 3 and 5.3).
 
 **Item.** A function given to `parallel!`. It may do arithmetic and call the listed core functions.
-It may not perform an effect, allocate, recurse or use an uncounted loop (spec.md, Sections 3
+It may not perform an effect, allocate, recurse or use an uncounted loop (INTERFACE.md, Sections 3
 and 5.4).
 
 ## Build and run: `trame`
@@ -162,7 +162,7 @@ on several hosts the hostfile, the placement and the launch agent come from `nix
 
 | check | what it covers | explained in |
 |---|---|---|
-| the contract | the rules every other check enforces, and what a backend must not do | `spec.md`, `CONTRACT.md` |
+| the contract | the rules every other check enforces, and what a backend must not do | `INTERFACE.md`, `CONTRACT.md` |
 | the macros | `#[trame::message]` refuses references, pointers, function pointers and padding; `#[trame::step]` takes fields and the pool as `&` or `&mut`; `#[trame::state]` requires `trame::Plain` of every field and the pool; `#[trame::state]` and `parallel!` need the cfg flag | `macros/lib.rs` |
 | `cargo trame check` | the rustc driver judges the MIR of each level: effects, counted loops, recursion, allocation | `driver/README.md` |
 | rejection suite | cases the checks must refuse, and their matched accepted cases | `rejections/README.md` |
@@ -194,7 +194,7 @@ stops.
 - `scale/`: scaling benchmarks and their plain-MPI baselines.
 - `tests/`: crate tests for allocation, `parallel!`, conformance, and this README's example.
 - `examples/`: the example in this README.
-- Top level: `spec.md` (the behaviour), `CONTRACT.md` (what a backend keeps), `PROOFS.md` (how that is
+- Top level: `INTERFACE.md` (the behaviour), `CONTRACT.md` (what a backend keeps), `PROOFS.md` (how that is
   checked), `lib.rs` and the modules it names (the surface and the core), `flake.nix` (pinned inputs,
   builds, lab experiments). `target/` is build output.
 
@@ -212,4 +212,4 @@ stops.
   Exceeding one is refused or aborts with a message naming it. These are implementation limits, not
   part of the contract.
 - No latency claim is checked: the MPI backend records round trips, and no nixsci experiment locks
-  them (spec.md, Section 6).
+  them (INTERFACE.md, Section 6).

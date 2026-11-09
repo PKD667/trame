@@ -57,8 +57,8 @@ pub(crate) fn overwrite(world: &mpi::topology::SimpleCommunicator, args: &[Strin
         let owned = [r];
         let last = msgs - 1;
         if late {
-            // Every frame has been sent, but a send only queues it: the frames reach this node later (spec.md 6,
-            // Progress: "eventually"), so a barrier does not bound it. Receive until the newest frame arrives: the
+            // Every frame has been sent, but a send only queues it: the frames reach this node later (CONTRACT.md,
+            // R2: "eventually"), so a barrier does not bound it. Receive until the newest frame arrives: the
             // frames seen are increasing, and the newest is kept.
             let mut got: Vec<u64> = Vec::new();
             while got.last() != Some(&last) {

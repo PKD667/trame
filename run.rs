@@ -1,4 +1,4 @@
-//! The leader's side of a run: spec.md sections 5 and 6. The leader is part of the environment, so
+//! The leader's side of a run: INTERFACE.md sections 5.5 and 6. The leader is part of the environment, so
 //! its operations are not rules of T; the backend records what it does.
 
 use crate::backend::{Backend, Selected};
@@ -136,7 +136,7 @@ impl Run {
     }
 }
 
-/// The result of one worker: spec.md 5, "Deadlock". A panic never has a result: it panics the leader.
+/// The result of one worker: INTERFACE.md 5, "Deadlock". A panic never has a result: it panics the leader.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
     /// Every step of the worker is done.
@@ -150,7 +150,7 @@ pub enum Outcome {
 }
 
 /// The text of a panic, as the leader reports it: the payload's message, or `<non-string panic
-/// payload>` when the payload is neither a `&str` nor a `String` (spec.md 5, Abort).
+/// payload>` when the payload is neither a `&str` nor a `String` (INTERFACE.md 5, Abort).
 pub(crate) fn panic_message(payload: &(dyn Any + Send)) -> String {
     if let Some(s) = payload.downcast_ref::<&str>() {
         s.to_string()

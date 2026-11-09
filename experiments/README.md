@@ -27,7 +27,7 @@ records.
 
 A check that depends only on the code, not on concurrency, the network or hardware, is a validate verdict,
 not a lab experiment: `experiments/validate.nix`, built by `nixsci.lib.validate` (validate/README.md in the
-nixsci repository). Each check states its property (spec.md section), model, subject, checker and scope,
+nixsci repository). Each check states its property (INTERFACE.md section), model, subject, checker and scope,
 and writes `$out/outcome.json`. A verdict is a derivation. The flake exposes them as
 `validate.<system>.verdicts.<name>`, the table as `validate.<system>.table`, and `checks` as the holds.
 

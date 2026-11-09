@@ -1,4 +1,4 @@
-//! Worker identities, the handles of declared workers, and the topology the host builds: spec.md
+//! Worker identities, the handles of declared workers, and the topology the host builds: INTERFACE.md
 //! section 4.
 
 use crate::backend::{Backend, Selected};

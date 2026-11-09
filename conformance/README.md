@@ -2,7 +2,7 @@
 
 A test program `P` shows that a backend follows a rule `R` only if `P` can tell a backend that breaks `R`
 from one that does not. Two correct backends that print the same thing prove agreement, not conformance.
-So this directory asks the other question: for each rule of `spec.md`, is there a program that fails when
+So this directory asks the other question: for each rule of `INTERFACE.md`, is there a program that fails when
 a backend violates it?
 
 ## Claim
@@ -20,7 +20,7 @@ non-zero with that line on stderr), or it times out (a hang counts as a kill).
   so both copies carry the same `# expect:` meaning.
 - Each patch header states the rule it violates, `# violates: <spec rule>`, and its expectation:
   - `# expect: killed`: some program must fail. If none does, the program set is too weak (a finding).
-  - `# expect: equivalent: <argument>`: no output that `T` (spec.md section 5-6) constrains can change. If a
+  - `# expect: equivalent: <argument>`: no output that `T` (INTERFACE.md, Section 5) constrains can change. If a
     program fails on it, the argument is wrong.
 
 ## Runner
@@ -96,7 +96,7 @@ is. The header of each such mutant says what it changes beyond output.
 | m25 | `Run::wait` returns at once when its counter is not `u64::MAX` (shared `run.rs`): the leader never checks for an abort | Abort: killed by `abort` |
 | m26 | `worker_idle` returns at once: a busy wait (equivalent for output; see its header) | Efficiency |
 
-The spec rule names are those of `spec.md`: Full, Overwrite, Offers, Recv, Ownership, Progress, Enabled,
+The spec rule names are those of `INTERFACE.md`: Full, Overwrite, Offers, Recv, Ownership, Progress, Enabled,
 Status, End, Start, Fail, Barrier, Publish, Deadlock, Abort, Launch checks, Take, Join.
 
 ## What a kill needs

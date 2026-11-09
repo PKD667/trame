@@ -2,8 +2,7 @@
 
 A backend runs a launched topology. It implements the trait `Backend` (`backend.rs`), whose
 signatures the compiler checks. This file states what the signatures cannot. A backend is accepted
-when it keeps every clause below. `PROOFS.md` says how each clause is checked and where each check
-stops.
+when it keeps every clause below.
 
 Clauses are named. Code, tests and proofs cite them by name: a `SAFETY` comment names the clause
 that makes its `unsafe` block sound.
@@ -16,15 +15,31 @@ reads or writes. An *agent* is a thread that runs a worker's steps. The *leader*
 sends, receives, edits, stops and joins. A worker's *domain* is the memory in which its state lives
 and in which its agents and its leader address it at the same addresses. The *model* is `sched.rs`.
 
+*T* is the transition system that defines trame's semantics: the rules Tick, Now, Send, Full,
+Overwrite, Recv, Empty, Take, Release, Drop, Start, End, Parallel, Hold, Edit and Stop, with the
+endings Abort and Deadlock. $\mathit{Obs}(B, P, G)$ is the set of runs of program P with topology G
+on backend B, each recorded as every agent's sequence of labels and its result.
+
 ## Semantics
 
-**R1 Safety.** Every run the backend produces is a run of the transition system T (`spec.md`,
-Section 5 and Requirement (Safety)).
+**R1 Safety.** For every admitted program P and every topology G that B accepts,
+$\mathit{Obs}(B, P, G) \subseteq \mathit{Obs}(T, P, G)$.
 
-**R2 Progress.** The backend meets Requirement (Progress) of `spec.md`, Section 6.
+A backend that does nothing satisfies R1. R2 rules it out.
 
-The clauses that follow refine R1 and R2 at the seam. Where a clause and `spec.md` disagree, one of
-them is wrong.
+**R2 Progress.** For every accepted launch, assuming the hardware keeps running and every agent that
+runs forever performs effects forever (a backend may switch agents only at effects):
+- time diverges;
+- every frame becomes available unless a lossy route removes it first;
+- Release eventually fires on every route with a slot taken and not yet given back;
+- every effect that T can still answer is answered, and every started step reaches End;
+- a frame that stays an offer to x on r, while x receives r's tag infinitely often, is eventually
+  received;
+- if the premises of Start hold for p from some point on, p is eventually started;
+- if Hold has held fields, Edit eventually fires for them.
+
+The clauses that follow refine R1 and R2 at the seam. Where a clause and T disagree, one of them is
+wrong.
 
 ## Launch
 
@@ -92,13 +107,13 @@ lossless route is eventually available to its receiver.
 **M1 Placement.** Every byte that a state or the pool owns lies in the domain where it is used.
 Builders and edits allocate there.
 
-**M2 Meaning.** A state holds no value whose meaning depends on the process or device that made
+**M2 Meaning.** A state, the pool and a step's error hold no value whose meaning depends on the process or device that made
 it: no reference, raw pointer, function pointer, trait object, `Rc` or handle.
 
 **M3 Mutation.** A field changes only by a step that writes it, or by an edit. A state holds no
 interior mutability.
 
-M2 and M3 are the type `trame::Plain`: every field of a state, and the pool, is `Plain`, and a type
+M2 and M3 are the type `trame::Plain`: every field of a state, the pool and the error type are `Plain`, and a type
 is `Plain` by trame's own implementations, by `#[trame::message]`, or by `#[derive(trame::Plain)]`,
 which requires it of every field. An `unsafe impl Plain` written by hand is the program's promise.
 
@@ -134,15 +149,39 @@ type: a hash of its path and its size. `TypeId` does not cross hosts.
 **F5 Routes between hosts.** A route between workers of two hosts keeps T1–T3 while both workers
 run. A route between a leader and a worker of another host is refused at launch. A worker that waits
 on such a route forever is stuck, and ends with `Deadlock` once every leader waits, joins or has
-ended (`spec.md`, Definition (Deadlock)).
+ended (E2).
 
 **F6 Peer channel.** Leaders exchange messages over a peer channel that is not a route. A host is not
 its own peer; a send to a host that is not a peer panics.
 
 ## End
 
-**E1 Abort.** A panic ends the run as Definition (Abort) of `spec.md` states.
+**E1 Abort.** A panic ends the run. Every worker without a result unwinds at its next effect, and
+every leader call on the ended run, including one already blocked, panics with
+`trame: worker <w> panicked: <message>`, naming the first worker that panicked. The leader observes
+no result of an aborted run.
 
 **E2 Join.** `join` returns once every worker has a result, with one result per worker, in the
-order the workers were declared. A result is `Deadlock` only where the backend shows the worker
-stuck (`spec.md`, Definition (Deadlock)).
+order the workers were declared. A worker is *stuck* when no run from the present contains a Start of
+one of its steps. A result is `Deadlock` only where the backend shows the worker stuck. A leader
+call that can never return may be panicked with `trame: deadlock: the leader waits and nothing can
+arrive`, under the same condition.
+
+## Backends in the tree
+
+A build selects one backend by a cargo feature, `seq` (the default) or `mpi`; the features are
+exclusive. Each runs the programs of `programs/`, and `programs/run.sh` checks that each prints its
+expected output.
+
+| | seq | mpi |
+|---|---|---|
+| worker | one thread, one agent | one rank, several agents |
+| service (S7) | 1 per step | nanoseconds |
+| choice (S2) | exactly `Sched::choose` | any start `Sched::may_start` allows |
+| routes | rings under one lock | rings in a shared window; two-sided MPI between hosts |
+| domain (M1) | the process heap | a shared segment of the node |
+| leader | a thread outside the baton | the last rank of each host |
+| `Deadlock` (E2) | shown when every agent that can move has moved | shown once every host's leader waits, joins or has ended |
+| trace (S9) | replayed exactly | replayed against `may_start` |
+
+Latency is left to the environment by T, and no clause bounds it.

@@ -1,4 +1,4 @@
-//! Clocks and readings: spec.md section 5.1. A reading compares only with a reading of its own
+//! Clocks and readings: INTERFACE.md section 5.1. A reading compares only with a reading of its own
 //! clock, so trame never has to synchronize clocks. Spans are `core::time::Duration`.
 
 use crate::backend::{Backend, Selected};
@@ -17,7 +17,7 @@ impl ClockId {
     }
 }
 
-/// The current reading of this worker's clock (spec.md 5.1, `now`). Panics outside a worker.
+/// The current reading of this worker's clock (INTERFACE.md 5.1, `now`). Panics outside a worker.
 pub fn now() -> Reading {
     let (clock, nanos) = Selected::worker_now();
     Reading { clock, at: Duration::from_nanos(nanos) }

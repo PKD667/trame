@@ -1,4 +1,4 @@
-//! What a step returns: spec.md 5.3, Definition (Status). `Progress` and `Done` carry no condition.
+//! What a step returns: INTERFACE.md 5.3, Definition (Status). `Progress` and `Done` carry no condition.
 //! `Status::wait()` is wait(∅), and each builder method adds one condition to it. Any status but
 //! `Done` may also carry a weight for the step's next start (`.weight(w)`, sched.rs). The scheduler
 //! takes the conditions as flags per step, so this file only builds them.
@@ -9,7 +9,7 @@ use crate::sched::Weight;
 use crate::time::Reading;
 use core::any::{TypeId, type_name};
 
-/// The status a step returns (spec.md 5.3). A failing step answers `Err(e)` from a step that returns
+/// The status a step returns (INTERFACE.md 5.3). A failing step answers `Err(e)` from a step that returns
 /// `Result<Status, E>`, which is the spec's `err(e)`. Build it with `Status::Progress`, `Status::Done`
 /// or `Status::wait()`, and optionally `.weight(w)`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,7 +66,7 @@ impl Waits {
 }
 
 impl Status {
-    /// The wait with no condition (spec.md 5.3, wait(∅)): only the end of a step that writes a field
+    /// The wait with no condition (INTERFACE.md 5.3, wait(∅)): only the end of a step that writes a field
     /// this step takes wakes it. Add conditions with the methods below.
     pub const fn wait() -> Status {
         Status { kind: Kind::Wait(Waits { frame: false, rooms: 0, until: None }), weight: None }

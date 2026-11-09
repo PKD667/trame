@@ -1,4 +1,4 @@
-//! The leader blocked in `Run::wait` when nothing can arrive: the call panics (spec.md 5, Deadlock),
+//! The leader blocked in `Run::wait` when nothing can arrive: the call panics (INTERFACE.md 5, Deadlock),
 //! and does not hang. Every test runs under the 10 s guard.
 
 extern crate std;

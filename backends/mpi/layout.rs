@@ -69,9 +69,9 @@ pub(crate) const RESULT: u32 = 2;
 /// OUT_ABORT only so that its own result is set: the leader panics before it reads any word (results.rs).
 pub(crate) const OUT_RETURNED: u64 = 1;
 pub(crate) const OUT_ABORT: u64 = 2;
-/// The worker ended with Deadlock (spec.md 5, Deadlock): the leader showed it stuck (detect.rs).
+/// The worker ended with Deadlock (INTERFACE.md 5, Deadlock): the leader showed it stuck (detect.rs).
 pub(crate) const OUT_DEADLOCK: u64 = 3;
-/// Every step of the worker ended after a stop (spec.md, Stop).
+/// Every step of the worker ended after a stop (INTERFACE.md, Stop).
 pub(crate) const OUT_STOPPED: u64 = 4;
 /// A step of the worker failed.
 pub(crate) const OUT_FAILED: u64 = 5;

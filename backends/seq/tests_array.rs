@@ -1,4 +1,4 @@
-//! Plain-data types are messages, arrays included (spec.md 3, "Messages"): a field `[Spike; 4]` and
+//! Plain-data types are messages, arrays included (INTERFACE.md 3, "Messages"): a field `[Spike; 4]` and
 //! a route of type `[Spike; 4]` both launch and round-trip.
 
 extern crate std;

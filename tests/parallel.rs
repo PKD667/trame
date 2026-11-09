@@ -1,4 +1,4 @@
-//! `parallel!` (spec.md 5.4) against a reference fold. Needs `--cfg trame_checked`, as every use of
+//! `parallel!` (INTERFACE.md 5.4) against a reference fold. Needs `--cfg trame_checked`, as every use of
 //! `parallel!` does: without it this file does not compile, by design.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};

@@ -1,7 +1,7 @@
 # trame-fuzz: a fuzzer for the compile-time analysis
 
 This directory tests the compile-time analysis of trame: the rustc driver in `driver/` (see
-`driver/README.md`) and the rules of spec.md section 3. It is a separate Cargo package with no
+`driver/README.md`) and the rules of INTERFACE.md section 3. It is a separate Cargo package with no
 dependencies, built by its own Nix flake. It owns only `driver/fuzz/`.
 
 ## Object
@@ -14,7 +14,7 @@ A refusal is one `error: [rule] <level> ...` line of the driver, with the root n
 `reached from root X` note. A recursion refusal has no note, so its root is empty.
 
 The oracle is R(P): the set of refusals that the spec predicts, computed from the abstract program
-alone, by the rules of spec.md section 3, driver/README.md and the lists in `driver/lists/`
+alone, by the rules of INTERFACE.md section 3, driver/README.md and the lists in `driver/lists/`
 (`deny.txt`, `A_I.txt`, `A_C.txt`, `A_W.txt`). R is written in `src/oracle.rs` and is independent of
 the driver's code. R can be wrong. A disagreement names a suspect on both sides, and the
 disagreement is decided by re-reading the spec, not by trusting either.
@@ -43,7 +43,7 @@ verdict, rules as attribution.
 
 ## Known classifications (decided, not mismatches)
 
-- **Drop glue.** Dropping a value calls its drop glue (spec.md 3, "drop glue counts as a call").
+- **Drop glue.** Dropping a value calls its drop glue (INTERFACE.md 3, "drop glue counts as a call").
   Glue of a library type is library code, judged by its list entry, so the raw pointer reads inside
   `core::ptr::drop_in_place` are not refusals. Glue that reaches a program's own `Drop` impl is an
   `Own` edge, and that impl is judged in full (rejections: `trusted/` cases).
@@ -102,7 +102,7 @@ Each is compared with R, and each is compared by rule set with its bare program
 ## What this does not establish
 
 - It checks the driver against the spec as encoded in R. Where R is wrong the report says so.
-- It does not check the lists: they are trusted (spec.md section 3), and the fuzzer only exercises
+- It does not check the lists: they are trusted (INTERFACE.md section 3), and the fuzzer only exercises
   the constructs above.
 - Verification is by testing a generated set of programs. It is not a proof, and a clean run says
   only that no program in the set disagreed.

@@ -1,4 +1,4 @@
-//! Launch checks: spec.md section 4, "Launch checks". A topology that fails them never starts a
+//! Launch checks: INTERFACE.md section 4, "Launch checks". A topology that fails them never starts a
 //! worker. The checks are the trame part of acceptance; the backend adds its own refusals.
 
 use crate::backend::PoolRef;
@@ -115,7 +115,7 @@ pub(crate) fn build_all(plan: &mut Plan) {
     }
 }
 
-/// The launch checks of spec.md section 4, in the order the spec states them.
+/// The launch checks of INTERFACE.md section 4, in the order the spec states them.
 pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
     let n = plan.workers.len();
     for (i, r) in plan.routes.iter().enumerate() {

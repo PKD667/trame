@@ -12,7 +12,7 @@ use trame::__mpi::{
     returned,
 };
 
-/// The frame size the checks send: 65,544 bytes, the size every backend is required to carry (spec.md).
+/// The frame size the checks send: 65,544 bytes, the size every backend is required to carry (INTERFACE.md).
 pub(crate) const FRAME: usize = 65_544;
 
 /// The worker transport of this rank, or None for the leader (the last rank).

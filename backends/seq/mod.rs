@@ -1,4 +1,4 @@
-/// The sequential backend (spec.md section 6). Its state and operations come below.
+/// The sequential backend (CONTRACT.md, Backends in the tree). Its state and operations come below.
 pub struct Selected;
 
 mod limit;

@@ -3,7 +3,7 @@
 //! `parallel!` and `#[trame::step]` call a level marker with the code they run. The calls do nothing
 //! at run time. After monomorphization the driver finds every instance of `item::<F>`, `step::<F>` and
 //! `worker::<F>`, and checks `F` and everything it reaches at that level (CONTRACT.md, M4 for a step,
-//! spec.md for the rest). Renaming or moving these functions breaks the driver. What a state holds is
+//! INTERFACE.md for the rest). Renaming or moving these functions breaks the driver. What a state holds is
 //! a type, `trame::Plain`, not a marker.
 //!
 //! `#[trame::step]` calls `step` from a hidden non-generic function of its step struct. A

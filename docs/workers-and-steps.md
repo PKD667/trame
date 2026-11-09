@@ -1,120 +1,95 @@
 # Workers and steps
 
-A worker is a state and the steps that run over its fields. Steps of one worker run at once when
-their fields do not conflict. This file describes a worker's parts and the life of one step;
-`scheduling.md` describes which step starts.
+A worker is a state and its steps. This note follows a worker from the macros that describe it, to
+the block that holds it, to the agent that runs its steps. The code is `macros/state.rs` and
+`worker.rs`.
 
-## State
+## What the macros generate
 
-A state is a struct marked `#[trame::state(steps(a, b), stop = f, pool = P, error = E)]`. `steps`
-lists its steps. `stop`, `pool` and `error` are optional.
+`#[trame::step(S, receives = A, B, weight = w)]` keeps the function and adds a hidden unit struct of
+the same name. The struct carries four things. `__TRAME_INFO` is a `StepInfo`: the step's name, a
+read mask and a write mask with one bit per field, and its weight as 16-bit fixed point.
+`__trame_tags` lists the received types as `(TypeId, name)` pairs, `__trame_offered` asks the backend
+whether any of them has a frame, and `__trame_run` projects each field from a raw `*mut S` and calls
+the function.
 
-A state has at most 63 fields: each is one bit of a step's sets, and bit 63 is the pool. A state has
-at most 64 steps, the stop step included. A state is plain Rust data that is `Send + Sync`.
-
-```rust
-#[trame::state(steps(intake, deliver), stop = flush)]
-struct Pipe { ring: Vec<u32>, head: u64, tail: u64, delivered: u64, flushed: u64 }
-```
-
-## Step
-
-A step is a function marked `#[trame::step(S, receives = A, B, weight = w)]`. Each parameter names a
-field of `S`: `&T` reads it and `&mut T` writes it. A parameter named `pool` of type `&P` reads the
-pool (`pool.md`). A parameter that names no field, or a field of another type, does not compile.
-
-```rust
-#[trame::step(Pipe, receives = Job)]
-fn intake(ring: &mut Vec<u32>, head: &u64, tail: &mut u64) -> Status { /* ... */ }
-```
-
-A step returns `Status`, or `Result<Status, E>` when the state names an error type `E`. The macro
-turns the parameter list into the step's read set R and write set W, one bit per field.
-
-## Receives
-
-`receives` names the message types a step takes with `trame::recv`. A `recv` of another type in that
-step answers `None`. Two steps of one worker may not receive the same type: the launch refuses it
-(`Refused::TwoOwners`). A step receives at most 16 types.
-
-## Status
-
-A step's return value says what the step needs next.
-
-**Progress.** The step did work and can run again.
-
-**Done.** The step is finished and never starts again.
-
-**wait.** The step has nothing to do until a condition holds. `Status::wait()` names no condition;
-`.frame()`, `.room::<M>(to)` and `.until(reading)` each add one. A step woken by any one of them
-runs again.
-
-**weight.** `.weight(w)` on `Progress` or on a `wait` sets the step's weight, in [0, 1], from its
-next start on. A `Done` has no next start, so a weight on it panics.
-
-**Err(e).** The step failed. The worker's result is `Failed`, and `Worker::error` returns `e` after
-the join.
-
-The conditions are states that the scheduler rechecks, not events that could be missed
-(`CONTRACT.md`, S3). `.room` names one of the worker's first 64 outgoing routes, and aborts when the
-worker has no such route. `.until` takes a reading of the worker's own clock.
-
-## Life of a step
+`#[trame::state(steps(a, b), stop = f, pool = P, error = E)]` implements `State` for the struct.
+`STEPS` is the list of the steps' `__TRAME_INFO`, ordinary steps first and the stop step last, and
+`run(this, pool, i)` matches on `i` to call step i's `__trame_run`. Field bits come from field order;
+bit 63 is the pool (`sched::POOL`). The macro also implements `Plain` for the state, beside a
+function that requires `Plain` of each field at that field's span, so an error names the field.
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000','edgeLabelBackground':'#ffffff','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','actorLineColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','fontFamily':'monospace'},'themeCSS':'rect.actor,rect.note,.note rect,.statediagram-note rect{fill:#fff!important;stroke:#000!important} line,.actor-line{stroke:#000!important} .arrowheadPath,marker path{fill:#000!important;stroke:#000!important} circle.state-end{stroke:#000!important} text,.noteText,.state-note text{fill:#000!important}'}}%%
-stateDiagram-v2
-  [*] --> Fresh
-  Fresh --> Running: Start (fields free)
-  Running --> Progress: returns Progress
-  Running --> Waiting: returns wait()
-  Running --> Done: returns Done
-  Running --> Err: returns Err(e)
-  Progress --> Running: Start
-  Waiting --> Running: Start, once woken or a condition holds
-  Done --> [*]
-  Err --> [*]
-```
-
-## Field locks
-
-Two steps *conflict* when one writes a field the other reads or writes. A step starts only when no
-running step conflicts with it, and it takes all its fields at once. When it ends it gives them
-back, and wakes every step that uses a field it wrote.
-
-A step never blocks while it holds fields, so steps cannot deadlock one another. A step waits for
-another for at most one step's duration. `CONTRACT.md` S1 and S3 state the obligations.
-
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000','edgeLabelBackground':'#ffffff','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','actorLineColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','fontFamily':'monospace'},'themeCSS':'rect.actor,rect.note,.note rect,.statediagram-note rect{fill:#fff!important;stroke:#000!important} line,.actor-line{stroke:#000!important} .arrowheadPath,marker path{fill:#000!important;stroke:#000!important} circle.state-end{stroke:#000!important} text,.noteText,.state-note text{fill:#000!important}'}}%%
 flowchart LR
-  intake["intake<br/>writes ring, tail"] --- ring[("ring")]
-  deliver["deliver<br/>reads ring, writes delivered"] --- ring
-  stats["stats<br/>writes delivered"] --- delivered[("delivered")]
-  deliver --- delivered
+  f["fn intake(ring: &mut Vec&lt;u32&gt;, tail: &u64)"] --> m["#[trame::step]"]
+  m --> info["intake::__TRAME_INFO<br/>reads 0b10, writes 0b01"]
+  m --> run["intake::__trame_run(this, pool)"]
+  s["struct Pipe"] --> ms["#[trame::state]"]
+  ms --> st["impl State for Pipe<br/>STEPS, run(i), tags(i)"]
+  info --> st
+  run --> st
 ```
 
-In the picture, `intake` and `deliver` conflict on `ring`, and `deliver` and `stats` conflict on
-`delivered`. `intake` and `stats` touch no common field, so they run at once.
+Each step also gets `__trame_check`, which calls the level marker `__check::step`. The driver finds
+those calls after monomorphization and checks the step's body at the step level.
 
-## Stop step
+## The block
 
-A state may name a stop step with `stop = f`. After `Run::stop`, no ordinary step starts. The stop
-step starts when no step runs, runs alone, and may send. When it is done the worker's result is
-`Stopped`; a state with no stop step is `Stopped` as soon as nothing runs (`CONTRACT.md`, S5).
+A worker's memory is a `Block<S>`: the state in a `ManuallyDrop`, a `failed` flag, and the error
+cell. It lies in the worker's domain. `Core<S>` is the handle every side shares, an `AtomicPtr` to
+the block plus a `taken` flag, null until the builder runs. On mpi a worker process that did not
+build the state adopts the leader's address (`Core::adopt`), which is valid because the segment is
+mapped at one address on every rank of a node.
 
-## Result
+`Core` never forms a `&Block<S>` or a `&S`. Steps hold `&mut` to single fields while other agents
+use the block, so every access projects a field from the raw pointer. The first step that fails sets
+`failed` and alone writes `error`; the leader reads it after the join. Debug builds keep a *witness*
+in `Core`, the fields that running steps actually hold, and panic on a conflict (S1).
 
-A worker has a result when no step runs and one of these holds.
+## Erasure
 
-**Returned.** Every ordinary step is `Done`.
+Backends see a worker as `Arc<dyn Erased>`. The trait answers the static description (`steps`,
+`has_stop`, `tags`, `pool_type`) and runs step i with the pool passed as `&dyn Any`, downcast to
+`PoolCore<S::Pool>` inside. A failing step's error is stored in the block and answered as
+`Err(())`, so the backend never handles the error type. `model(w)` builds the initial `Sched` from
+the erased steps.
 
-**Stopped.** The leader stopped the run, and the stop step, if any, is done.
+## The reference agent
 
-**Failed.** A step failed. No step of the worker starts again, and the first error is kept
-(`CONTRACT.md`, S8).
+`Slot` is one worker under the reference scheduler: the erased worker, an `Inner` under a mutex, and
+a condvar signalled at every end, edit and stop. `Inner` holds the `Sched`, the `Waits` of each
+waiting step, the optional trace, the state of a remote edit, and `dead`, set when a step unwound.
 
-**Deadlock.** The backend ended the worker because no step could ever start again
-(`spec.md`, Definition (Deadlock)).
+`agent(slot, service, pool)` loops until the model answers a result. Each turn reads the worker's
+epoch first, then the wait conditions without the lock, since they call the backend. Under the lock
+it applies a pending stop or remote edit and asks `Sched::choose`.
 
-A panic in a step is not a result. It aborts the run (`spec.md`, Definition (Abort)).
+```mermaid
+flowchart TD
+  e["epoch := worker_epoch()"] --> c["conditions(): frame, room, until<br/>read without the lock"]
+  c --> l["lock Inner"]
+  l --> a{"Sched::answer()?"}
+  a -- some --> r["return it"]
+  a -- none --> re["remote_edit, stop request"]
+  re --> ch{"Sched::choose(now)"}
+  ch -- "step i" --> s["start(i), mark_start<br/>unlock, Owning(tags), Erased::run(i)"]
+  s --> en["lock, end(i), mark_end, record End"]
+  en --> e
+  ch -- "none, a step runs" --> wc["wait on the condvar"]
+  wc --> e
+  ch -- "none, nothing runs" --> q["mark_quiet, worker_idle(deadline, epoch)"]
+  q --> e
+```
+
+Reading the epoch before the conditions is what makes S3 hold: a change after the read moves the
+epoch, and `worker_idle` returns at once on a stale epoch. `ended` turns a `Status` into the model's
+`Ended` and checks that an `.until` reading is of this agent's clock. `Unwinding` is a drop guard
+around the call: a step that unwinds marks the slot dead, and every waiter then gives up.
+
+## Holds and edits on seq
+
+`Slot::hold(fields)` adds the fields to `Sched::editing`, records a `Hold`, and waits on the condvar
+until `Sched::touching` is false. `Slot::release` calls `Sched::edited`, which wakes the touching
+steps, and records an `Edit`. `Slot::edit` is the two around the closure. On mpi the leader is in
+another process, so it asks through words in the segment, and each agent calls `remote_edit` once
+per turn to hold, acknowledge and release on the leader's behalf.

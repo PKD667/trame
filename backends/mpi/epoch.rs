@@ -67,7 +67,7 @@ impl Transport {
         self.sleep_on(e, s, seen, until);
     }
 
-    /// The leader's wait (spec.md 5): block until its epoch differs from `seen`, and answer the new
+    /// The leader's wait (INTERFACE.md 5): block until its epoch differs from `seen`, and answer the new
     /// value. The caller reads the epoch before it checks its frames, so an act after that read
     /// makes the next wait return at once. `seen` is always a value this function returned, or 0.
     pub(crate) fn leader_wait(&self, seen: u64) -> u64 {

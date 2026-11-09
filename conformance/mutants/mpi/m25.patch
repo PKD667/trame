@@ -1,5 +1,5 @@
 # violates: Abort (m25)
-# expect: killed: wait returns before the leader's abort check, so a leader looping on wait spins after a worker panics instead of panicking (spec.md, Definition Abort: every leader call on an aborted run panics). Killed by abort.
+# expect: killed: wait returns before the leader's abort check, so a leader looping on wait spins after a worker panics instead of panicking (INTERFACE.md, Definition Abort: every leader call on an aborted run panics). Killed by abort.
 --- a/run.rs
 +++ b/run.rs
 @@ -25,6 +25,9 @@

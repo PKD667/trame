@@ -1,5 +1,5 @@
 //! `#[message]`, `#[state]`, `#[step]`, `#[item]` and `parallel!`: the macros of trame's surface
-//! (spec.md 3, 5.3, 5.4). Every
+//! (INTERFACE.md 3, 5.3, 5.4). Every
 //! expansion names `::trame` and `::trame::__bytemuck`, so a user depends on trame alone. Only
 //! the grammar accepted here is the surface; the driver checks what the expansions call.
 
@@ -11,7 +11,7 @@ use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, FnArg, Ident, ItemFn, ItemStruct, Pat, PathArguments, Token, Type, parse_quote};
 
-/// Marks a struct as a message type (spec.md 3, "Messages"). It adds `#[repr(C)]`, `Clone`, `Copy`,
+/// Marks a struct as a message type (INTERFACE.md 3, "Messages"). It adds `#[repr(C)]`, `Clone`, `Copy`,
 /// and bytemuck's `Pod` and `Zeroable` derives, which check that the struct has no padding and that
 /// every bit pattern is valid. The blanket impl of `trame::Message` for `Pod` types makes it a message.
 ///
@@ -51,7 +51,7 @@ fn expand_message(attr: TokenStream2, item: TokenStream) -> syn::Result<TokenStr
     })
 }
 
-/// A field type may not name a reference, a raw pointer or a function pointer (spec.md 3). The
+/// A field type may not name a reference, a raw pointer or a function pointer (INTERFACE.md 3). The
 /// check reads the tokens, so it sees through nesting (`[*const u8; 2]`) but not through a type
 /// alias: an alias that hides a pointer is the implementer's promise to keep.
 fn check_field_type(ts: TokenStream2) -> syn::Result<()> {
@@ -103,7 +103,7 @@ fn check_attr(a: &Attribute) -> syn::Result<()> {
 }
 
 /// Marks `fn f(x: &I, slot: &mut S, cx: &C)` as a `parallel!` item and generates the hidden key
-/// function `__trame_key_f(x: &I) -> usize`, whose body is the given expression (spec.md 5.4).
+/// function `__trame_key_f(x: &I) -> usize`, whose body is the given expression (INTERFACE.md 5.4).
 /// The function itself is unchanged. The expression may name the first parameter.
 ///
 /// `#[trame::item(key = x.index as usize)]`
@@ -156,7 +156,7 @@ fn expand_item(attr: TokenStream2, item: TokenStream) -> syn::Result<TokenStream
     })
 }
 
-/// `parallel!(f, &cx, &items, &mut slots)`: apply the item `f` to `items` (spec.md 5.4). Answers `()`.
+/// `parallel!(f, &cx, &items, &mut slots)`: apply the item `f` to `items` (INTERFACE.md 5.4). Answers `()`.
 /// Aborts, before any item runs, when some item's key is not below `slots.len()`. Without
 /// `--cfg trame_checked` (set by `cargo trame`) it is a compile error.
 #[proc_macro]
@@ -202,7 +202,7 @@ pub fn derive_plain(item: TokenStream) -> TokenStream {
 }
 
 /// `#[trame::state(steps(a, b), stop = f, pool = P, error = E)]` on a struct with named fields: the
-/// struct is a worker's state (spec.md 5.3). Without `--cfg trame_checked` it is a compile error.
+/// struct is a worker's state (INTERFACE.md 5.3). Without `--cfg trame_checked` it is a compile error.
 #[proc_macro_attribute]
 pub fn state(attr: TokenStream, item: TokenStream) -> TokenStream {
     state::expand_state(attr.into(), item.into()).unwrap_or_else(|e| e.to_compile_error()).into()

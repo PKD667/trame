@@ -1,5 +1,5 @@
 //! A step that cannot finish: it waits for a frame that no leader will send. The run must end with
-//! `Deadlock` (spec.md 5, Deadlock), not hang. Also many rounds of two workers, each waiting on a frame
+//! `Deadlock` (INTERFACE.md 5, Deadlock), not hang. Also many rounds of two workers, each waiting on a frame
 //! from the leader, so that the baton is passed between idle workers in many orders.
 
 extern crate std;

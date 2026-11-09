@@ -256,7 +256,7 @@ fn found_text(
     }
     s.push_str(&format!("// Differences (shrunk program): {diff_text}\n"));
     s.push_str(&format!("// Differences (first seen): {}\n", first.diff.describe()));
-    s.push_str("// Decide whether R or V is wrong by re-reading spec.md section 3 and driver/lists/.\n");
+    s.push_str("// Decide whether R or V is wrong by re-reading INTERFACE.md section 3 and driver/lists/.\n");
     s.push_str("// Requires driver/fuzz/support/trame (the stand-in crate) as a path dependency.\n\n");
     s.push_str(&emit::source(small));
     s

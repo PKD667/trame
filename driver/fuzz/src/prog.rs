@@ -4,7 +4,7 @@
 
 use crate::rng::{Rng, mix};
 
-/// A level of spec.md section 3. Smaller is stricter (the order the driver takes the minimum in).
+/// A level of INTERFACE.md section 3. Smaller is stricter (the order the driver takes the minimum in).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Level {
     Item,
@@ -79,7 +79,7 @@ impl Forb {
         }
     }
 
-    /// The levels at which the construct is refused (spec.md section 3 and the lists).
+    /// The levels at which the construct is refused (INTERFACE.md section 3 and the lists).
     pub fn levels(self) -> &'static [Level] {
         use Level::*;
         match self {

@@ -1,4 +1,4 @@
-//! Typed messages over routes: spec.md sections 3 ("Messages") and 5.2. A message type is also the
+//! Typed messages over routes: INTERFACE.md sections 3 ("Messages") and 5.2. A message type is also the
 //! tag of its routes, so one route family per type.
 
 use crate::backend::{Backend, Selected};
@@ -23,7 +23,7 @@ pub unsafe trait Message: crate::__bytemuck::Pod + 'static {
 // SAFETY: a `Pod` type is plain data (bytemuck's contract), which is what `Message` promises.
 unsafe impl<T: crate::__bytemuck::Pod + 'static> Message for T {}
 
-/// A send answered `full`: the route is at capacity and is not lossy (spec.md 5.2, Full).
+/// A send answered `full`: the route is at capacity and is not lossy (INTERFACE.md 5.2, Full).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Full;
 
@@ -34,7 +34,7 @@ pub fn send<M: Message>(to: impl Into<crate::topology::End>, msg: M) -> Result<(
 }
 
 /// The next message of type `M` addressed to this worker, or `None` when none is available. A type
-/// the running step does not receive answers `None` (spec.md 5.2, Ownership).
+/// the running step does not receive answers `None` (INTERFACE.md 5.2, Ownership).
 pub fn recv<M: Message>() -> Option<M> {
     if !crate::cells::owns(TypeId::of::<M>()) {
         return None;

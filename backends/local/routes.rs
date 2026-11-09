@@ -1,6 +1,6 @@
 //! The routes of a backend whose agents share one address space (seq): each route a ring of
-//! frames allocated at launch. Used under the backend's lock. spec.md 5.2: Send, Full, Overwrite, and
-//! the fairness of takes across routes (spec.md 6, Progress).
+//! frames allocated at launch. Used under the backend's lock. INTERFACE.md 5.2: Send, Full, Overwrite, and
+//! the fairness of takes across routes (CONTRACT.md, R2).
 
 extern crate std;
 
@@ -58,7 +58,7 @@ impl Routes {
         self.all.iter().position(|r| r.from == from && r.to == to && r.ty == ty)
     }
 
-    /// Append a frame to route `i` (spec.md Send, Full, Overwrite). A lossy route at capacity
+    /// Append a frame to route `i` (INTERFACE.md Send, Full, Overwrite). A lossy route at capacity
     /// overwrites its oldest frame; any other route at capacity answers `Full`.
     pub fn push(&mut self, i: usize, bytes: &[u8]) -> Result<(), Full> {
         let r = &mut self.all[i];
@@ -79,8 +79,8 @@ impl Routes {
 
     /// Copy the oldest frame of a route to `to` with tag `ty` into `out`, and drop it from the route.
     /// Of the routes that have a frame, the one taken least recently is taken: a route that keeps a
-    /// frame is then taken within one round of its siblings, whatever is taken in between (spec.md 6,
-    /// Progress). A cursor shared by every route and tag is not enough: a periodic mix of takes can
+    /// frame is then taken within one round of its siblings, whatever is taken in between (CONTRACT.md,
+    /// R2). A cursor shared by every route and tag is not enough: a periodic mix of takes can
     /// bring it back to the same route each time. Answers `false` when no route has a frame.
     pub fn take(&mut self, to: End, ty: TypeId, out: &mut [u8]) -> bool {
         let next = self.takes + 1;

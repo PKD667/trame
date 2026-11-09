@@ -1,4 +1,4 @@
-//! Stuckness of the seq backend (spec.md 5, Definition Deadlock), shared by `join` and the leader's
+//! Stuckness of the seq backend (INTERFACE.md 5, Definition Deadlock), shared by `join` and the leader's
 //! `wait` (ops.rs).
 
 use super::state::{Phase, State};

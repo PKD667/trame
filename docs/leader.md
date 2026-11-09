@@ -1,143 +1,74 @@
 # The leader
 
-The leader is the host code that builds a topology, launches it and drives the run. It is an agent
-of its own, outside every worker, and it may be one end of a route. Its operations are not rules of
-T: the backend records what the leader does (`spec.md`, Section 5).
+The leader is the host code that declares a topology, launches it and drives the run. Its side of
+the code is `topology.rs` (declaration), `launch.rs` (checks) and `run.rs` (the run). None of it is
+a level the driver checks: it is ordinary Rust.
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000','edgeLabelBackground':'#ffffff','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','actorLineColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','fontFamily':'monospace'},'themeCSS':'rect.actor,rect.note,.note rect,.statediagram-note rect{fill:#fff!important;stroke:#000!important} line,.actor-line{stroke:#000!important} .arrowheadPath,marker path{fill:#000!important;stroke:#000!important} circle.state-end{stroke:#000!important} text,.noteText,.state-note text{fill:#000!important}'}}%%
 flowchart LR
-  B["declare<br/>worker::&lt;S&gt;(), pool::&lt;P&gt;()"] --> T["Topology<br/>set(&h, build), route"]
-  T --> L{"launch<br/>agree, check, accept"}
-  L -- refused --> R["Refused<br/>nothing ran"]
-  L -- accepted --> RUN["run<br/>steps on agents"]
-  RUN -- "edit(&w or &pool, f)" --> RUN
-  RUN -- "stop()" --> S["stop steps<br/>run alone"]
-  RUN --> J["join<br/>Vec&lt;Outcome&gt;"]
-  S --> J
-  J --> K["w.take()<br/>the state"]
+  T["Topology<br/>plan: Plan"] -- "worker, pool, set, route" --> T
+  T --> A["Backend::agree(&plan)"]
+  A --> C["launch::check(&plan)"]
+  C --> L["Backend::launch(plan)"]
+  L --> R["Run<br/>inner: backend's run"]
+  R -- "send, recv, wait, edit, stop" --> R
+  R --> J["Backend::leader_join"]
+  J --> K["Worker::take, Worker::error"]
 ```
 
-## Topology
+## Declaring
 
-A `Topology` is the plan under construction: workers, routes and the pool. `Topology::new()` makes
-an empty one.
+`Topology` wraps a `Plan` and a shared join flag. `worker::<S>()` pushes an empty `Core<S>` (as
+`Arc<dyn Erased>`) and a `None` builder, and answers a `Worker<S>` holding the `Arc<Core<S>>` and its
+index. `pool::<P>()` does the same with a `PoolCore<P>`, and records `P`'s `TypeId` and name. `set`
+stores a boxed closure that runs the user's builder and fills the core with its value. `route` and
+`lossy` push a `launch::Route` with the message's `TypeId`, name, size, capacity, lossy flag and, on
+mpi, the cross-host tag `io::tag::<M>()`.
 
-**Declare.** `t.worker::<S>()` returns a `Worker<S>`; `t.pool::<P>()` returns a `Pool<P>`. A
-declaration gives an identity and a handle, and no value. A state can therefore name workers
-declared after it. A topology has one pool.
+`WorkerId` is `(index, host)`, with `topology::HERE` (`u32::MAX`) as the host of a worker declared
+here. `End` is a worker or `Leader`; programs pass `WorkerId`, `(HostId, k)` or `Leader`, which
+convert into it.
 
-**Set.** `t.set(&h, || value)` gives the worker or the pool its value. The backend runs the closure
-at launch, in the memory where the value is used (`memory-domains.md`). A second `set` replaces the
-first.
+## Launching
 
-**Route.** `t.route::<M>(from, to, cap)` and `t.lossy::<M>(from, to, cap)` add a route
-(`transport.md`). An end is a worker (`w.id()`, `(HostId, k)`) or `Leader`. The leader is not a
-worker: it is the process outside them that holds the `Run`, a rank of its own on MPI, the host
-program on a device. A route from the leader to itself panics.
+`Topology::launch` runs three stages, and nothing starts unless all pass. `Backend::agree` checks
+that every process of the launch built the same plan; on mpi this compares an exact encoding across
+ranks (`backends/mpi/shape.rs`). `launch::check` runs the surface checks in a fixed order and answers
+the first `Refused`. `Backend::launch` allocates what the plan needs, runs the builders in arena mode
+(`launch::build_all` on seq), and answers the backend's run, or `Refused::Backend` with a message.
 
-```rust
-let mut t = Topology::new();
-let w = t.worker::<Pipe>();
-t.set(&w, || Pipe { ring: vec![0; 64], head: 0, tail: 0, delivered: 0, flushed: 0 });
-t.route::<Job>(Leader, w.id(), 16);
-let run = t.launch()?;
-```
+The checks live in one function so every backend refuses the same topologies for the same reasons
+(L1). A refusal on mpi is decided on every rank together, because `agree` runs before anything
+rank-specific.
 
-## Launch
+## The run
 
-`Topology::launch` consumes the topology. It agrees with the other processes of the launch that all
-hold the same plan, runs the checks of `launch.rs`, then asks the backend to accept it. No worker
-starts unless all three succeed (`CONTRACT.md`, L1 to L3).
+`Run` holds the backend's run (`<Selected as Backend>::Run`), the leader's last seen counter for
+`wait`, the pool's address, the number of workers and the join flag. Each method is one backend call:
 
-The checks refuse a topology with the `Refused` value that names the reason.
+| `Run` | backend |
+|---|---|
+| `send` | `leader_send(inner, to, TypeId, name, bytes)` |
+| `recv` | `leader_recv(inner, TypeId, out)`, through `io::read` |
+| `wait` | `leader_wait(inner, seen)`, which answers the new counter |
+| `edit` | `leader_edit(inner, target, f)` |
+| `stop` | `leader_stop(inner)` |
+| `join` | `leader_join(inner)` |
+| `leader_send`, `leader_recv` | `peer_send`, `peer_recv` with the tag `io::tag::<M>()` |
 
-**UnknownWorker.** A route names a worker the topology does not contain.
-
-**Duplicate.** Two routes have the same sender, receiver and message type.
-
-**ZeroCapacity.** A route has capacity 0.
-
-**TwoOwners.** Two steps of one worker receive the same message type.
-
-**PoolType.** A worker's steps read a pool of another type than the declared one.
-
-**Alloc.** `trame::Alloc` is not the program's global allocator.
-
-**PoolUnset.** The pool was declared and never set.
-
-**Unset.** A worker was declared and never set.
-
-**Backend.** The backend cannot allocate what the topology needs, or refuses for its own reason.
-
-## Run
-
-`launch` answers a `Run`. Dropping it does not stop the workers.
-
-**send.** `run.send::<M>(to, msg)` sends from the leader on the route of type `M` to `to`. It
-answers `Full` only on a lossless route at capacity, and panics when no such route exists.
-
-**recv.** `run.recv::<M>()` takes the next frame of type `M` addressed to the leader, or answers
-`None`. It never blocks.
-
-**wait.** `run.wait()` blocks until something changed for the leader since its last `wait`: a frame
-reached it, a worker got a result, or the run aborted. A leader that calls `recv` and then `wait` on
-`None` does not poll.
-
-**edit.** `run.edit(&h, |v| ..)` runs the closure on a worker's state or on the pool, between steps.
-
-**stop.** `run.stop()` ends the run. It returns at once.
-
-**join.** `run.join()` waits until every worker has a result and answers them in declaration order.
-
-## Edit
-
-An edit holds a set of fields: all of a worker's, or the pool. From the hold on, no step that
-touches a held field starts. The closure runs once none runs, and may allocate and resize. Then the
-fields are given back and every step touching one is woken. Queued frames are kept (`CONTRACT.md`,
-S4).
-
-`run.edit` answers `false`, without running the closure, when the worker already has a result. A pool
-edit answers `true` (`pool.md`).
-
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000','edgeLabelBackground':'#ffffff','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','actorLineColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','fontFamily':'monospace'},'themeCSS':'rect.actor,rect.note,.note rect,.statediagram-note rect{fill:#fff!important;stroke:#000!important} line,.actor-line{stroke:#000!important} .arrowheadPath,marker path{fill:#000!important;stroke:#000!important} circle.state-end{stroke:#000!important} text,.noteText,.state-note text{fill:#000!important}'}}%%
-sequenceDiagram
-  participant L as leader
-  participant A as agent 1
-  participant B as agent 2
-  A->>A: Start intake (ring, tail)
-  B->>B: Start stats (delivered)
-  L->>L: edit(&w, f): Hold, no new Start
-  A-->>L: End intake
-  B-->>L: End stats
-  Note over L: f runs on the whole state, may allocate
-  L->>A: Edit: every step woken
-  A->>A: Start intake
-```
-
-## Stop
-
-`run.stop()` sets the stop flag of every worker. No ordinary step starts afterwards. Each worker
-runs its stop step, if it has one, alone once no step runs, and its result is `Stopped`. A stop step
-may send, so the leader keeps receiving until `join`.
-
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000','edgeLabelBackground':'#ffffff','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','actorLineColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','fontFamily':'monospace'},'themeCSS':'rect.actor,rect.note,.note rect,.statediagram-note rect{fill:#fff!important;stroke:#000!important} line,.actor-line{stroke:#000!important} .arrowheadPath,marker path{fill:#000!important;stroke:#000!important} circle.state-end{stroke:#000!important} text,.noteText,.state-note text{fill:#000!important}'}}%%
-sequenceDiagram
-  participant L as leader
-  participant A as agent
-  L->>L: stop()
-  A-->>L: End intake
-  A->>A: Start flush (alone)
-  A-->>L: End flush: Stopped
-  L->>L: join() returns [Stopped]
-```
+`Run::edit` turns the handle into a target: a worker index with all of its field bits, or the pool
+with `POOL`. It checks the pool belongs to this run by its address. The closure runs in arena mode,
+so what it allocates lands in the domain. On seq the backend calls `Slot::edit` or
+`worker::edit_pool`; on mpi it writes a request word and waits for each agent's `remote_edit` to
+acknowledge (`backends/mpi/leader.rs`).
 
 ## Join and take
 
-`join` returns when every worker has a result, and no step runs after it. Then `w.take()` gives the
-leader the worker's state, and `w.error()` the error of a failed step. Both panic before the join.
+`join` sets the join flag the handles share, so `Worker::take` and `Worker::error` stop panicking.
+`take` moves the state out of the block and marks `taken`, so `Core::drop` does not drop it again.
+`__join_checked(exact)` joins with the traces and replays each through `sched::check`; the
+conformance tests use it.
 
-A panic in any worker aborts the run: the leader's next call, including one already blocked,
-panics with `trame: worker <w> panicked: <message>` (`spec.md`, Definition (Abort)).
+A panic in a worker reaches the leader as a panic of its next backend call. `run::panic_message`
+turns a payload into the message, with `<non-string panic payload>` for anything that is neither
+`&str` nor `String`.

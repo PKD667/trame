@@ -39,7 +39,7 @@ fn stray() -> Status {
     Status::Done
 }
 
-/// A worker returns while another waits for a write nothing makes (Deadlock, spec.md 5). The waiter
+/// A worker returns while another waits for a write nothing makes (Deadlock, INTERFACE.md 5). The waiter
 /// gets `Deadlock`, whichever order the two workers are declared in.
 #[test]
 fn returned_worker_leaves_a_waiter_deadlocked() {
@@ -88,7 +88,7 @@ fn a_worker_whose_steps_are_all_done_or_waiting_is_deadlocked() {
 }
 
 /// Join called only after the run is stuck: the leader waits until its wait panics as stuck, so the
-/// stall is there before join (spec.md 5, Deadlock), and join still returns.
+/// stall is there before join (INTERFACE.md 5, Deadlock), and join still returns.
 #[test]
 fn join_after_the_run_is_stuck_returns_deadlock() {
     within_10s(|| {

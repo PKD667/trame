@@ -1,6 +1,6 @@
 # trame-driver
 
-Trame's compile-time checker (spec.md, Compile time): a rustc driver, and `cargo trame`, which runs cargo with it.
+Trame's compile-time checker (INTERFACE.md, Compile time): a rustc driver, and `cargo trame`, which runs cargo with it.
 The driver reads the optimized MIR of each root marker (`trame::__check::{item,step,worker}`, check.rs) and everything reachable from it, and refuses code that breaks the rules. Refusals are rustc errors: `error: [rule] <level> ...`. What a state and its pool may hold (CONTRACT.md M2, M3) is not the driver's: it is the type `trame::Plain`, which rustc checks.
 
 Run from driver/. The compiler is pinned in driver/rust-toolchain.toml and built by flake.nix.
@@ -19,9 +19,9 @@ The macros call these hidden functions of check.rs, from non-generic functions t
 
 ## Checks
 
-Per level (Item, Step, Worker, as in spec.md, Requirement per level), for every function reached from a root:
+Per level (Item and Step, as in INTERFACE.md, Section 3; Worker is host code: leader, builders and edits), for every function reached from a root:
 - Unsafe code, FFI, indirect calls, statics: refused at every level.
-- Effects (lists/effects.txt): each effect is allowed at the levels spec.md names for it.
+- Effects (lists/effects.txt): each effect is allowed at the levels INTERFACE.md names for it.
 - Core and alloc callees: judged by the lists (below).
 - Counted loops (Item, Step), recursion (Item, Step).
 - Allocation (Item, Step; CONTRACT.md, M4, D5): a step neither allocates nor frees. A call into `alloc` is refused unless the list names it by the alloc type's own key (`alloc::vec::Vec::len`, `alloc::vec::Vec::index_mut`, ...), so a call that only a trait path allows (`Extend::extend`, `Clone::clone`) is refused as `[allocation]`, as `Vec::push` is. A `Vec` made or dropped inside a step is refused through `Vec::new` or `Vec::drop`: the drop glue shows a free. A step may rewrite in place the buffers its state holds: an index assignment, `len`, `iter_mut`, a counted loop. The Worker level may allocate.
@@ -68,6 +68,6 @@ What it costs: a non-effect trusted function that does I/O, or unbounded work, g
 - Allocation is judged on calls into `alloc`, by key. A buffer that a step makes and keeps would still have to be dropped or stored over an old value, and both are refused (`Vec::drop`, `Box::drop`); `mem::forget`, `ManuallyDrop` and `Box::leak` are unlisted, so they are refused. An allocation inside trusted trame code that is not an `alloc` call (a raw `__rust_alloc`) is not seen.
 - Trusted trame code is read for alloc calls at Step as it was at Item. An `Arc` handle's clone and drop in the backend are allowed by key (A_C.txt).
 - The state-memory check is on types. A `usize` that holds an address, or a `HashMap`'s per-process seed, passes.
-- Not implemented: the Lock rules (UnsafeCell only in Lock, no Lock in Lock) and the rest of spec.md section 3 outside the milestones.
+- Not implemented: the Lock rules (UnsafeCell only in Lock, no Lock in Lock) and the rest of INTERFACE.md section 3 outside the milestones.
 - Calls with no readable body and not listed are refused (`allow-list`), so a missing body fails closed.
 - Diagnostics point at MIR spans, which may be inside macro expansions.

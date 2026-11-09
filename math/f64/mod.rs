@@ -1,4 +1,4 @@
-//! The f64 numeric functions of `trame::math` (spec.md 7). Each is one portable code: plain IEEE
+//! The f64 numeric functions of `trame::math` (INTERFACE.md 7). Each is one portable code: plain IEEE
 //! arithmetic, comparisons and bit manipulation, with no libm, no FMA and no platform transcendental.
 //! So the same bits come out on every backend and every target that is IEEE 754 binary64.
 //!

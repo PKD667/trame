@@ -39,6 +39,7 @@
           ./Cargo.toml
           ./Cargo.lock
           ./README.md
+          ./INTERFACE.md
           ./macros
           ./math
           ./backends/seq

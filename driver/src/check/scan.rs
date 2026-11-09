@@ -538,7 +538,7 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
     }
 
     /// The loops of the body. A loop is counted only if its header calls `Iterator::next` on a
-    /// counted iterator, and the body never mutates that iterator (spec.md, Definition (Counted loop)).
+    /// counted iterator, and the body never mutates that iterator (INTERFACE.md, Definition (Counted loop)).
     fn loops(&mut self) {
         let blocks = &self.body.basic_blocks;
         let reachable: FxHashSet<BasicBlock> = blocks.reverse_postorder().iter().copied().collect();
@@ -721,7 +721,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
                 if ty.needs_drop(self.tcx, TypingEnv::fully_monomorphized()) {
                     let tcx = self.tcx;
                     // A core/alloc/std type with its own `Drop` impl is one call, `<T as Drop>::drop`,
-                    // listed like any other callee: its glue is not read (spec.md: drop glue counts
+                    // listed like any other callee: its glue is not read (INTERFACE.md: drop glue counts
                     // as a call). Other drops are read: user `Drop` impls and glue of plain structs.
                     let listed_drop = match ty.kind() {
                         ty::Adt(adt, _) if tcx.adt_destructor(adt.did()).is_some() => {

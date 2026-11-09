@@ -1,6 +1,6 @@
 # Proofs
 
-Each clause of `CONTRACT.md` is checked by one or more of the methods below. A method checks a model
+Each clause of the backend contract is checked by one or more of the methods below. A method checks a model
 of the backend, or some of its runs, never the backend whole. Each entry names the method and the
 point where it stops. A clause that nothing checks says so.
 
@@ -123,7 +123,25 @@ its posted receive, every frame taken and credited. Lossy lanes and the end have
 
 **E1 Abort.** Programs `abort`, `abort_join`, `leader_panics`.
 
-**E2 Join.** Programs; the outcome check.
+**E2 Join.** Programs; the outcome check. The detector of stuck runs across hosts
+(`backends/mpi/detect.rs`) is modelled in `proofs/mpi/Detect.tla`: `MCDetect` checks that a Stuck
+verdict is given only when every worker is quiet or done and nothing is in flight. `MCDetectOnce`,
+the mutant that skips the comparison with the previous round, must violate it, and does. Programs
+`xhost_deadlock` and `leader_stuck` run it on two hosts. The model has one worker per host, H = 2, three
+rounds and no timeouts.
+
+## Conformance
+
+A finite trace can show that R1 fails, never that R2 holds. Replay therefore checks safety on the
+runs it sees, and progress rests on the programs ending and on the TLA+ liveness properties.
+
+## Latency
+
+T leaves latency to the environment, so no proof says anything about it. The MPI backend has a
+recorder, `backends/mpi/tests/latency.rs`, which writes round trips between workers in the nixsci
+record format and computes no verdict. No latency claim is checked: the tree holds no nixsci
+experiment that locks those records by content hash. A claim would have this form: the fraction of
+round trips whose half exceeds the fastest by more than 100 µs is below 0.1%, at confidence 0.99.
 
 ## Unsafe code
 
@@ -139,4 +157,4 @@ hardware it runs on and is not a guarantee of the language.
 
 **Foreign calls.** MPI and the Linux futex and shared-memory calls behave as documented.
 
-**Hardware.** Every agent that is not blocked keeps running (`spec.md`, Requirement (Progress)).
+**Hardware.** Every agent that is not blocked keeps running: the hypothesis of R2.

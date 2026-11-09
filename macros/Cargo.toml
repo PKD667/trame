@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "#[message], #[item] and parallel!: the attributes and macro that write trame's surface code."
 
-# A proc-macro crate. Its accepted grammar is the surface in lib.rs and spec.md 5.4.
+# A proc-macro crate. Its accepted grammar is the surface in lib.rs and INTERFACE.md 5.4.
 [lib]
 name = "trame_macros"
 path = "lib.rs"

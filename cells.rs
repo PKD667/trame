@@ -1,4 +1,4 @@
-//! The message types a step receives (spec.md 5.2 Ownership): set per thread for the duration of a
+//! The message types a step receives (INTERFACE.md 5.2 Ownership): set per thread for the duration of a
 //! step, so `recv` of a type the step does not receive answers `None`.
 
 extern crate std;

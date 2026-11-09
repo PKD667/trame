@@ -12,7 +12,7 @@
 // Abort reaches a worker at its next effect (worker.rs), not while it computes.
 //
 // The leader. Every leader call checks the abort first (`fail_if_aborted`), and then panics with the
-// worker and its message (spec.md 5, Abort). It ends the run first (`end_run`, `finalize`).
+// worker and its message (INTERFACE.md 5, Abort). It ends the run first (`end_run`, `finalize`).
 
 extern crate std;
 

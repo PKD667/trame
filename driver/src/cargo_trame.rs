@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 const USAGE: &str = "usage: cargo trame <check|build|test> [cargo arguments...]\n\
-    runs cargo with trame's compile-time checks (spec.md, Compile time)";
+    runs cargo with trame's compile-time checks (INTERFACE.md, Compile time)";
 
 fn driver() -> Result<PathBuf, String> {
     if let Some(path) = env::var_os("TRAME_DRIVER") {

@@ -2,7 +2,7 @@
 name = "trame-driver"
 version = "0.1.0"
 edition = "2024"
-description = "rustc driver and `cargo trame` for trame's compile-time checks (spec.md, Compile time)"
+description = "rustc driver and `cargo trame` for trame's compile-time checks (INTERFACE.md, Compile time)"
 publish = false
 # The test is rejections/run.sh (tests/rejections.rs). Cargo does not discover other test targets.
 autotests = false

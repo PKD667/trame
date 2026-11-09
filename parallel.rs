@@ -1,4 +1,4 @@
-//! The runtime of `parallel!` (spec.md 5.4), shared by every backend. It runs the items in one
+//! The runtime of `parallel!` (INTERFACE.md 5.4), shared by every backend. It runs the items in one
 //! thread. That is a valid schedule: keys are independent, and the items of one key run in input
 //! order.
 //!
@@ -20,9 +20,9 @@ pub fn offered(ty: core::any::TypeId) -> bool {
 }
 
 
-/// `parallel!` (spec.md 5.4): for each key `k`, fold the items whose key is `k` into `slots[k]`,
+/// `parallel!` (INTERFACE.md 5.4): for each key `k`, fold the items whose key is `k` into `slots[k]`,
 /// in input order. Aborts before any item runs, unless every key is below `slots.len()`, as `x[i]`
-/// does (spec.md 5.4, Parallel effect).
+/// does (INTERFACE.md 5.4, Parallel effect).
 pub fn parallel<I, S, C, K, F>(key: K, f: F, cx: &C, items: &[I], slots: &mut [S])
 where
     K: Fn(&I) -> usize,
@@ -31,7 +31,7 @@ where
     let n = slots.len();
     for item in items {
         let k = key(item);
-        // Checked for every item before the first runs: a bad key aborts with no item run (spec.md 5.4).
+        // Checked for every item before the first runs: a bad key aborts with no item run (INTERFACE.md 5.4).
         assert!(
             k < n,
             "trame: parallel!: an item has key {k}, but there are {n} slots; a key must be below the slot count, as x[i] is. No item ran."

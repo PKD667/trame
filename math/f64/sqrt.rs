@@ -9,7 +9,7 @@
 //! correctly rounded root, on every target, without relying on the platform's sqrt.
 
 /// Correctly rounded square root. `sqrt(-0.0)` is `-0.0`; negative inputs give NaN; NaN is returned
-/// as is (its payload is unspecified by IEEE 754, see spec.md, Requirement (Floating point)).
+/// as is (its payload is unspecified by IEEE 754, see INTERFACE.md, Requirement (Floating point)).
 pub fn sqrt(x: f64) -> f64 {
     if x.is_nan() {
         return x;

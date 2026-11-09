@@ -14,7 +14,7 @@
 //
 // Sender. It knows C only from credits: `c`, the largest it received, is at most the receiver's C.
 // Frame P is sent only when P - c < cap, so it always finds a posted receive, and a lossless send
-// answers Full exactly when P - c = cap. That is spec.md's Full with U, the frames taken whose credit
+// answers Full exactly when P - c = cap. That is INTERFACE.md's Full with U, the frames taken whose credit
 // has not arrived (Release). A lossy send never waits: with no room, it keeps the frame as pending,
 // replacing any older pending one (a Drop of a frame that is not the newest), and sends it once a
 // credit makes room.

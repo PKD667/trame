@@ -1,68 +1,78 @@
-# Trame: system design
+# Source map
 
-Trame runs a Rust program as workers that hold state and exchange messages over declared routes. A
-leader builds the workers, feeds them, edits them and collects them. A backend runs the result on
-real hardware, and `spec.md` defines which behaviours it may show. This directory describes the
-parts, one file each.
+These notes describe how the code is put together: which file owns which part, and what calls what.
+The behaviour a program may rely on is in `INTERFACE.md`, what a backend must keep is in
+`CONTRACT.md`, and how each clause is checked is in `PROOFS.md`. A note here that disagrees with the
+code is wrong.
 
-## Parts
+## Layers
 
-**Worker.** A state and the steps that run over its fields (`workers-and-steps.md`).
-
-**Scheduler.** The rules that decide which step of a worker starts: field locks, rank, weights
-(`scheduling.md`). `sched.rs` is its model.
-
-**Leader.** The host code that declares the topology, launches it and drives the run: sends,
-receives, edits, stops and joins (`leader.md`).
-
-**Pool.** Read-only data that every worker's steps read and only the leader writes (`pool.md`).
-
-**Memory domain.** The memory in which a state lives, and `trame::Alloc`, which puts what a builder
-or an edit allocates there (`memory-domains.md`).
-
-**Transport.** Routes, frames and lossy routes (`transport.md`).
-
-**Backend.** The code that runs the parts: seq and mpi (`backends.md`).
+The crate has three layers. The *surface* is what a program calls. The *model* is plain data and pure
+functions with no clock, thread or I/O. A *backend* runs the surface on hardware, behind one trait.
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000','edgeLabelBackground':'#ffffff','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','actorLineColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','fontFamily':'monospace'},'themeCSS':'rect.actor,rect.note,.note rect,.statediagram-note rect{fill:#fff!important;stroke:#000!important} line,.actor-line{stroke:#000!important} .arrowheadPath,marker path{fill:#000!important;stroke:#000!important} circle.state-end{stroke:#000!important} text,.noteText,.state-note text{fill:#000!important}'}}%%
-flowchart LR
-  L["leader<br/>topology, send, recv,<br/>edit, stop, join"]
-  subgraph B["backend"]
-    subgraph W["worker"]
-      ST["state<br/>fields"]
-      SP["steps<br/>agents run them"]
-    end
-    P[("pool")]
-    R["routes"]
+flowchart TB
+  subgraph S["surface"]
+    io["io.rs<br/>send, recv, me, host"]
+    st["status.rs<br/>Status, Waits"]
+    tp["topology.rs<br/>Topology, Worker, Pool, End"]
+    rn["run.rs<br/>Run, Outcome"]
+    ti["time.rs<br/>now, Reading"]
+    pa["parallel.rs<br/>parallel!"]
   end
-  L -- "set, edit" --> ST
-  L -- "edit" --> P
-  SP -- "&field, &mut field" --> ST
-  SP -- "pool: &P" --> P
-  SP -- "send, recv" --> R
-  L -- "send, recv" --> R
+  subgraph M["model"]
+    sc["sched.rs<br/>Sched, choose, check"]
+  end
+  subgraph K["shared machinery"]
+    wk["worker.rs<br/>State, Core, Slot, agent"]
+    la["launch.rs<br/>Plan, check, Refused"]
+    dm["domain.rs<br/>Alloc"]
+    ce["cells.rs<br/>owned tags"]
+  end
+  be{"backend.rs<br/>trait Backend"}
+  S --> be
+  wk --> sc
+  wk --> be
+  be --> seq["backends/seq"]
+  be --> mpi["backends/mpi"]
+  seq --> loc["backends/local<br/>route rings"]
 ```
 
-## Phases
+| file | owns |
+|---|---|
+| `lib.rs` | the public names, the backend selection by feature, `extern crate self as trame` |
+| `macros/` | `#[trame::state]`, `#[trame::step]`, `#[trame::message]`, `#[trame::item]`, `parallel!`, `#[derive(Plain)]` |
+| `plain.rs` | the `Plain` trait and its implementations |
+| `worker.rs` | `State`, the type-erased worker `Erased`, its block `Core`, the reference agent |
+| `sched.rs` | the scheduling model and the trace checker |
+| `status.rs` | `Status` and the wait conditions `Waits` |
+| `topology.rs` | declaration: `Topology`, handles, `WorkerId`, `HostId`, `End` |
+| `launch.rs` | `Plan`, the launch checks, `Refused`, `build_all` |
+| `run.rs` | the leader's `Run`, `Outcome` |
+| `io.rs` | worker effects, the message trait, the cross-host tag |
+| `cells.rs` | the tags the running step owns, per thread |
+| `domain.rs` | the `Alloc` wrapper and arena mode |
+| `time.rs` | `now`, `Reading`, clock ids |
+| `parallel.rs` | the item fold behind `parallel!` |
+| `check.rs` | level markers the driver finds after monomorphization |
+| `backend.rs` | the trait `Backend`, the one seam to hardware |
+| `math/` | portable numeric functions |
 
-**Compile.** The macros `#[trame::state]`, `#[trame::step]` and `#[trame::message]` check the shape
-of the code. The driver (`driver/README.md`) checks each level's effects.
+Around the crate: `driver/` is the compile-time checker, `rejections/` its case suite, `programs/`
+the shared conformance programs, `conformance/` the mutants, `proofs/` the TLA+ models, `scale/`
+the scaling runs and `experiments/` the nix experiments.
 
-**Launch.** `Topology::launch` agrees on the plan, checks it, and asks the backend to accept it.
-The plan is fixed from then on: no route and no worker is added.
+## A step's path
 
-**Run.** Agents run steps under the scheduler. The leader may send, receive, edit and stop.
+`#[trame::step]` turns a function into a case of the state's `State::run`, with its read and write
+masks in `State::STEPS`. A backend's agent asks `Sched::choose` for a step, calls
+`Erased::run(i, pool)`, and that projects the fields out of the block and calls the function.
+Inside, `trame::send` becomes `Selected::worker_send` and `trame::recv` becomes
+`Selected::worker_recv`, guarded by `cells::owns`. The returned `Status` goes back to `Sched::end`.
 
-**Join.** Every worker has a result, and the leader takes the states back.
+## Files of these notes
 
-## Where the rules are
-
-**Behaviour.** `spec.md` defines the transition system T that every backend's runs must be runs of.
-
-**Backend obligations.** `CONTRACT.md` states them as named clauses.
-
-**Checks.** `PROOFS.md` says how each clause is checked, and where the check stops.
-
-**Code.** The parts above live in `worker.rs`, `sched.rs`, `status.rs`, `topology.rs`, `run.rs`,
-`launch.rs`, `domain.rs`, `io.rs`, `backend.rs` and `backends/`.
+`workers-and-steps.md` covers `worker.rs` and the macros. `scheduling.md` covers `sched.rs`.
+`leader.md` covers `topology.rs`, `launch.rs` and `run.rs`. `pool.md` covers `PoolCore` and pool
+edits. `transport.md` covers `io.rs`, `cells.rs` and the route rings. `memory-domains.md` covers
+`domain.rs`. `backends.md` covers `backend.rs` and the two backends.

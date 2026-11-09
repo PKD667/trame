@@ -3,7 +3,7 @@
 //! The program is a graph. A node is a function body: a named fn, a root, or a wrapper's body
 //! (a closure, a helper, an impl method). Its sites are the statements that can be refused in
 //! it, and its edges are the calls into other bodies. A node's level is the strictest level of
-//! the roots that reach it (spec.md section 3, and the driver judges a function at its strictest
+//! the roots that reach it (INTERFACE.md section 3, and the driver judges a function at its strictest
 //! level). A refusal is a site whose construct is forbidden at that level; a cyclic node at Item
 //! or Step is a recursion refusal.
 

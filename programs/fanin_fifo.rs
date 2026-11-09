@@ -25,7 +25,7 @@ struct Feeder {
 }
 
 /// Sends from `next` on until the route is full or every item is sent. The loop is counted
-/// (spec.md, Definition (Counted loop)): a range from where the last call stopped.
+/// (INTERFACE.md, Definition (Counted loop)): a range from where the last call stopped.
 #[trame::step(Feeder)]
 fn feed(from: &u32, next: &mut u32) -> Status {
     for seq in *next..ITEMS {

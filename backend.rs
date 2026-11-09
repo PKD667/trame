@@ -140,7 +140,7 @@ pub(crate) trait Backend {
     }
 
     /// The agent's turns, told under the worker's lock, for a backend that shows a worker stuck from
-    /// another process (mpi; spec.md 5, Deadlock): a step starts, a step ends, or an agent is about to
+    /// another process (mpi; INTERFACE.md 5, Deadlock): a step starts, a step ends, or an agent is about to
     /// idle with no step running, at `epoch`, with or without a deadline. Under the lock, so a quiet
     /// mark is never told after a start that followed it. seq decides stuckness itself.
     fn worker_mark_start() {}

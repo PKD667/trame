@@ -78,7 +78,7 @@ fn turn_effect<T>(op: impl FnOnce(&mut State, usize) -> T, bump: bool) -> T {
 }
 
 /// The leader's check, before each of its calls: an aborted run panics the leader, naming the worker
-/// and its message (spec.md 5, Abort). The guard is released before the panic, so the Mutex is not
+/// and its message (INTERFACE.md 5, Abort). The guard is released before the panic, so the Mutex is not
 /// poisoned for the leader's own calls.
 fn leader_check(st: MutexGuard<'_, State>) -> MutexGuard<'_, State> {
     if let Some((w, msg)) = &st.panic {
@@ -301,7 +301,7 @@ impl Backend for Selected {
         // Every act bumps `acts` and wakes the leader (turn_effect, the leader's ops, a result).
         let mut st = leader_check(run.shared.lock());
         while st.acts == seen {
-            // Stuck: this call can never return (spec.md 5, Deadlock). The guard is released first.
+            // Stuck: this call can never return (INTERFACE.md 5, Deadlock). The guard is released first.
             if st.leader_stuck() {
                 drop(st);
                 panic!("trame: deadlock: the leader waits and nothing can arrive");
@@ -323,7 +323,7 @@ impl Backend for Selected {
         let mut st = leader_check(shared.lock());
         // The leader sends nothing after join. A worker that is still able to move is waited for.
         // When none is, and no idle worker has seen a change since it went idle, the run is stuck
-        // (spec.md 5, Deadlock): every agent without a result gets deadlock. An idle worker with a
+        // (INTERFACE.md 5, Deadlock): every agent without a result gets deadlock. An idle worker with a
         // deadline is not stuck: it moves when time passes, so join waits for the earliest one.
         while st.phase.iter().any(|p| !matches!(p, Phase::Done(_))) {
             st = leader_check(st);

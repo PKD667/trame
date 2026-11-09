@@ -1,4 +1,4 @@
-//! The compile-time checker: roots, levels, the call graph, and the rules of spec.md section 3.
+//! The compile-time checker: roots, levels, the call graph, and the rules of INTERFACE.md section 3.
 //!
 //! Roots are the monomorphized instances of the markers in trame's `check.rs`
 //! (`trame::__check::{item, step, worker}`) that this crate codegens. Each root and everything
@@ -22,7 +22,7 @@ use rustc_span::Span;
 use lists::{Effect, Lists, Verdict};
 use scan::{Scan, What, canon};
 
-/// A level of spec.md section 3. Smaller is stricter, so `min` picks the strictest.
+/// A level of INTERFACE.md section 3. Smaller is stricter, so `min` picks the strictest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
     Item = 0,
@@ -209,7 +209,7 @@ fn recursion<'tcx>(
                     .struct_span_err(
                         span,
                         format!(
-                            "[recursion] {} recurses: {} (spec.md, Requirement ({}))",
+                            "[recursion] {} recurses: {} (INTERFACE.md, Requirement ({}))",
                             lv.noun(),
                             cycle.join(" -> "),
                             lv.name()
@@ -244,19 +244,19 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> O
         }
     }
     match &site.what {
-        What::Unsafe(d) => Some(("unsafe", format!("{subj} contains {d}: no unsafe code (spec.md, Requirement (All levels))"))),
-        What::Ffi(p) => Some(("ffi", format!("{subj} calls {p}: no FFI (spec.md, Requirement (All levels))"))),
-        What::Indirect(d) => Some(("indirect", format!("{subj} {d}: no indirect calls (spec.md, Requirement (All levels))"))),
-        What::Static(p) => Some(("static", format!("{subj} uses {p}: only consts are allowed, not globals (spec.md, Requirement (All levels))"))),
-        What::Std(p) => Some(("std", format!("{subj} calls {p}: no std (spec.md, Requirement (All levels))"))),
-        What::Unresolved(d) => Some(("unresolved", format!("{subj}: {d}; the driver cannot check this call (spec.md, Requirement (All levels))"))),
+        What::Unsafe(d) => Some(("unsafe", format!("{subj} contains {d}: no unsafe code (INTERFACE.md, Requirement (All levels))"))),
+        What::Ffi(p) => Some(("ffi", format!("{subj} calls {p}: no FFI (INTERFACE.md, Requirement (All levels))"))),
+        What::Indirect(d) => Some(("indirect", format!("{subj} {d}: no indirect calls (INTERFACE.md, Requirement (All levels))"))),
+        What::Static(p) => Some(("static", format!("{subj} uses {p}: only consts are allowed, not globals (INTERFACE.md, Requirement (All levels))"))),
+        What::Std(p) => Some(("std", format!("{subj} calls {p}: no std (INTERFACE.md, Requirement (All levels))"))),
+        What::Unresolved(d) => Some(("unresolved", format!("{subj}: {d}; the driver cannot check this call (INTERFACE.md, Requirement (All levels))"))),
         What::Effect(e, p) => {
             if e.allowed_at(level) {
                 None
             } else if level == Level::Item {
-                Some(("effects", format!("{subj} calls {p}: items perform no effects (spec.md, Requirement (Item))")))
+                Some(("effects", format!("{subj} calls {p}: items perform no effects (INTERFACE.md, Requirement (Item))")))
             } else {
-                Some(("effects", format!("{subj} calls {p}: steps perform only send, recv, now and parallel (spec.md, Requirement (Step))")))
+                Some(("effects", format!("{subj} calls {p}: steps perform only send, recv, now and parallel (INTERFACE.md, Requirement (Step))")))
             }
         }
         What::Core { key, names, alloc } => match lists.verdict(level, names) {
@@ -272,20 +272,20 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> O
             }
             Verdict::Refuse => Some((
                 "allow-list",
-                format!("{subj} calls {key}: not listed at this level (driver/lists/{}.txt) (spec.md, Requirement ({lvl}))", level.list_file()),
+                format!("{subj} calls {key}: not listed at this level (driver/lists/{}.txt) (INTERFACE.md, Requirement ({lvl}))", level.list_file()),
             )),
         },
         What::Type(name) => lists.denied(level, name).map(|entry| {
             ("deny", format!("{subj} uses type {name}: denied by `{entry}` (driver/lists/deny.txt, {}.txt) ({})", level.list_file(), deny_clause(lists, level, &entry)))
         }),
         What::Unbounded(name) => (level != Level::Worker).then(|| {
-            ("unbounded", format!("{subj} passes {name}, a user iterator, to core code, which would drive it without a bound (spec.md, Definition (Counted loop))"))
+            ("unbounded", format!("{subj} passes {name}, a user iterator, to core code, which would drive it without a bound (INTERFACE.md, Definition (Counted loop))"))
         }),
         What::Loop { counted, reason } => {
             if *counted || level == Level::Worker {
                 None
             } else {
-                Some(("counted-loop", format!("{subj} has a loop that is not counted: {reason} (spec.md, Definition (Counted loop))")))
+                Some(("counted-loop", format!("{subj} has a loop that is not counted: {reason} (INTERFACE.md, Definition (Counted loop))")))
             }
         }
         What::Edge(_) | What::Own(_) => None,
@@ -302,20 +302,20 @@ fn allocates(lists: &Lists, level: Level, names: &[String]) -> bool {
 /// Why a step or an item may not allocate, for the message.
 fn no_alloc(level: Level) -> &'static str {
     match level {
-        Level::Item => "items neither allocate nor call alloc (spec.md, Requirement (Item))",
+        Level::Item => "items neither allocate nor call alloc (INTERFACE.md, Requirement (Item))",
         _ => "steps neither allocate nor free; only a builder or an edit does (CONTRACT.md, M4, D5)",
     }
 }
 
-/// The clause of spec.md that a deny entry enforces: deny.txt's entries are the All-levels rules (no UnsafeCell,
+/// The clause of INTERFACE.md that a deny entry enforces: deny.txt's entries are the All-levels rules (no UnsafeCell,
 /// no locks, no raw pointers); a per-level deny is an infinite source, which is a loop the counted-loop rule
 /// does not bound (the level files say so).
 fn deny_clause(lists: &Lists, level: Level, entry: &str) -> String {
     if lists.is_global(entry) {
-        "spec.md, Requirement (All levels)".into()
+        "INTERFACE.md, Requirement (All levels)".into()
     } else {
         debug_assert!(level != Level::Worker, "the worker lists deny no per-level entry");
-        "spec.md, Definition (Counted loop)".into()
+        "INTERFACE.md, Definition (Counted loop)".into()
     }
 }
 

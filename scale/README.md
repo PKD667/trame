@@ -7,7 +7,7 @@ Five trame programs and three plain-MPI baselines. The trame programs are exampl
 
 Every trame worker times itself on its own clock and sends one report to the leader. The leader prints
 one JSON line per worker, then an outcomes line. Durations are never compared across workers, since
-clocks have unknown offsets (spec.md 5.1).
+clocks have unknown offsets (INTERFACE.md 5.1).
 
 ## What each benchmark measures
 
