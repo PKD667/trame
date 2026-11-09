@@ -43,7 +43,7 @@ T=120
 ok() { echo "ok   $1"; }
 fail() { echo "FAIL $1"; exit 1; }
 # stderr of each run. A program with <name>.panics must end non-zero, with that line on its stderr (the
-# panic of the leader, spec.md 5, Abort). Its stdout must equal <name>.expected when that file exists.
+# panic of the leader, INTERFACE.md 5, Abort). Its stdout must equal <name>.expected when that file exists.
 # Any other program exits 0 and its stdout must equal <name>.expected.
 errf="$(mktemp)"
 trap 'rm -f "$errf"' EXIT
@@ -98,7 +98,13 @@ if [[ "$which_backend" != seq ]]; then
         for ((x = 0; x < h; x++)); do verify "mpi ${h}h host $x $p" "$p" "$rc" "$(host_out $x)"; done
       else
         out="$(for ((x = 0; x < h; x++)); do host_out $x; done)"
-        [[ "$rc" -eq 0 ]] || fail "mpi ${h}h $p: exit status $rc"
+        # A program with <name>.panics panics on some host: the run ends non-zero, with that line on stderr.
+        if [[ -f "programs/$p.panics" ]]; then
+          [[ "$rc" -ne 0 ]] || fail "mpi ${h}h $p: exit status 0, but a panic is expected"
+          grep -F -x -q -- "$(cat "programs/$p.panics")" "$errf" || { cat "$errf" >&2; fail "mpi ${h}h $p: stderr lacks the panic line"; }
+        else
+          [[ "$rc" -eq 0 ]] || fail "mpi ${h}h $p: exit status $rc"
+        fi
         diff -u "programs/$p.h2.expected" <(emit "$out") >/dev/null || { echo "$out"; fail "mpi ${h}h $p: stdout differs"; }
         ok "mpi ${h}h $p"
       fi
