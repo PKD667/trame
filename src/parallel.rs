@@ -23,7 +23,6 @@ pub fn offered(ty: core::any::TypeId) -> bool {
     crate::backend::Selected::worker_offer(ty)
 }
 
-
 /// `parallel!` (INTERFACE.md 5.4): for each key `k`, fold the items whose key is `k` into `slots[k]`,
 /// in input order. Aborts before any item runs, unless every key is below `slots.len()`, as `x[i]`
 /// does (INTERFACE.md 5.4, Parallel effect).

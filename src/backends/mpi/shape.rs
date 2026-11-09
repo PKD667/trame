@@ -8,7 +8,7 @@ use std::format;
 use std::string::String;
 use std::vec::Vec;
 
-use super::layout::{PER_WORKER, LINE, Layout, RouteLayout, SLOT_HEAD, Topology, WORKER_LINES};
+use super::layout::{LINE, Layout, PER_WORKER, RouteLayout, SLOT_HEAD, Topology, WORKER_LINES};
 use super::refusal::Refusal;
 
 fn refuse(why: impl Into<String>) -> Refusal {

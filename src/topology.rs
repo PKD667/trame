@@ -1,16 +1,16 @@
 //! Worker identities, the handles of declared workers, and the topology the host builds: INTERFACE.md
 //! section 4.
 
+use crate::backend::Target;
 use crate::backend::{Backend, Selected};
 use crate::io::Message;
 use crate::launch::{Plan, Refused, Route, check};
 use crate::run::Run;
-use crate::backend::Target;
 use crate::worker::{Core, PoolCore, State};
 use alloc::sync::Arc;
-use core::sync::atomic::{AtomicBool, Ordering};
 use core::any::{TypeId, type_name};
 use core::mem::size_of;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 /// A host of the federation: one memory domain, one backend, one leader. Fixed by deployment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -25,7 +25,11 @@ pub struct WorkerId(pub(crate) u32, pub(crate) u32);
 impl core::fmt::Debug for WorkerId {
     /// `WorkerId(k)` for this host's worker k, `WorkerId(k, host h)` for another host's.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.1 == HERE { write!(f, "WorkerId({})", self.0) } else { write!(f, "WorkerId({}, host {})", self.0, self.1) }
+        if self.1 == HERE {
+            write!(f, "WorkerId({})", self.0)
+        } else {
+            write!(f, "WorkerId({}, host {})", self.0, self.1)
+        }
     }
 }
 
@@ -104,7 +108,10 @@ impl<S: State> Worker<S> {
     /// The state, after `Run::join`. Panics before the join, or when the run aborted (the leader
     /// panicked then, so this is reached only by a leader that caught that panic).
     pub fn take(self) -> S {
-        assert!(self.joined.load(Ordering::Acquire), "trame: Worker::take before Run::join; a running worker's state is not the leader's");
+        assert!(
+            self.joined.load(Ordering::Acquire),
+            "trame: Worker::take before Run::join; a running worker's state is not the leader's"
+        );
         // SAFETY: joined, so no step runs again (backend.rs, leader_join).
         unsafe { self.core.take() }
     }
@@ -246,14 +253,20 @@ pub(crate) mod sealed {
         fn set(&self, plan: &mut Plan, build: alloc::boxed::Box<dyn FnOnce() -> S + Send>) {
             let k = self.id.0 as usize;
             let ours = plan.workers.get(k).is_some_and(|c| core::ptr::addr_eq(Arc::as_ptr(c), Arc::as_ptr(&self.core)));
-            assert!(ours, "trame: Topology::set of a worker declared by another topology; set it on the topology whose `worker` made it");
+            assert!(
+                ours,
+                "trame: Topology::set of a worker declared by another topology; set it on the topology whose `worker` made it"
+            );
             let core = self.core.clone();
             plan.builders[k] = Some(alloc::boxed::Box::new(move || core.fill(build())));
         }
         fn target(&self, run: &Run) -> Target {
             // A worker shares `joined` with its topology, and the run took that topology's (launch).
             let ours = Arc::ptr_eq(&self.joined, run.joined());
-            assert!(ours, "trame: Run::edit of a worker declared by another topology; edit it through the run its topology launched");
+            assert!(
+                ours,
+                "trame: Run::edit of a worker declared by another topology; edit it through the run its topology launched"
+            );
             Target::Worker(self.id.0 as usize)
         }
         unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut S)) {
@@ -266,13 +279,19 @@ pub(crate) mod sealed {
         type Value = P;
         fn set(&self, plan: &mut Plan, build: alloc::boxed::Box<dyn FnOnce() -> P + Send>) {
             let ours = plan.pool.as_ref().is_some_and(|p| core::ptr::addr_eq(Arc::as_ptr(p), Arc::as_ptr(&self.core)));
-            assert!(ours, "trame: Topology::set of a pool declared by another topology; set it on the topology whose `pool` made it");
+            assert!(
+                ours,
+                "trame: Topology::set of a pool declared by another topology; set it on the topology whose `pool` made it"
+            );
             let core = self.core.clone();
             plan.pool_builder = Some(alloc::boxed::Box::new(move || core.fill(build())));
         }
         fn target(&self, run: &Run) -> Target {
             let ours = run.pool().is_some_and(|p| core::ptr::addr_eq(p, Arc::as_ptr(&self.core)));
-            assert!(ours, "trame: Run::edit of a pool declared by another topology; edit it through the run its topology launched");
+            assert!(
+                ours,
+                "trame: Run::edit of a pool declared by another topology; edit it through the run its topology launched"
+            );
             Target::Pool
         }
         unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut P)) {

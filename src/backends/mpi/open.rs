@@ -18,8 +18,8 @@ use super::Transport;
 use super::layout::Topology;
 use super::nodes::node_ranks_setting;
 use super::refusal::Refusal;
-use super::shape::{encode, plan};
 use super::segment;
+use super::shape::{encode, plan};
 use super::shm::Window;
 use super::types::{Role, clock};
 

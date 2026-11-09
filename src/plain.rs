@@ -38,7 +38,27 @@ macro_rules! plain {
     )* };
 }
 
-plain!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64, bool, char, (), String, core::convert::Infallible);
+plain!(
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
+    f32,
+    f64,
+    bool,
+    char,
+    (),
+    String,
+    core::convert::Infallible
+);
 plain!(
     core::num::NonZeroU8,
     core::num::NonZeroU16,
@@ -53,7 +73,14 @@ plain!(
     core::num::NonZeroI128,
     core::num::NonZeroIsize,
 );
-plain!(core::time::Duration, crate::time::Reading, crate::topology::WorkerId, crate::topology::HostId, crate::topology::Leader, crate::topology::End);
+plain!(
+    core::time::Duration,
+    crate::time::Reading,
+    crate::topology::WorkerId,
+    crate::topology::HostId,
+    crate::topology::Leader,
+    crate::topology::End
+);
 
 macro_rules! plain_of {
     ($($c:ident),* $(,)?) => { $(

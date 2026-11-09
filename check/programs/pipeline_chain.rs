@@ -103,7 +103,10 @@ fn main() {
     let mut ids = vec![src.id()];
     ids.extend(stages.iter().map(|w| w.id()));
     ids.push(end.id());
-    t.set(&src, { let to = ids[1]; move || Source { next: 0, to, pending: None } });
+    t.set(&src, {
+        let to = ids[1];
+        move || Source { next: 0, to, pending: None }
+    });
     for (k, w) in stages.iter().enumerate() {
         let (s, to) = (k as u64 + 1, ids[k + 2]);
         t.set(w, move || Stage { s, to, seen: 0, pending: None });

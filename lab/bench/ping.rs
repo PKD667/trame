@@ -55,8 +55,15 @@ macro_rules! ping {
             #[trame::step(A, receives = Frame)]
             #[allow(clippy::too_many_arguments)]
             fn trip(
-                b: &WorkerId, samples: &u64, gap_max: &u64, seq: &mut u64, out: &mut Option<Reading>,
-                next: &mut Option<Reading>, gap: &mut u64, rng: &mut u64, owed: &mut Option<Sample>,
+                b: &WorkerId,
+                samples: &u64,
+                gap_max: &u64,
+                seq: &mut u64,
+                out: &mut Option<Reading>,
+                next: &mut Option<Reading>,
+                gap: &mut u64,
+                rng: &mut u64,
+                owed: &mut Option<Sample>,
             ) -> Status {
                 if let Some(s) = *owed {
                     if trame::send(Leader, s).is_err() {
@@ -135,7 +142,17 @@ macro_rules! ping {
                 };
                 if me == 0 {
                     let w = t.worker::<A>();
-                    t.set(&w, move || A { b, samples, gap_max, seq: 0, out: None, next: None, gap: 0, rng: 1, owed: None });
+                    t.set(&w, move || A {
+                        b,
+                        samples,
+                        gap_max,
+                        seq: 0,
+                        out: None,
+                        next: None,
+                        gap: 0,
+                        rng: 1,
+                        owed: None,
+                    });
                     t.route::<Sample>(w.id(), Leader, 1024);
                 }
                 if (hosts == 1 && me == 0) || (hosts > 1 && me == 1) {

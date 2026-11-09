@@ -6,7 +6,9 @@ in
 {
   # mpicc is in openmpi's dev output, not in the default one that dependencies.nix names, and its MPICC points at
   # the default output, where it is not. Both are set here.
-  packages = deps.packages ++ [ pkgs.openmpi.dev ];
+  # libffi-sys (under the mpi crate) configures and builds its bundled libffi with sh and make: a build outside
+  # stdenv (a validate check) needs them on PATH.
+  packages = deps.packages ++ [ pkgs.openmpi.dev pkgs.bash pkgs.gnumake pkgs.diffutils pkgs.findutils pkgs.which pkgs.file ];
   env = deps.env // { MPICC = "${pkgs.openmpi.dev}/bin/mpicc"; };
   launchRuntime = [ pkgs.openmpi pkgs.python3 pkgs.coreutils pkgs.time pkgs.procps pkgs.util-linux pkgs.gnugrep ];
   # One host per machine, or two cut from one (TRAME_MPI_NODE_RANKS, HOSTS.md).

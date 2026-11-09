@@ -61,24 +61,24 @@ pub mod math;
 
 // The modules are private: the surface is the root re-exports below (INTERFACE.md 7). Their definition
 // paths (`trame::io::send`, `trame::time::now`, ...) are what the driver's effects.txt names.
-mod io;
 mod domain;
-mod plain;
+mod io;
 mod launch;
+mod plain;
 mod run;
 mod time;
 mod topology;
 
+pub use domain::Alloc;
 /// The surface of INTERFACE.md 7: every public name of the crate, at the root and nowhere else.
 pub use io::{Full, Message, host, hosts, me, recv, send};
-pub use domain::Alloc;
-pub use plain::Plain;
-pub use trame_macros::Plain;
 pub use launch::Refused;
+pub use plain::Plain;
 pub use run::{Outcome, Run};
 pub use status::Status;
 pub use time::{Reading, now};
 pub use topology::{End, Handle, HostId, Leader, Pool, Topology, Worker, WorkerId};
+pub use trame_macros::Plain;
 
 /// The backends and the choice among them (src/backends/mod.rs).
 #[path = "backends/mod.rs"]

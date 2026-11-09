@@ -13,12 +13,13 @@ fn exported() -> Vec<String> {
     for line in lib.lines() {
         let Some(rest) = line.strip_prefix("pub use ") else { continue };
         let rest = rest.trim_end_matches(';');
+        // Hidden items (`__` names, #[doc(hidden)]) are not surface.
         if rest.contains(" as __") {
             continue;
         }
         let tail = rest.rsplit("::").next().unwrap_or(rest);
         let inner = tail.trim_start_matches('{').trim_end_matches('}');
-        names.extend(inner.split(',').map(|n| n.trim().to_string()).filter(|n| !n.is_empty()));
+        names.extend(inner.split(',').map(|n| n.trim().to_string()).filter(|n| !n.is_empty() && !n.starts_with("__")));
     }
     names.sort();
     names.dedup();

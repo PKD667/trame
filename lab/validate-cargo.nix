@@ -4,7 +4,13 @@
 {
   # The crates of the root Cargo.lock, vendored: the checks below build offline.
   vendor = pkgs.rustPlatform.importCargoLock { lockFile = ../Cargo.lock; };
-  vendorRejections = pkgs.rustPlatform.importCargoLock { lockFile = ../check/rejections/Cargo.lock; };
+  # The suite's own lock names only the crates of the default resolution, and trame is a path dependency, not a member:
+  # a backend's optional crates are absent from it. The root lock has them all, so the two vendor dirs are joined and
+  # cargo, offline, resolves `--features trame/<backend>` from the union.
+  vendorRejections = pkgs.symlinkJoin {
+    name = "vendor-rejections";
+    paths = [ (pkgs.rustPlatform.importCargoLock { lockFile = ../check/rejections/Cargo.lock; }) vendor ];
+  };
   # Cargo's offline source (the vendored crates, nothing from the network), and a copy of the source tree
   # to build in: the checks write into the tree (run.sh rewrites its manifest), the store does not allow it.
   cargoHomeWith = vendorDir: src: dir: ''

@@ -12,14 +12,14 @@
 //
 // A failed check panics, which makes mpirun stop the job with a nonzero status.
 
+#[path = "check_big.rs"]
+mod big_check;
 #[path = "check_common.rs"]
 mod common;
 #[path = "check_fifo.rs"]
 mod fifo_check;
 #[path = "check_lossy.rs"]
 mod lossy;
-#[path = "check_big.rs"]
-mod big_check;
 #[path = "check_sync.rs"]
 mod sync;
 #[path = "check_verify.rs"]
@@ -27,8 +27,8 @@ mod verify_check;
 
 use std::path::Path;
 
-use fifo_check::fifo;
 use big_check::big;
+use fifo_check::fifo;
 use lossy::overwrite;
 use sync::fair;
 use verify_check::verify;

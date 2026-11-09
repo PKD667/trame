@@ -84,7 +84,8 @@ pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
 /// order the plan first uses it, so every rank numbers them the same. A route to or from another
 /// host's worker gets its `Remote`: that worker's world rank, and the route's lane (cross.rs).
 pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
-    let workers = u32::try_from(plan.workers.len()).map_err(|_| Refused::Backend { reason: "too many workers".into() })?;
+    let workers =
+        u32::try_from(plan.workers.len()).map_err(|_| Refused::Backend { reason: "too many workers".into() })?;
     let h = super::hosts::host();
     let g = |e: End| super::cross::global(e, workers, h.id);
     let mut tags: Vec<TypeId> = Vec::new();
@@ -108,31 +109,36 @@ pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
                     return Err(Refused::Backend {
                         reason: alloc::format!(
                             "a route of {} joins the leader to a worker of host {}; leaders talk over the peer channel (Run::leader_send)",
-                            r.name, far.0
+                            r.name,
+                            far.0
                         ),
                     });
                 }
                 let members = &h.members[far.0 as usize];
-                let world = *members.get(far.1 as usize).filter(|_| (far.1 as usize) + 1 < members.len()).ok_or_else(|| {
-                    Refused::Backend { reason: alloc::format!("host {} has no worker {} for the route of {}", far.0, far.1, r.name) }
-                })?;
+                let world =
+                    *members.get(far.1 as usize).filter(|_| (far.1 as usize) + 1 < members.len()).ok_or_else(|| {
+                        Refused::Backend {
+                            reason: alloc::format!(
+                                "host {} has no worker {} for the route of {}",
+                                far.0,
+                                far.1,
+                                r.name
+                            ),
+                        }
+                    })?;
                 // The lane: this route's place, by F4 tag, among the routes with its sender and receiver.
-                let lane = plan.routes.iter().filter(|q| g(q.from) == g(r.from) && g(q.to) == g(r.to) && q.wire < r.wire).count();
+                let lane = plan
+                    .routes
+                    .iter()
+                    .filter(|q| g(q.from) == g(r.from) && g(q.to) == g(r.to) && q.wire < r.wire)
+                    .count();
                 let lane = i32::try_from(lane).ok().filter(|l| *l < 16_000).ok_or_else(|| Refused::Backend {
                     reason: "more than 16000 routes between two workers of two hosts".into(),
                 })?;
                 Some(Remote { host: far.0, outgoing, world, lane })
             }
         };
-        routes.push(Route {
-            from: from.1,
-            to: to.1,
-            tag: tag as u64,
-            size: r.size,
-            cap,
-            lossy: r.lossy,
-            remote,
-        });
+        routes.push(Route { from: from.1, to: to.1, tag: tag as u64, size: r.size, cap, lossy: r.lossy, remote });
     }
     Ok(Topology { workers, routes })
 }

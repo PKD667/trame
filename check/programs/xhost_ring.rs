@@ -130,7 +130,8 @@ fn main() {
     while n < WORKERS {
         match run.recv::<Report>() {
             Some(r) => {
-                lines[r.k as usize] = Some(format!("host {me} worker {} from {} count {} sum {}", r.k, r.from, r.count, r.sum));
+                lines[r.k as usize] =
+                    Some(format!("host {me} worker {} from {} count {} sum {}", r.k, r.from, r.count, r.sum));
                 n += 1;
             }
             None => run.wait(),

@@ -53,8 +53,8 @@ use crate::launch::{Plan, Refused};
 use crate::topology::{End, HERE};
 
 use super::hosts::host;
-use super::shm::Window;
 use super::layout::{Layout, RouteLayout};
+use super::shm::Window;
 use super::types::Answer;
 
 fn ok(rc: i32, what: &str) {
@@ -318,7 +318,14 @@ impl In {
     fn credit(&mut self) {
         if self.due && test(&mut self.credit_req) {
             *self.credit = self.c;
-            isend((&*self.credit as *const u64).cast(), 8, self.peer, 2 * self.lane + 1, self.comm, &mut self.credit_req);
+            isend(
+                (&*self.credit as *const u64).cast(),
+                8,
+                self.peer,
+                2 * self.lane + 1,
+                self.comm,
+                &mut self.credit_req,
+            );
             self.due = false;
         }
     }
@@ -554,7 +561,15 @@ fn kind(p: &Port) -> String {
 }
 
 fn describe(p: &Port) -> String {
-    format!("{} from worker {} of host {} to worker {} of host {} {}", p.name, p.from.1, p.from.0, p.to.1, p.to.0, kind(p))
+    format!(
+        "{} from worker {} of host {} to worker {} of host {} {}",
+        p.name,
+        p.from.1,
+        p.from.0,
+        p.to.1,
+        p.to.0,
+        kind(p)
+    )
 }
 
 /// The peer-channel tag of a connect message, apart from peer messages (hosts.rs `PEER_TAG`).
@@ -604,7 +619,11 @@ pub(super) fn connect(plan: &Plan, fine: bool) -> Result<(), Refused> {
             } else if let Some(p) = ours.iter().find(|p| !theirs.contains(p)) {
                 let same = |q: &&Port| (q.from, q.to, q.wire) == (p.from, p.to, p.wire);
                 Some(match theirs.iter().find(same) {
-                    Some(q) => format!("this host declares the route of {}, host {k} {}; declare it alike on both", describe(p), kind(q)),
+                    Some(q) => format!(
+                        "this host declares the route of {}, host {k} {}; declare it alike on both",
+                        describe(p),
+                        kind(q)
+                    ),
                     None => format!("host {k} does not declare the route of {}; declare it there too", describe(p)),
                 })
             } else {

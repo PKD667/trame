@@ -35,13 +35,24 @@ impl core::fmt::Display for Refused {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Refused::UnknownWorker(w) => write!(f, "a route names {w:?}, which this topology did not declare"),
-            Refused::Duplicate { from, to, name } => write!(f, "two routes of {name} from {from:?} to {to:?}; declare it once"),
+            Refused::Duplicate { from, to, name } => {
+                write!(f, "two routes of {name} from {from:?} to {to:?}; declare it once")
+            }
             Refused::ZeroCapacity { name } => write!(f, "a route of {name} has capacity 0; give it 1 or more"),
-            Refused::TwoOwners { worker, name } => write!(f, "two steps of {worker:?} receive {name}; one step owns a message type"),
-            Refused::PoolType { worker, want, have } => write!(f, "{worker:?}'s steps read a pool of {want}, and the pool is {have}"),
-            Refused::Alloc => write!(f, "trame::Alloc is not the global allocator; add `#[global_allocator] static A: trame::Alloc = trame::Alloc::new(std::alloc::System);`"),
+            Refused::TwoOwners { worker, name } => {
+                write!(f, "two steps of {worker:?} receive {name}; one step owns a message type")
+            }
+            Refused::PoolType { worker, want, have } => {
+                write!(f, "{worker:?}'s steps read a pool of {want}, and the pool is {have}")
+            }
+            Refused::Alloc => write!(
+                f,
+                "trame::Alloc is not the global allocator; add `#[global_allocator] static A: trame::Alloc = trame::Alloc::new(std::alloc::System);`"
+            ),
             Refused::PoolUnset => write!(f, "the pool is declared and never set; call Topology::set on it"),
-            Refused::Unset { worker } => write!(f, "{worker:?} is declared and its state never set; call Topology::set on it"),
+            Refused::Unset { worker } => {
+                write!(f, "{worker:?} is declared and its state never set; call Topology::set on it")
+            }
             Refused::Backend { reason } => write!(f, "{reason}"),
         }
     }

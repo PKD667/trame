@@ -41,7 +41,10 @@ fn duplicate_sender_receiver_tag_is_refused() {
         g.route::<Ping>(w, Leader, 1);
         g.route::<Ping>(w, Leader, 4);
         let refused = g.launch().err();
-        assert_eq!(refused, Some(Refused::Duplicate { from: w.into(), to: Leader.into(), name: core::any::type_name::<Ping>() }));
+        assert_eq!(
+            refused,
+            Some(Refused::Duplicate { from: w.into(), to: Leader.into(), name: core::any::type_name::<Ping>() })
+        );
     });
 }
 

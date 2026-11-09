@@ -109,7 +109,6 @@ impl Window {
         format!("{}-{role}-{no}", self.name)
     }
 
-
     /// The word at `off`. Panics unless `off` is 8-aligned and inside the window: a layout bug
     /// must stop the process, not reach memory outside the window.
     pub(crate) fn word(&self, off: usize) -> &AtomicU64 {

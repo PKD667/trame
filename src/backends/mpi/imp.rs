@@ -16,13 +16,13 @@ use std::sync::Arc;
 use std::vec::Vec;
 
 use crate::backend::{Backend, PoolRef, Target};
-use crate::sched::{Answer, Event, Sched};
-use crate::worker::{Erased, Slot, agent};
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
 use crate::run::Outcome;
+use crate::sched::{Answer, Event, Sched};
 use crate::time::ClockId;
 use crate::topology::{End, WorkerId};
+use crate::worker::{Erased, Slot, agent};
 
 use super::layout::{OUT_ABORT, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
 use super::leader::{self, Leader};

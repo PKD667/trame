@@ -24,7 +24,12 @@ pub struct Run {
 }
 
 impl Run {
-    pub(crate) fn new(inner: <Selected as Backend>::Run, pool: Option<*const ()>, workers: usize, joined: Arc<AtomicBool>) -> Self {
+    pub(crate) fn new(
+        inner: <Selected as Backend>::Run,
+        pool: Option<*const ()>,
+        workers: usize,
+        joined: Arc<AtomicBool>,
+    ) -> Self {
         Run { inner, seen: Cell::new(0), pool, workers, joined }
     }
 
@@ -39,7 +44,13 @@ impl Run {
     /// Send `msg` from the leader to `to`, on the route of type `M`. Panics when there is no such
     /// route. `Full` only on a non-lossy route at capacity.
     pub fn send<M: Message>(&self, to: impl Into<WorkerId>, msg: M) -> Result<(), Full> {
-        Selected::leader_send(&self.inner, to.into(), TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
+        Selected::leader_send(
+            &self.inner,
+            to.into(),
+            TypeId::of::<M>(),
+            type_name::<M>(),
+            crate::__bytemuck::bytes_of(&msg),
+        )
     }
 
     /// The next message of type `M` addressed to the leader, or `None`.
@@ -56,7 +67,8 @@ impl Run {
     /// The next message of type `M` from a peer leader, with the host it came from, or `None`.
     pub fn leader_recv<M: Message>(&self) -> Option<(HostId, M)> {
         let mut from = 0;
-        read(|out| Selected::peer_recv(&self.inner, crate::io::tag::<M>(), out).map(|h| from = h).is_some()).map(|m| (HostId(from), m))
+        read(|out| Selected::peer_recv(&self.inner, crate::io::tag::<M>(), out).map(|h| from = h).is_some())
+            .map(|m| (HostId(from), m))
     }
 
     /// Edit `h`, a worker's state or the pool: `f` runs once no step that uses it runs, and no such
@@ -72,7 +84,9 @@ impl Run {
             let mut f = f.take();
             // SAFETY: the backend runs this holding target's fields (CONTRACT.md, S4, P2).
             // Arena mode: what the edit allocates lands in the domain (CONTRACT.md, M1).
-            crate::domain::arena(|| unsafe { h.edit_with(&mut |v| (f.take().expect("trame: an edit runs its function once"))(v)) })
+            crate::domain::arena(|| unsafe {
+                h.edit_with(&mut |v| (f.take().expect("trame: an edit runs its function once"))(v))
+            })
         })
     }
 
@@ -120,7 +134,8 @@ impl Run {
                 }
             };
             if !agrees {
-                let msg = alloc::format!("outcome {:?} disagrees with the model's final state {:?}", out[w], end.answer());
+                let msg =
+                    alloc::format!("outcome {:?} disagrees with the model's final state {:?}", out[w], end.answer());
                 return (out, Err((w, msg)));
             }
         }

@@ -71,7 +71,10 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
         return Err(syn::Error::new_spanned(&s.ident, "a state is a struct with named fields: steps name them"));
     };
     if fields.named.len() > 63 {
-        return Err(syn::Error::new_spanned(&s.ident, "a state has at most 63 fields: each is one bit of a step's sets, and bit 63 is the pool"));
+        return Err(syn::Error::new_spanned(
+            &s.ident,
+            "a state has at most 63 fields: each is one bit of a step's sets, and bit 63 is the pool",
+        ));
     }
     let total = args.steps.len() + usize::from(args.stop.is_some());
     if total > 64 {
@@ -160,7 +163,10 @@ fn parse_step_args(attr: TokenStream2) -> syn::Result<StepArgs> {
             } else if key == "weight" {
                 out.weight = Some(input.parse()?);
             } else {
-                return Err(syn::Error::new(key.span(), "#[trame::step] takes the state type, then receives = A, B and weight = w"));
+                return Err(syn::Error::new(
+                    key.span(),
+                    "#[trame::step] takes the state type, then receives = A, B and weight = w",
+                ));
             }
         }
         Ok(out)
@@ -186,11 +192,17 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
             return Err(syn::Error::new_spanned(arg, "a step takes fields of its state, not self"));
         };
         let Pat::Ident(p) = &*pt.pat else {
-            return Err(syn::Error::new_spanned(&pt.pat, "a step parameter is the name of a field: `ring: &mut Vec<u32>`"));
+            return Err(syn::Error::new_spanned(
+                &pt.pat,
+                "a step parameter is the name of a field: `ring: &mut Vec<u32>`",
+            ));
         };
         let field = &p.ident;
         let Type::Reference(r) = &*pt.ty else {
-            return Err(syn::Error::new_spanned(&pt.ty, "a step parameter is `&T` (read) or `&mut T` (write) of its field's type"));
+            return Err(syn::Error::new_spanned(
+                &pt.ty,
+                "a step parameter is `&T` (read) or `&mut T` (write) of its field's type",
+            ));
         };
         if field == POOL {
             if r.mutability.is_some() {
@@ -218,7 +230,9 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
             },
             _ => return Err(syn::Error::new_spanned(t, "a step returns `Status` or `Result<Status, E>`")),
         },
-        ReturnType::Default => return Err(syn::Error::new_spanned(&f.sig, "a step returns `Status` or `Result<Status, E>`")),
+        ReturnType::Default => {
+            return Err(syn::Error::new_spanned(&f.sig, "a step returns `Status` or `Result<Status, E>`"));
+        }
     };
     let name = &f.sig.ident;
     let vis = &f.vis;
@@ -301,7 +315,12 @@ pub fn derive_plain(item: TokenStream2) -> syn::Result<TokenStream2> {
     let fields: Vec<&syn::Field> = match &d.data {
         syn::Data::Struct(s) => s.fields.iter().collect(),
         syn::Data::Enum(e) => e.variants.iter().flat_map(|v| v.fields.iter()).collect(),
-        syn::Data::Union(u) => return Err(syn::Error::new_spanned(u.union_token, "a union is not plain: which field is live is not in its bytes")),
+        syn::Data::Union(u) => {
+            return Err(syn::Error::new_spanned(
+                u.union_token,
+                "a union is not plain: which field is live is not in its bytes",
+            ));
+        }
     };
     let check = plain_check(fields.into_iter());
     let name = &d.ident;

@@ -3,7 +3,9 @@
 //! `Backend` trait of backend.rs. Nothing outside this directory names a backend.
 
 #[cfg(all(feature = "seq", feature = "mpi"))]
-compile_error!("features `seq` and `mpi` are exclusive: one backend per build (mpi: --no-default-features --features mpi)");
+compile_error!(
+    "features `seq` and `mpi` are exclusive: one backend per build (mpi: --no-default-features --features mpi)"
+);
 
 #[cfg(feature = "seq")]
 pub(crate) mod seq;
@@ -27,7 +29,9 @@ pub(crate) use self::mpi as selected;
 
 // A build with no backend has nothing to launch on. There is no default: name one.
 #[cfg(not(any(feature = "seq", feature = "mpi")))]
-compile_error!("select a backend: --no-default-features --features <name>, where <name> is a directory of src/backends/ with a backend.nix");
+compile_error!(
+    "select a backend: --no-default-features --features <name>, where <name> is a directory of src/backends/ with a backend.nix"
+);
 
 /// The selected backend's own items, for the test binaries under mpi/tests. Not API.
 #[doc(hidden)]

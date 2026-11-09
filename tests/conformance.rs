@@ -23,7 +23,10 @@ struct Ctl {
 
 impl Ctl {
     fn new(seed: u64, k: u64) -> Ctl {
-        let mut c = Ctl { rng: seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (k + 1).wrapping_mul(0xD1B5_4A32_D192_ED03) | 1, left: 0 };
+        let mut c = Ctl {
+            rng: seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (k + 1).wrapping_mul(0xD1B5_4A32_D192_ED03) | 1,
+            left: 0,
+        };
         c.left = 5 + (c.next() % 40) as u32;
         c
     }
@@ -302,7 +305,14 @@ fn shares_follow_weights() {
     let share = |n: u64| n as f64 / total;
     eprintln!(
         "shares: steps={} n1={} n2={} n4={} n0={} share1={:.4} share2={:.4} share4={:.4} (model 0.5714 0.2857 0.1429)",
-        c.hot, c.n1, c.n2, c.n4, c.n0, share(c.n1), share(c.n2), share(c.n4)
+        c.hot,
+        c.n1,
+        c.n2,
+        c.n4,
+        c.n0,
+        share(c.n1),
+        share(c.n2),
+        share(c.n4)
     );
     assert!(total > 1000.0, "too few steps to judge: {total}");
     assert_eq!(c.n0, 0, "a weight-0 step ran while positive-weight steps were ready");
@@ -372,7 +382,11 @@ fn disjoint_steps_overlap() {
     checked.expect("the trace follows the model");
     let most = MOST.load(std::sync::atomic::Ordering::SeqCst);
     let s = w.take();
-    eprintln!("overlap: steps={} most_at_once={most} wall_ms={:.1}", s.x0 + s.x1 + s.x2 + s.x3 + s.x4 + s.x5 + s.x6 + s.x7, took.as_secs_f64() * 1e3);
+    eprintln!(
+        "overlap: steps={} most_at_once={most} wall_ms={:.1}",
+        s.x0 + s.x1 + s.x2 + s.x3 + s.x4 + s.x5 + s.x6 + s.x7,
+        took.as_secs_f64() * 1e3
+    );
     if trame::__rt::EXACT {
         assert_eq!(most, 1, "an exact backend runs one step at a time");
     } else if std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) >= 8 {

@@ -4,8 +4,8 @@
 extern crate std;
 
 use super::limit;
-use crate::backends::local_routes::Routes;
 use crate::backend::PoolRef;
+use crate::backends::local_routes::Routes;
 use crate::run::Outcome;
 use std::string::String;
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};

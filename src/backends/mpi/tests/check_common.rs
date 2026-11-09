@@ -8,8 +8,7 @@ use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
 use trame::__backend::{
-    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, launch, leader_join,
-    returned,
+    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, launch, leader_join, returned,
 };
 
 /// The frame size the checks send: 65,544 bytes, the size every backend is required to carry (INTERFACE.md).

@@ -5,8 +5,8 @@
 extern crate std;
 
 use crate::io::Full;
-use crate::launch::Route as Planned;
 use crate::launch::Refused;
+use crate::launch::Route as Planned;
 use crate::topology::End;
 use std::any::TypeId;
 use std::vec;
@@ -47,8 +47,22 @@ impl Routes {
     pub fn new(plan: &[Planned]) -> Result<Routes, Refused> {
         let mut all = Vec::with_capacity(plan.len());
         for r in plan {
-            let bytes = r.cap.checked_mul(r.size).ok_or(Refused::Backend { reason: "a route's frames do not fit in memory".into() })?;
-            all.push(Route { from: r.from, to: r.to, ty: r.ty, cap: r.cap, size: r.size, lossy: r.lossy, buf: vec![0; bytes], head: 0, len: 0, taken: 0 });
+            let bytes = r
+                .cap
+                .checked_mul(r.size)
+                .ok_or(Refused::Backend { reason: "a route's frames do not fit in memory".into() })?;
+            all.push(Route {
+                from: r.from,
+                to: r.to,
+                ty: r.ty,
+                cap: r.cap,
+                size: r.size,
+                lossy: r.lossy,
+                buf: vec![0; bytes],
+                head: 0,
+                len: 0,
+                taken: 0,
+            });
         }
         Ok(Routes { all, takes: 0 })
     }

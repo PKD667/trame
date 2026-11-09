@@ -8,7 +8,11 @@ macro_rules! graph {
     ($state:ident, $step:ident, $msg:ident, $pad:literal, $build:ident) => {
         #[trame::message]
         #[derive(Debug, PartialEq, Eq)]
-        struct $msg { seq: u64, from: u64, pad: [u8; $pad] }
+        struct $msg {
+            seq: u64,
+            from: u64,
+            pad: [u8; $pad],
+        }
 
         #[trame::state(steps($step))]
         struct $state {
@@ -31,9 +35,21 @@ macro_rules! graph {
 
         #[trame::step($state, receives = $msg)]
         fn $step(
-            me: &u64, outs: &Vec<WorkerId>, slot: &Vec<usize>, iters: &u64, total: &u64, cur: &mut u64,
-            started: &mut bool, sent: &mut Vec<bool>, rx: &mut Vec<u64>, x: &mut u64, acc: &mut u64,
-            compute: &mut u64, t0: &mut Option<Reading>, ns: &mut Option<u64>, reported: &mut bool,
+            me: &u64,
+            outs: &Vec<WorkerId>,
+            slot: &Vec<usize>,
+            iters: &u64,
+            total: &u64,
+            cur: &mut u64,
+            started: &mut bool,
+            sent: &mut Vec<bool>,
+            rx: &mut Vec<u64>,
+            x: &mut u64,
+            acc: &mut u64,
+            compute: &mut u64,
+            t0: &mut Option<Reading>,
+            ns: &mut Option<u64>,
+            reported: &mut bool,
         ) -> Status {
             if *cur == WARM && t0.is_none() {
                 *t0 = Some(trame::now());
@@ -107,9 +123,21 @@ macro_rules! graph {
                     }
                     let d = offs.len();
                     $state {
-                        me, outs, slot, iters, total: WARM + steps, cur: 0, started: false,
-                        sent: vec![false; d], rx: vec![0; d], x: me + 1, acc: 0, compute: 0,
-                        t0: None, ns: None, reported: false,
+                        me,
+                        outs,
+                        slot,
+                        iters,
+                        total: WARM + steps,
+                        cur: 0,
+                        started: false,
+                        sent: vec![false; d],
+                        rx: vec![0; d],
+                        x: me + 1,
+                        acc: 0,
+                        compute: 0,
+                        t0: None,
+                        ns: None,
+                        reported: false,
                     }
                 });
             }

@@ -50,7 +50,14 @@ struct Pace {
 
 /// Answers each `Go` with an `Ack` of its round, times rounds 1..=ROUNDS, then reports once.
 #[trame::step(Pace, receives = Go)]
-fn pace(me: &u64, rounds: &u64, next: &mut u64, owes: &mut bool, t0: &mut Option<Reading>, ns: &mut Option<u64>) -> Status {
+fn pace(
+    me: &u64,
+    rounds: &u64,
+    next: &mut u64,
+    owes: &mut bool,
+    t0: &mut Option<Reading>,
+    ns: &mut Option<u64>,
+) -> Status {
     if let Some(ns) = *ns {
         return match trame::send(Leader, Report { worker: *me, ns }) {
             Ok(()) => Status::Done,
@@ -105,10 +112,7 @@ fn main() {
         common::collect::<Ack>(&run, w, |a| assert_eq!(a.round, round, "an ack of another round"));
     }
     common::collect::<Report>(&run, w, |r| {
-        println!(
-            "{{\"bench\":\"round\",\"workers\":{w},\"worker\":{},\"rounds\":{rounds},\"ns\":{}}}",
-            r.worker, r.ns
-        );
+        println!("{{\"bench\":\"round\",\"workers\":{w},\"worker\":{},\"rounds\":{rounds},\"ns\":{}}}", r.worker, r.ns);
     });
     common::finish(run);
 }

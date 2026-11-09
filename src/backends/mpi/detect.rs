@@ -102,7 +102,8 @@ impl Watch {
     fn part(&mut self, ended: bool, peer_sent: u64, peer_got: u64) -> [u64; 4] {
         let snap: Vec<u64> = self.words.iter().map(|&a| read(a)).collect();
         // EPOCH is a u32 in its word; IDLE is EPOCH + 1 as the worker read it (worker.rs `mark_quiet`).
-        let stuck = snap[..5 * self.workers].chunks(5).all(|w| w[0] != 0 || (w[1] == 0 && w[3] == (w[4] & 0xffff_ffff) + 1));
+        let stuck =
+            snap[..5 * self.workers].chunks(5).all(|w| w[0] != 0 || (w[1] == 0 && w[3] == (w[4] & 0xffff_ffff) + 1));
         let (mut sent, mut got) = (peer_sent, peer_got);
         for &(p, c) in &self.counts {
             sent += read(p);

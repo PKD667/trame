@@ -54,8 +54,14 @@ macro_rules! flow {
             #[trame::step(Node, receives = Frame)]
             #[allow(clippy::too_many_arguments)]
             fn stream(
-                g: &u64, src: &u64, to: &WorkerId, total: &u64, sent: &mut u64, got: &mut u64,
-                t0: &mut Option<Reading>, ns: &mut Option<u64>,
+                g: &u64,
+                src: &u64,
+                to: &WorkerId,
+                total: &u64,
+                sent: &mut u64,
+                got: &mut u64,
+                t0: &mut Option<Reading>,
+                ns: &mut Option<u64>,
             ) -> Status {
                 if let Some(ns) = *ns {
                     return match trame::send(Leader, Report { g: *g, ns }) {
@@ -88,7 +94,15 @@ macro_rules! flow {
             }
 
             /// Declares this host's PER workers, their route out and, from another host, the route in.
-            pub fn build(t: &mut Topology, me: u32, per: u32, next: &dyn Fn(u32) -> u32, prev: &dyn Fn(u32) -> u32, cap: usize, total: u64) -> usize {
+            pub fn build(
+                t: &mut Topology,
+                me: u32,
+                per: u32,
+                next: &dyn Fn(u32) -> u32,
+                prev: &dyn Fn(u32) -> u32,
+                cap: usize,
+                total: u64,
+            ) -> usize {
                 let ws: Vec<Worker<Node>> = (0..per).map(|_| t.worker()).collect();
                 for (k, w) in ws.iter().enumerate() {
                     let g = me * per + k as u32;

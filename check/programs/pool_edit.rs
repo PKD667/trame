@@ -54,7 +54,13 @@ fn probe(me: &u32, done: &mut u32, pool: &Round) -> Status {
         return Status::wait().frame();
     };
     assert_eq!(g.round, *done + 1, "a probe took the Go of another round");
-    let rep = Report { worker: *me, round: g.round, seen: pool.round, len: pool.all.len() as u32, sum: pool.all.iter().sum() };
+    let rep = Report {
+        worker: *me,
+        round: g.round,
+        seen: pool.round,
+        len: pool.all.len() as u32,
+        sum: pool.all.iter().sum(),
+    };
     assert!(trame::send(Leader, rep).is_ok(), "a report did not fit");
     *done += 1;
     Status::Progress

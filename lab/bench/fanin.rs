@@ -38,7 +38,14 @@ struct Feeder {
 
 /// Sends `msgs` messages to the leader, as fast as the route allows, then reports.
 #[trame::step(Feeder)]
-fn feed(me: &u64, msgs: &u64, sent: &mut u64, t0: &mut Option<Reading>, ns: &mut Option<u64>, reported: &mut bool) -> Status {
+fn feed(
+    me: &u64,
+    msgs: &u64,
+    sent: &mut u64,
+    t0: &mut Option<Reading>,
+    ns: &mut Option<u64>,
+    reported: &mut bool,
+) -> Status {
     let start = *t0.get_or_insert_with(trame::now);
     while *sent < *msgs {
         if trame::send(Leader, Small { seq: *sent, from: *me, pad: [0; 48] }).is_err() {

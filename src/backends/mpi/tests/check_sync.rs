@@ -9,8 +9,7 @@ use std::path::{Path, PathBuf};
 
 use mpi::traits::*;
 use trame::__backend::{
-    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, launch, leader_join,
-    returned,
+    Answer, Error, Event, Received, Role, Route, RouteId, Topology, Transport, clock, launch, leader_join, returned,
 };
 
 /// Workers 0 and 1 each send `msgs` frames to worker 2, on its own route, before the receiver

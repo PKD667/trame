@@ -18,11 +18,12 @@
 //! - A route between workers of two hosts is a lane (cross.rs): two-sided MPI from rank to rank, with
 //!   credits back. Those are the only MPI calls after launch, and only ranks with a lane make them.
 
+mod cross;
+mod detect;
 mod epoch;
 mod futex;
 mod harness;
-mod cross;
-mod detect;
+mod hosts;
 mod imp;
 mod layout;
 mod leader;
@@ -33,7 +34,6 @@ mod plan;
 mod poll;
 mod recv;
 mod refusal;
-mod hosts;
 mod results;
 mod ring;
 mod segment;
@@ -91,15 +91,7 @@ impl Drop for Transport {
 impl Transport {
     pub(crate) fn new(me: u32, win: Window, lay: Layout) -> Transport {
         let routes = lay.routes.len();
-        Transport {
-            me,
-            win,
-            lay,
-            cursor: vec![0; routes],
-            rr: vec![0; routes],
-            trace: None,
-            lanes: Vec::new(),
-        }
+        Transport { me, win, lay, cursor: vec![0; routes], rr: vec![0; routes], trace: None, lanes: Vec::new() }
     }
 
     /// Post this endpoint's lanes (cross.rs). At launch, once, when a route joins hosts.

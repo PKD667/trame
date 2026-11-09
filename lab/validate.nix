@@ -70,7 +70,7 @@ let
   testsCheck = name: b: v.check {
     name = "tests-${name}";
     property = "every test of the root crate passes on the ${name} backend in the checked build (INTERFACE.md sections 4-5 and CONTRACT.md, as the tests state them)";
-    model = "cargo test --no-run of the root crate with the ${name} feature and --cfg trame_checked, then each test of each test binary alone through ${name}'s launch (a test that launches no topology runs once, on the launch's probe, exit 3). The scheduler's exhaustive test is scheduler-exhaustive. Fixed programs and sampled states, not all executions; no doctests";
+    model = "cargo test --no-run of the root crate with the ${name} feature and --cfg trame_checked, then each test of each test binary alone through ${name}'s launch (a test that launches no topology runs once, on the launch's probe, exit 3). The scheduler's exhaustive test is scheduler-exhaustive-${name}. Fixed programs and sampled states, not all executions; no doctests";
     subject = b.src;
     checker = pkgs.cargo;
     runtime = [ pkgs.rustc pkgs.gcc pkgs.coreutils pkgs.gnugrep pkgs.gnused pkgs.gawk pkgs.python3 b.launch ] ++ b.d.packages ++ b.d.launchRuntime;
@@ -118,9 +118,9 @@ let
   exhaustiveStates = 22430721;
   exhaustiveEnds = 372787200;
   schedulerCheck = name: let b = backends.${name}; in v.check {
-    name = "scheduler-exhaustive";
+    name = "scheduler-exhaustive-${name}";
     property = "the scheduler's start and end (INTERFACE.md section 5.3; CONTRACT.md S2) agree with the spec rule on every consistent state of up to 2 processes over 3 cells";
-    model = "sched.rs start and end, on every state of the scheduler's inputs (process phase, cells, flags, running set) within the bounds. Not the backends' timing, not more processes or cells. Built with the ${name} feature, because the crate has no build without a backend; the test does not touch the backend";
+    model = "sched.rs start and end, on every state of the scheduler's inputs (process phase, cells, flags, running set) within the bounds. Not the backends' timing, not more processes or cells. Built with the ${name} feature: the crate has no build without a backend, and every backend is checked alike; the test does not touch the backend";
     subject = b.src;
     checker = pkgs.cargo;
     runtime = [ pkgs.rustc pkgs.gcc pkgs.coreutils pkgs.gnugrep pkgs.gnused pkgs.gawk ] ++ b.d.packages;
@@ -182,10 +182,6 @@ let
     };
 in
 lib.foldl' (a: n: a // perBackend n backends.${n}) { } (builtins.attrNames backends)
-// {
-  # The scheduler's exhaustive test (sched.rs), once. It is code the backends share and no backend runs it differently,
-  # but the crate does not build without a backend (src/backends/mod.rs), so it is built with the first one discovered.
-  scheduler-exhaustive = schedulerCheck (builtins.head (builtins.attrNames backends));
-}
 // lib.mapAttrs' (name: b: lib.nameValuePair "tests-${name}" (testsCheck name b)) backends
+// lib.mapAttrs' (name: _: lib.nameValuePair "scheduler-exhaustive-${name}" (schedulerCheck name)) backends
 // lib.mapAttrs' (name: b: lib.nameValuePair "rejections-${name}" (rejectionsCheck name)) backends

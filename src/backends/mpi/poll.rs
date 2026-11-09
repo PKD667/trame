@@ -35,7 +35,9 @@ impl Transport {
         }
         if r.remote.is_some() {
             let me = self.me();
-            let super::cross::Lane::Out(o) = self.lane(id) else { unreachable!("a lane this endpoint sends on is Out") };
+            let super::cross::Lane::Out(o) = self.lane(id) else {
+                unreachable!("a lane this endpoint sends on is Out")
+            };
             let (room, grew) = o.room();
             if grew {
                 self.bump(me);

@@ -14,12 +14,12 @@ use crate::run::Outcome;
 use crate::topology::{End, WorkerId};
 
 use super::layout::{K_EDIT, K_HELD, K_OUTCOME, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
-use crate::backend::Target;
-use std::sync::atomic::Ordering::SeqCst;
 use super::plan::{self, Entry, rank_of};
 use super::state::{finalize, local};
 use super::types::{Answer, Received};
 use super::{RouteId, Transport};
+use crate::backend::Target;
+use std::sync::atomic::Ordering::SeqCst;
 
 impl Transport {
     /// The leader's endpoint is dropped by a panic before `join`. A panic ends the run (INTERFACE.md 5, Abort): the
@@ -116,9 +116,7 @@ pub(super) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
     t.fail_if_aborted();
     let here = local_workers(run);
     let (ws, fields): (Vec<u32>, u64) = match target {
-        Target::Worker(w) => {
-            (std::vec![w as u32], crate::sched::STATE)
-        }
+        Target::Worker(w) => (std::vec![w as u32], crate::sched::STATE),
         Target::Pool => (here, crate::sched::POOL),
     };
     let word = |k: usize, w: u32| t.win().word(t.lay().per_worker(k, w));

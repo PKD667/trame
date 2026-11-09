@@ -13,8 +13,22 @@ use trame::{Outcome, Status, Topology};
 #[trame::state(steps(s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15))]
 struct Disjoint {
     rounds: u64,
-    x0: u64, x1: u64, x2: u64, x3: u64, x4: u64, x5: u64, x6: u64, x7: u64,
-    x8: u64, x9: u64, x10: u64, x11: u64, x12: u64, x13: u64, x14: u64, x15: u64,
+    x0: u64,
+    x1: u64,
+    x2: u64,
+    x3: u64,
+    x4: u64,
+    x5: u64,
+    x6: u64,
+    x7: u64,
+    x8: u64,
+    x9: u64,
+    x10: u64,
+    x11: u64,
+    x12: u64,
+    x13: u64,
+    x14: u64,
+    x15: u64,
 }
 
 fn spin() -> u64 {
@@ -48,8 +62,23 @@ fn main() {
         t.__agents(agents);
         let _w = t.worker();
         t.set(&_w, move || Disjoint {
-            rounds, x0: 0, x1: 0, x2: 0, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0,
-            x8: 0, x9: 0, x10: 0, x11: 0, x12: 0, x13: 0, x14: 0, x15: 0,
+            rounds,
+            x0: 0,
+            x1: 0,
+            x2: 0,
+            x3: 0,
+            x4: 0,
+            x5: 0,
+            x6: 0,
+            x7: 0,
+            x8: 0,
+            x9: 0,
+            x10: 0,
+            x11: 0,
+            x12: 0,
+            x13: 0,
+            x14: 0,
+            x15: 0,
         });
         // After launch: on a backend with workers in other processes, launch includes their start and the agreement on the plan.
         let run = t.launch().expect("launch");

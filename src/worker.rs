@@ -386,8 +386,12 @@ impl<S: State> Erased for Core<S> {
         static UNIT: () = ();
         let pool: &S::Pool = match pool {
             // SAFETY: a step that takes the pool reads the POOL bit, held with its fields.
-            Some(p) => unsafe { p.downcast_ref::<PoolCore<S::Pool>>().expect("trame: the launch checked the pool's type").get() },
-            None => (&UNIT as &dyn Any).downcast_ref::<S::Pool>().expect("trame: a worker without a pool has Pool = ()"),
+            Some(p) => unsafe {
+                p.downcast_ref::<PoolCore<S::Pool>>().expect("trame: the launch checked the pool's type").get()
+            },
+            None => {
+                (&UNIT as &dyn Any).downcast_ref::<S::Pool>().expect("trame: a worker without a pool has Pool = ()")
+            }
         };
         #[cfg(debug_assertions)]
         self.hold(i, true);
@@ -437,7 +441,14 @@ pub(crate) struct Slot {
 impl Slot {
     pub(crate) fn new(obj: Arc<dyn Erased>, trace: bool) -> Slot {
         let s = model(&*obj);
-        let inner = Inner { s, waits: [Waits::default(); crate::sched::MAX_STEPS], trace: trace.then(Vec::new), dead: false, remote: 0, acked: false };
+        let inner = Inner {
+            s,
+            waits: [Waits::default(); crate::sched::MAX_STEPS],
+            trace: trace.then(Vec::new),
+            dead: false,
+            remote: 0,
+            acked: false,
+        };
         Slot { obj, inner: Mutex::new(inner), changed: Condvar::new() }
     }
 

@@ -48,7 +48,6 @@ pub(super) struct Aborted;
 /// The payload of the unwind that ends a worker the leader showed stuck (detect.rs). Not a panic.
 pub(super) struct Deadlocked;
 
-
 /// End this worker if the run aborted.
 fn live(t: &Transport) {
     if t.aborted() {

@@ -68,7 +68,11 @@ pub enum St {
     Done,
     /// A wait, with which conditions it named. `fields` is the bare wait: no condition, woken only by
     /// a write to one of its fields.
-    Wait { frame: bool, room: bool, until: bool },
+    Wait {
+        frame: bool,
+        room: bool,
+        until: bool,
+    },
     Err,
 }
 
@@ -196,7 +200,15 @@ impl Sched {
         for (p, &(r, w, wt)) in ps.iter_mut().zip(steps) {
             *p = Proc::new(r, w, wt);
         }
-        Sched { ps, editing: 0, len: total - usize::from(has_stop), has_stop, locks: Locks::default(), stopping: false, starts: 0 }
+        Sched {
+            ps,
+            editing: 0,
+            len: total - usize::from(has_stop),
+            has_stop,
+            locks: Locks::default(),
+            stopping: false,
+            starts: 0,
+        }
     }
 
     fn total(&self) -> usize {
@@ -262,7 +274,12 @@ impl Sched {
             return false;
         }
         let me = self.rank(i);
-        !(0..self.total()).any(|j| j != i && self.rank(j) < me && self.wants(j, now) && Sched::conflicts(p, self.ps[j].reads, self.ps[j].writes))
+        !(0..self.total()).any(|j| {
+            j != i
+                && self.rank(j) < me
+                && self.wants(j, now)
+                && Sched::conflicts(p, self.ps[j].reads, self.ps[j].writes)
+        })
     }
 
     /// Whether a running step touches one of `fields`: an edit of them waits until none does.
@@ -368,13 +385,23 @@ impl Sched {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
     /// Step i started; `now` is what the backend saw of the wait conditions.
-    Start { i: usize, now: Now },
-    End { i: usize, e: Ended },
+    Start {
+        i: usize,
+        now: Now,
+    },
+    End {
+        i: usize,
+        e: Ended,
+    },
     Stop,
     /// The leader holds `fields` for an edit: no step touching one starts.
-    Hold { fields: u64 },
+    Hold {
+        fields: u64,
+    },
     /// The leader wrote `fields`, with no step touching one running, and gave them back.
-    Edit { fields: u64 },
+    Edit {
+        fields: u64,
+    },
 }
 
 /// A violation of the model by a trace.
