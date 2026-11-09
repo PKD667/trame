@@ -35,13 +35,12 @@ and writes `$out/outcome.json`. A verdict is a derivation. The flake exposes the
 
 | check | property | what it runs |
 |---|---|---|
-| `programs-<reference>` | every program prints its `.expected` and exits 0 on the reference backend | the reference binaries, with a 120 s crash guard |
-| `<reference>-tests` | the root crate's tests pass on the reference backend in the checked build | `cargo test`, the exhaustive test excluded |
-| `scheduler-exhaustive` | start and end agree with the spec rule on all states up to 2 processes, 3 cells | `cargo test --release` of that one test |
-| `rejections` | every rejection case is judged as its expectation says | `check/rejections/run.sh` (driver pinned) |
-| `mutants-<reference>` | each mutant of the reference backend is killed or spared as its header says | one patch at a time, step limit (`check/mutants/README.md`) |
+| `programs-<b>` | every program prints its `.expected` and exits as its `.panics` says, on backend `b` | the binaries of `b`, through its `launch`, 120 s crash guard |
+| `tests-<b>` | every test of the root crate passes on backend `b` in the checked build | each test alone through `b`'s `launch` |
+| `rejections-<b>` | every rejection case is judged as its annotations say, with `b` compiled in | the pinned driver over `check/rejections/cases` |
+| `mutants-<b>` | each mutant of `b` is killed or spared as its header says | one patch at a time (`src/backends/<b>/mutants`) |
 
-`<reference>` and `<b>` stand for a backend's name. The names for each backend are in
+`<b>` stands for a backend's name. The names for each backend are in
 `src/backends/README.md` (Lab experiments by backend).
 
 The reference backend's step limit (`src/backends/README.md`, Limits) bounds its scheduler's steps, and a run
@@ -50,8 +49,7 @@ over the limit exits 3. It counts steps, not seconds, so a looping mutant is a c
 Lab experiments remain for what needs concurrency, a network or hardware: the experiments of the multi-process
 backends, the latency experiment and the scale experiments.
 
-Scope numbers are measured, not guessed: `scheduler-exhaustive` states and end checks, and the reference
-backend's tests count. A change to either fails the check until its scope is updated.
+Scope numbers are measured, not guessed. A check that runs nothing (no test listed, no case judged) fails.
 
 ## Experiments and datasets
 

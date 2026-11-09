@@ -15,8 +15,7 @@
   postInstall = "";
   # Directories of this backend's tree that are not built (git submodules).
   exclude = [ ];
-  # Its own validate verdicts, beyond the generic ones (validate.nix): the cargo tests, the exhaustive scheduler test
-  # and the step-limited mutants. Called with what lab/validate.nix passes.
+  # Its own validate verdicts, beyond the generic ones (validate.nix): the step-limited mutants. Called with what lab/validate.nix passes.
   validate = args: import ./validate.nix args;
   # Its own lab experiments, beyond the generic ones (lab/checks.nix, lab/perf.nix): none.
   experiments = _: [ ];

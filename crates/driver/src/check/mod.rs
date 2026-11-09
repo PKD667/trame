@@ -236,7 +236,10 @@ fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> O
         match &site.what {
             What::Core { key, names, alloc: true } => {
                 return allocates(lists, level, names).then(|| {
-                    ("allocation", format!("{subj} reaches {key} through trusted code, which allocates: {}", no_alloc(level)))
+                    (
+                        "allocation",
+                        format!("{subj} reaches {key} through trusted code, which allocates: {}", no_alloc(level)),
+                    )
                 });
             }
             What::Effect(..) | What::Unbounded(_) => {}

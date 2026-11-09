@@ -70,7 +70,7 @@ let
   testsCheck = name: b: v.check {
     name = "tests-${name}";
     property = "every test of the root crate passes on the ${name} backend in the checked build (INTERFACE.md sections 4-5 and CONTRACT.md, as the tests state them)";
-    model = "cargo test --no-run of the root crate with the ${name} feature and --cfg trame_checked, then each test of each test binary alone through ${name}'s launch (a test that launches no topology runs once, on the launch's probe, exit 3). The scheduler's exhaustive test is scheduler-exhaustive-${name}. Fixed programs and sampled states, not all executions; no doctests";
+    model = "cargo test --no-run of the root crate with the ${name} feature and --cfg trame_checked, then each test of each test binary alone through ${name}'s launch (a test that launches no topology runs once, on the launch's probe, exit 3). Fixed programs and sampled states, not all executions; no doctests";
     subject = b.src;
     checker = pkgs.cargo;
     runtime = [ pkgs.rustc pkgs.gcc pkgs.coreutils pkgs.gnugrep pkgs.gnused pkgs.gawk pkgs.python3 b.launch ] ++ b.d.packages ++ b.d.launchRuntime;
@@ -93,7 +93,7 @@ let
       PY
       holds=true; items=""; n=0; failed=0; plain=0
       while read -r exe; do
-        for t in $("$exe" --list 2>/dev/null | sed -n 's/: test$//p' | grep -v '^sched::property_tests::start_and_end_exhaustive_up_to_bounds$'); do
+        for t in $("$exe" --list 2>/dev/null | sed -n 's/: test$//p'); do
           n=$((n + 1)); d="$TMPDIR/run"; rm -rf "$d"; rc=0
           launch --timeout 300 --out "$d" -- "$exe" --exact "$t" --test-threads=1 > /dev/null 2> "$TMPDIR/launch.err" || rc=$?
           # 3: the test launched no topology and passed in its one run (src/backends/README.md, Launch). Any other
@@ -113,30 +113,9 @@ let
     '';
   };
 
-  # The exhaustive scheduler test: Start and End of sched.rs against the spec rule, every consistent state up to 2
-  # processes and 3 cells, in release. The test is in sched.rs, shared by the backends.
-  exhaustiveStates = 22430721;
-  exhaustiveEnds = 372787200;
-  schedulerCheck = name: let b = backends.${name}; in v.check {
-    name = "scheduler-exhaustive-${name}";
-    property = "the scheduler's start and end (INTERFACE.md section 5.3; CONTRACT.md S2) agree with the spec rule on every consistent state of up to 2 processes over 3 cells";
-    model = "sched.rs start and end, on every state of the scheduler's inputs (process phase, cells, flags, running set) within the bounds. Not the backends' timing, not more processes or cells. Built with the ${name} feature: the crate has no build without a backend, and every backend is checked alike; the test does not touch the backend";
-    subject = b.src;
-    checker = pkgs.cargo;
-    runtime = [ pkgs.rustc pkgs.gcc pkgs.coreutils pkgs.gnugrep pkgs.gnused pkgs.gawk ] ++ b.d.packages;
-    scope = { processes = 2; cells = 3; states = exhaustiveStates; end_checks = exhaustiveEnds; profile = "release"; };
-    command = ''
-      ${cargoEnv b}
-      rc=0; cargo test --release --offline --no-default-features --features ${name} start_and_end_exhaustive_up_to_bounds -- --nocapture --exact sched::property_tests::start_and_end_exhaustive_up_to_bounds > "$TMPDIR/log" 2>&1 || rc=$?
-      st=$(grep -oE '[0-9]+ consistent states' "$TMPDIR/log" | awk '{s+=$1} END {print s+0}')
-      en=$(grep -oE '[0-9]+ end checks' "$TMPDIR/log" | awk '{s+=$1} END {print s+0}')
-      echo "states=$st end_checks=$en (scope says ${toString exhaustiveStates} ${toString exhaustiveEnds})" >> "$TMPDIR/log"
-      if [ "$rc" -eq 0 ] && { [ "$st" -ne ${toString exhaustiveStates} ] || [ "$en" -ne ${toString exhaustiveEnds} ]; }; then rc=1; echo "enumeration size changed: update scope" >> "$TMPDIR/log"; fi
-      ${writeOutcome}
-      printf '{"holds":%s,"gaps":[],"counterexamples":%s}\n' "$holds" "$items" > $out/outcome.json
-    '';
-  };
-
+  # No exhaustive scheduler check: the test it ran (sched::property_tests::start_and_end_exhaustive_up_to_bounds, 22430721
+  # states) went with the old scheduler in 51f3bf6, and sched.rs has only its unit tests since. The check found 0 states and
+  # failed; it is removed, not faked. A new one belongs beside sched.rs's `choose` (docs/scheduling.md).
   # The rejection suite (check/rejections/README.md) on one backend: every case is judged by the pinned driver against
   # the real crate built with that backend's feature (TRAME_BACKEND; the manifest selects none). Each case's
   # diagnostics must be exactly its annotations (a file name cannot match one).
@@ -183,5 +162,4 @@ let
 in
 lib.foldl' (a: n: a // perBackend n backends.${n}) { } (builtins.attrNames backends)
 // lib.mapAttrs' (name: b: lib.nameValuePair "tests-${name}" (testsCheck name b)) backends
-// lib.mapAttrs' (name: _: lib.nameValuePair "scheduler-exhaustive-${name}" (schedulerCheck name)) backends
 // lib.mapAttrs' (name: b: lib.nameValuePair "rejections-${name}" (rejectionsCheck name)) backends
