@@ -10,6 +10,8 @@
 # Answers a list of { name, kind, backend, span, exp } (as lab/perf.nix); span 0 is the local experiment.
 { pkgs, lib, labLib, system, closure, backends, machines }:
 let
+  # What the launch ran under (lab/launch.py record_config), recorded by every runner that launches.
+  launchConfig = (import ./data.nix { inherit lib; }).dataset "launch_config";
   runData = {
     columns = { program = "str"; repeat = "int"; ran = "bool"; ok = "bool"; verdict = "str"; seconds = "float"; stdout_sha256 = "str"; };
     key = [ "program" "repeat" ];
@@ -32,7 +34,7 @@ let
         closures.${system} = closure { inherit name b; script = "programs.py"; };
         params = { backend = n; repeats = 3; };
         sweep.split = b.d.splits;
-        data.run = runData;
+        data = { run = runData; launch_config = launchConfig; };
       } // (if span == 0
         then { resources = { provider = "local"; hosts = 1; }; }
         else { inherit span; resources = { provider = "cluster"; hosts = span; walltime = 60; opts.stage = "fanout"; }; }));
@@ -62,7 +64,7 @@ let
       params = { backend = n; timeout = 120; };
       sweep.mutant = mutantIds b.mutants;
       resources = { provider = "local"; hosts = 1; };
-      data.kill = killData;
+      data = { kill = killData; launch_config = launchConfig; };
     };
   };
 

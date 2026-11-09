@@ -1,6 +1,527 @@
 {
   "format": "2.0",
   "runs": {
+    "fanin-mpi-s1": [
+      {
+        "facts": {
+          "closure": "/nix/store/syspc21jh08g6phjiw3g4x6zs6g8bgjh-experiment-fanin-mpi-s1",
+          "format": "2.0",
+          "input_id": "53cbd84cf06190e5342a1f0b2ded9d179d494672584c8ea858def0a8ae3b8793",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 16,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "fanin-mpi-s1-53cbd84cf061-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s1-53cbd84cf061-r1",
+        "path": "/nix/store/pxqkzi3knxjiv50cn22g3v9paz6qrlrz-fanin-mpi-s1-53cbd84cf061-r1",
+        "sha256": "sha256-GD7TBp4Ja2PjIP1xLi2XK6Qy8SBmseszfWoeibYsXEw="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/syspc21jh08g6phjiw3g4x6zs6g8bgjh-experiment-fanin-mpi-s1",
+          "format": "2.0",
+          "input_id": "53cbd84cf06190e5342a1f0b2ded9d179d494672584c8ea858def0a8ae3b8793",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 16,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "fanin-mpi-s1-53cbd84cf061-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s1-53cbd84cf061-r2",
+        "path": "/nix/store/imarljb7dd64r7xlxwvwhrwpmqxla3gf-fanin-mpi-s1-53cbd84cf061-r2",
+        "sha256": "sha256-RYZimCG5NVymqJiOWxNGZJLMUIL7lEmSVOFOyVjoG/Q="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/syspc21jh08g6phjiw3g4x6zs6g8bgjh-experiment-fanin-mpi-s1",
+          "format": "2.0",
+          "input_id": "53cbd84cf06190e5342a1f0b2ded9d179d494672584c8ea858def0a8ae3b8793",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 16,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "fanin-mpi-s1-53cbd84cf061-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s1-53cbd84cf061-r3",
+        "path": "/nix/store/qvh46xf18nwlpxgw4w0a04kcx273ci0h-fanin-mpi-s1-53cbd84cf061-r3",
+        "sha256": "sha256-DSe2LvvrST6AZthndYB6NwwUM2Rw2q1Tte6zh2CPitw="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/syspc21jh08g6phjiw3g4x6zs6g8bgjh-experiment-fanin-mpi-s1",
+          "format": "2.0",
+          "input_id": "e29424e7bc66bb8026f5ad4ab56e87a7b51cc4ec60775121b151e8ccf5e63dea",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 4,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "fanin-mpi-s1-e29424e7bc66-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s1-e29424e7bc66-r1",
+        "path": "/nix/store/pj9d8fasxrkgh1m7w5801iiqjib6zba0-fanin-mpi-s1-e29424e7bc66-r1",
+        "sha256": "sha256-ADCeYgxYJxkPeRtYj4N2VynyY84/ecJdEZqdiOFczZM="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/syspc21jh08g6phjiw3g4x6zs6g8bgjh-experiment-fanin-mpi-s1",
+          "format": "2.0",
+          "input_id": "e29424e7bc66bb8026f5ad4ab56e87a7b51cc4ec60775121b151e8ccf5e63dea",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 4,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "fanin-mpi-s1-e29424e7bc66-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s1-e29424e7bc66-r2",
+        "path": "/nix/store/q4m9qk27sf99qkpma2fy85kk4hg5rgsf-fanin-mpi-s1-e29424e7bc66-r2",
+        "sha256": "sha256-3r95bBkxBhwI9pmkbCv8w/yeyk4F6jpQ0RdZ3Ye5x8c="
+      }
+    ],
+    "fanin-mpi-s2": [
+      {
+        "facts": {
+          "closure": "/nix/store/6bzb87zssmcf54fspz7n93pwaz6w05hv-experiment-fanin-mpi-s2",
+          "format": "2.0",
+          "input_id": "2d55230213272beb9c4023280c003821e77b7b81ee97541d93d70af81a5c2ebd",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 16,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "fanin-mpi-s2-2d5523021327-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s2-2d5523021327-r1",
+        "path": "/nix/store/zzkkyb87j800k6gah2gw1hs5g2396q1x-fanin-mpi-s2-2d5523021327-r1",
+        "sha256": "sha256-K5Er5HiicF/0cOCmNkWD2pOAqqV0WD97o7Ohi8DjWeI="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/6bzb87zssmcf54fspz7n93pwaz6w05hv-experiment-fanin-mpi-s2",
+          "format": "2.0",
+          "input_id": "2d55230213272beb9c4023280c003821e77b7b81ee97541d93d70af81a5c2ebd",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 16,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "fanin-mpi-s2-2d5523021327-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s2-2d5523021327-r2",
+        "path": "/nix/store/yj73ziw76cc6w9dr11hw80df4fkfx4v6-fanin-mpi-s2-2d5523021327-r2",
+        "sha256": "sha256-jZxIjGYSja2/tsZn1AQGQT/+r/c0xK/Ou4ULlObaHBw="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/6bzb87zssmcf54fspz7n93pwaz6w05hv-experiment-fanin-mpi-s2",
+          "format": "2.0",
+          "input_id": "2d55230213272beb9c4023280c003821e77b7b81ee97541d93d70af81a5c2ebd",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 16,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "fanin-mpi-s2-2d5523021327-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s2-2d5523021327-r3",
+        "path": "/nix/store/dys5agnzqsxydry47a578nx5gjsr56c7-fanin-mpi-s2-2d5523021327-r3",
+        "sha256": "sha256-9v/8OfJ8RAhEMyofs9YxaAEILBb8qK5aS1yu/vQnOxc="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/6bzb87zssmcf54fspz7n93pwaz6w05hv-experiment-fanin-mpi-s2",
+          "format": "2.0",
+          "input_id": "f32ff45babb1b34d1ec6f97e1c28e05d455ec3e02be25a38711146829c2bde65",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 4,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "fanin-mpi-s2-f32ff45babb1-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s2-f32ff45babb1-r2",
+        "path": "/nix/store/qqppr4kljpcami1gypld6c175nxq39fg-fanin-mpi-s2-f32ff45babb1-r2",
+        "sha256": "sha256-9/aqgJSyaJ+oObSq3aFxhpQlWRIbYePDdJQkxd1iU2M="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/6bzb87zssmcf54fspz7n93pwaz6w05hv-experiment-fanin-mpi-s2",
+          "format": "2.0",
+          "input_id": "f32ff45babb1b34d1ec6f97e1c28e05d455ec3e02be25a38711146829c2bde65",
+          "params": {
+            "backend": "mpi",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 4,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "fanin-mpi-s2-f32ff45babb1-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-mpi-s2-f32ff45babb1-r3",
+        "path": "/nix/store/r9ddjlpxwyr721lpw70z612p45gr0k64-fanin-mpi-s2-f32ff45babb1-r3",
+        "sha256": "sha256-pyj1O1QqzIhyQEIIzdenA/i3aO8tAbAM5nheEUwLYhk="
+      }
+    ],
+    "fanin-seq-s1": [
+      {
+        "facts": {
+          "closure": "/nix/store/ssjh4h140dr6f5pshari6j0z126zl6si-experiment-fanin-seq-s1",
+          "format": "2.0",
+          "input_id": "0cd633b17cc6396699accfa35f043a072ee063cfc9f4414dc8ea7e347b91f524",
+          "params": {
+            "backend": "seq",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 16,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "fanin-seq-s1-0cd633b17cc6-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-seq-s1-0cd633b17cc6-r1",
+        "path": "/nix/store/ff8zh5v3kwfzmb2sxyjmqxw9qpgsp0b5-fanin-seq-s1-0cd633b17cc6-r1",
+        "sha256": "sha256-RxPjkyHPYKDTf6GtHOt2mVPAwBe81NHaAhnHCnkrcnI="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/ssjh4h140dr6f5pshari6j0z126zl6si-experiment-fanin-seq-s1",
+          "format": "2.0",
+          "input_id": "0cd633b17cc6396699accfa35f043a072ee063cfc9f4414dc8ea7e347b91f524",
+          "params": {
+            "backend": "seq",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 16,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "fanin-seq-s1-0cd633b17cc6-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-seq-s1-0cd633b17cc6-r2",
+        "path": "/nix/store/06qxjnzmjc18xqwkv8jvzf2xmp5a1qw5-fanin-seq-s1-0cd633b17cc6-r2",
+        "sha256": "sha256-M7zwZFX2vQIxYKBWdsXPjYuiy9WD/QE1YnRNoJVEOi0="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/ssjh4h140dr6f5pshari6j0z126zl6si-experiment-fanin-seq-s1",
+          "format": "2.0",
+          "input_id": "0cd633b17cc6396699accfa35f043a072ee063cfc9f4414dc8ea7e347b91f524",
+          "params": {
+            "backend": "seq",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 16,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "fanin-seq-s1-0cd633b17cc6-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-seq-s1-0cd633b17cc6-r3",
+        "path": "/nix/store/msqssbmsr9qpqha0l22xb574b7yz8h2z-fanin-seq-s1-0cd633b17cc6-r3",
+        "sha256": "sha256-3tL00vsoIxvvhBUDP2NPtsS3V0n4oIOqzFOzlLKNQq8="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/ssjh4h140dr6f5pshari6j0z126zl6si-experiment-fanin-seq-s1",
+          "format": "2.0",
+          "input_id": "8441736fb2a73c464f41adc5dcea23341358a145439294f7f89dc1b5f15303eb",
+          "params": {
+            "backend": "seq",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 4,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "fanin-seq-s1-8441736fb2a7-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-seq-s1-8441736fb2a7-r1",
+        "path": "/nix/store/7i6vfqnp87dx1x3j324qcwfs0h2x6838-fanin-seq-s1-8441736fb2a7-r1",
+        "sha256": "sha256-Yk5O7F3pXyZHL5H4VSv2cae38IcjxBHm40Wfl7TLHjk="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/ssjh4h140dr6f5pshari6j0z126zl6si-experiment-fanin-seq-s1",
+          "format": "2.0",
+          "input_id": "8441736fb2a73c464f41adc5dcea23341358a145439294f7f89dc1b5f15303eb",
+          "params": {
+            "backend": "seq",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 4,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "fanin-seq-s1-8441736fb2a7-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-seq-s1-8441736fb2a7-r2",
+        "path": "/nix/store/yi879jnjgcrr87w62jq0fm653hjn1nbx-fanin-seq-s1-8441736fb2a7-r2",
+        "sha256": "sha256-ZxzxeT7jGNEUPq4cC7UiEX0MAXKxzGyNYu4Yc+NIWqE="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/ssjh4h140dr6f5pshari6j0z126zl6si-experiment-fanin-seq-s1",
+          "format": "2.0",
+          "input_id": "8441736fb2a73c464f41adc5dcea23341358a145439294f7f89dc1b5f15303eb",
+          "params": {
+            "backend": "seq",
+            "bench": "fanin",
+            "msgs": 10000,
+            "per": 4,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "fanin-seq-s1-8441736fb2a7-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "fanin-seq-s1-8441736fb2a7-r3",
+        "path": "/nix/store/lxb9sam7gg18k0d8rnmha32i9kzbmpjx-fanin-seq-s1-8441736fb2a7-r3",
+        "sha256": "sha256-ZEHqvFOzW8hMXi4e8IT0G87pW/3TTjK7sfLZpCYWCT4="
+      }
+    ],
+    "flow-agg-mpi-s1": [
+      {
+        "facts": {
+          "closure": "/nix/store/c855fg5x3wlrsynsmnz6m1icw7vj2vwc-experiment-flow-agg-mpi-s1",
+          "format": "2.0",
+          "input_id": "67beec07bd06bac2695ec7d4d15ba77638ad845a9356308b66a1647105fb6924",
+          "params": {
+            "backend": "mpi",
+            "bench": "flow",
+            "cap": 8,
+            "pattern": "shift",
+            "per": 4,
+            "size": 65536,
+            "split": 1,
+            "steps": 20000,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "flow-agg-mpi-s1-67beec07bd06-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "flow-agg-mpi-s1-67beec07bd06-r1",
+        "path": "/nix/store/8i6ap9c0iv045lhw5m4zv59da2i970y8-flow-agg-mpi-s1-67beec07bd06-r1",
+        "sha256": "sha256-ecdaToQYLysPowwnoY7DZX+ukwLsJXNl1KkOHzpb8b0="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/c855fg5x3wlrsynsmnz6m1icw7vj2vwc-experiment-flow-agg-mpi-s1",
+          "format": "2.0",
+          "input_id": "67beec07bd06bac2695ec7d4d15ba77638ad845a9356308b66a1647105fb6924",
+          "params": {
+            "backend": "mpi",
+            "bench": "flow",
+            "cap": 8,
+            "pattern": "shift",
+            "per": 4,
+            "size": 65536,
+            "split": 1,
+            "steps": 20000,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "flow-agg-mpi-s1-67beec07bd06-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "flow-agg-mpi-s1-67beec07bd06-r2",
+        "path": "/nix/store/5v7rlvrm6pw1428mam28wz98r2zh88vs-flow-agg-mpi-s1-67beec07bd06-r2",
+        "sha256": "sha256-x5TNLGmFvkZhxbcTl9J/xxIVEtiG9nd2+CYpXDW371s="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/c855fg5x3wlrsynsmnz6m1icw7vj2vwc-experiment-flow-agg-mpi-s1",
+          "format": "2.0",
+          "input_id": "8ac5c81b780df4c6d07f31d08f065718df30ab4fe2cf0952535bfeb21dfe88cc",
+          "params": {
+            "backend": "mpi",
+            "bench": "flow",
+            "cap": 8,
+            "pattern": "shift",
+            "per": 4,
+            "size": 65536,
+            "split": 2,
+            "steps": 20000,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "flow-agg-mpi-s1-8ac5c81b780d-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "flow-agg-mpi-s1-8ac5c81b780d-r1",
+        "path": "/nix/store/by829x10qdjb33qw6fz30ga3ij7hm8w3-flow-agg-mpi-s1-8ac5c81b780d-r1",
+        "sha256": "sha256-XsSIwDGvP6FPqzXS2Tgxq4ggTUDMO/JyeohIKRJeQEI="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/c855fg5x3wlrsynsmnz6m1icw7vj2vwc-experiment-flow-agg-mpi-s1",
+          "format": "2.0",
+          "input_id": "8ac5c81b780df4c6d07f31d08f065718df30ab4fe2cf0952535bfeb21dfe88cc",
+          "params": {
+            "backend": "mpi",
+            "bench": "flow",
+            "cap": 8,
+            "pattern": "shift",
+            "per": 4,
+            "size": 65536,
+            "split": 2,
+            "steps": 20000,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "flow-agg-mpi-s1-8ac5c81b780d-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "flow-agg-mpi-s1-8ac5c81b780d-r2",
+        "path": "/nix/store/b18z9jk7qklh6b1sa6mxkzks48mkab1v-flow-agg-mpi-s1-8ac5c81b780d-r2",
+        "sha256": "sha256-aUDTVQg2J8ur/WlJi3+87L1QAUTANovAbcamwtHlUCg="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/c855fg5x3wlrsynsmnz6m1icw7vj2vwc-experiment-flow-agg-mpi-s1",
+          "format": "2.0",
+          "input_id": "8ac5c81b780df4c6d07f31d08f065718df30ab4fe2cf0952535bfeb21dfe88cc",
+          "params": {
+            "backend": "mpi",
+            "bench": "flow",
+            "cap": 8,
+            "pattern": "shift",
+            "per": 4,
+            "size": 65536,
+            "split": 2,
+            "steps": 20000,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "flow-agg-mpi-s1-8ac5c81b780d-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "flow-agg-mpi-s1-8ac5c81b780d-r3",
+        "path": "/nix/store/27ngxiqvncmrcsb07g8vgaai166b0qib-flow-agg-mpi-s1-8ac5c81b780d-r3",
+        "sha256": "sha256-J/6H+InkMTxbJ3vrmSJJ1+FeUhezkRL9L+E0aAH6Rgw="
+      }
+    ],
+    "flow-agg-mpi-s2": [
+      {
+        "facts": {
+          "closure": "/nix/store/7jq80whbgsjdhcbs86gayqvrik1k7w3m-experiment-flow-agg-mpi-s2",
+          "format": "2.0",
+          "input_id": "bb19fc6f5e09866989b782818b48856454f2f7f31079e5f9746c68d57b92dcda",
+          "params": {
+            "backend": "mpi",
+            "bench": "flow",
+            "cap": 8,
+            "pattern": "shift",
+            "per": 4,
+            "size": 65536,
+            "split": 1,
+            "steps": 20000,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "flow-agg-mpi-s2-bb19fc6f5e09-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "flow-agg-mpi-s2-bb19fc6f5e09-r1",
+        "path": "/nix/store/ank4as6j5vn203wsx9wx5i0v8xmpcqf4-flow-agg-mpi-s2-bb19fc6f5e09-r1",
+        "sha256": "sha256-i4XRkGamaQgzL1bQ5ATq3VBHNRzzLzQzU0ix/+xgBzI="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/7jq80whbgsjdhcbs86gayqvrik1k7w3m-experiment-flow-agg-mpi-s2",
+          "format": "2.0",
+          "input_id": "bb19fc6f5e09866989b782818b48856454f2f7f31079e5f9746c68d57b92dcda",
+          "params": {
+            "backend": "mpi",
+            "bench": "flow",
+            "cap": 8,
+            "pattern": "shift",
+            "per": 4,
+            "size": 65536,
+            "split": 1,
+            "steps": 20000,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "flow-agg-mpi-s2-bb19fc6f5e09-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "flow-agg-mpi-s2-bb19fc6f5e09-r2",
+        "path": "/nix/store/5r853y8mbrfmy7i8cj5gazb4glh14vm4-flow-agg-mpi-s2-bb19fc6f5e09-r2",
+        "sha256": "sha256-rrximm6oaQ2GQKyq9gfMaUM3LZkNK7HqE7tl6eX+bJA="
+      }
+    ],
     "post-parallel-gpu": [
       {
         "facts": {

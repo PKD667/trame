@@ -27,7 +27,8 @@ from pathlib import Path
 from nixsci.lab import mpi
 
 TAG = re.compile(r"^\[\d+,(\d+)\]<(stdout|stderr)>: ?(.*)$")  # mpirun --output tag; 5 writes a space after the colon
-WRAP = 'echo "HOST $(uname -n)" 1>&2; exec time -f "CPU %U %S %e" "$@"'
+CPU = re.compile(r"trame-launch-cpu (\S+) (\S+) (\S+)$")
+WRAP = 'echo "HOST $(uname -n)" 1>&2; exec time -f "trame-launch-cpu %U %S %e" "$@"'
 
 
 def usage(msg: str) -> None:
@@ -123,9 +124,11 @@ def main(argv: list[str]) -> int:
         rank, stream, body = int(m.group(1)), m.group(2), m.group(3)
         if stream == "stderr" and body.startswith("HOST "):
             cpu.setdefault(rank, {})["machine"] = body[5:].strip()
-        elif stream == "stderr" and body.startswith("CPU "):
-            u, s, w = body[4:].split()
-            cpu.setdefault(rank, {}).update(user_s=u, sys_s=s, wall_s=w)
+        elif stream == "stderr" and (t := CPU.search(body)):
+            # GNU time's line may follow program output without a newline: matched at the end, not the start.
+            if t.start():
+                per.setdefault((rank, stream), []).append(body[: t.start()])
+            cpu.setdefault(rank, {}).update(user_s=t.group(1), sys_s=t.group(2), wall_s=t.group(3))
         else:
             per.setdefault((rank, stream), []).append(body)
     for h in range(hosts):
