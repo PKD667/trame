@@ -33,7 +33,7 @@ convert into it.
 
 `Topology::launch` runs three stages, and nothing starts unless all pass. `Backend::agree` checks
 that every process of the launch built the same plan; on mpi this compares an exact encoding across
-ranks (`backends/mpi/shape.rs`). `launch::check` runs the surface checks in a fixed order and answers
+ranks (`src/backends/mpi/shape.rs`). `launch::check` runs the surface checks in a fixed order and answers
 the first `Refused`. `Backend::launch` allocates what the plan needs, runs the builders in arena mode
 (`launch::build_all` on seq), and answers the backend's run, or `Refused::Backend` with a message.
 
@@ -60,7 +60,7 @@ rank-specific.
 with `POOL`. It checks the pool belongs to this run by its address. The closure runs in arena mode,
 so what it allocates lands in the domain. On seq the backend calls `Slot::edit` or
 `worker::edit_pool`; on mpi it writes a request word and waits for each agent's `remote_edit` to
-acknowledge (`backends/mpi/leader.rs`).
+acknowledge (`src/backends/mpi/leader.rs`).
 
 ## Join and take
 

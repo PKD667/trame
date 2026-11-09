@@ -1,0 +1,49 @@
+# Conformance by mutation as a lab experiment on mpi (check/mutants/README.md; lab/README.md,
+# "mutants"). Called from flake.nix with the flake's own values. Its closure holds one build of the mpi
+# backend per mutant (the patch applied with the other sources unchanged), and the runner. The seq record
+# is the validate verdict mutants-seq (validate-mutants.nix), not this experiment. flake.nix passes
+# trameSeqBinsWith too; it is not used here (flake.nix:232 may drop it).
+{ pkgs, lib, labLib, system, trameSeqBinsWith, trameMpiBinsWith, runners, labRuntime, nixsci }:
+let
+  backends = {
+    mpi = { name = "mpi"; dir = ../check/mutants/mpi; bins = trameMpiBinsWith; };
+  };
+  # The ids of the files of `dir` with the given suffix: `.patch` (applied) or `.skip` (no patch, a reason).
+  idsWith = dir: suffix:
+    map (n: lib.removeSuffix suffix n)
+      (builtins.filter (n: lib.hasSuffix suffix n) (builtins.attrNames (builtins.readDir dir)));
+  # Every mutant of a backend, in order: the patched ones and the skipped ones.
+  mutantIds = dir: lib.sort lib.lessThan (lib.unique (idsWith dir ".patch" ++ idsWith dir ".skip"));
+  # One build per patched mutant, plus `none`: the unpatched build, the control. A skipped mutant has no build.
+  mutantFarm = b: pkgs.linkFarm "mutants-${b.name}" (
+    [ { name = "none"; path = b.bins [ ]; } ]
+    ++ map (id: { name = id; path = b.bins [ (b.dir + "/${id}.patch") ]; }) (idsWith b.dir ".patch")
+  );
+  mpiConfigData = { columns = { source = "str"; text = "str"; }; };
+  killData = {
+    columns = { mutant = "str"; rule = "str"; expect = "str"; program = "str"; killed = "bool"; how = "str"; };
+    key = [ "mutant" "program" ];
+  };
+  experiment = name: b: labLib.experiment {
+    inherit name;
+    closures.${system} = nixsci.lib.mkExperiment pkgs {
+      name = "mutants-${b.name}";
+      program = "${pkgs.python3}/bin/python3";
+      args = [ "${runners}/mutants.py" ];
+      env = {
+        PYTHONPATH = "${nixsci.packages.${system}.lab-py}/${pkgs.python3.sitePackages}";
+        MUTANTS = "${mutantFarm b}";
+        PATCHES = "${b.dir}";
+        PANICS = "${../check/programs}";
+        RANKS_FILE = "${../src/backends/mpi/deploy/ranks.txt}";
+      };
+      runtime = labRuntime;
+    };
+    params = { backend = b.name; timeout = 120; };
+    sweep.mutant = mutantIds b.dir;
+    resources = { provider = "local"; hosts = 1; };
+    data = { kill = killData; } // lib.optionalAttrs (b.name == "mpi") { mpi_config = mpiConfigData; };
+  };
+in {
+  mutants-mpi = experiment "mutants-mpi" backends.mpi;
+}

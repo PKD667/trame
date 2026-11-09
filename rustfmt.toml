@@ -1,4 +1,4 @@
-# One style for every crate here: `cargo fmt` in the root, driver/ and driver/fuzz/. Not rejections/:
+# One style for every crate here: `cargo fmt` in the root, crates/driver/ and crates/driver/fuzz/. Not check/rejections/:
 # its cases carry line-anchored annotations.
 max_width = 120
 use_small_heuristics = "Max"

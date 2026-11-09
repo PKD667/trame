@@ -170,7 +170,7 @@ arrive`, under the same condition.
 ## Backends in the tree
 
 A build selects one backend by a cargo feature, `seq` (the default) or `mpi`; the features are
-exclusive. Each runs the programs of `programs/`, and `programs/run.sh` checks that each prints its
+exclusive. Each runs the programs of `check/programs/`, and `check/programs/run.sh` checks that each prints its
 expected output.
 
 | | seq | mpi |

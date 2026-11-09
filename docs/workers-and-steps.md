@@ -1,7 +1,7 @@
 # Workers and steps
 
 A worker is a state and its steps. This note follows a worker from the macros that describe it, to
-the block that holds it, to the agent that runs its steps. The code is `macros/state.rs` and
+the block that holds it, to the agent that runs its steps. The code is `crates/macros/state.rs` and
 `worker.rs`.
 
 ## What the macros generate

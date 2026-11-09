@@ -1,0 +1,24 @@
+# violates: none that a program's output shows (a busy wait: CPU use only, see the expect line)
+# expect: equivalent: worker_idle returns at once, so an idle worker re-checks its conditions in a busy loop. The
+#   scheduler (sched::start, concurrent.rs) still starts a process only when it is enabled (INTERFACE.md, Definition
+#   Enabled), so no transition runs without its frame or deadline. Every program of check/programs/ gives its expected
+#   output (run: mutate.sh seq '^m26$', survived). One difference is not output: a run that is stuck after join
+#   with an idle worker, unpatched, ends with deadlock (seq/state.rs, advance); with this patch it spins and never
+#   ends. Definition (Deadlock) says a backend may end such an agent, so the spec permits both; whether a run must
+#   end is not stated in INTERFACE.md. A probe outside the tree (one worker waiting for a frame that never comes, the
+#   leader joins) gives [Deadlock] unpatched and times out with this patch. No program of check/programs/ does this.
+--- a/backends/seq/ops.rs
++++ b/backends/seq/ops.rs
+@@ -191,9 +191,11 @@
+         let mut st = shared.lock();
+         assert_eq!(st.turn, Some(me), "trame: an idle worker ran without the baton");
+         // Idle: give the baton up. Nothing runs until a leader acts, or the deadline comes.
+-        st.phase[me] = Phase::Idle(seen, until);
++        st.phase[me] = Phase::Ready;
+         st.advance(me);
+         shared.changed.notify_all();
++        st = wait_turn(&shared, st, me);
++        return;
+         loop {
+             if st.must_stop(me) {
+                 drop(st);

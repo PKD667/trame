@@ -1,0 +1,366 @@
+//! The compile-time checker: roots, levels, the call graph, and the rules of INTERFACE.md section 3.
+//!
+//! Roots are the monomorphized instances of the markers in trame's `check.rs`
+//! (`trame::__check::{item, step, worker}`) that this crate codegens. Each root and everything
+//! reachable from it is checked at the strictest level that reaches it. Facts about a body are
+//! gathered by `scan`; `judge` decides what each fact means at a level. The type markers
+//! (`trame::__check::{state, pool}`) are read by `state`: the types a state holds.
+
+mod lists;
+mod scan;
+mod trust;
+
+use std::collections::VecDeque;
+use std::env;
+use std::sync::OnceLock;
+
+use rustc_data_structures::fx::{FxHashMap, FxHashSet};
+use rustc_middle::mono::MonoItem;
+use rustc_middle::ty::{self, Instance, InstanceKind, TyCtxt, TypingEnv};
+use rustc_span::Span;
+
+use lists::{Effect, Lists, Verdict};
+use scan::{Scan, What, canon};
+
+/// A level of INTERFACE.md section 3. Smaller is stricter, so `min` picks the strictest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Level {
+    Item = 0,
+    Step = 1,
+    Worker = 2,
+}
+
+impl Level {
+    fn name(self) -> &'static str {
+        match self {
+            Level::Item => "Item",
+            Level::Step => "Step",
+            Level::Worker => "Worker",
+        }
+    }
+
+    fn noun(self) -> &'static str {
+        match self {
+            Level::Item => "item",
+            Level::Step => "step",
+            Level::Worker => "worker",
+        }
+    }
+
+    /// The allow-list file of this level (crates/driver/lists/).
+    fn list_file(self) -> &'static str {
+        match self {
+            Level::Item => "A_I",
+            Level::Step => "A_C",
+            Level::Worker => "A_W",
+        }
+    }
+}
+
+static LISTS: OnceLock<Lists> = OnceLock::new();
+
+fn lists() -> &'static Lists {
+    LISTS.get_or_init(|| {
+        Lists::load().unwrap_or_else(|e| {
+            eprintln!("trame-driver: {e}");
+            std::process::exit(2)
+        })
+    })
+}
+
+/// The effect a canonical definition path names, if any.
+pub fn effect_of(path: &str) -> Option<Effect> {
+    lists().effect(path)
+}
+
+fn debug_on() -> bool {
+    env::var_os("TRAME_DRIVER_DEBUG").is_some_and(|v| v == "1")
+}
+
+/// Check every root of the crate. Returns the number of errors emitted.
+pub fn run(tcx: TyCtxt<'_>) -> usize {
+    let lists = lists();
+    let impls = scan::core_impls(tcx);
+    let debug = debug_on();
+    let mut errors = 0;
+
+    // Roots: the marker instances among the mono items this crate codegens.
+    let partitions = tcx.collect_and_partition_mono_items(());
+    let instances: Vec<Instance<'_>> = partitions
+        .codegen_units
+        .iter()
+        .flat_map(|cgu| cgu.items().keys())
+        .filter_map(|item| match item {
+            MonoItem::Fn(inst) => Some(*inst),
+            _ => None,
+        })
+        .collect();
+
+    if debug {
+        for item in partitions.codegen_units.iter().flat_map(|cgu| cgu.items().keys()) {
+            eprintln!("trame-driver: mono item {item:?}");
+        }
+    }
+    let mut roots: Vec<(Level, Instance<'_>, Instance<'_>)> = Vec::new();
+    for marker in instances {
+        let InstanceKind::Item(def) = marker.def else { continue };
+        let level = match canon(tcx, def).as_str() {
+            "trame::__check::item" => Level::Item,
+            "trame::__check::step" => Level::Step,
+            "trame::__check::worker" => Level::Worker,
+            _ => continue,
+        };
+        match root_target(tcx, marker) {
+            Ok(target) => roots.push((level, marker, target)),
+            Err(msg) => {
+                tcx.dcx().struct_span_err(tcx.def_span(def), format!("[root] {msg}")).emit();
+                errors += 1;
+            }
+        }
+    }
+    if debug {
+        for (level, _, target) in &roots {
+            eprintln!("trame-driver: root {} {} level {}", level.noun(), canon(tcx, target.def_id()), level.name());
+        }
+    }
+
+    // Levels: each function gets the strictest level that reaches it. Item roots are explored
+    // first, so the set of nodes already assigned is closed under successors at every stage.
+    let mut level: FxHashMap<Instance<'_>, Level> = FxHashMap::default();
+    let mut parent: FxHashMap<Instance<'_>, Option<Instance<'_>>> = FxHashMap::default();
+    let mut scans: FxHashMap<Instance<'_>, Scan<'_>> = FxHashMap::default();
+    let mut order: Vec<Instance<'_>> = Vec::new();
+    for lv in [Level::Item, Level::Step, Level::Worker] {
+        let mut queue: VecDeque<(Instance<'_>, Option<Instance<'_>>)> =
+            roots.iter().filter(|(l, _, _)| *l == lv).map(|(_, _, t)| (*t, None)).collect();
+        while let Some((n, p)) = queue.pop_front() {
+            if level.contains_key(&n) {
+                continue;
+            }
+            level.insert(n, lv);
+            parent.insert(n, p);
+            order.push(n);
+            scans.entry(n).or_insert_with(|| scan::scan(tcx, n, &impls));
+            for (callee, _) in scans[&n].edges() {
+                if !level.contains_key(&callee) {
+                    queue.push_back((callee, Some(n)));
+                }
+            }
+        }
+    }
+    if debug {
+        eprintln!("trame-driver: {} functions checked", order.len());
+    }
+
+    // Trust: a body reached only by trusted edges is read for effects, edges and allocations (trust.rs).
+    let judged = trust::judged_in_full(tcx, &roots.iter().map(|(_, _, t)| *t).collect::<Vec<_>>(), &scans);
+
+    // Per-site rules.
+    for n in &order {
+        let lv = level[n];
+        let root = root_name(tcx, *n, &parent);
+        let trusted = !judged.contains(n);
+        for site in &scans[n].sites {
+            if let Some((rule, msg)) = judge(lists, lv, site, trusted) {
+                let mut d = tcx.dcx().struct_span_err(site.span, format!("[{rule}] {msg}"));
+                d.note(format!("reached from root {root}: {}", path_to(tcx, *n, &parent)));
+                d.emit();
+                errors += 1;
+            }
+        }
+    }
+
+    // Recursion: a cycle among Item and Step functions. Cycles lie inside one level (a cycle's
+    // members are mutually reachable, so they share the same roots).
+    let mut state: FxHashMap<Instance<'_>, u8> = FxHashMap::default();
+    let mut stack: Vec<Instance<'_>> = Vec::new();
+    for n in &order {
+        if level[n] != Level::Worker && !state.contains_key(n) {
+            errors += recursion(tcx, *n, &level, &scans, &judged, &mut state, &mut stack);
+        }
+    }
+    errors
+}
+
+fn recursion<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    n: Instance<'tcx>,
+    level: &FxHashMap<Instance<'tcx>, Level>,
+    scans: &FxHashMap<Instance<'tcx>, Scan<'tcx>>,
+    judged: &FxHashSet<Instance<'tcx>>,
+    state: &mut FxHashMap<Instance<'tcx>, u8>,
+    stack: &mut Vec<Instance<'tcx>>,
+) -> usize {
+    let mut errors = 0;
+    state.insert(n, 1);
+    stack.push(n);
+    for (m, span) in scans[&n].edges() {
+        if level.get(&m) == Some(&Level::Worker) {
+            continue;
+        }
+        match state.get(&m).copied() {
+            // A cycle whose head is trusted is the runtime's own (trust.rs); a cycle through the program is refused.
+            Some(1) if judged.contains(&m) => {
+                let at = stack.iter().position(|x| *x == m).expect("on the stack");
+                let cycle: Vec<String> =
+                    stack[at..].iter().chain(std::iter::once(&m)).map(|x| canon(tcx, x.def_id())).collect();
+                let lv = level[&n];
+                tcx.dcx()
+                    .struct_span_err(
+                        span,
+                        format!(
+                            "[recursion] {} recurses: {} (INTERFACE.md, Requirement ({}))",
+                            lv.noun(),
+                            cycle.join(" -> "),
+                            lv.name()
+                        ),
+                    )
+                    .emit();
+                errors += 1;
+            }
+            Some(_) => {}
+            None => errors += recursion(tcx, m, level, scans, judged, state, stack),
+        }
+    }
+    stack.pop();
+    state.insert(n, 2);
+    errors
+}
+
+/// The rule a site breaks at `level`, if any: (rule id, message). A trusted body (trust.rs) keeps its
+/// effects, its allocations and its user iterators; its other facts are not judged.
+fn judge(lists: &Lists, level: Level, site: &scan::Site<'_>, trusted: bool) -> Option<(&'static str, String)> {
+    let subj = level.noun();
+    let lvl = level.name();
+    if trusted {
+        match &site.what {
+            What::Core { key, names, alloc: true } => {
+                return allocates(lists, level, names).then(|| {
+                    ("allocation", format!("{subj} reaches {key} through trusted code, which allocates: {}", no_alloc(level)))
+                });
+            }
+            What::Effect(..) | What::Unbounded(_) => {}
+            _ => return None,
+        }
+    }
+    match &site.what {
+        What::Unsafe(d) => Some(("unsafe", format!("{subj} contains {d}: no unsafe code (INTERFACE.md, Requirement (All levels))"))),
+        What::Ffi(p) => Some(("ffi", format!("{subj} calls {p}: no FFI (INTERFACE.md, Requirement (All levels))"))),
+        What::Indirect(d) => Some(("indirect", format!("{subj} {d}: no indirect calls (INTERFACE.md, Requirement (All levels))"))),
+        What::Static(p) => Some(("static", format!("{subj} uses {p}: only consts are allowed, not globals (INTERFACE.md, Requirement (All levels))"))),
+        What::Std(p) => Some(("std", format!("{subj} calls {p}: no std (INTERFACE.md, Requirement (All levels))"))),
+        What::Unresolved(d) => Some(("unresolved", format!("{subj}: {d}; the driver cannot check this call (INTERFACE.md, Requirement (All levels))"))),
+        What::Effect(e, p) => {
+            if e.allowed_at(level) {
+                None
+            } else if level == Level::Item {
+                Some(("effects", format!("{subj} calls {p}: items perform no effects (INTERFACE.md, Requirement (Item))")))
+            } else {
+                Some(("effects", format!("{subj} calls {p}: steps perform only send, recv, now and parallel (INTERFACE.md, Requirement (Step))")))
+            }
+        }
+        What::Core { key, names, alloc } => match lists.verdict(level, names) {
+            // A call into alloc that only a trait path allows (`Extend::extend`, `Clone::clone`) may
+            // grow or make a buffer: it is allowed only where the list names the alloc type's own key.
+            Verdict::Allow if *alloc && allocates(lists, level, names) => {
+                Some(("allocation", format!("{subj} calls {key}: {}", no_alloc(level))))
+            }
+            Verdict::Allow => None,
+            Verdict::Deny(entry) => Some(("deny", format!("{subj} calls {key}: denied by `{entry}` (crates/driver/lists/deny.txt, {}.txt) ({})", level.list_file(), deny_clause(lists, level, &entry)))),
+            Verdict::Refuse if *alloc && level != Level::Worker => {
+                Some(("allocation", format!("{subj} calls {key}: {}", no_alloc(level))))
+            }
+            Verdict::Refuse => Some((
+                "allow-list",
+                format!("{subj} calls {key}: not listed at this level (crates/driver/lists/{}.txt) (INTERFACE.md, Requirement ({lvl}))", level.list_file()),
+            )),
+        },
+        What::Type(name) => lists.denied(level, name).map(|entry| {
+            ("deny", format!("{subj} uses type {name}: denied by `{entry}` (crates/driver/lists/deny.txt, {}.txt) ({})", level.list_file(), deny_clause(lists, level, &entry)))
+        }),
+        What::Unbounded(name) => (level != Level::Worker).then(|| {
+            ("unbounded", format!("{subj} passes {name}, a user iterator, to core code, which would drive it without a bound (INTERFACE.md, Definition (Counted loop))"))
+        }),
+        What::Loop { counted, reason } => {
+            if *counted || level == Level::Worker {
+                None
+            } else {
+                Some(("counted-loop", format!("{subj} has a loop that is not counted: {reason} (INTERFACE.md, Definition (Counted loop))")))
+            }
+        }
+        What::Edge(_) | What::Own(_) => None,
+    }
+}
+
+/// Whether a call into alloc is refused as an allocation at `level`: below Worker, unless the list names
+/// the call by its alloc key (`alloc::vec::Vec::len`), which is how a non-allocating alloc call is allowed.
+/// The key is `names[0]` (scan.rs, `names_of`); a trait path in `names[1]` alone does not allow it.
+fn allocates(lists: &Lists, level: Level, names: &[String]) -> bool {
+    level != Level::Worker && !matches!(lists.verdict(level, &names[..1]), Verdict::Allow)
+}
+
+/// Why a step or an item may not allocate, for the message.
+fn no_alloc(level: Level) -> &'static str {
+    match level {
+        Level::Item => "items neither allocate nor call alloc (INTERFACE.md, Requirement (Item))",
+        _ => "steps neither allocate nor free; only a builder or an edit does (CONTRACT.md, M4, D5)",
+    }
+}
+
+/// The clause of INTERFACE.md that a deny entry enforces: deny.txt's entries are the All-levels rules (no UnsafeCell,
+/// no locks, no raw pointers); a per-level deny is an infinite source, which is a loop the counted-loop rule
+/// does not bound (the level files say so).
+fn deny_clause(lists: &Lists, level: Level, entry: &str) -> String {
+    if lists.is_global(entry) {
+        "INTERFACE.md, Requirement (All levels)".into()
+    } else {
+        debug_assert!(level != Level::Worker, "the worker lists deny no per-level entry");
+        "INTERFACE.md, Definition (Counted loop)".into()
+    }
+}
+
+/// The instance a marker's argument names: the closure or fn item it is called with.
+fn root_target<'tcx>(tcx: TyCtxt<'tcx>, marker: Instance<'tcx>) -> Result<Instance<'tcx>, String> {
+    let arg = marker.args.type_at(0);
+    let name = canon(tcx, marker.def_id());
+    match arg.kind() {
+        ty::Closure(def, args) => Ok(Instance::new_raw(*def, args)),
+        ty::FnDef(def, args) => match Instance::try_resolve(tcx, TypingEnv::fully_monomorphized(), *def, args) {
+            Ok(Some(inst)) => Ok(inst),
+            _ => Err(format!("{name}: cannot resolve the function {}", canon(tcx, *def))),
+        },
+        _ => Err(format!("{name}: expected a closure or a fn item, found `{arg}`")),
+    }
+}
+
+fn root_name<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    n: Instance<'tcx>,
+    parent: &FxHashMap<Instance<'tcx>, Option<Instance<'tcx>>>,
+) -> String {
+    let mut cur = n;
+    while let Some(Some(p)) = parent.get(&cur) {
+        cur = *p;
+    }
+    canon(tcx, cur.def_id())
+}
+
+fn path_to<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    n: Instance<'tcx>,
+    parent: &FxHashMap<Instance<'tcx>, Option<Instance<'tcx>>>,
+) -> String {
+    let mut names = vec![canon(tcx, n.def_id())];
+    let mut cur = n;
+    while let Some(Some(p)) = parent.get(&cur) {
+        names.push(canon(tcx, p.def_id()));
+        cur = *p;
+    }
+    names.reverse();
+    names.join(" -> ")
+}
+
+#[allow(dead_code)]
+fn span_of(scan: &Scan<'_>) -> Option<Span> {
+    scan.sites.first().map(|s| s.span)
+}

@@ -21,15 +21,15 @@ A `Deadlock` must be a state where no step can start, even after every deadline.
 **Witness.** In debug builds, `Core` records the fields that running steps actually hold, apart from
 any scheduler, and panics on a conflict.
 
-**Programs.** `programs/*.rs` print their observations, and `programs/run.sh` compares each backend's
-output with `programs/*.expected`.
+**Programs.** `check/programs/*.rs` print their observations, and `check/programs/run.sh` compares each backend's
+output with `check/programs/*.expected`.
 
-**Model checking.** `proofs/mpi` holds TLA+ models of the MPI backend's protocols, checked by TLC
-with `proofs/mpi/run.sh`. A model is checked, not the code. The model follows the code by reading.
+**Model checking.** `check/proofs/mpi` holds TLA+ models of the MPI backend's protocols, checked by TLC
+with `check/proofs/mpi/run.sh`. A model is checked, not the code. The model follows the code by reading.
 
 **Measurement.** A statistical clause is measured: a run, a command, a machine and a tolerance.
 
-**Driver.** `driver/` checks user code at compile time (`driver/README.md`). It trusts trame's own
+**Driver.** `crates/driver/` checks user code at compile time (`crates/driver/README.md`). It trusts trame's own
 code.
 
 **Mutation.** A check that claims a clause must fail on a backend that breaks it. A mutant is that
@@ -44,9 +44,9 @@ label of T.
 check liveness of the MPI wake-up protocol and of a lane between hosts.
 
 **L1 Refusal.** Programs `refuse` and `refuse_dup`, and the seq launch tests. On MPI, every refusal
-is decided by a collective reduction (`backends/mpi/open.rs`).
+is decided by a collective reduction (`src/backends/mpi/open.rs`).
 
-**L2 Agreement.** `agree` in `backends/mpi/open.rs`. No test gives two processes different plans.
+**L2 Agreement.** `agree` in `src/backends/mpi/open.rs`. No test gives two processes different plans.
 
 **L3 Building.** By construction: `launch::build_all` on seq, `imp.rs` on MPI.
 `tests/no_alloc.rs` checks that a launch is refused when the builders cannot reach the domain.
@@ -75,7 +75,7 @@ Replay, since S6 is part of `may_start`.
 
 **S9 Trace.** Replay checks the traces it is given. Nothing checks that a trace is complete.
 
-**T1 Order, T2 Capacity, T3 Delivery.** Programs; on MPI, `backends/mpi/tests` (FIFO with
+**T1 Order, T2 Capacity, T3 Delivery.** Programs; on MPI, `src/backends/mpi/tests` (FIFO with
 verification, overwrite, fairness, large routes, node splits).
 
 **P1 Writer.** By type: a step takes the pool as `&P`, and `#[trame::step]` refuses `&mut`.
@@ -86,7 +86,7 @@ verification, overwrite, fairness, large routes, node splits).
 No check walks a built state to find a byte outside its domain.
 
 **M2 Meaning, M3 Mutation.** By type: `#[trame::state]` requires `Plain` of each field and
-`State::Pool`. The rejection suite (`rejections/cases/plain/`) refuses each excluded kind, nested
+`State::Pool`. The rejection suite (`check/rejections/cases/plain/`) refuses each excluded kind, nested
 under user types too, and accepts plain nesting. The check is on types: a `usize` holding an
 address is plain, and an `unsafe impl Plain` is not checked.
 
@@ -116,7 +116,7 @@ and `xhost_ring` on two hosts compile each type once, so they do not test two co
 
 **F5 Routes between hosts.** Program `xhost_ring` on two hosts: 2000 items per worker over lossless
 lanes of capacity 4, each receiver asserting order and once-only delivery, and lossy ticks asserted
-to increase. TLA+ model `Lane` (`proofs/mpi/Lane.tla`): order, room by credits, every frame finds
+to increase. TLA+ model `Lane` (`check/proofs/mpi/Lane.tla`): order, room by credits, every frame finds
 its posted receive, every frame taken and credited. Lossy lanes and the end have no model.
 
 **F6 Peer channel.** Program `peers` on two hosts.
@@ -124,7 +124,7 @@ its posted receive, every frame taken and credited. Lossy lanes and the end have
 **E1 Abort.** Programs `abort`, `abort_join`, `leader_panics`.
 
 **E2 Join.** Programs; the outcome check. The detector of stuck runs across hosts
-(`backends/mpi/detect.rs`) is modelled in `proofs/mpi/Detect.tla`: `MCDetect` checks that a Stuck
+(`src/backends/mpi/detect.rs`) is modelled in `check/proofs/mpi/Detect.tla`: `MCDetect` checks that a Stuck
 verdict is given only when every worker is quiet or done and nothing is in flight. `MCDetectOnce`,
 the mutant that skips the comparison with the previous round, must violate it, and does. Programs
 `xhost_deadlock` and `leader_stuck` run it on two hosts. The model has one worker per host, H = 2, three
@@ -138,7 +138,7 @@ runs it sees, and progress rests on the programs ending and on the TLA+ liveness
 ## Latency
 
 T leaves latency to the environment, so no proof says anything about it. The MPI backend has a
-recorder, `backends/mpi/tests/latency.rs`, which writes round trips between workers in the nixsci
+recorder, `src/backends/mpi/tests/latency.rs`, which writes round trips between workers in the nixsci
 record format and computes no verdict. No latency claim is checked: the tree holds no nixsci
 experiment that locks those records by content hash. A claim would have this form: the fraction of
 round trips whose half exceeds the fastest by more than 100 µs is below 0.1%, at confidence 0.99.

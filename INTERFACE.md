@@ -706,8 +706,8 @@ root, except the functions of `trame::math`.
 | `Refused` | enum: `UnknownWorker`, `Duplicate`, `ZeroCapacity`, `TwoOwners`, `PoolType`, `Alloc`, `PoolUnset`, `Unset`, `Backend`; `Display` | a refusal at launch (4) |
 | `Run` | type: `send`, `recv`, `wait`, `edit`, `stop`, `join`, `leader_send`, `leader_recv` | the leader's side of a run (5.2, 5.5, 6, Definition (Join)) |
 | `Outcome` | enum: `Returned`, `Stopped`, `Failed`, `Deadlock` | a worker's result (5.3, Definition (Result)) |
-| `math::f32::exp` | fn | the portable f32 exponential. Its accuracy is claimed for inputs in $[-30, 0]$: relative error below 2e-6 against `f64::exp`, tested in `math/f32/tests.rs`. Outside that range, no accuracy claim |
-| `math::f64::{exp, ln, exp_m1, powf}` | fn | ports of fdlibm (`e_exp.c`, `e_log.c`, `s_expm1.c`, `e_pow.c`) in plain IEEE arithmetic. The tests assert at most 2 ulp from glibc on 200,000 samples each; the largest measured was 1 ulp (`math/f64/tests/sweep.rs`). A sample, not a proof. `powf(1, NaN)` and `powf(-1, ±inf)` are NaN, as in fdlibm |
+| `math::f32::exp` | fn | the portable f32 exponential. Its accuracy is claimed for inputs in $[-30, 0]$: relative error below 2e-6 against `f64::exp`, tested in `src/math/f32/tests.rs`. Outside that range, no accuracy claim |
+| `math::f64::{exp, ln, exp_m1, powf}` | fn | ports of fdlibm (`e_exp.c`, `e_log.c`, `s_expm1.c`, `e_pow.c`) in plain IEEE arithmetic. The tests assert at most 2 ulp from glibc on 200,000 samples each; the largest measured was 1 ulp (`src/math/f64/tests/sweep.rs`). A sample, not a proof. `powf(1, NaN)` and `powf(-1, ±inf)` are NaN, as in fdlibm |
 | `math::f64::{sqrt, round}` | fn | correctly rounded square root and round-half-away-from-zero, in integer arithmetic: exact |
 | `math::f64::powi` | fn | integer power by squaring in a fixed order, not correctly rounded |
 

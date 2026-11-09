@@ -5,10 +5,10 @@ target/
 result
 result-*
 
-# Output of backends/mpi/tests/progress/run.sh
-/backends/mpi/tests/progress/out/
+# Output of src/backends/mpi/tests/progress/run.sh
+/src/backends/mpi/tests/progress/out/
 
-# Scratch crates of driver/fuzz/run.sh
-/driver/fuzz/work/
+# Scratch crates of crates/driver/fuzz/run.sh
+/crates/driver/fuzz/work/
 /.nixsci/
 __pycache__/

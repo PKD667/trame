@@ -5,11 +5,11 @@ edition = "2024"
 description = "One meaning for a program on every machine it runs on; INTERFACE.md is the contract."
 
 [lib]
-path = "lib.rs"
+path = "src/lib.rs"
 
 [dependencies]
 bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
-trame-macros = { path = "macros" }
+trame-macros = { path = "crates/macros" }
 mpi = { version = "=0.8.2", optional = true }
 libc = { version = "=0.2.191", optional = true }
 
@@ -20,53 +20,53 @@ default = ["seq"]
 seq = []
 mpi = ["dep:mpi", "dep:libc"]
 
-# The MPI transport's checks and latency run (backends/mpi/tests/run.sh, backends/mpi/README.md).
+# The MPI transport's checks and latency run (src/backends/mpi/tests/run.sh, src/backends/mpi/README.md).
 [[bin]]
 name = "check"
-path = "backends/mpi/tests/check.rs"
+path = "src/backends/mpi/tests/check.rs"
 required-features = ["mpi"]
 
 [[bin]]
 name = "latency"
-path = "backends/mpi/tests/latency.rs"
+path = "src/backends/mpi/tests/latency.rs"
 required-features = ["mpi"]
 
-# Programs that run on every backend, with their expected stdout (programs/run.sh).
+# Programs that run on every backend, with their expected stdout (check/programs/run.sh).
 [[example]]
 name = "ping_pong"
-path = "programs/ping_pong.rs"
+path = "check/programs/ping_pong.rs"
 
 [[example]]
 name = "leader_io"
-path = "programs/leader_io.rs"
+path = "check/programs/leader_io.rs"
 
 [[example]]
 name = "full"
-path = "programs/full.rs"
+path = "check/programs/full.rs"
 
 [[example]]
 name = "lossy"
-path = "programs/lossy.rs"
+path = "check/programs/lossy.rs"
 
 [[example]]
 name = "abort"
-path = "programs/abort.rs"
+path = "check/programs/abort.rs"
 
 [[example]]
 name = "abort_join"
-path = "programs/abort_join.rs"
+path = "check/programs/abort_join.rs"
 
 [[example]]
 name = "refuse"
-path = "programs/refuse.rs"
+path = "check/programs/refuse.rs"
 
 [[example]]
 name = "pool_edit"
-path = "programs/pool_edit.rs"
+path = "check/programs/pool_edit.rs"
 
 [[example]]
 name = "cells"
-path = "programs/cells.rs"
+path = "check/programs/cells.rs"
 
 # `trame_checked` is set by the driver (INTERFACE.md, Checked builds); it is not a feature.
 [lints.rust]
@@ -77,105 +77,105 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trame_checked)'] }
 overflow-checks = true
 
 [workspace]
-members = ["macros"]
+members = ["crates/macros"]
 
 [[example]]
 name = "wait_until"
-path = "programs/wait_until.rs"
+path = "check/programs/wait_until.rs"
 
 [[example]]
 name = "join_deadline"
-path = "programs/join_deadline.rs"
+path = "check/programs/join_deadline.rs"
 
 [[example]]
 name = "wait_frame"
-path = "programs/wait_frame.rs"
+path = "check/programs/wait_frame.rs"
 
 [[example]]
 name = "wait_room"
-path = "programs/wait_room.rs"
+path = "check/programs/wait_room.rs"
 
 [[example]]
 name = "err"
-path = "programs/err.rs"
+path = "check/programs/err.rs"
 
 [[example]]
 name = "sum_squares"
-path = "programs/sum_squares.rs"
+path = "check/programs/sum_squares.rs"
 
 [[example]]
 name = "fanin_fifo"
-path = "programs/fanin_fifo.rs"
+path = "check/programs/fanin_fifo.rs"
 
 [[example]]
 name = "halo_rule90"
-path = "programs/halo_rule90.rs"
+path = "check/programs/halo_rule90.rs"
 
 [[example]]
 name = "pipeline_chain"
-path = "programs/pipeline_chain.rs"
+path = "check/programs/pipeline_chain.rs"
 
 # The README's example: a ring of workers and a leader (README.md, examples/ring.rs).
 [[example]]
 name = "ring"
 path = "examples/ring.rs"
 
-# Scaling benchmarks (scale/, scale/README.md; run by experiments/scale.py). Not part of the conformance set.
+# Scaling benchmarks (lab/scale/, lab/scale/README.md; run by lab/scale.py). Not part of the conformance set.
 [[example]]
 name = "scale_round"
-path = "scale/round.rs"
+path = "lab/scale/round.rs"
 
 [[example]]
 name = "scale_ring"
-path = "scale/ring.rs"
+path = "lab/scale/ring.rs"
 
 [[example]]
 name = "scale_idle"
-path = "scale/idle.rs"
+path = "lab/scale/idle.rs"
 
 [[example]]
 name = "scale_fanin"
-path = "scale/fanin.rs"
+path = "lab/scale/fanin.rs"
 
 [[example]]
 name = "scale_graph"
-path = "scale/graph.rs"
+path = "lab/scale/graph.rs"
 
 [[example]]
 name = "start_order"
-path = "programs/start_order.rs"
+path = "check/programs/start_order.rs"
 
 [[example]]
 name = "refuse_dup"
-path = "programs/refuse_dup.rs"
+path = "check/programs/refuse_dup.rs"
 
 [[example]]
 name = "err_done"
-path = "programs/err_done.rs"
+path = "check/programs/err_done.rs"
 
 [[example]]
 name = "frame_other"
-path = "programs/frame_other.rs"
+path = "check/programs/frame_other.rs"
 
 [[example]]
 name = "until_calls"
-path = "programs/until_calls.rs"
+path = "check/programs/until_calls.rs"
 
 [[example]]
 name = "room_spin"
-path = "programs/room_spin.rs"
+path = "check/programs/room_spin.rs"
 
 [[example]]
 name = "take_rotate"
-path = "programs/take_rotate.rs"
+path = "check/programs/take_rotate.rs"
 
 [[example]]
 name = "leader_stuck"
-path = "programs/leader_stuck.rs"
+path = "check/programs/leader_stuck.rs"
 
 [[example]]
 name = "leader_panics"
-path = "programs/leader_panics.rs"
+path = "check/programs/leader_panics.rs"
 
 # Experiments of the worker model (docs/worker-model.md): measurements, not programs with an .expected.
 [[example]]
@@ -188,24 +188,24 @@ path = "examples/overlap.rs"
 
 [[example]]
 name = "peers"
-path = "programs/peers.rs"
+path = "check/programs/peers.rs"
 
 [[example]]
 name = "xhost_ring"
-path = "programs/xhost_ring.rs"
+path = "check/programs/xhost_ring.rs"
 
 [[example]]
 name = "refuse_ports"
-path = "programs/refuse_ports.rs"
+path = "check/programs/refuse_ports.rs"
 
 [[example]]
 name = "route_one_side"
-path = "programs/route_one_side.rs"
+path = "check/programs/route_one_side.rs"
 
 [[example]]
 name = "xhost_abort"
-path = "programs/xhost_abort.rs"
+path = "check/programs/xhost_abort.rs"
 
 [[example]]
 name = "xhost_deadlock"
-path = "programs/xhost_deadlock.rs"
+path = "check/programs/xhost_deadlock.rs"

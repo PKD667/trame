@@ -33,15 +33,15 @@ flowchart TB
   S --> be
   wk --> sc
   wk --> be
-  be --> seq["backends/seq"]
-  be --> mpi["backends/mpi"]
-  seq --> loc["backends/local<br/>route rings"]
+  be --> seq["src/backends/seq"]
+  be --> mpi["src/backends/mpi"]
+  seq --> loc["src/backends/local<br/>route rings"]
 ```
 
 | file | owns |
 |---|---|
 | `lib.rs` | the public names, the backend selection by feature, `extern crate self as trame` |
-| `macros/` | `#[trame::state]`, `#[trame::step]`, `#[trame::message]`, `#[trame::item]`, `parallel!`, `#[derive(Plain)]` |
+| `crates/macros/` | `#[trame::state]`, `#[trame::step]`, `#[trame::message]`, `#[trame::item]`, `parallel!`, `#[derive(Plain)]` |
 | `plain.rs` | the `Plain` trait and its implementations |
 | `worker.rs` | `State`, the type-erased worker `Erased`, its block `Core`, the reference agent |
 | `sched.rs` | the scheduling model and the trace checker |
@@ -56,11 +56,11 @@ flowchart TB
 | `parallel.rs` | the item fold behind `parallel!` |
 | `check.rs` | level markers the driver finds after monomorphization |
 | `backend.rs` | the trait `Backend`, the one seam to hardware |
-| `math/` | portable numeric functions |
+| `src/math/` | portable numeric functions |
 
-Around the crate: `driver/` is the compile-time checker, `rejections/` its case suite, `programs/`
-the shared conformance programs, `conformance/` the mutants, `proofs/` the TLA+ models, `scale/`
-the scaling runs and `experiments/` the nix experiments.
+Around the crate: `crates/driver/` is the compile-time checker, `check/rejections/` its case suite, `check/programs/`
+the shared conformance programs, `check/mutants/` the mutants, `check/proofs/` the TLA+ models, `lab/scale/`
+the scaling runs and `lab/` the nix experiments.
 
 ## A step's path
 

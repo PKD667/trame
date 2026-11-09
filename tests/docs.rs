@@ -7,7 +7,7 @@ use std::path::Path;
 /// `bytemuck` are internal; `math` is checked by its functions' rows.
 fn exported() -> Vec<String> {
     let root = env!("CARGO_MANIFEST_DIR");
-    let lib = std::fs::read_to_string(format!("{root}/lib.rs")).expect("lib.rs is readable");
+    let lib = std::fs::read_to_string(format!("{root}/src/lib.rs")).expect("lib.rs is readable");
     let mut names = Vec::new();
     // Root-level lines only: an indented `pub use` is inside a hidden module.
     for line in lib.lines() {

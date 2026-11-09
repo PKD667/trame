@@ -24,9 +24,9 @@ checked plan or refuses it, and has allocated everything the plan needs when it 
 %%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryTextColor':'#000000','primaryBorderColor':'#000000','lineColor':'#000000','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','clusterBkg':'#ffffff','clusterBorder':'#000000','edgeLabelBackground':'#ffffff','actorBkg':'#ffffff','actorBorder':'#000000','actorTextColor':'#000000','actorLineColor':'#000000','signalColor':'#000000','signalTextColor':'#000000','noteBkgColor':'#ffffff','noteBorderColor':'#000000','noteTextColor':'#000000','labelBoxBkgColor':'#ffffff','labelBoxBorderColor':'#000000','fontFamily':'monospace'},'themeCSS':'rect.actor,rect.note,.note rect,.statediagram-note rect{fill:#fff!important;stroke:#000!important} line,.actor-line{stroke:#000!important} .arrowheadPath,marker path{fill:#000!important;stroke:#000!important} circle.state-end{stroke:#000!important} text,.noteText,.state-note text{fill:#000!important}'}}%%
 flowchart LR
   S["surface<br/>io, run, topology, status"] --> T{"trait Backend<br/>backend.rs"}
-  T --> Q["seq<br/>backends/seq"]
-  T --> M["mpi<br/>backends/mpi"]
-  Q --> RT["local routes<br/>backends/local"]
+  T --> Q["seq<br/>src/backends/seq"]
+  T --> M["mpi<br/>src/backends/mpi"]
+  Q --> RT["local routes<br/>src/backends/local"]
   Q --> A["reference agent<br/>worker.rs"]
   M --> A
 ```
@@ -39,7 +39,7 @@ flowchart LR
 | scheduler | reference agent, service 1 per step | reference agent, service in nanoseconds |
 | routes | rings under one lock | rings in a shared window, two-sided MPI between hosts |
 | wake | one counter of acts | epoch words and futexes |
-| domain | the heap | a shared segment (`backends/mpi/segment.rs`) |
+| domain | the heap | a shared segment (`src/backends/mpi/segment.rs`) |
 | leader | a thread outside the baton | the last rank |
 | `Deadlock` | reported | reported once every leader waits, joins or has ended |
 
@@ -52,7 +52,7 @@ is deterministic. The leader runs outside the baton, under the same lock.
 seq follows `Sched::choose` exactly, so `sched::check` replays its traces with `exact`
 (`PROOFS.md`, Replay). When every agent that can move has moved, and no idle worker has seen a
 change, the run is stuck. The backend ends each remaining worker with `Deadlock`, and panics a
-leader whose `wait` can never return (`backends/seq/stuck.rs`).
+leader whose `wait` can never return (`src/backends/seq/stuck.rs`).
 
 `TRAME_SEQ_STEP_LIMIT=n` ends the process at the baton's step n + 1, with a message and exit status
 3. The mutant checks use it to kill a mutant that loops for ever.
@@ -63,19 +63,19 @@ mpi runs one MPI rank per worker, and the leader on the last rank, so `mpirun` n
 Each shared-memory node is a host. Workers of one host share a window with one ring per route. An
 agent that waits sleeps on a futex word of its worker, and every act that can change its wait moves
 that word. A route between hosts goes rank to rank by two-sided MPI, with credits back, and the
-agents of a worker with such a route poll instead of sleeping (`backends/mpi/HOSTS.md`).
+agents of a worker with such a route poll instead of sleeping (`src/backends/mpi/HOSTS.md`).
 
 The leaders show a run stuck by rounds of a nonblocking allreduce over their hosts' words: each
 round sums the leaders whose snapshot moved, the messages sent between hosts and those arrived. Two
 equal rounds with nothing moved and nothing in flight show every worker stuck, and the backend then
-ends each with `Deadlock`, or panics a waiting leader, as seq does (`backends/mpi/detect.rs`). A
+ends each with `Deadlock`, or panics a waiting leader, as seq does (`src/backends/mpi/detect.rs`). A
 leader that runs its own code holds the rounds, so a deadlock is shown only once every leader waits,
 joins or has ended. The design, tests and measurements are in
-`backends/mpi/README.md`, `HOSTS.md`, `SCALING.md` and `RESULT.md`. Edits, `take` and the pool on
-mpi live in the segment (`backends/mpi/segment.rs`).
+`src/backends/mpi/README.md`, `HOSTS.md`, `SCALING.md` and `RESULT.md`. Edits, `take` and the pool on
+mpi live in the segment (`src/backends/mpi/segment.rs`).
 
 ## A new backend
 
 A new backend implements `Backend`, keeps the clauses of `CONTRACT.md`, and prints the same output as
-seq on the programs of `programs/` (`programs/run.sh`). It may reuse the reference agent of
+seq on the programs of `check/programs/` (`check/programs/run.sh`). It may reuse the reference agent of
 `worker.rs` or schedule by itself.

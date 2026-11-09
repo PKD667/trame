@@ -107,8 +107,8 @@ outcomes: [Returned, Returned, Returned, Returned]
 ```
 
 The example does not handle a failed run. If a worker panics, the leader's next call panics too, with
-`trame: worker <w> panicked: <message>` (INTERFACE.md 5, Abort). `programs/abort.rs` shows the leader in
-`Run::wait`, and `programs/abort_join.rs` the leader in `join`.
+`trame: worker <w> panicked: <message>` (INTERFACE.md 5, Abort). `check/programs/abort.rs` shows the leader in
+`Run::wait`, and `check/programs/abort_join.rs` the leader in `join`.
 
 ## Build and run
 
@@ -156,24 +156,24 @@ and 5.4).
 The backend is chosen at build time, so `--mpi` goes to both. `--check` builds with the compile-time checker
 (`cargo trame`, on the driver's own pinned rustc). `run --mpi` asks the program how many ranks it needs
 (`TRAME_PROBE=ranks`, which prints `trame-ranks N` and stops) and starts `mpirun` with that many. Inside a nixsci job
-on several hosts the hostfile, the placement and the launch agent come from `nixsci.lab.mpi`. `cli/check.sh` tests it.
+on several hosts the hostfile, the placement and the launch agent come from `nixsci.lab.mpi`. `crates/cli/check.sh` tests it.
 
 ## What is checked, and how
 
 | check | what it covers | explained in |
 |---|---|---|
 | the contract | the rules every other check enforces, and what a backend must not do | `INTERFACE.md`, `CONTRACT.md` |
-| the macros | `#[trame::message]` refuses references, pointers, function pointers and padding; `#[trame::step]` takes fields and the pool as `&` or `&mut`; `#[trame::state]` requires `trame::Plain` of every field and the pool; `#[trame::state]` and `parallel!` need the cfg flag | `macros/lib.rs` |
-| `cargo trame check` | the rustc driver judges the MIR of each level: effects, counted loops, recursion, allocation | `driver/README.md` |
-| rejection suite | cases the checks must refuse, and their matched accepted cases | `rejections/README.md` |
-| conformance by mutation | every rule has a program that fails on a backend which breaks it | `conformance/README.md` |
+| the macros | `#[trame::message]` refuses references, pointers, function pointers and padding; `#[trame::step]` takes fields and the pool as `&` or `&mut`; `#[trame::state]` requires `trame::Plain` of every field and the pool; `#[trame::state]` and `parallel!` need the cfg flag | `crates/macros/lib.rs` |
+| `cargo trame check` | the rustc driver judges the MIR of each level: effects, counted loops, recursion, allocation | `crates/driver/README.md` |
+| rejection suite | cases the checks must refuse, and their matched accepted cases | `check/rejections/README.md` |
+| conformance by mutation | every rule has a program that fails on a backend which breaks it | `check/mutants/README.md` |
 | scheduler model | `sched.rs` unit and property tests; trace replay of random workloads | `PROOFS.md` |
 | crate tests | `cargo test` in the seq build | `tests/` |
-| programs | every program in `programs/` on seq and MPI, stdout compared with `.expected` | `programs/run.sh` |
-| MPI checks | the transport: FIFO, overwrite, fairness, large routes, on one node and split across nodes | `backends/mpi/tests/run.sh` |
-| TLA+ models | the MPI backend's wake-up, credit and abort protocols | `proofs/README.md` |
-| `nix flake check` | builds the verdicts that must hold: `programs-seq`, `seq-tests`, `rejections`, `mutants-seq` | `experiments/validate.nix` |
-| lab experiments | `nix run .#<name>` runs real processes: `programs-mpi`, `transport-mpi`, `mutants-mpi`, `scale-local`, `scale-n1` to `scale-n32`, and the `-cluster` variants | `experiments/README.md` |
+| programs | every program in `check/programs/` on seq and MPI, stdout compared with `.expected` | `check/programs/run.sh` |
+| MPI checks | the transport: FIFO, overwrite, fairness, large routes, on one node and split across nodes | `src/backends/mpi/tests/run.sh` |
+| TLA+ models | the MPI backend's wake-up, credit and abort protocols | `check/proofs/README.md` |
+| `nix flake check` | builds the verdicts that must hold: `programs-seq`, `seq-tests`, `rejections`, `mutants-seq` | `lab/validate.nix` |
+| lab experiments | `nix run .#<name>` runs real processes: `programs-mpi`, `transport-mpi`, `mutants-mpi`, `scale-local`, `scale-n1` to `scale-n32`, and the `-cluster` variants | `lab/README.md` |
 
 `PROOFS.md` says, for each clause of `CONTRACT.md`, which of these checks it and where the check
 stops.
@@ -181,17 +181,17 @@ stops.
 ## Repository map
 
 - `docs/`: the system design, one file per part. `docs/overview.md` is the entry.
-- `backends/`: `seq` is the reference, `mpi` runs on MPI ranks, a shared window per host and
+- `src/backends/`: `seq` is the reference, `mpi` runs on MPI ranks, a shared window per host and
   two-sided routes between hosts, and `local` holds seq's routes.
-- `conformance/`: mutants of each backend, and the runner that checks the programs kill them.
-- `driver/`: the rustc driver that judges MIR, and `cargo trame`.
-- `experiments/`: the lab runners and the claims they test.
-- `macros/`: the proc macros `message`, `state`, `step`, `item` and `parallel`.
-- `math/`: `trame::math::f32` and `trame::math::f64`, numeric functions with the same bits on every backend.
-- `programs/`: shared programs with their expected output, run by `programs/run.sh`.
-- `proofs/`: the TLA+ models of the MPI backend.
-- `rejections/`: cases the compile-time checks must refuse or accept.
-- `scale/`: scaling benchmarks and their plain-MPI baselines.
+- `check/mutants/`: mutants of each backend, and the runner that checks the programs kill them.
+- `crates/driver/`: the rustc driver that judges MIR, and `cargo trame`.
+- `lab/`: the lab runners and the claims they test.
+- `crates/macros/`: the proc macros `message`, `state`, `step`, `item` and `parallel`.
+- `src/math/`: `trame::math::f32` and `trame::math::f64`, numeric functions with the same bits on every backend.
+- `check/programs/`: shared programs with their expected output, run by `check/programs/run.sh`.
+- `check/proofs/`: the TLA+ models of the MPI backend.
+- `check/rejections/`: cases the compile-time checks must refuse or accept.
+- `lab/scale/`: scaling benchmarks and their plain-MPI baselines.
 - `tests/`: crate tests for allocation, `parallel!`, conformance, and this README's example.
 - `examples/`: the example in this README.
 - Top level: `INTERFACE.md` (the behaviour), `CONTRACT.md` (what a backend keeps), `PROOFS.md` (how that is
@@ -201,10 +201,10 @@ stops.
 ## Limits
 
 - Backends: seq and mpi, one per build. On mpi a host is one shared-memory node; several hosts on one
-  machine come from `TRAME_MPI_NODE_RANKS` (`backends/mpi/HOSTS.md`).
-- The driver fuzzer is not a verdict: run it as `driver/fuzz/README.md` says.
+  machine come from `TRAME_MPI_NODE_RANKS` (`src/backends/mpi/HOSTS.md`).
+- The driver fuzzer is not a verdict: run it as `crates/driver/fuzz/README.md` says.
 - The MPI backend never reports `Deadlock` and does not detect a leader whose `wait` can never
-  return. Seq does both (`backends/seq/stuck.rs`). Spec.md, Definition (Deadlock), allows a backend
+  return. Seq does both (`src/backends/seq/stuck.rs`). Spec.md, Definition (Deadlock), allows a backend
   not to.
 - The crate does not check the byte order of the target. Only the latency test does.
 - A state has at most 63 fields, and a worker at most 64 steps, the stop step included. A step
