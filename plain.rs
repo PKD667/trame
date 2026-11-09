@@ -24,7 +24,7 @@ use core::num::{Saturating, Wrapping};
 /// `fn`, `dyn`, shared ownership, cell, atomic or lock, at any depth, and owns memory only through
 /// `alloc` types. `#[derive(trame::Plain)]` writes the implementation after checking every field.
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` cannot be held by a trame state or pool",
+    message = "`{Self}` cannot be held by a trame state, pool or error",
     label = "not `trame::Plain`",
     note = "a state holds plain data: numbers, bool, char, arrays, tuples, Option, Vec, Box, String, the alloc collections, and types with #[derive(trame::Plain)]",
     note = "references, raw pointers, fn pointers, dyn values, Rc, Arc, cells, atomics and locks mean nothing in another process of the host (CONTRACT.md M2, M3)"
@@ -38,7 +38,7 @@ macro_rules! plain {
     )* };
 }
 
-plain!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64, bool, char, (), String);
+plain!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64, bool, char, (), String, core::convert::Infallible);
 plain!(
     core::num::NonZeroU8,
     core::num::NonZeroU16,

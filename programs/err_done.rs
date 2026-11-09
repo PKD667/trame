@@ -7,7 +7,7 @@
 
 use trame::{Outcome, Status, Topology};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, trame::Plain)]
 struct Boom(u32);
 
 #[trame::state(steps(finishes, fails), error = Boom)]

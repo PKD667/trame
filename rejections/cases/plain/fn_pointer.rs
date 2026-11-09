@@ -3,7 +3,7 @@
 
 #[trame::state(steps(step))]
 struct Hold {
-    cb: fn(u32) -> u32, //~ ERROR: cannot be held by a trame state or pool
+    cb: fn(u32) -> u32, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

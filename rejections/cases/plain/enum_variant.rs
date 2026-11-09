@@ -2,7 +2,7 @@
 #[derive(trame::Plain)]
 enum Mode {
     Idle,
-    Call(fn()), //~ ERROR: cannot be held by a trame state or pool
+    Call(fn()), //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::state(steps(step))]

@@ -3,7 +3,7 @@ use std::sync::Weak;
 
 #[trame::state(steps(step))]
 struct Hold {
-    shared: Weak<u32>, //~ ERROR: cannot be held by a trame state or pool
+    shared: Weak<u32>, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

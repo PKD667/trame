@@ -15,7 +15,7 @@ use core::time::Duration;
 /// `fails` (index 0) returns an error at its first step. `late` would report 500 and set `late_ran`
 /// if it ran. It never does: no step starts once a step has failed. (Its report would also land in
 /// the leader's `Ev` queue; `late_ran` is the check, since `join` consumes the run.)
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, crate::Plain)]
 pub(super) struct Boom(pub u32);
 
 #[crate::state(steps(fails, late), error = Boom)]

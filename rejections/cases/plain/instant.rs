@@ -3,7 +3,7 @@ use std::time::Instant;
 
 #[trame::state(steps(step))]
 struct Hold {
-    t: Instant, //~ ERROR: cannot be held by a trame state or pool
+    t: Instant, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

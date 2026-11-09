@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicU64;
 
 #[trame::state(steps(step))]
 struct Hold {
-    n: AtomicU64, //~ ERROR: cannot be held by a trame state or pool
+    n: AtomicU64, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

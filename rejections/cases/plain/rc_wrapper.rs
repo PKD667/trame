@@ -2,7 +2,7 @@
 use std::rc::Rc;
 
 #[derive(trame::Plain)]
-struct Shared(Rc<u32>); //~ ERROR: cannot be held by a trame state or pool
+struct Shared(Rc<u32>); //~ ERROR: cannot be held by a trame state, pool or error
 
 // SAFETY: for the case only.
 unsafe impl Send for Shared {}

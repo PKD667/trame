@@ -2,7 +2,7 @@
 
 #[trame::state(steps(step))]
 struct Hold {
-    names: Vec<&'static [u8]>, //~ ERROR: cannot be held by a trame state or pool
+    names: Vec<&'static [u8]>, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

@@ -7,7 +7,7 @@ struct Point {
 
 #[trame::state(steps(step))]
 struct Hold {
-    p: Point, //~ ERROR: cannot be held by a trame state or pool
+    p: Point, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

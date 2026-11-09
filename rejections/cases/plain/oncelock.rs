@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 #[trame::state(steps(step))]
 struct Hold {
-    m: OnceLock<u32>, //~ ERROR: cannot be held by a trame state or pool
+    m: OnceLock<u32>, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

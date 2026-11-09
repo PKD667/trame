@@ -4,7 +4,7 @@ use std::cell::Cell;
 
 #[derive(trame::Plain)]
 struct Counter {
-    c: Cell<u32>, //~ ERROR: cannot be held by a trame state or pool
+    c: Cell<u32>, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 // SAFETY: for the case only; Plain does not follow from Sync.

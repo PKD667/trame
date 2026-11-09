@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 #[trame::state(steps(step))]
 struct Hold {
-    shared: Arc<u32>, //~ ERROR: cannot be held by a trame state or pool
+    shared: Arc<u32>, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

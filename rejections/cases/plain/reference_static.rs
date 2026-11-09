@@ -2,7 +2,7 @@
 
 #[trame::state(steps(step))]
 struct Hold {
-    name: &'static str, //~ ERROR: cannot be held by a trame state or pool
+    name: &'static str, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

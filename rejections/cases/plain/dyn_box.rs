@@ -3,7 +3,7 @@
 
 #[trame::state(steps(step))]
 struct Hold {
-    f: Box<dyn Fn(u32) -> u32 + Send + Sync>, //~ ERROR: cannot be held by a trame state or pool
+    f: Box<dyn Fn(u32) -> u32 + Send + Sync>, //~ ERROR: cannot be held by a trame state, pool or error
 }
 
 #[trame::step(Hold)]

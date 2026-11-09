@@ -1,4 +1,4 @@
-//! A worker is a state and its steps (spec.md 5.3). This file has three parts:
+//! A worker is a state and its steps (INTERFACE.md 5.3). This file has three parts:
 //!
 //! 1. `State`, which `#[trame::state]` implements: the steps' read and write sets, and a `run` that
 //!    calls step i with its fields. The state lives in `Core`, behind a raw pointer: steps that hold
@@ -41,8 +41,9 @@ pub struct StepInfo {
 /// `STEPS[i]` lists exactly the fields `run(_, _, i)` touches, as `&` (reads) or `&mut` (writes), and
 /// `run` touches no other part of the state.
 pub unsafe trait State: Send + Sync + Sized + 'static {
-    /// What a failing step returns. `Infallible` when no step can fail.
-    type Error: Send + 'static;
+    /// What a failing step returns. `Infallible` when no step can fail. Plain, because the leader
+    /// reads it from the worker's domain, on mpi from another process (CONTRACT.md M2).
+    type Error: crate::Plain;
     /// The type of the host's pool its steps read; `()` when they read none.
     type Pool: crate::Plain;
     /// The ordinary steps, then the stop step when `HAS_STOP`.
