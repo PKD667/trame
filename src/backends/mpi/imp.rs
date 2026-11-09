@@ -149,7 +149,9 @@ impl Backend for Selected {
         // a count printed into its capture is lost when the process exits here.
         if std::env::var("TRAME_PROBE").as_deref() == Ok("ranks") {
             match std::env::var_os("TRAME_PROBE_OUT") {
-                Some(path) => std::fs::write(path, std::format!("trame-ranks {ranks}\n")).expect("TRAME_PROBE_OUT is writable"),
+                Some(path) => {
+                    std::fs::write(path, std::format!("trame-ranks {ranks}\n")).expect("TRAME_PROBE_OUT is writable")
+                }
                 None => std::println!("trame-ranks {ranks}"),
             }
             super::state::finalize();
