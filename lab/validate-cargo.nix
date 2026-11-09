@@ -9,7 +9,7 @@
   # cargo, offline, resolves `--features trame/<backend>` from the union.
   vendorRejections = pkgs.symlinkJoin {
     name = "vendor-rejections";
-    paths = [ (pkgs.rustPlatform.importCargoLock { lockFile = ../check/rejections/Cargo.lock; }) vendor ];
+    paths = [ (pkgs.rustPlatform.importCargoLock { lockFile = ../check/rejections/Cargo.lock; }) (pkgs.rustPlatform.importCargoLock { lockFile = ../Cargo.lock; }) ];
   };
   # Cargo's offline source (the vendored crates, nothing from the network), and a copy of the source tree
   # to build in: the checks write into the tree (run.sh rewrites its manifest), the store does not allow it.
