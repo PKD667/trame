@@ -21,6 +21,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from nixsci.lab import mpi
@@ -41,10 +42,14 @@ class NoTopology(Exception):
 
 
 def ranks_of(program: list[str], hosts: int) -> int:
-    env = {**os.environ, "TRAME_PROBE": "ranks", "TRAME_PROBE_HOSTS": str(hosts)}
-    p = subprocess.run(["mpirun", "--oversubscribe", "-n", "1", "-x", "TRAME_PROBE", "-x", "TRAME_PROBE_HOSTS", *program],
-                       capture_output=True, text=True, env=env)
-    m = re.search(r"^trame-ranks (\d+)$", p.stdout, re.M)
+    # The count is written to a file (TRAME_PROBE_OUT, imp.rs), not to stdout, which a test harness captures.
+    with tempfile.TemporaryDirectory() as d:
+        probe = Path(d) / "ranks"
+        env = {**os.environ, "TRAME_PROBE": "ranks", "TRAME_PROBE_HOSTS": str(hosts), "TRAME_PROBE_OUT": str(probe)}
+        p = subprocess.run(["mpirun", "--oversubscribe", "-n", "1", "-x", "TRAME_PROBE", "-x", "TRAME_PROBE_HOSTS",
+                            "-x", "TRAME_PROBE_OUT", *program], capture_output=True, text=True, env=env)
+        text = probe.read_text() if probe.exists() else ""
+    m = re.search(r"^trame-ranks (\d+)$", text, re.M)
     if not m and p.returncode == 0:
         raise NoTopology(p)
     if not m:

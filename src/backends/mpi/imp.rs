@@ -145,8 +145,13 @@ impl Backend for Selected {
         let ranks = plan.workers.len() as u32 + 1;
         // `trame run` (crates/cli/trame) asks how many ranks the program needs: TRAME_PROBE=ranks prints this host's
         // count and stops, on one rank, before any collective, so a world of one rank is enough to ask.
+        // With TRAME_PROBE_OUT the count goes to that file: a test harness captures stdout (libtest does), and
+        // a count printed into its capture is lost when the process exits here.
         if std::env::var("TRAME_PROBE").as_deref() == Ok("ranks") {
-            std::println!("trame-ranks {ranks}");
+            match std::env::var_os("TRAME_PROBE_OUT") {
+                Some(path) => std::fs::write(path, format!("trame-ranks {ranks}\n")).expect("TRAME_PROBE_OUT is writable"),
+                None => std::println!("trame-ranks {ranks}"),
+            }
             super::state::finalize();
             std::process::exit(0);
         }
