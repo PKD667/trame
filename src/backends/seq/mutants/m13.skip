@@ -1,0 +1,3 @@
+# violates: Barrier
+# expect: killed
+# skip: no barrier in the seq backend or the spec: INTERFACE.md and CONTRACT.md state no Barrier rule, and no code of src/ outside mpi has a barrier (grep -i barrier finds none). The all-workers-blocked test this mutant patched (worker_barrier, Phase::Blocked) was removed, so there is nothing to break. Revisit if the spec regains a barrier.

@@ -1,13 +1,14 @@
 # violates: Progress
 # expect: killed
---- a/backends/seq/state.rs
-+++ b/backends/seq/state.rs
-@@ -182,7 +182,7 @@
+# recv never rotates its route scan: the first route with a frame is always the one taken.
+--- a/backends/local/routes.rs
++++ b/backends/local/routes.rs
+@@ -98,7 +98,7 @@
      /// bring it back to the same route each time. Answers `false` when no route has a frame.
-     pub fn take(&mut self, to: WorkerId, ty: TypeId, out: &mut [u8]) -> bool {
+     pub fn take(&mut self, to: End, ty: TypeId, out: &mut [u8]) -> bool {
          let next = self.takes + 1;
--        let Some(r) = self.routes.iter_mut().filter(|r| r.to == to && r.ty == ty && r.len > 0).min_by_key(|r| r.taken)
-+        let Some(r) = self.routes.iter_mut().filter(|r| r.to == to && r.ty == ty && r.len > 0).next()
+-        let Some(r) = self.all.iter_mut().filter(|r| r.to == to && r.ty == ty && r.len > 0).min_by_key(|r| r.taken)
++        let Some(r) = self.all.iter_mut().filter(|r| r.to == to && r.ty == ty && r.len > 0).next()
          else {
              return false;
          };

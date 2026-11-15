@@ -1,8 +1,9 @@
 # violates: Overwrite
 # expect: killed
---- a/backends/seq/state.rs
-+++ b/backends/seq/state.rs
-@@ -148,9 +148,7 @@
+# A lossy route at capacity overwrites its newest frame instead of its oldest, so the oldest survives.
+--- a/backends/local/routes.rs
++++ b/backends/local/routes.rs
+@@ -80,9 +80,7 @@
              r.len += 1;
              (r.head + r.len - 1) % r.cap
          } else if r.lossy {

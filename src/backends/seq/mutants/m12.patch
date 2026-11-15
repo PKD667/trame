@@ -1,13 +1,14 @@
 # violates: Fail
 # expect: killed
+# A worker whose step failed answers Returned, not Failed: the error is lost and the leader sees Ok.
 --- a/sched.rs
 +++ b/sched.rs
-@@ -89,7 +89,7 @@
- /// Done: every process is done, answer Ok. Fail: some process is err and none is running, answer
- /// Err with the lowest such index. Otherwise the concurrent! has not answered yet: None.
- pub fn answer(ps: &[Proc]) -> Option<Result<(), usize>> {
--    if ps.iter().all(|p| p.st == St::Done) {
-+    if ps.iter().all(|p| p.st == St::Done || p.st == St::Err) {
-         return Some(Ok(()));
-     }
-     if ps.iter().any(|p| p.running) {
+@@ -371,7 +371,7 @@
+             return None;
+         }
+         if let Some(i) = self.ps[..self.total()].iter().position(|p| p.st == St::Err) {
+-            return Some(Answer::Failed(i));
++            return Some(Answer::Failed(i)).map(|_| Answer::Returned);
+         }
+         if self.stopping {
+             let stop_done = !self.has_stop || self.ps[self.len].st == St::Done;

@@ -1,13 +1,14 @@
 # violates: Status
 # expect: killed
+# room always holds, so a step waiting for room starts although its route is full.
 --- a/sched.rs
 +++ b/sched.rs
-@@ -48,7 +48,7 @@
-         St::Fresh | St::Progress => true,
-         St::Done | St::Err => false,
-         St::Wait { frame, room, until, cells: _ } => {
--            p.d || (frame && bit(now.frame, i)) || (room && bit(now.room, i)) || (until && bit(now.until, i))
-+            p.d || (frame && bit(now.frame, i)) || room || (until && bit(now.until, i))
+@@ -231,7 +231,7 @@
+             St::Fresh | St::Progress => true,
+             St::Done | St::Err => false,
+             St::Wait { frame, room, until } => {
+-                p.d || (frame && bit(now.frame)) || (room && bit(now.room)) || (until && bit(now.until))
++                p.d || (frame && bit(now.frame)) || room || (until && bit(now.until))
+             }
          }
      }
- }

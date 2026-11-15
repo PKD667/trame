@@ -1,10 +1,11 @@
 # violates: Launch checks
 # expect: killed
+# A route of capacity 0 is accepted at launch instead of being refused.
 --- a/launch.rs
 +++ b/launch.rs
-@@ -55,7 +55,7 @@
-                 return Err(Refused::UnknownWorker(end));
-             }
+@@ -131,7 +131,7 @@
+         if let (true, true, End::Worker(w)) = (remote(r.from), remote(r.to), r.from) {
+             return Err(Refused::UnknownWorker(w));
          }
 -        if r.cap == 0 {
 +        if r.cap == 0 && false {

@@ -1,13 +1,14 @@
 # violates: End
 # expect: killed
+# End of a step does not wake a step of its worker that uses a field it writes.
 --- a/sched.rs
 +++ b/sched.rs
-@@ -76,7 +76,7 @@
-     let cells = ps[i].cells;
-     *held &= !cells;
-     for (q, other) in ps.iter_mut().enumerate() {
--        if q != i && other.cells & cells != 0 {
-+        if q != i && other.cells & cells != 0 && false {
-             other.d = true;
+@@ -337,7 +337,7 @@
+         self.locks.give(&p);
+         let total = self.total();
+         for (j, q) in self.ps[..total].iter_mut().enumerate() {
+-            if j != i && p.writes & q.fields() != 0 {
++            if j != i && p.writes & q.fields() != 0 && false {
+                 q.d = true;
+             }
          }
-     }

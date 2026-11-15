@@ -1,8 +1,9 @@
 # violates: Take
 # expect: killed
---- a/backends/seq/state.rs
-+++ b/backends/seq/state.rs
-@@ -186,9 +186,8 @@
+# recv takes the newest frame of a route, not the oldest, so the FIFO order breaks.
+--- a/backends/local/routes.rs
++++ b/backends/local/routes.rs
+@@ -102,9 +102,8 @@
          else {
              return false;
          };

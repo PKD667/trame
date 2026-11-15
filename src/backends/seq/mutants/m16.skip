@@ -1,0 +1,3 @@
+# violates: Deadlock, Join
+# expect: equivalent: INTERFACE.md 5, Definition Deadlock says a backend may end a stuck agent and does not say when. The mutant only moves that ending from the advance that first finds the run stuck to leader_join (ops.rs), which ends the same agents with the same result. A barrier waiter has no effect after the barrier, so no output records when it ended.
+# skip: no barrier waiter and no eager ending to move: the seq backend sets Deadlock only in leader_join (ops.rs, stuck.rs), and no code ends a blocked worker at an advance (state.rs advance has no ending). The Blocked phase this mutant filtered no longer exists.

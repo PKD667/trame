@@ -1,16 +1,17 @@
 # violates: Progress
 # expect: killed
+# A frame arrival is not an act: an idle receiver is not woken by a worker's send, so it stays idle.
 --- a/backends/seq/ops.rs
 +++ b/backends/seq/ops.rs
-@@ -146,13 +146,13 @@
+@@ -173,13 +173,13 @@
      }
  
-     fn worker_send(to: WorkerId, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
+     fn worker_send(to: End, ty: core::any::TypeId, name: &'static str, bytes: &[u8]) -> Result<(), Full> {
 -        effect(|st, me| {
 +        turn_effect(|st, me| {
-             let from = WorkerId(me as u32);
-             match st.route(from, to, ty) {
-                 Some(i) => st.push(i, bytes),
+             let from = End::Worker(WorkerId::here(me as u32));
+             match st.routes.find(from, to, ty) {
+                 Some(i) => st.routes.push(i, bytes),
                  None => panic!("trame: worker {from:?} has no route to {to:?} for {name}"),
              }
 -        })

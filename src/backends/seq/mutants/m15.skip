@@ -1,0 +1,3 @@
+# violates: Barrier (one Pub for all)
+# expect: killed
+# skip: no barrier, hence no per-worker answer to one barrier: the barrier this mutant patched (worker_barrier) is gone (see m13). A worker reads the pool pinned at launch (worker_main, CONTRACT.md P1), with no per-worker publication to answer wrongly.

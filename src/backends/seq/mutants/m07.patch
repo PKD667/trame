@@ -1,13 +1,14 @@
 # violates: Enabled
 # expect: killed
+# A step that waits for a frame starts when any frame is queued for its worker, not one of its own.
 --- a/sched.rs
 +++ b/sched.rs
-@@ -48,7 +48,7 @@
-         St::Fresh | St::Progress => true,
-         St::Done | St::Err => false,
-         St::Wait { frame, room, until, cells: _ } => {
--            p.d || (frame && bit(now.frame, i)) || (room && bit(now.room, i)) || (until && bit(now.until, i))
-+            p.d || (frame && now.frame != 0) || (room && bit(now.room, i)) || (until && bit(now.until, i))
+@@ -231,7 +231,7 @@
+             St::Fresh | St::Progress => true,
+             St::Done | St::Err => false,
+             St::Wait { frame, room, until } => {
+-                p.d || (frame && bit(now.frame)) || (room && bit(now.room)) || (until && bit(now.until))
++                p.d || (frame && now.frame != 0) || (room && bit(now.room)) || (until && bit(now.until))
+             }
          }
      }
- }
