@@ -95,7 +95,9 @@ let
       while read -r exe; do
         for t in $("$exe" --list 2>/dev/null | sed -n 's/: test$//p'); do
           n=$((n + 1)); d="$TMPDIR/run"; rm -rf "$d"; rc=0
-          launch --timeout 300 --out "$d" -- "$exe" --exact "$t" --test-threads=1 > /dev/null 2> "$TMPDIR/launch.err" || rc=$?
+          # The launch gets no stdin: a launch's runtime may forward its stdin to a process, which would eat the rest
+          # of the list of test binaries (`exes`, read below), so only the first binary's tests ran.
+          launch --timeout 300 --out "$d" -- "$exe" --exact "$t" --test-threads=1 > /dev/null 2> "$TMPDIR/launch.err" < /dev/null || rc=$?
           # 3: the test launched no topology and passed in its one run (src/backends/README.md, Launch). Any other
           # non-zero status fails the test: there is no fallback that could pass a launching test outside its launch.
           if [ "$rc" -eq 3 ]; then rc=0; plain=$((plain + 1)); fi
