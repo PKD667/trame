@@ -27,6 +27,8 @@ pub enum Refused {
     PoolUnset,
     /// A worker was declared but its state was never set (`Topology::set`).
     Unset { worker: WorkerId },
+    /// The CPU lacks an instruction set that the build's lane feature (`lanes-avx2`, `lanes-avx512`) needs.
+    CpuFeature { feature: &'static str, remedy: &'static str },
     /// The backend cannot run the topology here: its message says why, with the numbers.
     Backend { reason: alloc::string::String },
 }
@@ -50,6 +52,9 @@ impl core::fmt::Display for Refused {
                 "trame::Alloc is not the global allocator; add `#[global_allocator] static A: trame::Alloc = trame::Alloc::new(std::alloc::System);`"
             ),
             Refused::PoolUnset => write!(f, "the pool is declared and never set; call Topology::set on it"),
+            Refused::CpuFeature { feature, remedy } => {
+                write!(f, "this CPU lacks {feature}, which the build's lane feature needs; {remedy}")
+            }
             Refused::Unset { worker } => {
                 write!(f, "{worker:?} is declared and its state never set; call Topology::set on it")
             }
@@ -114,8 +119,34 @@ impl Default for Plan {
 /// Builds one worker's state and puts it in place (worker.rs `Core::fill`).
 pub(crate) type Builder = alloc::boxed::Box<dyn FnOnce() + Send>;
 
+/// The CPU features the build's lane feature needs (src/parallel/). Checked before the others; a build without a
+/// lane feature has none to check.
+#[inline]
+fn check_cpu_features() -> Result<(), Refused> {
+    #[cfg(feature = "lanes-avx2")]
+    {
+        if !crate::__rt::avx2::has_avx2() {
+            return Err(Refused::CpuFeature {
+                feature: "AVX2",
+                remedy: "build without --features lanes-avx2 or run on a CPU with AVX2",
+            });
+        }
+    }
+    #[cfg(feature = "lanes-avx512")]
+    {
+        if !crate::__rt::avx512::has_avx512() {
+            return Err(Refused::CpuFeature {
+                feature: "AVX-512",
+                remedy: "build without --features lanes-avx512 or run on a CPU with AVX-512 (F, BW, DQ, VL)",
+            });
+        }
+    }
+    Ok(())
+}
+
 /// The launch checks of INTERFACE.md section 4, in the order the spec states them.
 pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
+    check_cpu_features()?;
     let n = plan.workers.len();
     for (i, r) in plan.routes.iter().enumerate() {
         // A worker of this host must be declared; a worker of another host must be on a host of the

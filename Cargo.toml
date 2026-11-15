@@ -22,6 +22,10 @@ libc = { version = "=0.2.191", optional = true }
 [features]
 seq = []
 mpi = ["dep:mpi", "dep:libc"]
+# Lane sub-backends for parallel! (src/parallel/): at most one; none is the scalar fold, the reference. Not yet
+# wired into parallel! (src/parallel/lane.rs). AVX2 (x86-64-v3) and AVX-512 (x86-64-v4: F, BW, DQ, VL).
+lanes-avx2 = []
+lanes-avx512 = []
 
 # The MPI transport's own checks (src/backends/mpi/tests/run.sh), below the interface. Latency is measured by
 # lab/bench/ping.rs, which is written against the interface and runs on every backend.
