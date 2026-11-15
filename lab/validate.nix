@@ -91,18 +91,19 @@ let
           if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test") and m.get("executable"):
               print(m["executable"])
       PY
-      holds=true; items=""; n=0; failed=0; plain=0
+      holds=true; items=""; n=0; failed=0; plain=0; : > "$TMPDIR/plain.txt"
       while read -r exe; do
         for t in $("$exe" --list 2>/dev/null | sed -n 's/: test$//p'); do
           n=$((n + 1)); d="$TMPDIR/run"; rm -rf "$d"; rc=0
-          # The launch gets no stdin: a launch's runtime may forward its stdin to a process, which would eat the rest
-          # of the list of test binaries (`exes`, read below), so only the first binary's tests ran.
+          # The launch gets no stdin: a launch's runtime may forward its stdin to a process, which would eat the rest of the list of
+          # test binaries (`exes`, read below), so only the first binary's tests ran.
           launch --timeout 300 --out "$d" -- "$exe" --exact "$t" --test-threads=1 > /dev/null 2> "$TMPDIR/launch.err" < /dev/null || rc=$?
           # 3: the test launched no topology and passed in its one run (src/backends/README.md, Launch). Any other
           # non-zero status fails the test: there is no fallback that could pass a launching test outside its launch.
-          if [ "$rc" -eq 3 ]; then rc=0; plain=$((plain + 1)); fi
+          if [ "$rc" -eq 3 ]; then rc=0; plain=$((plain + 1)); echo "$t" >> "$TMPDIR/plain.txt"; fi
           if [ "$rc" -ne 0 ]; then
             failed=$((failed + 1)); holds=false; id="$(basename "$exe")-$n"
+            echo "FAILED $t of $(basename "$exe"): exit $rc" >&2; tail -n 20 "$TMPDIR/launch.err" >&2
             { echo "test $t of $(basename "$exe"): exit $rc"; cat "$d"/host*.out "$d"/host*.err "$TMPDIR/launch.err" 2>/dev/null; } > "$out/counterexamples/$id.txt"
             items="$items{\"id\":\"$id\",\"artifact\":\"counterexamples/$id.txt\"},"
           fi
@@ -111,7 +112,10 @@ let
       # No test at all is a failure: a harness that lists nothing proves nothing.
       if [ "$n" -eq 0 ]; then holds=false; echo "no test listed" > "$out/counterexamples/none.txt"; items='{"id":"none","artifact":"counterexamples/none.txt"},'; fi
       echo "tests run: $n, failed: $failed, launched no topology: $plain" >&2
-      printf '{"holds":%s,"gaps":[{"id":"doctests","why":"doctests are not run"}],"counterexamples":[%s]}\n' "$holds" "''${items%,}" > $out/outcome.json
+      # The tests that launched no topology ran once, on the probe: their launch is not checked. Their names are the gap's
+      # reason, so that a reader can see which tests those are (nixsci validate allows no other key in outcome.json).
+      named=$(paste -sd' ' "$TMPDIR/plain.txt")
+      printf '{"holds":%s,"gaps":[{"id":"doctests","why":"doctests are not run"},{"id":"no-topology","why":"%s"}],"counterexamples":[%s]}\n' "$holds" "$named" "''${items%,}" > $out/outcome.json
     '';
   };
 
