@@ -5,12 +5,12 @@
 #   stuck run hangs with or without this patch. Not run here; the seq argument (seq/m26.patch) is the same.
 --- a/backends/mpi/worker.rs
 +++ b/backends/mpi/worker.rs
-@@ -107,7 +107,7 @@
- 
- /// Sleep on the epoch `epoch` came from (see `epoch`). The narrowing is exact: the value was a u32.
- pub(super) fn idle(until: Option<u64>, epoch: u64) {
--    parts().0.sleep(epoch as u32, until);
-+    let _ = (epoch, until);
- }
- 
- /// Wait at the barrier, then return the host's publication. A worker stuck at it unwinds as `Stuck`,
+@@ -241,7 +241,7 @@
+     let x = xport();
+     let t = parts().0;
+     if !t.has_lanes() {
+-        t.sleep(epoch as u32, until);
++        let _ = (epoch, until);
+         return;
+     }
+     drop(x);

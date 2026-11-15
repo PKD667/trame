@@ -1,0 +1,3 @@
+# violates: Barrier (one Pub for all)
+# expect: killed
+# skip: the barrier answered each worker from one publication (gate.rs), and commit 3fa590c removed both; the current backend has no barrier whose answer could be mixed up between workers.

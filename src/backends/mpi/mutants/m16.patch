@@ -1,11 +1,12 @@
 # violates: Deadlock, Join
 # expect: killed
---- a/backends/mpi/gate.rs
-+++ b/backends/mpi/gate.rs
-@@ -103,6 +103,5 @@
-     /// `stuck`. Called when the worker's result is recorded, before the process ends.
-     pub(super) fn exit(&self) {
-         self.win().word(self.lay().per_worker(K_EXITED, self.me())).store(1, Release);
--        self.bump_all();
+--- a/backends/mpi/results.rs
++++ b/backends/mpi/results.rs
+@@ -38,7 +38,6 @@
+         self.win().word32(DONE).fetch_add(RESULT, AcqRel);
+         self.win().wake(DONE);
+         // A result is an act the leader waits for (LEADER_EPOCH, epoch.rs).
+-        self.bump(self.lay().workers);
+         true
      }
- }
+ 
