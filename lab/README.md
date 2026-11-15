@@ -10,8 +10,8 @@ quoted anywhere unless it comes from a locked run through an analysis.
 nix run .#<experiment>        measure: lease hosts, run the jobs, seal, lock (commit lab.lock)
 nix build .#<analysis>        derive: tables, figures and claims from the locked runs only
 nixsci lab verify <run>       re-measure one run from the closure it used
-nix run .#suite               every experiment for every backend (planned, see Suite and report)
-nix build .#suite-report      the report derived from the suite's locked runs (planned)
+nix run .#suite               every experiment for every backend (see Suite and report)
+nix build .#suite-report      the report derived from the suite's locked runs
 ```
 
 Hosts come from a provider name. The flake says `local` or `cluster`. What `cluster` means
@@ -53,7 +53,8 @@ Scope numbers are measured, not guessed. A check that runs nothing (no test list
 
 ## Experiments and datasets
 
-**programs** (`programs-<b>`, one per backend and placement, names in `src/backends/README.md`): every program
+**programs** (`programs-<b>` on one local host, `programs-<b>-s<N>` on N machines; names in
+`src/backends/README.md`): every program
 of `check/programs/` against its `.expected` output. Parameters: `backend`, `split` (trame hosts per machine,
 1 or 2; `src/backends/README.md`, Launch), `repeats`.
 On H hosts each host runs the whole program and is judged alone, except a program with `<name>.h<H>.expected`,
@@ -72,7 +73,9 @@ autocorrelated, so each run is one sample, and the claims count runs. The bounds
 `CONTRACT.md`, set per placement and size in `lab/q.nix` for the reference deployment. A bound that is still
 null means the experiment measures and no claim is judged on it.
 
-**scale** (`scale-local`, and `scale-n<N>` with `span = N` for N in 1, 2, 4, 8, 16, 32): the
+**scale** (the families `round`, `graph`, `fanin`, `flow-agg`, `flow-bw`, `idle`, `step` and `latency`, each
+run as `<family>-mpi-s<span>` with span 1, 2 or 4, and their baselines `baseline-<family>-mpi-s<span>`;
+`lab/perf.nix`, `src/backends/mpi/experiments.nix`): the
 programs of `lab/bench/` and their baselines (`src/backends/README.md`, Benchmarks). One job runs one benchmark
 with one implementation at one size. Parameters: `bench`, `impl` (`trame`, or a baseline's name), `nodes`, `fill`,
 and the bench's sizes. `fill` is `half` or `full`: workers per node are half the physical cores (at least 3)
@@ -113,8 +116,10 @@ defines packages, not checks, and `crates/driver/fuzz/run.sh <seed> <batches> <K
 ## Suite and report
 
 The suite runs every experiment for every backend, and the report is derived from the suite's locked runs. Both
-are planned, and none of the attribute names below is in the flake yet. `nix run .#suite` runs the suite, and
-`nix build .#suite-report` compiles the report.
+are in the flake. `nix run .#suite` is an app: it runs the suite's experiments one after another, and goes on after
+a failure (`lab/suite.nix`). `suite-report` is under `legacyPackages`, not `packages`. Its strict form evaluates only
+once every suite job has a locked run in `lab.lock`; until then `nix build .#suite-report` fails, naming the jobs
+without runs. `suite-report-draft` is the same over the runs that exist.
 
 The report has two parts. The first is the latency validation: for each backend, the `latency` experiment is
 judged against the Q clauses of `CONTRACT.md`, as proportion claims judged with `nixsci.stats` (PROOFS.md, Latency).
@@ -124,27 +129,27 @@ number of hosts, step overhead, and idle CPU.
 
 ## Claims, stated before measuring
 
-No analysis named here is in the tree yet: there is no `conformance`, `mutants` or `scale` analysis, and no
-`values.json`. The list below is the plan: nothing in the tree supports or contradicts these claims yet.
+Of the analyses named here, `lab/suite.nix` has the latency claims (Suite and report) and one programs claim per
+`programs-<b>-s<N>` (`ok`, exact). It has no `conformance` analysis over `transport-*`, no `mutants` analysis, no
+`scale` analysis, and no `values.json`. The list below is the plan for those. Nothing in the tree supports or
+contradicts them yet.
 
 Analysis `conformance`: every row of `programs-*` and `transport-*` has `ok = true` (exact).
 Analysis `mutants`: every mutant whose catalogue entry says `killed` and that applies is killed
 (exact). A mutant recorded `skipped` (no place to apply it in that backend) is listed as a gap in
 the program set, never counted as a kill.
 Analysis `scale`, each judged at 0.99 and reported as supported, contradicted or inconclusive:
-- **Idle workers sleep.** In `idle`, a rank that hosts no relay uses below 2% of its wall time
+- **Idle workers sleep.** In `idle`, a rank uses below 2% of its wall time
   in user plus system time.
-- **The relay costs one core.** On more than one node, the rank that hosts the relay uses
-  between 0.8 and 1.2 cores while the run lasts. This is the price of the relay's blocking receive
-  (`src/backends/README.md`, Benchmarks).
 - **Weak scaling of neighbour exchange.** In `ring` at a fixed `per_node`, the median ns per
   step at N nodes is at most 1.5 times the median at one node, for every N measured.
 - **Round growth.** In `round`, the median ns per round grows at most linearly in N.
 - **Cost against the baseline.** In `ring`, trame's median is at most 3 times the baseline's at
   the same `nodes`, `per_node` and size.
-- **The proxy benchmark.** The four claims of the proxy benchmark's spec (`src/backends/README.md`, Benchmarks)
-  on `graph`: overhead at most 1.10 against the baseline, weak-scaling curve within 1.05 of the
-  baseline's, relay CPU per frame flat in N, strong-scaling speedup at least 0.9 of the baseline's.
+- **The proxy benchmark.** The claims of the proxy benchmark's spec (`src/backends/mpi/SCALING.md`, The proxy
+  benchmark) on `graph`: overhead at most 1.10 against the baseline, weak-scaling curve within 1.05 of the
+  baseline's, strong-scaling speedup at least 0.9 of the baseline's. The spec's locality claim is about the relay,
+  which the tree no longer has, so it is not listed.
 
 When the analyses exist, they will compute the ratios with their intervals and write them to
 `values.json`. The thresholds above are the claims they are judged against. A contradicted claim

@@ -28,7 +28,8 @@ any scheduler, and panics on a conflict.
 output with `check/programs/*.expected`.
 
 **Model checking.** The TLA+ models in `check/proofs/` check protocols of some backends with TLC, through
-the run script in that directory. A model is checked, not the code. The model follows the code by reading.
+the run script of the model's directory under `check/proofs/`. A model is checked, not the code. The model
+follows the code by reading.
 
 **Measurement.** A statistical clause is measured: a run, a command, a machine and a tolerance.
 
@@ -96,14 +97,20 @@ under user types too, and accepts plain nesting. The check is on types: a `usize
 address is plain, and an `unsafe impl Plain` is not checked.
 
 **M4 Allocation.** `tests/alloc.rs` counts zero allocations over 999 rounds of a step and over every
-call of `parallel!`. The driver refuses allocation in items, not in steps.
+call of `parallel!`. The driver refuses allocation in items and in steps. An item refuses every call into
+`alloc`. A step refuses every such call except one that its list names by the alloc type's own key
+(`Vec::len`, `Vec::index_mut`), so a step may rewrite the buffers its state holds but not grow, make or free
+one. `check/rejections/cases/allocation/` holds the pairs: `vec_push_step.rs` is refused,
+`vec_index_assign_step_ok.rs` is accepted. The rule is in `crates/driver/src/check/mod.rs` (`judge`,
+`allocates`). A raw allocation inside trame's own code is not a call into `alloc`, and it is not seen
+(`crates/driver/README.md`, line 68).
 
 **M5 Visibility.** As S4 within a process.
 
 **M6 Bound.** Each backend's allocator answers null past its domain's end, by construction
 (`src/backends/README.md`). `Alloc` writes through no null (`domain.rs`). No test fills a domain.
 
-**M7 Lifetime.** By construction. Threads: every agent holds its worker's slot, which holds the
+**M7 Lifetime.** By construction. Every agent holds its worker's slot, which holds the
 state. A backend whose workers run inside the leader's calls, and one whose processes outlive a run,
 keep the states live until the join (`src/backends/README.md`). Replay: `fanin_fifo` drops its handles
 after `set`; a leader that freed the blocks then would make its workers read the domain's free list as
@@ -113,7 +120,10 @@ their state, and the run would hang. No test drops a run without its join on a m
 `peers` on two hosts.
 
 **F3 Port agreement.** Program `refuse_ports` on two hosts: a capacity that differs refuses both,
-naming the route. No test declares a route on one host only, which waits.
+naming the route. Program `route_one_side` on two hosts: a route that only host 0 declares is refused on
+host 0, with a message that names the route, after host 0 waits until host 1 ends
+(`route_one_side.h2.expected`). Host 1 returns. On one host the route is not declared, and the worker runs
+(`route_one_side.expected`).
 
 **F4 Tag.** By construction: a hash of the type's path and size (`src/backends/README.md`). Programs `peers`
 and `xhost_ring` on two hosts compile each type once, so they do not test two compilations.
@@ -128,11 +138,9 @@ no model.
 
 **E1 Abort.** Programs `abort`, `abort_join`, `leader_panics`.
 
-**E2 Join.** Programs; the outcome check. Where a backend detects stuck runs across hosts, its detector is
-modelled in `check/proofs/`: `MCDetect` checks that a Stuck verdict is given only when every worker is
-quiet or done and nothing is in flight. `MCDetectOnce`, the mutant that skips the comparison with the
-previous round, must violate it, and does. Programs `xhost_deadlock` and `leader_stuck` run it on two
-hosts. The model has one worker per host, H = 2, three rounds and no timeouts.
+**E2 Join.** Programs; the outcome check. Where a backend detects stuck runs across hosts, the detector has
+no model in the tree: `check/proofs/` holds the epoch and lane models only. Programs `xhost_deadlock` and
+`leader_stuck` run the detector on two hosts. They test its verdicts; they do not prove them.
 
 ## Conformance
 

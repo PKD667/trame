@@ -217,7 +217,7 @@ This section lists those.
 **seq.** The launch tests in `src/backends/seq/tests_launch.rs`, and `launch::build_all` for L3. The exact replay
 of S2. The mutant that forgets deadlines is killed by the outcome check (S3). The domain is the heap (M1), and
 the workers run only inside the leader's calls on the run (M7). The validate verdicts `programs-seq`,
-`seq-tests` and `mutants-seq` are listed in `lab/README.md`.
+`tests-seq` and `mutants-seq` are listed in `lab/README.md`.
 
 **mpi, launch and refusal.** Every refusal is decided by a collective reduction, and `agree` in
 `src/backends/mpi/open.rs` decides L2. `imp.rs` builds the plan (L3).
@@ -230,25 +230,39 @@ covers order, room by credits, and every frame taken and credited (F5).
 **mpi, memory and hosts.** Placement is by construction in `segment.rs` (M1), and `segment::alloc` answers null
 past the segment's end (M6). `leader.rs` holds the plan's references until `join` (M7). Hosts are numbered by
 their lowest world rank (`hosts.rs`, F1), and a capacity that differs between hosts refuses both (`cross.rs`
-`connect`, F3). The tag of a cross-host message is by construction in `io.rs` (F4).
+`connect`, F3). The tag of a cross-host message is by construction in `src/io.rs` (F4, `tag`).
 
-**mpi, end.** `detect.rs` is modelled in `check/proofs/` as `Detect.tla`, which checks that a Stuck verdict is
-given only when nothing is in flight (E2). Its round trips are measured by the lab's latency experiment, which
-judges them against the Q clauses of the backend contract, not by a recorder of its own.
+**mpi, end.** `detect.rs` has no model in the tree: `check/proofs/` holds the epoch and lane models only. E2 for
+the stuck detector rests on its programs, `xhost_deadlock` and `leader_stuck`. Its round trips are measured by
+the lab's latency experiment, which judges them against the Q clauses of the backend contract, not by a
+recorder of its own.
 
 The shared-memory assumption is the mpi backend's own: its processes share memory through mappings of one
 object, and it assumes atomics in such a mapping order memory across processes as they do across threads.
 
 ## Lab experiments by backend
 
-The lab names its experiments after the backend they run. The names below are those in `flake.nix`.
+The lab names its experiments after the backend they run. Each name is a flake attribute: an app (`nix run
+.#<name>`) or a check (a validate verdict). The names below are from `nix eval --json .#apps.x86_64-linux --apply
+builtins.attrNames` and `nix eval --json .#checks.x86_64-linux --apply builtins.attrNames` at this commit.
 
-**seq.** `programs-seq` and `programs-seq-node` (the same programs on one machine, for comparison), and the
-validate verdicts `seq-tests` and `mutants-seq`.
+| experiment | seq | mpi |
+|---|---|---|
+| programs | `programs-seq`, `programs-seq-s1` | `programs-mpi`, `programs-mpi-s1`, `programs-mpi-s2`, `programs-mpi-s4` |
+| transport | none | `transport-mpi` |
+| mutants | check `mutants-seq` | app `mutants-mpi` |
+| fanin | `fanin-seq-s1` | `fanin-mpi-s1`, `fanin-mpi-s2` |
+| flow-agg | `flow-agg-seq-s1` | `flow-agg-mpi-s1`, `flow-agg-mpi-s2`, `flow-agg-mpi-s4` |
+| flow-bw | `flow-bw-seq-s1` | `flow-bw-mpi-s1`, `flow-bw-mpi-s2` |
+| graph | `graph-seq-s1` | `graph-mpi-s1`, `graph-mpi-s2`, `graph-mpi-s4` |
+| idle | `idle-seq-s1` | `idle-mpi-s1` |
+| latency | `latency-seq-s1` | `latency-mpi-s1`, `latency-mpi-s2` |
+| round | `round-seq-s1` | `round-mpi-s1`, `round-mpi-s2`, `round-mpi-s4` |
+| step | `step-seq-s1` | `step-mpi-s1` |
+| baselines | none | `baseline-flow-agg-mpi-s1`, `-s2`, `-s4`; `baseline-flow-bw-mpi-s1`, `-s2`; `baseline-graph-mpi-s1`; `baseline-osu-bw-mpi-s1`, `-s2`; `baseline-osu-latency-mpi-s1`, `-s2`; `baseline-round-mpi-s1` |
+| checks | `programs-seq`, `tests-seq`, `rejections-seq`, `mutants-seq` | `tests-mpi`, `rejections-mpi`, `protocol-mpi` |
 
-**mpi.** `programs-mpi`, `programs-node` (one machine), `programs-cluster` (two machines), `programs-cluster4`
-(four), `transport-mpi`, `mutants-mpi`, and the scale experiments `scale-local` and `scale-n1` to `scale-n32`
-with their `-cluster` variants.
+`programs-<b>` with no span runs on one local host. `-s<N>` runs on N machines (`lab/checks.nix`, `lab/perf.nix`).
 
 The latency experiment and the suite run for every backend, and they need no entry here: `lab/README.md`
 (Experiments and datasets, Suite and report) describes them.
@@ -263,9 +277,9 @@ in `lab/bench/README.md` and `lab/README.md`.
 A timing from the reference backend is a scheduler timing, not a host timing, so it is not comparable with a
 timing from a multi-process backend.
 
-The design of the multi-process backend's relay, and its CPU cost per node, are in `src/backends/mpi/SCALING.md`.
-The lab's relay claim expects one core per node for the relay's blocking receive (`lab/README.md`, Claims), and
-that claim is not yet measured.
+`src/backends/mpi/SCALING.md` describes a relay thread that the tree no longer has. The files it names,
+`relay_routes.rs` and `relay_control.rs`, are not in the tree. Its locality claim is about that relay, so it
+says nothing about the tree. The lab has no relay claim.
 
 ## A new backend
 
