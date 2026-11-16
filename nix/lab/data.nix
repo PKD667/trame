@@ -3,7 +3,7 @@
 # a backend's own runners that record beside it (src/backends/<b>/experiments.nix).
 { lib }:
 let
-  cols = builtins.fromJSON (builtins.readFile ./columns.json);
+  cols = builtins.fromJSON (builtins.readFile ../../lab/columns.json);
   noisy = { ns = 1.0; compute_ns = 1.0; user_s = 1.0; sys_s = 1.0; wall_s = 1.0; value = 1.0; };
   dataset = name: {
     columns = (if name == "launch_config" || name == "mpi_config" then { } else cols.common) // cols.${name};

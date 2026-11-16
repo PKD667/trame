@@ -72,7 +72,7 @@ let
     name = "suite-report";
     inherit draft claims;
     use = exps;
-    pipelines.compare.script = ./analysis/compare.py;
+    pipelines.compare.script = ../../lab/analysis/compare.py;
     confidence = 0.99;
   };
   report = draft:
@@ -81,7 +81,7 @@ let
       mkdir $out
       cp -rL ${a}/. $out/
       chmod -R u+w $out
-      python ${./analysis/validation.py} ${cellsFile} $out/claims-report.json $out/validation.tsv
+      python ${../../lab/analysis/validation.py} ${cellsFile} $out/claims-report.json $out/validation.tsv
     '';
 in
 {

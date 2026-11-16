@@ -13,14 +13,14 @@ let
     pname = "trame-simd-bench";
     version = "0.1.0";
     src = lib.fileset.toSource {
-      root = ../.;
+      root = ../../.;
       fileset = lib.fileset.unions [
         trameFiles
-        (lib.fileset.difference ./simd (lib.fileset.maybeMissing ./simd/target))
+        (lib.fileset.difference ../../lab/simd (lib.fileset.maybeMissing ../../lab/simd/target))
       ];
     };
     sourceRoot = "source/lab/simd";
-    cargoLock.lockFile = ./simd/Cargo.lock;
+    cargoLock.lockFile = ../../lab/simd/Cargo.lock;
     RUSTFLAGS = "-C overflow-checks=on";
     cargoBuildFlags = [ "--bin" "bench" ];
     doCheck = false;
@@ -74,7 +74,7 @@ let
       avx512 = experiments."simd-bench-avx512";
     };
     pipelines.process = {
-      script = ./analysis/simd_process.py;
+      script = ../../lab/analysis/simd_process.py;
       packages = [ pkgs.python3Packages.matplotlib pkgs.python3Packages.pandas ];
     };
   };
