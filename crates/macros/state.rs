@@ -105,7 +105,7 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
             #(#consts)*
         }
         // SAFETY: each step's StepInfo is generated from its own parameters by #[trame::step], and its
-        // __trame_run touches exactly those fields.
+        // __trame_run touches exactly those fields (S1).
         unsafe impl ::trame::__rt::State for #name {
             type Error = #error;
             type Pool = #pool;
@@ -125,7 +125,7 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
             }
             unsafe fn run(this: *mut Self, pool: &Self::Pool, i: usize) -> ::core::result::Result<::trame::Status, Self::Error> {
                 match i {
-                    // SAFETY: forwarded from the caller (State::run).
+                    // SAFETY: forwarded from the caller (State::run; S1).
                     #(#idx => unsafe { #all::__trame_run(this, pool) },)*
                     _ => ::core::unreachable!("step index out of range"),
                 }
@@ -245,7 +245,8 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
             #[inline(always)]
             pub unsafe fn __trame_run<E>(this: *mut #st, pool: &<#st as ::trame::__rt::State>::Pool) -> ::core::result::Result<::trame::Status, E> {
                 let _ = pool;
-                // SAFETY: the caller holds these fields (State::run).
+                // SAFETY: the caller holds these fields (State::run; S1), and the references are
+                // those of the step's signature.
                 ::core::result::Result::Ok(unsafe { #name(#(#call),*) })
             }
         },
@@ -253,7 +254,8 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
             #[inline(always)]
             pub unsafe fn __trame_run(this: *mut #st, pool: &<#st as ::trame::__rt::State>::Pool) -> #t {
                 let _ = pool;
-                // SAFETY: the caller holds these fields (State::run).
+                // SAFETY: the caller holds these fields (State::run; S1), and the references are
+                // those of the step's signature.
                 unsafe { #name(#(#call),*) }
             }
         },

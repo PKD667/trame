@@ -25,6 +25,12 @@
         cargo = driverToolchain;
         rustc = driverToolchain;
       };
+      # Miri: the same pinned nightly as the driver, with the miri and rust-src components (check/proofs/miri.sh).
+      miriToolchain = driverPkgs.rust-bin.fromRustupToolchain {
+        channel = (builtins.fromTOML (builtins.readFile ./crates/driver/rust-toolchain.toml)).toolchain.channel;
+        profile = "minimal";
+        components = [ "miri" "rust-src" ];
+      };
       trameDriver = driverPlatform.buildRustPackage {
         pname = "trame-driver";
         version = "0.1.0";
@@ -250,6 +256,11 @@
         # does not depend on the package, so entering it does not build the driver.
         driver = driverPkgs.mkShell {
           packages = [ driverToolchain ];
+        };
+        # Miri on the driver's nightly: `sh check/proofs/miri.sh` (cargo miri under Tree Borrows). Miri builds std from
+        # rust-src into a cache directory, so the shell needs a writable HOME or XDG_CACHE_HOME.
+        miri = driverPkgs.mkShell {
+          packages = [ miriToolchain pkgs.gcc ];
         };
       } // lib.mapAttrs mkBackendShell descriptors;
     };

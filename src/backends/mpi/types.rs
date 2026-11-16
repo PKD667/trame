@@ -74,6 +74,7 @@ pub enum Event {
 /// which is what lets the test compare readings from different ranks.
 pub fn clock() -> u64 {
     let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: `ts` is a valid out-pointer for the call.
     let rc = unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
     assert_eq!(rc, 0, "clock_gettime failed");
     ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64

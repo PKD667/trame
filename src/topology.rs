@@ -112,7 +112,7 @@ impl<S: State> Worker<S> {
             self.joined.load(Ordering::Acquire),
             "trame: Worker::take before Run::join; a running worker's state is not the leader's"
         );
-        // SAFETY: joined, so no step runs again (backend.rs, leader_join).
+        // SAFETY: joined, so no step runs again (backend.rs, leader_join; CONTRACT.md, E2).
         unsafe { self.core.take() }
     }
 
@@ -270,7 +270,7 @@ pub(crate) mod sealed {
             Target::Worker(self.id.0 as usize)
         }
         unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut S)) {
-            // SAFETY: the caller's.
+            // SAFETY: the caller's (S4).
             unsafe { self.core.edit_with(f) }
         }
     }
@@ -295,7 +295,7 @@ pub(crate) mod sealed {
             Target::Pool
         }
         unsafe fn edit_with(&self, f: &mut dyn FnMut(&mut P)) {
-            // SAFETY: the caller's.
+            // SAFETY: the caller's (P2).
             unsafe { self.core.edit_with(f) }
         }
     }

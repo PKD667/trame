@@ -39,7 +39,7 @@ pub struct StepInfo {
 ///
 /// # Safety
 /// `STEPS[i]` lists exactly the fields `run(_, _, i)` touches, as `&` (reads) or `&mut` (writes), and
-/// `run` touches no other part of the state.
+/// `run` touches no other part of the state (CONTRACT.md, S1).
 pub unsafe trait State: Send + Sync + Sized + 'static {
     /// What a failing step returns. `Infallible` when no step can fail. Plain, because the leader
     /// reads it from the worker's domain, which for a worker in another process is that process's
@@ -57,8 +57,9 @@ pub unsafe trait State: Send + Sync + Sized + 'static {
     /// Run step i.
     ///
     /// # Safety
-    /// `this` points to a live state, and the caller holds step i's fields: no other code reads a
-    /// field of its write set or writes a field of its read or write set until this returns.
+    /// `this` points to a live state, and the caller holds step i's fields (CONTRACT.md,
+    /// S1): no other code reads a field of its write set or writes a field of its read or write set
+    /// until this returns.
     unsafe fn run(this: *mut Self, pool: &Self::Pool, i: usize) -> Result<Status, Self::Error>;
 }
 
@@ -87,7 +88,7 @@ pub(crate) struct Core<S: State> {
 // two steps reading one field sound; `S: Send` lets the state move to an agent's thread. The error is
 // written once, by the step that set `failed`, and read by the leader after the run.
 unsafe impl<S: State> Sync for Core<S> {}
-// SAFETY: as above.
+// SAFETY: as above (S1).
 unsafe impl<S: State> Send for Core<S> {}
 
 impl<S: State> Core<S> {
@@ -114,16 +115,15 @@ impl<S: State> Core<S> {
 
     fn ptr(&self) -> *mut S {
         assert!(!self.taken.load(Ordering::Acquire), "trame: the state was already taken");
-        // SAFETY: a live block (`raw`); a field projection creates no reference. ManuallyDrop<S> is
-        // repr(transparent) over S.
+        // SAFETY: a live block (`raw`); a field projection creates no reference.
+        // ManuallyDrop<S> is repr(transparent) over S.
         unsafe { (&raw mut (*self.raw()).state).cast::<S>() }
     }
 
     /// The block's `failed` flag and error cell, as references to those fields alone.
     fn failure(&self) -> (&AtomicBool, &UnsafeCell<Option<S::Error>>) {
         let b = self.raw();
-        // SAFETY: a live block; references to two fields the state does not contain, shared only
-        // through atomics and the write-once rule of `fail`.
+        // SAFETY: a live block; references to two fields the state does not contain, shared only through atomics and the write-once rule of `fail`.
         unsafe { (&*(&raw const (*b).failed), &*(&raw const (*b).error)) }
     }
 
@@ -149,7 +149,7 @@ impl<S: State> Core<S> {
     /// address (CONTRACT.md, M1). This process never frees it.
     ///
     /// # Safety
-    /// `addr` is the `addr()` of a `Core<S>` of the same type, filled, in a mapped domain.
+    /// `addr` is the `addr()` of a `Core<S>` of the same type, filled, in a mapped domain (CONTRACT.md, M1).
     #[allow(dead_code)] // used by a backend whose workers adopt a state built in another process
     pub(crate) unsafe fn adopt(&self, addr: usize) {
         let was = self.block.swap(addr as *mut Block<S>, Ordering::AcqRel);
@@ -171,14 +171,14 @@ impl<S: State> Core<S> {
     /// # Safety
     /// No step of this worker runs or starts until it returns (CONTRACT.md, S4).
     pub(crate) unsafe fn edit_with<R>(&self, f: impl FnOnce(&mut S) -> R) -> R {
-        // SAFETY: exclusive by the caller's promise.
+        // SAFETY: exclusive by the caller's promise (S4); a live block.
         f(unsafe { &mut *self.ptr() })
     }
 
     /// Move the state out.
     ///
     /// # Safety
-    /// The worker has a result, so no step runs again.
+    /// The worker has a result, so no step runs again (CONTRACT.md, E2).
     pub(crate) unsafe fn take(&self) -> S {
         let p = self.ptr();
         self.taken.store(true, Ordering::Release);
@@ -189,7 +189,7 @@ impl<S: State> Core<S> {
     /// The error of the failed step, once. The worker has a result.
     pub(crate) fn take_error(&self) -> Option<S::Error> {
         let (failed, error) = self.failure();
-        // SAFETY: the run is over, so no step writes it.
+        // SAFETY: the run is over, so no step writes it (E2).
         failed.load(Ordering::Acquire).then(|| unsafe { (*error.get()).take() }).flatten()
     }
 }
@@ -229,9 +229,10 @@ pub(crate) struct PoolCore<P> {
     value: AtomicPtr<P>,
 }
 
-// SAFETY: steps share `&P` (P: Sync) and the leader writes only while it holds the POOL bit everywhere.
+// SAFETY: steps share `&P` (P: Sync) and the leader writes only while it holds the POOL bit everywhere
+// (CONTRACT.md, P1, P2).
 unsafe impl<P: Send + Sync> Sync for PoolCore<P> {}
-// SAFETY: as above.
+// SAFETY: as above (P1, P2).
 unsafe impl<P: Send + Sync> Send for PoolCore<P> {}
 
 impl<P> PoolCore<P> {
@@ -254,7 +255,7 @@ impl<P> PoolCore<P> {
     /// As `Core::adopt`.
     ///
     /// # Safety
-    /// `addr` is the `addr()` of a filled `PoolCore<P>`, in a mapped domain.
+    /// `addr` is the `addr()` of a filled `PoolCore<P>`, in a mapped domain (CONTRACT.md, M1).
     #[allow(dead_code)] // used by a backend whose workers adopt a state built in another process
     pub(crate) unsafe fn adopt(&self, addr: usize) {
         let was = self.value.swap(addr as *mut P, Ordering::AcqRel);
@@ -268,16 +269,16 @@ impl<P> PoolCore<P> {
     }
 
     /// # Safety
-    /// The caller holds the POOL bit for reading (a step that takes the pool).
+    /// The caller holds the POOL bit for reading (a step that takes the pool; CONTRACT.md, P1).
     pub(crate) unsafe fn get(&self) -> &P {
-        // SAFETY: built, and no writer while the caller reads.
+        // SAFETY: built, and no writer while the caller reads (P1).
         unsafe { &*self.at() }
     }
 
     /// # Safety
-    /// The caller holds the POOL bit in every worker for writing (CONTRACT.md, S4).
+    /// The caller holds the POOL bit in every worker for writing (CONTRACT.md, S4, P2).
     pub(crate) unsafe fn edit_with<R>(&self, f: impl FnOnce(&mut P) -> R) -> R {
-        // SAFETY: built; the caller excludes every reader.
+        // SAFETY: built; the caller excludes every reader (P2).
         f(unsafe { &mut *self.at() })
     }
 }
@@ -289,7 +290,7 @@ pub(crate) trait ErasedPool: Send + Sync {
     #[allow(dead_code)] // used by a backend whose workers adopt a state built in another process
     fn addr(&self) -> usize;
     /// # Safety
-    /// As `PoolCore::adopt`.
+    /// As `PoolCore::adopt` (CONTRACT.md, M1).
     #[allow(dead_code)] // used by a backend whose workers adopt a state built in another process
     unsafe fn adopt(&self, addr: usize);
 }
@@ -302,7 +303,7 @@ impl<P: Send + Sync + 'static> ErasedPool for PoolCore<P> {
         PoolCore::addr(self)
     }
     unsafe fn adopt(&self, addr: usize) {
-        // SAFETY: the caller's.
+        // SAFETY: the caller's (M1).
         unsafe { PoolCore::adopt(self, addr) }
     }
 }
@@ -311,7 +312,8 @@ impl<P> Drop for PoolCore<P> {
     fn drop(&mut self) {
         let p = *self.value.get_mut();
         if !p.is_null() {
-            // SAFETY: built by `fill` in this process (an adopting worker process never drops).
+            // SAFETY: built by `fill` in this process (an adopting worker process never drops), and
+            // freed once.
             drop(unsafe { alloc::boxed::Box::from_raw(p) });
         }
     }
@@ -344,7 +346,7 @@ pub(crate) trait Erased: Send + Sync {
     #[allow(dead_code)] // used by a backend whose workers adopt a state built in another process
     fn addr(&self) -> usize;
     /// # Safety
-    /// As `Core::adopt`.
+    /// As `Core::adopt` (CONTRACT.md, M1).
     #[allow(dead_code)] // used by a backend whose workers adopt a state built in another process
     unsafe fn adopt(&self, addr: usize);
     fn tags(&self, i: usize) -> Tags;
@@ -376,7 +378,7 @@ impl<S: State> Erased for Core<S> {
         Core::addr(self)
     }
     unsafe fn adopt(&self, addr: usize) {
-        // SAFETY: the caller's.
+        // SAFETY: the caller's (M1).
         unsafe { Core::adopt(self, addr) }
     }
     fn tags(&self, i: usize) -> Tags {
@@ -385,7 +387,7 @@ impl<S: State> Erased for Core<S> {
     unsafe fn run(&self, i: usize, pool: Option<&(dyn Any + Send + Sync)>) -> Result<Status, ()> {
         static UNIT: () = ();
         let pool: &S::Pool = match pool {
-            // SAFETY: a step that takes the pool reads the POOL bit, held with its fields.
+            // SAFETY: a step that takes the pool reads the POOL bit, held with its fields (S1, P1).
             Some(p) => unsafe {
                 p.downcast_ref::<PoolCore<S::Pool>>().expect("trame: the launch checked the pool's type").get()
             },
@@ -395,7 +397,7 @@ impl<S: State> Erased for Core<S> {
         };
         #[cfg(debug_assertions)]
         self.hold(i, true);
-        // SAFETY: the caller holds step i's fields.
+        // SAFETY: the caller holds step i's fields (S1).
         let r = unsafe { S::run(self.ptr(), pool, i) };
         #[cfg(debug_assertions)]
         self.hold(i, false);
@@ -602,7 +604,7 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn A
                 let _unwinding = Unwinding(slot);
                 let r = {
                     let _owning = Owning::new(obj.tags(i));
-                    // SAFETY: Start took step i's fields in the model, and every start goes through it.
+                    // SAFETY: Start took step i's fields in the model, and every start goes through it (S1, S2).
                     unsafe { obj.run(i, pool) }
                 };
                 core::mem::forget(_unwinding);

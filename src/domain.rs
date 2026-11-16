@@ -54,8 +54,10 @@ fn arena_on() -> bool {
 }
 
 // SAFETY: every block comes from `inner` or from the backend's domain, and goes back to the one it
-// came from: `domain_contains` tells them apart by address, and a domain never overlaps the heap.
+// came from: `domain_contains` tells them apart by address, and a domain never overlaps the heap
+// (CONTRACT.md, M1).
 unsafe impl<A: GlobalAlloc> GlobalAlloc for Alloc<A> {
+    // SAFETY: `GlobalAlloc::alloc`'s contract, forwarded to `inner` or answered by the domain.
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if arena_on() {
             let _ = ARENA_ALLOCS.try_with(|c| c.set(c.get() + 1));
@@ -67,6 +69,7 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for Alloc<A> {
         unsafe { self.inner.alloc(layout) }
     }
 
+    // SAFETY: `GlobalAlloc::alloc_zeroed`'s contract, as `alloc`.
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         if arena_on() {
             let _ = ARENA_ALLOCS.try_with(|c| c.set(c.get() + 1));
@@ -82,6 +85,7 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for Alloc<A> {
         unsafe { self.inner.alloc_zeroed(layout) }
     }
 
+    // SAFETY: `GlobalAlloc::dealloc`'s contract, forwarded to the allocator `p` came from.
     unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
         if Selected::domain_contains(p) {
             // SAFETY: `p` came from the domain with `layout`.
@@ -92,6 +96,8 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for Alloc<A> {
         }
     }
 
+    // SAFETY: `GlobalAlloc::realloc`'s contract: a block moves between allocators only by `alloc`,
+    // copy and `dealloc`.
     unsafe fn realloc(&self, p: *mut u8, layout: Layout, new: usize) -> *mut u8 {
         // A domain block stays in the domain; a heap block moves to the domain in arena mode (a value
         // built before the builder and grown in it). Otherwise the heap's own resize.

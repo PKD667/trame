@@ -16,6 +16,8 @@ impl Window {
             .map(|d| libc::timespec { tv_sec: d.as_secs() as libc::time_t, tv_nsec: d.subsec_nanos() as libc::c_long });
         let ts = spec.as_ref().map_or(std::ptr::null(), |t| t as *const libc::timespec);
         let (op, val) = (libc::FUTEX_WAIT as libc::c_long, seen as libc::c_long);
+        // SAFETY: `at` is a 4-aligned word of the window (`ptr` checks its range); `ts` is null or
+        // points to `spec`, which outlives the call; FUTEX_WAIT reads both and writes neither.
         let rc = unsafe { libc::syscall(libc::SYS_futex, at, op, val, ts, 0, 0) };
         let e = std::io::Error::last_os_error().raw_os_error();
         assert!(
@@ -33,5 +35,6 @@ impl Window {
 /// Wake every sleeper on the futex word at address `at`, an aligned u32 of a mapped window.
 pub(crate) fn wake_addr(at: usize) {
     let op = libc::FUTEX_WAKE as libc::c_long;
+    // SAFETY: `at` is an aligned u32 of a mapped window; FUTEX_WAKE takes no other pointer.
     assert!(unsafe { libc::syscall(libc::SYS_futex, at as *mut u32, op, i32::MAX as libc::c_long) } >= 0, "futex wake");
 }

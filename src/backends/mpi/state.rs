@@ -32,7 +32,7 @@ pub(super) struct Local {
 
 struct Slot(UnsafeCell<Option<Local>>);
 
-// Sound only under the contract in the module comment: one thread per rank touches the slot.
+// SAFETY: sound only under the contract in the module comment: one thread per rank touches the slot.
 unsafe impl Sync for Slot {}
 
 static LOCAL: Slot = Slot(UnsafeCell::new(None));

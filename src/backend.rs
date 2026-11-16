@@ -68,7 +68,7 @@ pub(crate) trait Backend {
     /// Free a block `domain_alloc` answered.
     ///
     /// # Safety
-    /// `p` came from `domain_alloc` with `layout`, and is freed once.
+    /// `p` came from `domain_alloc` with `layout`, and is freed once (CONTRACT.md, M1).
     unsafe fn domain_dealloc(_p: *mut u8, _layout: core::alloc::Layout) {
         unreachable!("trame: a heap domain owns no block")
     }
