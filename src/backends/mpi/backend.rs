@@ -1,141 +1,30 @@
-// The Backend trait on the MPI transport (CONTRACT.md). Rank i < W is worker i; rank W is the leader.
-// Every rank runs the host's code up to `launch`. Each node has a segment (segment.rs), its workers'
-// domain: the leader builds the states of the workers on its node, and the pool, in its node's
-// segment; the host rank of another node builds that node's. Every other rank adopts the addresses
-// from the segment's table. A worker rank runs its state in place with several agents, and never
-// returns to the host: it records its outcome in the window and ends the process. The leader rank
-// returns the Run; `Run::edit`, `Worker::take` and `Worker::error` act on the segment, for the workers
-// on the leader's node.
+// The Backend trait on the MPI transport (CONTRACT.md). `launch` hands a worker rank to roles/runner.rs, which
+// never returns, and the leader rank a `Leader` (roles/leader.rs). The rest forwards to roles/worker.rs,
+// roles/leader.rs, memory/segment.rs and transport/hosts.rs.
 
 extern crate std;
 
 use core::any::TypeId;
-use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::process;
-use std::sync::Arc;
 use std::vec::Vec;
 
-use crate::backend::{Backend, PoolRef, Target};
+use crate::backend::{Backend, Target};
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
 use crate::run::Outcome;
-use crate::sched::{Answer, Event, Sched};
+use crate::sched::{Event, Sched};
 use crate::time::ClockId;
 use crate::topology::{End, WorkerId};
-use crate::worker::{Erased, Slot, agent};
 
-use crate::backends::mpi::memory::layout::{OUT_ABORT, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
+use crate::backends::mpi::Selected;
 use crate::backends::mpi::memory::segment;
 use crate::backends::mpi::roles::leader::{self, Leader};
+use crate::backends::mpi::roles::runner::{agents_for, run_worker};
 use crate::backends::mpi::roles::worker;
+use crate::backends::mpi::setup::adopt::build_or_adopt;
 use crate::backends::mpi::setup::open::{agree, open};
 use crate::backends::mpi::setup::plan::{encode_plan, entries, inbox, topology};
-use crate::backends::mpi::setup::state::{finalize, local, refused};
+use crate::backends::mpi::setup::state::{local, refused};
 use crate::backends::mpi::types::Role;
-use crate::backends::mpi::{Selected, Transport};
-use crate::run::panic_message;
-
-/// Run this worker: `agents` agents of the reference scheduler (worker.rs), the main thread one of
-/// them. A panic in a step records the abort at once (results.rs `abort`), which wakes every sleeping
-/// agent of the run so it unwinds; an abort that reached this worker first records only its own result.
-/// An agent the leader showed stuck unwinds with `Deadlocked` (worker.rs), and then the result is
-/// OUT_DEADLOCK. Otherwise the worker's answer is its result. The result is recorded before anything waits on a
-/// peer: then MPI_Finalize (state.rs), which waits for every rank, and then the process ends.
-fn run_worker(obj: Arc<dyn Erased>, agents: usize, pool: Option<PoolRef>, trace: bool) -> ! {
-    worker::fast_init();
-    let slot = Slot::new(obj, trace);
-    let pool = pool.as_deref().map(|p| p.any());
-    let start = std::time::Instant::now();
-    let clock = || u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);
-    let stuck = std::sync::atomic::AtomicBool::new(false);
-    let one = || {
-        let r = catch_unwind(AssertUnwindSafe(|| agent(&slot, &clock, pool)));
-        if let Err(p) = &r
-            && p.is::<worker::Deadlocked>()
-        {
-            stuck.store(true, std::sync::atomic::Ordering::Relaxed);
-        } else if let Err(p) = &r
-            && !p.is::<worker::Aborted>()
-        {
-            // The first panic of the run; a later one is ignored by `abort` (results.rs).
-            with_endpoint(|t| t.abort(panic_message(&**p).as_bytes()));
-        }
-        r.ok()
-    };
-    let answers: Vec<Option<Answer>> = std::thread::scope(|s| {
-        let others: Vec<_> = (1..agents).map(|_| s.spawn(one)).collect();
-        let mut out = std::vec![one()];
-        out.extend(others.into_iter().map(|h| h.join().unwrap_or(None)));
-        out
-    });
-    // The scope joined every agent, so `stuck` is final.
-    let deadlocked = stuck.load(std::sync::atomic::Ordering::Relaxed) && !with_endpoint(|t| t.aborted());
-    let word = match answers.iter().flatten().next() {
-        _ if deadlocked => OUT_DEADLOCK,
-        _ if answers.iter().any(Option::is_none) => OUT_ABORT,
-        Some(Answer::Returned) => OUT_RETURNED,
-        Some(Answer::Stopped) => OUT_STOPPED,
-        Some(Answer::Failed(_)) => OUT_FAILED,
-        None => OUT_ABORT,
-    };
-    // The trace goes to the segment before the result, so the leader finds it once it sees the result
-    // (CONTRACT.md, S9).
-    if let Some(tr) = slot.trace() {
-        let at = crate::domain::arena(|| std::boxed::Box::into_raw(std::boxed::Box::new(tr)));
-        segment::trace_slot(with_endpoint(|t| t.me())).store(at as u64, std::sync::atomic::Ordering::Release);
-    }
-    with_endpoint(|t| t.finish(word));
-    finalize();
-    process::exit(0)
-}
-
-/// Put this node's states and pool in its segment (CONTRACT.md, L3, M1). The node's builder is the
-/// leader on the leader's node, and the host rank elsewhere: it runs the builders of the workers on
-/// its node and the pool's, in arena mode, and writes their addresses to the segment's table. After
-/// a world barrier, every other rank of the node adopts them. Builders of workers on other nodes are
-/// dropped unrun. Collective over the world.
-fn build_or_adopt(plan: &mut Plan, t: &Transport) {
-    use std::sync::atomic::Ordering::{Acquire, Release};
-    let builder = t.me() == t.lay().workers;
-    let mine: Vec<usize> = (0..plan.workers.len()).collect();
-    if builder {
-        for &w in &mine {
-            let b = plan.builders[w].take().expect("trame: the launch checked that every worker was set");
-            crate::domain::arena(b);
-            segment::state_slot(w as u32).store(plan.workers[w].addr() as u64, Release);
-        }
-        if let Some(b) = plan.pool_builder.take() {
-            crate::domain::arena(b);
-            let pool = plan.pool.as_ref().expect("trame: a pool builder belongs to a declared pool");
-            segment::pool_slot().store(pool.addr() as u64, Release);
-        }
-    }
-    mpi::traits::CommunicatorCollectives::barrier(&crate::backends::mpi::transport::hosts::host().comm);
-    if !builder {
-        for &w in &mine {
-            // SAFETY: the node's builder filled a Core of the same type at this address, in the
-            // segment this rank maps at the same address (segment.rs; CONTRACT.md, M1).
-            unsafe { plan.workers[w].adopt(segment::state_slot(w as u32).load(Acquire) as usize) };
-        }
-        if let Some(pool) = &plan.pool {
-            // SAFETY: as above, for the pool.
-            unsafe { pool.adopt(segment::pool_slot().load(Acquire) as usize) };
-        }
-    }
-}
-
-/// Run `f` on this rank's endpoint, under the rank's transport lock.
-fn with_endpoint<R>(f: impl FnOnce(&Transport) -> R) -> R {
-    worker::with_endpoint(f)
-}
-
-/// Agents per worker: this node's cores shared among its ranks, at most the worker's steps.
-fn agents_for(obj: &dyn Erased, t: &Transport, cap: Option<usize>) -> usize {
-    let here = t.lay().workers as usize + 1;
-    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
-    let fair = (cores / here).max(1);
-    cap.unwrap_or(fair).min(fair).min(obj.steps().len()).max(1)
-}
 
 impl Backend for Selected {
     type Run = Leader;

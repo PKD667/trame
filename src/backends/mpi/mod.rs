@@ -18,8 +18,8 @@
 //! - A route between workers of two hosts is a lane (cross.rs): two-sided MPI from rank to rank, with
 //!   credits back. Those are the only MPI calls after launch, and only ranks with a lane make them.
 
+mod backend;
 mod harness;
-mod imp;
 mod memory;
 mod rings;
 mod roles;
@@ -28,7 +28,7 @@ mod transport;
 mod types;
 mod waiting;
 
-/// The backend the surface calls: `impl Backend for Selected` lives in imp.rs.
+/// The backend the surface calls: `impl Backend for Selected` lives in backend.rs.
 pub struct Selected;
 
 extern crate std;
