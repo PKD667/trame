@@ -166,11 +166,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1793751217,
-        "narHash": "sha256-H3kSGrjSm4Bp4u7Eva1mGvY3JTscBRjhjig1QGEDIX4=",
+        "lastModified": 1794819777,
+        "narHash": "sha256-pZpRv/dNG36pIl7bgIKaUeAxeKaZhQBaiRckxcTbMTE=",
         "owner": "PKD667",
         "repo": "nixsci",
-        "rev": "3eefdd65d957897237c42012721cdf21732f6fdd",
+        "rev": "bf7626f0151002cf695f1f02a7dbdb1b8b817c47",
         "type": "github"
       },
       "original": {
