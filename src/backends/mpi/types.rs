@@ -4,7 +4,7 @@ extern crate std;
 
 use std::fmt;
 
-use super::Transport;
+use crate::backends::mpi::Transport;
 
 /// A route, by its index in the topology. The worker or leader that sends or receives it names it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

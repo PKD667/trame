@@ -1,49 +1,25 @@
-//! The MPI backend of trame, on one node (CONTRACT.md). `Selected` (imp.rs) is the backend the surface
-//! calls; the transport below it is what the test binaries use.
+//! The MPI backend of trame (CONTRACT.md). `Selected` (backend.rs) is the backend the surface calls; the
+//! transport below it, `Transport`, is what the test binaries use. README.md lists the directories; each has
+//! its own README.md.
 //!
-//! `open` (open.rs) gives this rank a `Role` (INTERFACE.md 4): ranks `0..workers` get a worker endpoint,
-//! and the last rank, `workers`, gets the leader endpoint. Both are `Transport`s: the leader is an
-//! endpoint like any other, with its own routes. `agree` checks that every rank built the same
-//! topology, and it runs before `open`, so a refusal is decided on every rank together.
+//! `open` (setup/open.rs) gives this rank a `Role` (INTERFACE.md 4): ranks `0..workers` get a worker endpoint,
+//! and the last rank, `workers`, gets the leader endpoint. Both are `Transport`s. `agree` checks that every rank
+//! built the same topology, and it runs before `open`, so a refusal is decided on every rank together.
 //!
-//! Mechanism, in short (the reasoning is in README.md and the files named in it):
-//! - Every route is a ring of `cap` slots in one `MPI_Win_allocate_shared` window. The sender
-//!   owns the counter P and the receiver owns C, and each is published with a release store.
-//! - A lossless send answers `Full` only when an acquire load of C shows `P - C == cap`. That load
-//!   is the linearization point of the answer.
-//! - A lossy send never reads C. A slot is a seqlock, so a receiver that reads a slot the sender
-//!   is overwriting detects it and skips the frame.
-//! - Results and aborts are futex words (results.rs). Agents sleep on their worker's epoch (epoch.rs), and
-//!   every act that can change what an agent waits for bumps it. Every epoch and futex word is 32 bits.
-//! - A route between workers of two hosts is a lane (cross.rs): two-sided MPI from rank to rank, with
-//!   credits back. Those are the only MPI calls after launch, and only ranks with a lane make them.
+//! After launch, MPI is called for routes between hosts (transport/cross/), the leaders' peer messages
+//! (transport/hosts.rs) and the detector's rounds (roles/detect.rs). A route inside a host uses the window only.
 
-mod cross;
-mod detect;
-mod epoch;
-mod futex;
+mod backend;
 mod harness;
-mod hosts;
-mod imp;
-mod layout;
-mod leader;
-mod nodes;
-mod object;
-mod open;
-mod plan;
-mod poll;
-mod recv;
-mod refusal;
-mod results;
-mod ring;
-mod segment;
-mod shape;
-mod shm;
-mod state;
+mod memory;
+mod rings;
+mod roles;
+mod setup;
+mod transport;
 mod types;
-mod worker;
+mod waiting;
 
-/// The backend the surface calls: `impl Backend for Selected` lives in imp.rs.
+/// The backend the surface calls: `impl Backend for Selected` lives in backend.rs.
 pub struct Selected;
 
 extern crate std;
@@ -51,17 +27,17 @@ extern crate std;
 use std::vec;
 use std::vec::Vec;
 
-pub use layout::{Route, Topology};
-pub use open::{agree, launch, open};
-pub use refusal::Refusal;
-pub use shape::encode;
-pub use state::finalize;
+pub use memory::layout::{Route, Topology};
+pub use setup::open::{agree, launch, open};
+pub use setup::refusal::Refusal;
+pub use setup::shape::encode;
+pub use setup::state::finalize;
 
 pub use harness::{leader_join, returned};
 pub use types::{Answer, Error, Event, Received, Role, RouteId, clock};
 
-use layout::{Layout, RouteLayout};
-use shm::Window;
+use memory::layout::{Layout, RouteLayout};
+use memory::shm::Window;
 
 /// One endpoint's transport: a worker's, or the leader's. Not `Send`: it holds a pointer into the
 /// window, and it belongs to the rank's thread.
@@ -75,8 +51,8 @@ pub struct Transport {
     /// Per owned route set, where `recv` starts its scan (recv.rs). Indexed by the set's first route.
     rr: Vec<usize>,
     trace: Option<Vec<Event>>,
-    /// Per route, this endpoint's lane when the route joins it to another host (cross.rs).
-    lanes: Vec<Option<cross::Lane>>,
+    /// Per route, this endpoint's lane when the route joins it to another host (transport/cross/).
+    lanes: Vec<Option<transport::cross::Lane>>,
 }
 
 impl Drop for Transport {
@@ -94,10 +70,10 @@ impl Transport {
         Transport { me, win, lay, cursor: vec![0; routes], rr: vec![0; routes], trace: None, lanes: Vec::new() }
     }
 
-    /// Post this endpoint's lanes (cross.rs). At launch, once, when a route joins hosts.
+    /// Post this endpoint's lanes (transport/cross/). At launch, once, when a route joins hosts.
     pub(crate) fn open_lanes(&mut self) {
         if self.lay.routes.iter().any(|r| r.remote.is_some()) {
-            self.lanes = cross::lanes(&self.lay, self.me, &self.win);
+            self.lanes = transport::cross::lanes(&self.lay, self.me, &self.win);
         }
     }
 
@@ -117,12 +93,12 @@ impl Transport {
         }
     }
 
-    /// Before MPI_Finalize (state.rs): complete this endpoint's lanes (cross.rs `quiesce`).
+    /// Before MPI_Finalize (state.rs): complete this endpoint's lanes (transport/cross/ `quiesce`).
     pub(crate) fn quiesce(&mut self) {
-        cross::quiesce(&mut self.lanes);
+        transport::cross::quiesce(&mut self.lanes);
     }
 
-    fn lane(&mut self, id: RouteId) -> &mut cross::Lane {
+    fn lane(&mut self, id: RouteId) -> &mut transport::cross::Lane {
         self.lanes.get_mut(id.0 as usize).and_then(Option::as_mut).expect("trame: a route between hosts has its lane")
     }
 

@@ -11,7 +11,7 @@ in
   packages = deps.packages ++ [ pkgs.openmpi.dev pkgs.bash pkgs.gnumake pkgs.diffutils pkgs.findutils pkgs.which pkgs.file ];
   env = deps.env // { MPICC = "${pkgs.openmpi.dev}/bin/mpicc"; };
   launchRuntime = [ pkgs.openmpi pkgs.python3 pkgs.coreutils pkgs.time pkgs.procps pkgs.util-linux pkgs.gnugrep ];
-  # One host per machine, or two cut from one (TRAME_MPI_NODE_RANKS, HOSTS.md).
+  # One host per machine, or two cut from one (TRAME_MPI_NODE_RANKS, transport/README.md).
   maxMachines = 1024;
   splits = [ 1 2 ];
   deterministic = false;

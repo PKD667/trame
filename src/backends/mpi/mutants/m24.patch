@@ -1,7 +1,7 @@
 # violates: Progress (fairness, section 6)
 # expect: killed
---- a/backends/mpi/recv.rs
-+++ b/backends/mpi/recv.rs
+--- a/backends/mpi/rings/recv.rs
++++ b/backends/mpi/rings/recv.rs
 @@ -31,7 +31,7 @@
          // tags never share a key, and each set keeps its own rotation.
          let key = owned[0].0 as usize;

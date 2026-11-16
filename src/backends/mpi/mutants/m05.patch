@@ -1,9 +1,9 @@
 # violates: Ownership (Recv)
 # expect: killed
---- a/backends/mpi/leader.rs
-+++ b/backends/mpi/leader.rs
+--- a/backends/mpi/roles/leader.rs
++++ b/backends/mpi/roles/leader.rs
 @@ -57,7 +57,7 @@
- pub(super) fn recv(run: &Leader, ty: TypeId, out: &mut [u8]) -> bool {
+ pub(crate) fn recv(run: &Leader, ty: TypeId, out: &mut [u8]) -> bool {
      let t = run.get();
      t.fail_if_aborted();
 -    let owned = plan::owned(&local().inbox, ty);

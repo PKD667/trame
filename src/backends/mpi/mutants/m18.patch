@@ -1,7 +1,7 @@
 # violates: Abort
 # expect: killed
---- a/backends/mpi/results.rs
-+++ b/backends/mpi/results.rs
+--- a/backends/mpi/roles/results.rs
++++ b/backends/mpi/roles/results.rs
 @@ -76,7 +76,6 @@
      /// A worker panicked with `message`: the run aborts, and this worker's own result is set, so the
      /// leader's join sees it as finished. The leader then panics (`fail_if_aborted`).

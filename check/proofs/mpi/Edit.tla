@@ -1,8 +1,8 @@
 ---- MODULE Edit ----
-\* The leader's edit handshake of one worker, on one node: backends/mpi/leader.rs `edit` (lines 114-151), the slot
-\* scheduler's `remote_edit` and `agent` (src/worker.rs 484-504, 569-629), backends/mpi/worker.rs `edit_request` (207),
-\* `edit_held` (214), `idle` (240), and the wait protocol of backends/mpi/epoch.rs (`bump_word` 48, `sleep_on` 96,
-\* `leader_wait` 73); `finish` (results.rs 33-41). Contract clauses S1, S3, S4, P2 (a pool edit is this handshake once per worker; the model has one
+\* The leader's edit handshake of one worker, on one node: backends/mpi/roles/leader.rs `edit` (lines 116-153), the slot
+\* scheduler's `remote_edit` and `agent` (src/worker.rs 484-504, 569-629), backends/mpi/roles/worker.rs `edit_request` (207),
+\* `edit_held` (214), `idle` (240), and the wait protocol of backends/mpi/waiting/epoch.rs (`bump_word` 48, `sleep_on` 96,
+\* `leader_wait` 73); `finish` (roles/results.rs 35-43). Contract clauses S1, S3, S4, P2 (a pool edit is this handshake once per worker; the model has one
 \* worker), M5 (what f wrote is visible to steps that start after the release: not modelled, see below).
 \* Interleaving semantics, every access SeqCst, as in Epoch.tla.
 \* N agents of one worker rank share the slot mutex (`slk`), the transport lock XPORT (`xp`) and the worker's epoch
@@ -15,13 +15,13 @@
 \* both waiters: the leader's at W5, the worker's at Dk. Epoch.tla leaves it out; the same sleep_on is used on both sides.
 \* The epoch words are not reduced modulo 2^32 here (EpochWrap in Epoch.tla covers the wrap).
 \* XACK = TRUE is the deliberately broken variant in which `edit_held` takes XPORT (as `with_endpoint` does); the
-\* code does not (backends/mpi/worker.rs `edit_held`, 214-222). WAITREL = FALSE is the broken variant in which the leader
-\* does not wait for HELD = 0 before the next edit; the code waits (leader.rs 148).
+\* code does not (backends/mpi/roles/worker.rs `edit_held`, 214-222). WAITREL = FALSE is the broken variant in which the leader
+\* does not wait for HELD = 0 before the next edit; the code waits (leader.rs 150).
 \* Not modelled: timeouts of the idle sleep, spurious futex returns, steps' own transport calls that need XPORT,
 \* several workers (a pool edit repeats the handshake per worker and waits for all), stop, failure, abort,
 \* the leader of another node, the memory the edit writes (M5), steps that wait on deadlines or room.
 \* The worker's result: an agent that ends a step with no other running may find the worker answered (`ans`); every
-\* agent then returns, and after the last one `finish` stores the result and bumps the leader (imp.rs 62-76).
+\* agent then returns, and after the last one `finish` stores the result and bumps the leader (roles/runner.rs 50-64).
 EXTENDS Naturals, Sequences, FiniteSets
 
 CONSTANTS N, Fields, Plan, F, XACK, WAITREL
@@ -62,7 +62,7 @@ VARIABLES
   runit,    \* the leader's `run_it`
   fruns,    \* number of times f ran, per edit
   nret,     \* edits that returned
-  pcn,      \* the frame sender's program counter (the environment: other workers, the relay)
+  pcn,      \* the frame sender's program counter (the environment: other workers)
   pcz       \* the worker's `finish` program counter
 
 vars == <<EW, SW, EL, SL, edit, held, res, xp, slk, editing, remote, acked, run, ans, pq, sent, pcw, seen, have, rq,
@@ -90,12 +90,12 @@ vars == <<EW, SW, EL, SL, edit, held, res, xp, slk, editing, remote, acked, run,
 \*  exit    returned from `agent`
 \* Leader program counters:
 \*  l0      next edit of Plan or done
-\*  e1      EDIT := cur                                  (leader.rs 139)
+\*  e1      EDIT := cur                                  (leader.rs 141)
 \*  e2,e3,e4 bump(w): EW += 1; ld := SW != 0; wake       (epoch.rs 50-55)
 \*  w1..w7  wait_all: sl := EL; if done then out else leader_wait: loop {if EL # sl return; SL += 1; (W5) re-read EL; (W6) kern: if EL = sl then sleep (lfw) else EAGAIN; SL -= 1}
-\*  x1      runit := not res                             (leader.rs 143-146)
-\*  f1,f2   f runs (f2 is the interval in which f runs)  (leader.rs 148)
-\*  d1..d4  EDIT := {}; bump                             (leader.rs 151)
+\*  x1      runit := not res                             (leader.rs 145-148)
+\*  f1,f2   f runs (f2 is the interval in which f runs)  (leader.rs 150)
+\*  d1..d4  EDIT := {}; bump                             (leader.rs 153)
 \*  nx      the edit returned
 \* The frame sender: pcn n0 sends a frame of some kind, then n1..n3 bump the worker's epoch (a Transport::send).
 \* The finish: z0 waits for every agent to return; z1 stores the result; z2..z4 bump the leader's epoch.
@@ -455,7 +455,7 @@ N3 == /\ pcn = "n3"
 EnvBump == N1 \/ N2 \/ N3
 EnvStep == N0 \/ EnvBump
 
-\* ---- finish: after every agent returned, the outcome word, then the bump of the leader (results.rs 33-41) ----
+\* ---- finish: after every agent returned, the outcome word, then the bump of the leader (roles/results.rs 35-43) ----
 
 Z0 == /\ pcz = "z0" /\ \A i \in Sl : pcw[i] = "exit"
       /\ pcz' = "z1"

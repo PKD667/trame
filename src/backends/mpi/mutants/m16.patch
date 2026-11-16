@@ -1,7 +1,7 @@
 # violates: Deadlock, Join
 # expect: killed
---- a/backends/mpi/results.rs
-+++ b/backends/mpi/results.rs
+--- a/backends/mpi/roles/results.rs
++++ b/backends/mpi/roles/results.rs
 @@ -38,7 +38,6 @@
          self.win().word32(DONE).fetch_add(RESULT, AcqRel);
          self.win().wake(DONE);

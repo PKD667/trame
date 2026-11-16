@@ -43,7 +43,7 @@ run -n 3 "$B/check" overwrite --seed 7 --cap 4 --msgs 20000 --late
 run -n 4 "$B/check" fair --msgs 16
 run -n 3 "$B/check" bigroute
 
-# Every object a run makes is unlinked when the run ends (object.rs). A leftover is a leak.
+# Every object a run makes is unlinked when the run ends (memory/object.rs). A leftover is a leak.
 leftover="$(ls /dev/shm 2>/dev/null | grep '^trame-' || true)"
 if [[ -n "$leftover" ]]; then
   echo "trame objects left in /dev/shm:" >&2

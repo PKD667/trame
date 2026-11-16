@@ -12,17 +12,17 @@
 //
 // A failed check panics, which makes mpirun stop the job with a nonzero status.
 
-#[path = "check_big.rs"]
+#[path = "check/big.rs"]
 mod big_check;
-#[path = "check_common.rs"]
+#[path = "check/common.rs"]
 mod common;
-#[path = "check_fifo.rs"]
+#[path = "check/fifo.rs"]
 mod fifo_check;
-#[path = "check_lossy.rs"]
+#[path = "check/lossy.rs"]
 mod lossy;
-#[path = "check_sync.rs"]
+#[path = "check/sync.rs"]
 mod sync;
-#[path = "check_verify.rs"]
+#[path = "check/verify.rs"]
 mod verify_check;
 
 use std::path::Path;

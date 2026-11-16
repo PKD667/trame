@@ -16,7 +16,7 @@ pub(crate) mod seq;
 mod local_routes;
 
 /// One rank per worker, one host per shared-memory node with its leader on the node's last rank
-/// (mpi/README.md, mpi/HOSTS.md).
+/// (mpi/README.md).
 #[cfg(feature = "mpi")]
 pub(crate) mod mpi;
 

@@ -59,7 +59,7 @@ flowchart LR
 | scheduler | reference agent | reference agent |
 | routes | rings under one lock | rings in a shared window; two-sided MPI between hosts |
 | wake | one counter of acts | epoch words and futexes |
-| domain (M1) | the process heap | a shared segment of the node (`src/backends/mpi/segment.rs`) |
+| domain (M1) | the process heap | a shared segment of the node (`src/backends/mpi/memory/segment.rs`) |
 | leader | a thread outside the baton | the last rank of each host |
 | `Deadlock` (E2) | shown when every agent that can move has moved | shown once every host's leader waits, joins or has ended |
 | trace (S9) | replayed exactly | replayed against `may_start` |
@@ -69,22 +69,22 @@ deterministic. On `mpi` it is wall time, so the shares of `S7` are shares of tim
 
 ## Where each part lives
 
-Paths below are relative to the repository root. The shared code (`worker.rs`, `sched.rs`, `domain.rs`) is not
+Paths below are relative to the repository root; the mpi paths are inside `src/backends/mpi/`, whose `README.md` lists its directories. The shared code (`worker.rs`, `sched.rs`, `domain.rs`) is not
 listed.
 
 | part | seq | mpi |
 |---|---|---|
-| the `Backend` functions | `src/backends/seq/ops.rs`, `mod.rs` | `src/backends/mpi/imp.rs`, `mod.rs` |
-| launch and the plan check | `ops.rs` (`launch`, `build_all`) | `open.rs` (`agree`, `launch`), `plan.rs`, `shape.rs`, `refusal.rs` |
-| routes | `src/backends/local/routes.rs` | `ring.rs`, `cross.rs`, `layout.rs` |
-| domain | the process heap, through `domain.rs` | `segment.rs`, `shm.rs`, `object.rs` |
-| wake | `state.rs` (park, advance) | `epoch.rs`, `futex.rs` |
-| edits | `edit.rs` | `leader.rs` `edit`, `worker.rs` `edit_request` |
-| leader | `ops.rs` (`leader_*`) | `leader.rs` |
-| stuck detection | `stuck.rs` | `detect.rs` |
-| host numbering and nodes | one host | `hosts.rs`, `nodes.rs` |
+| the `Backend` functions | `src/backends/seq/ops.rs`, `mod.rs` | `src/backends/mpi/backend.rs`, `mod.rs` |
+| launch and the plan check | `ops.rs` (`launch`, `build_all`) | `setup/` (`open.rs`, `plan.rs`, `shape.rs`, `refusal.rs`) |
+| routes | `src/backends/local/routes.rs` | `rings/`, `transport/cross/`, `memory/layout.rs` |
+| domain | the process heap, through `domain.rs` | `memory/` |
+| wake | `state.rs` (park, advance) | `waiting/` |
+| edits | `edit.rs` | `roles/leader.rs` `edit`, `roles/worker.rs` `edit_request` |
+| leader | `ops.rs` (`leader_*`) | `roles/leader.rs` |
+| stuck detection | `stuck.rs` | `roles/detect.rs` |
+| host numbering and nodes | one host | `transport/` |
 | step limit | `limit.rs` | none |
-| results and abort | `state.rs` | `results.rs` |
+| results and abort | `state.rs` | `roles/results.rs` |
 
 ## seq
 
@@ -102,28 +102,18 @@ result repeatable.
 
 ## mpi
 
-Workers of one host share a window with one ring per route. An agent that waits sleeps on a futex word of
-its worker, and every act that can change its wait moves that word. A route between hosts goes rank to rank
-by two-sided MPI, with credits back. The agents of a worker with such a route poll instead of sleeping
-(`src/backends/mpi/HOSTS.md`).
-
-The leaders show a run stuck by rounds of a nonblocking allreduce over their hosts' words. Each round sums
-the leaders whose snapshot moved and the messages sent between hosts and those arrived. Two equal rounds
-with nothing moved and nothing in flight show every worker stuck, and the backend then ends each with
-`Deadlock` or panics a waiting leader (`src/backends/mpi/detect.rs`). A leader that runs its own code holds
-the rounds back, so a deadlock is shown only once every leader waits, joins or has ended.
-
-Edits, `take` and the pool live in the segment (`src/backends/mpi/segment.rs`). The design, the tests and the
-measurements are in `src/backends/mpi/README.md`, `HOSTS.md`, `SCALING.md` and `RESULT.md`.
+Workers of one host share a window with one ring per route; a route between hosts goes rank to rank by
+two-sided MPI. The leaders show a run stuck by rounds of a nonblocking allreduce. How each part works is in the
+README of its directory: `src/backends/mpi/README.md` is the index, and `transport/` holds the hosts and the
+measurements of the lanes.
 
 Several hosts on one machine come from `TRAME_MPI_NODE_RANKS=k`, which cuts a node into hosts of k ranks. It is
 for testing and never a default. `TRAME_PROBE=ranks` makes a program print `trame-ranks N` and stop, and the
 launch uses it to ask for the rank count.
 
-Two things are specific to this backend's environment. Open MPI may print `osc_ucx_component` errors on
-stderr on some machines; they come from Open MPI, not from the program. A process that did not build a
-state adopts the leader's address (`build_or_adopt`, `imp.rs`), which is valid because the segment is mapped at one
-address on every rank of a node.
+Open MPI may print `osc_ucx_component` errors on stderr on some machines; they come from Open MPI, not from
+the program. A process that did not build a state adopts the leader's address (`build_or_adopt`,
+`setup/adopt.rs`), which is valid because the segment is mapped at one address on every rank of a node.
 
 ## Limits
 
@@ -219,20 +209,20 @@ the workers run only inside the leader's calls on the run (M7). The validate ver
 `tests-seq` and `mutants-seq` are listed in `nix/validate.nix`.
 
 **mpi, launch and refusal.** Every refusal is decided by a collective reduction, and `agree` in
-`src/backends/mpi/open.rs` decides L2. `imp.rs` builds the plan (L3).
+`src/backends/mpi/setup/open.rs` decides L2. `setup/adopt.rs` builds the plan (L3).
 
 **mpi, wake and transport.** The TLA+ model `Epoch` checks that no wake-up is lost with one to three sleepers
-per word (S3). The edit handshake has no model (S4). The transport checks are in `src/backends/mpi/tests/`:
+per word (S3). The edit handshake has the model `Edit`, whose larger configurations did not finish (S4). The transport checks are in `src/backends/mpi/tests/`:
 FIFO with verification, overwrite, fairness, large routes and node splits (T1 to T3). The TLA+ model `Lane`
 covers order, room by credits, and every frame taken and credited (F5).
 
-**mpi, memory and hosts.** Placement is by construction in `segment.rs` (M1), and `segment::alloc` answers null
-past the segment's end (M6). `leader.rs` holds the plan's references until `join` (M7). Hosts are numbered by
-their lowest world rank (`hosts.rs`, F1), and a capacity that differs between hosts refuses both (`cross.rs`
-`connect`, F3). The tag of a cross-host message is by construction in `src/io.rs` (F4, `tag`).
+**mpi, memory and hosts.** Placement is by construction in `memory/segment.rs` (M1), and `segment::alloc` answers null
+past the segment's end (M6). `roles/leader.rs` holds the plan's references until `join` (M7). Hosts are numbered by
+their lowest world rank (`transport/hosts.rs`, F1), and a capacity that differs between hosts refuses both
+(`transport/cross/connect.rs`, F3). The tag of a cross-host message is by construction in `src/io.rs` (F4, `tag`).
 
-**mpi, end.** `detect.rs` has no model in the tree: `check/proofs/` holds the epoch and lane models only. E2 for
-the stuck detector rests on its programs, `xhost_deadlock` and `leader_stuck`. Its round trips are measured by
+**mpi, end.** `roles/detect.rs` has the model `Detect` (`check/proofs/mpi/`). E2 for
+the stuck detector also rests on its programs, `xhost_deadlock` and `leader_stuck`. Its round trips are measured by
 the lab's latency experiment, which judges them against the Q clauses of the backend contract, not by a
 recorder of its own.
 
@@ -262,9 +252,8 @@ written against the messaging library directly. The claims are in each experimen
 A timing from the reference backend is a scheduler timing, not a host timing, so it is not comparable with a
 timing from a multi-process backend.
 
-`src/backends/mpi/SCALING.md` describes a relay thread that the tree no longer has. The files it names,
-`relay_routes.rs` and `relay_control.rs`, are not in the tree. Its locality claim is about that relay, so it
-says nothing about the tree. The lab has no relay claim.
+`src/backends/mpi/transport/SCALING.md` defines scaling and says where the tree does not meet it. The relay
+thread it once described is gone, and the lab has no relay claim.
 
 ## A new backend
 

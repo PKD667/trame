@@ -6,11 +6,11 @@ the code has it.
 
 ## Models (`mpi/`)
 
-- **Epoch** (`Epoch.tla`, `MCEpoch*.cfg`). The wait protocol of one worker rank or the leader: `src/backends/mpi/epoch.rs`
-  (`sleep_on`, `bump_word`) and `futex.rs` `wait_for`, `wake`. N sleepers (the k agents of a worker rank, `worker.rs`)
+- **Epoch** (`Epoch.tla`, `MCEpoch*.cfg`). The wait protocol of one worker rank or the leader: `src/backends/mpi/waiting/epoch.rs`
+  (`sleep_on`, `bump_word`) and `waiting/futex.rs` `wait_for`, `wake`. N sleepers (the k agents of a worker rank, `roles/worker.rs`)
   share one epoch word and one SLEEP word; one bumper acts K times. SLEEP is a count: `fetch_add` before the futex wait,
   `fetch_sub` after it, and a bumper wakes when it loads a non-zero count (`COUNTED = TRUE`). `COUNTED = FALSE` is the
-  earlier flag (store 1, store 0). `LOCKED = TRUE` adds `XPORT` (`worker.rs` 32), held from `idle` until `sleep_on`
+  earlier flag (store 1, store 0). `LOCKED = TRUE` adds `XPORT` (`roles/worker.rs` 39), held from `idle` until `sleep_on`
   returns, so one agent of a rank sleeps at a time; `LOCKED = FALSE` is the word's protocol alone, which is what
   `epoch.rs` argues and what k agents see if the lock is ever narrowed. Properties: `NoLostWakeup`, `Live` (every
   sleeper sees a true condition), under weak fairness; `Announced` (SLEEP is non-zero while any sleeper has added and
@@ -26,7 +26,7 @@ the code has it.
   flag under `XPORT`; it came from a sleeper outside that lock (the leader's `sleep_on`, or that of a relay
   thread this backend no longer has). Which one is not established.
   Trace: `counterexamples/epoch-flag-k2.txt`.
-- **Lane** (`Lane.tla`, `MCLane.cfg`, `MCLane3.cfg`). One lossless route between hosts, from `src/backends/mpi/cross.rs`
+- **Lane** (`Lane.tla`, `MCLane.cfg`, `MCLane3.cfg`). One lossless route between hosts, from `src/backends/mpi/transport/cross/`
   `Out` and `In`: the sender's room by credits, the receiver's posted receives, taking a frame, and the credit
   sent only when the last one completed. Properties: the chain c <= q <= got <= p <= c + C, every frame in flight
   has its receive posted (`Posted`), FIFO order, the sender never waits on a send that has not matched
@@ -40,7 +40,7 @@ the code has it.
   BUDGET 3 ROUNDS 3 did not finish in 900 s (39 M states, no error yet). `MCDetectOnce` is the mutant that skips the
   comparison with the previous round; it fails `Sound` (119,025 states), as it must.
 - **Edit** (`Edit.tla`, `MCEdit*.cfg`). The handshake of a leader edit with a worker's steps (`worker.rs` `remote_edit`,
-  `backends/mpi/worker.rs` `edit_held`, `leader.rs`): the worker holds its fields while the leader's closure runs.
+  `backends/mpi/roles/worker.rs` `edit_held`, `roles/leader.rs`): the worker holds its fields while the leader's closure runs.
   Two model bugs were found and fixed against the code while writing it (the leader's kernel entry of its sleep,
   and the Dekker re-read on the worker side). `MCEditNoWait` (`WAITREL = FALSE`, the leader does not wait for the
   release) fails `Held` (168,817 states), as it must; it is in `run.sh`. `MCEdit`, `MCEdit2`, `MCEdit22` and
