@@ -24,7 +24,7 @@ in
     mpicc -O2 -o $out/bin/mpi_flow src/backends/mpi/bench/flow.c
     mpicc -O2 -o $out/bin/mpi_graph src/backends/mpi/bench/graph.c
   '';
-  # The submodule of the real MPI bindings, not part of any build here.
+  # mpi-rma/: a crate of its own (a submodule: typed one-sided communication over rsmpi), not part of any build here.
   exclude = [ "mpi-rma" ];
   # The wait protocols, model-checked (validate.nix).
   validate = args: import ./validate.nix args;
