@@ -1,156 +1,60 @@
-# Experiments
+# lab
 
-Every script that runs trame's programs is a nixsci lab experiment. Nix builds the binaries
-and the runner into a closure, the lab executor runs it on hosts, and each run is sealed with
-its records, the commit it came from and the machine. Analyses are Nix derivations over the
-locked runs (`lab.lock`), and claims are judged by `nixsci.stats`. No number about trame is
-quoted anywhere unless it comes from a locked run through an analysis.
+Every measurement of trame is a nixsci lab experiment: Nix builds the binaries and the runner into a closure, the lab
+executor runs it on hosts, and each run is sealed with its records, its commit and its machine. Analyses are derivations over
+the locked runs (`lab.lock`); claims are judged by `nixsci.stats`. No number about trame is quoted unless it comes from a
+locked run through an analysis.
 
-```
-nix run .#<experiment>        measure: lease hosts, run the jobs, seal, lock (commit lab.lock)
-nix build .#<analysis>        derive: tables, figures and claims from the locked runs only
-nixsci lab verify <run>       re-measure one run from the closure it used
-nix run .#suite               every experiment for every backend (see Suite and report)
-nix build .#suite-report      the report derived from the suite's locked runs
-```
+## An experiment is a directory
 
-Hosts come from a provider name. The flake says `local` or `cluster`. What `cluster` means
-(which machines, how to reach them) is set in `~/.config/nixsci/providers.json` on the machine
-that runs the experiment, never in this repository.
+`lab/<name>/` for every backend, `src/backends/<b>/lab/<name>/` for one backend's own. `nix/lab.nix` finds every
+`experiment.nix` there; nothing outside `src/backends/<b>/` names a backend.
 
-## Runners
+| file | holds |
+|---|---|
+| `experiment.nix` | a function `{ pkgs, lib, labLib, system, closure, backends, machines, data, bench, ... }` answering `{ name; figures; runs; claims; claimIds; analysis; }` |
+| `run.py` | the runner: reads `lab.params()`, runs the closure's binaries, records typed rows with `lab.record` |
+| `analysis.py` | the analysis of this experiment only (`tables.py` is its helper) |
+| `README.md` | at most 40 lines: what it measures, parameters, datasets, claims, figures, how to run |
 
-One Python runner per experiment, in this directory. It reads its parameters with
-`lab.params()`, runs binaries from the closure, compares or parses their output, and records
-typed rows with `lab.record`. Programs never know they are measured: they print, and the runner
-records.
+- `runs`: `{ name; kind; backend; span; suite; exp; }`. The name is the app (`nix run .#<name>`) and the key in `lab.lock`.
+  `suite = true` puts it in `nix run .#suite`. A run may name another experiment (`experiment`) whose analysis it joins.
+- `figures`: the contract. `analysis.py` writes `tables/<figure>.tsv` and `figures/<figure>.tex`; `tables.done()` fails if the
+  set written differs from `figures`. Conformance experiments draw a table of verdicts.
+- `claims`: nixsci claims as data (kind, dataset, column, bound). `claimIds` are their ids, with `<placeholders>` for what
+  varies. The README's `## Claims` lists the same ids as `- \`id\` sentence`. `checks.lab-contract` fails if the two differ, or
+  a figure is not named in the README. Claims not yet analysed go under `## Planned (no analysis yet)`.
 
-## Verdicts (deterministic checks)
+## Running
 
-A check that depends only on the code, not on concurrency, the network or hardware, is a validate verdict,
-not a lab experiment: `lab/validate.nix`, built by `nixsci.lib.validate` (validate/README.md in the
-nixsci repository). Each check states its property (INTERFACE.md section), model, subject, checker and scope,
-and writes `$out/outcome.json`. A verdict is a derivation. The flake exposes them as
-`validate.<system>.verdicts.<name>`, the table as `validate.<system>.table`, and `checks` as the holds.
+    nix run .#<run>                  measure: lease hosts, run the jobs, seal, lock (commit lab.lock)
+    nix build .#<experiment>         derive tables, figures and claims from the locked runs; fails naming runs it lacks
+    nix build .#draft.<experiment>   the same over the runs that exist (marked draft)
+    nix build .#report               every experiment's analysis, one directory each (`.#draft.report` for drafts)
+    nixsci lab verify <run>          re-measure one run from the closure it used
+    nix run .#suite                  every run with `suite = true`, for every backend, one after another
 
-| check | property | what it runs |
-|---|---|---|
-| `programs-<b>` | every program prints its `.expected` and exits as its `.panics` says, on backend `b` | the binaries of `b`, through its `launch`, 120 s crash guard |
-| `tests-<b>` | every test of the root crate passes on backend `b` in the checked build | each test alone through `b`'s `launch` |
-| `rejections-<b>` | every rejection case is judged as its annotations say, with `b` compiled in | the pinned driver over `check/rejections/cases` |
-| `mutants-<b>` | each mutant of `b` is killed or spared as its header says | one patch at a time (`src/backends/<b>/mutants`) |
+Analyses are under `legacyPackages`, not `packages`, because a fresh clone may lack the locked runs. A figure source is a
+`usi-design` document: `usi-latexmk figures/<figure>.tex` draws it. `lab.lock` is keyed by the closure's inputs: changing a
+runner or its binaries makes earlier runs "of older code", which the strict analysis refuses.
 
-`<b>` stands for a backend's name. The names for each backend are in
-`src/backends/README.md` (Lab experiments by backend).
+## Hosts
 
-A deterministic backend (`deterministic = true` in its `backend.nix`) may bound its scheduler's steps
-(`src/backends/README.md`, Limits); a run over the limit exits 3. It counts steps, not seconds, so a looping mutant is a count and not a timing.
+A host comes from a provider name. The flake says `local` or `cluster`; what `cluster` means is set in
+`~/.config/nixsci/providers.json` on the machine that runs the experiment, never in this repository.
 
-Lab experiments remain for what needs concurrency, a network or hardware: the experiments of the multi-process
-backends, the latency experiment and the scale experiments.
+## Verdict or experiment
 
-Scope numbers are measured, not guessed. A check that runs nothing (no test listed, no case judged) fails.
+A check that depends only on the code, not on concurrency, the network or hardware, is a validate verdict
+(`nix/validate.nix`), a derivation. The lab holds what needs processes, a network or hardware.
 
-## Experiments and datasets
+## Experiments
 
-**programs** (`programs-<b>` on one local host, `programs-<b>-s<N>` on N machines; names in
-`src/backends/README.md`): every program
-of `check/programs/` against its `.expected` output. Parameters: `backend`, `split` (trame hosts per machine,
-1 or 2; `src/backends/README.md`, Launch), `repeats`.
-On H hosts each host runs the whole program and is judged alone, except a program with `<name>.h<H>.expected`,
-judged on the hosts' outputs in order (programs.py). Dataset `run`: `program` str, `repeat` int, `ran` bool,
-`ok` bool, `verdict` str (`ok`, `diff`, `exit`, `timeout`), `seconds` float, `stdout_sha256` str. Key:
-`program`, `repeat`. Equal `stdout_sha256` per program between two backends' experiments on the same machine
-is the equivalence of the two backends on that machine.
-
-**transport** (`transport-<b>`, for a backend with its own transport checks): the checks of that backend's
-`tests/run.sh` on one host (`transport.py`). Dataset `check`: `check` str, `workers` int, `case_seed` int,
-`repeat` int, `ran` bool, `ok` bool, `seconds` float. Key: `check`, `workers`, `case_seed`, `repeat`.
-
-**latency** (`latency`, runner `lab/bench/ping.rs`): round trips between workers, with random gaps between them,
-placed on one host (same-host) or on two (cross-host), at several message sizes. Round trips in one run are
-autocorrelated, so each run is one sample, and the claims count runs. The bounds are the Q clauses of
-`CONTRACT.md`, set per placement and size in `lab/q.nix` for the reference deployment. A bound that is still
-null means the experiment measures and no claim is judged on it.
-
-**scale** (the families `round`, `graph`, `fanin`, `flow-agg`, `flow-bw`, `idle`, `step` and `latency`, each
-run as `<family>-mpi-s<span>` with span 1, 2 or 4, and their baselines `baseline-<family>-mpi-s<span>`;
-`lab/perf.nix`, `src/backends/mpi/experiments.nix`): the
-programs of `lab/bench/` and their baselines (`src/backends/README.md`, Benchmarks). One job runs one benchmark
-with one implementation at one size. Parameters: `bench`, `impl` (`trame`, or a baseline's name), `nodes`, `fill`,
-and the bench's sizes. `fill` is `half` or `full`: workers per node are half the physical cores (at least 3)
-or the physical cores less two, where the physical cores are the unique (SOCKET, CORE) pairs of
-`lscpu`. Every dataset repeats `bench`, `impl`, `nodes`, `workers` and `per_node` as columns, so claims
-can select on them.
-- `round`: `worker`, `rounds`, `ns` (impl `trame`: rounds through the leader; a baseline: its barrier calls, `lab/bench/README.md`)
-- `ring`: `worker`, `steps`, `size`, `cap`, `ns`
-- `idle`: `worker`, `seconds`, `ns`
-- `fanin`: `worker` (-1 for the leader's total), `msgs`, `ns`
-- `graph`: `worker`, `steps`, `size`, `degree`, `iters`, `ns`, `compute_ns`, `checksum` (text: a u64).
-  Benches `graph64` (weak, SIZE 64), `graph1024` (weak, SIZE 1024) and `graph1024s` (strong, SIZE 1024:
-  ITERS = graph_iters // nodes, so ITERS x workers is fixed per fill). The dataset's `bench` column is
-  `graph` for all three. Select on `size` and `iters`. Parameters `graph_iters` (100000), `graph_steps`
-  (2000), `degree` (8), `seed` (1). A job with workers <= degree records nothing.
-- `cpu`: `rank`, `host`, `user_s`, `sys_s`, `wall_s`, from GNU time around each rank
-
-Each job also writes a `*_config` dataset, whose name carries the backend (`src/backends/README.md`): the job's
-full command line (`argv`, scale only), the load average at its start (`loadavg`), and the settings of the
-messaging library in the account.
-
-Timing columns are `noisy`, with `replicates = 3`.
-
-**mutants** (`mutants-<b>` for each multi-process backend, built by `checks.nix`, runner `mutants.py`): conformance
-by mutation (`check/mutants/`). Nix builds one build per mutant, its patch applied, and one closure holds them
-all with the runner. A deterministic backend's record is the validate verdict `mutants-<b>`, not an
-experiment. Parameters: `backend`, `mutant` (a patch id, `none` for the unpatched control), `timeout` (120).
-The sweep is every id with a `.patch` or a `.skip` file of `check/mutants/<backend>`, so a mutant that cannot
-apply (`m23`, and `m17` on a multi-process backend) is one job that records `how` `skipped`.
-Dataset `kill`, one row per program: `mutant`, `rule`, `expect`, `program` (`-` when skipped), `killed`
-bool (true for `diff`, `exit` or `timeout`), `how` (`ok`, `diff`, `exit`, `timeout`, `skipped`).
-Key: `mutant`, `program`. A multi-process backend also records its `*_config` dataset, as its programs experiment does.
-`check/mutants/mutate.sh` is the quick local loop. The lab run is the record.
-
-The rejection suite is a validate verdict (above). The driver fuzzer is not a check: `crates/driver/fuzz/flake.nix`
-defines packages, not checks, and `crates/driver/fuzz/run.sh <seed> <batches> <K>` is run by hand.
-
-## Suite and report
-
-The suite runs every experiment for every backend, and the report is derived from the suite's locked runs. Both
-are in the flake. `nix run .#suite` is an app: it runs the suite's experiments one after another, and goes on after
-a failure (`lab/suite.nix`). `suite-report` is under `legacyPackages`, not `packages`. Its strict form evaluates only
-once every suite job has a locked run in `lab.lock`; until then `nix build .#suite-report` fails, naming the jobs
-without runs. `suite-report-draft` is the same over the runs that exist.
-
-The report has two parts. The first is the latency validation: for each backend, the `latency` experiment is
-judged against the Q clauses of `CONTRACT.md`, as proportion claims judged with `nixsci.stats` (PROOFS.md, Latency).
-A backend is accepted only if its latency claims are supported. The second is a side-by-side performance
-comparison, with every backend on the same axes: bandwidth against message size, aggregate bandwidth against the
-number of hosts, step overhead, and idle CPU.
-
-## Claims, stated before measuring
-
-Of the analyses named here, `lab/suite.nix` has the latency claims (Suite and report) and one programs claim per
-`programs-<b>-s<N>` (`ok`, exact). It has no `conformance` analysis over `transport-*`, no `mutants` analysis, no
-`scale` analysis, and no `values.json`. The list below is the plan for those. Nothing in the tree supports or
-contradicts them yet.
-
-Analysis `conformance`: every row of `programs-*` and `transport-*` has `ok = true` (exact).
-Analysis `mutants`: every mutant whose catalogue entry says `killed` and that applies is killed
-(exact). A mutant recorded `skipped` (no place to apply it in that backend) is listed as a gap in
-the program set, never counted as a kill.
-Analysis `scale`, each judged at 0.99 and reported as supported, contradicted or inconclusive:
-- **Idle workers sleep.** In `idle`, a rank uses below 2% of its wall time
-  in user plus system time.
-- **Weak scaling of neighbour exchange.** In `ring` at a fixed `per_node`, the median ns per
-  step at N nodes is at most 1.5 times the median at one node, for every N measured.
-- **Round growth.** In `round`, the median ns per round grows at most linearly in N.
-- **Cost against the baseline.** In `ring`, trame's median is at most 3 times the baseline's at
-  the same `nodes`, `per_node` and size.
-- **The proxy benchmark.** The claims of the proxy benchmark's spec (`src/backends/mpi/SCALING.md`, The proxy
-  benchmark) on `graph`: overhead at most 1.10 against the baseline, weak-scaling curve within 1.05 of the
-  baseline's, strong-scaling speedup at least 0.9 of the baseline's. The spec's locality claim is about the relay,
-  which the tree no longer has, so it is not listed.
-
-When the analyses exist, they will compute the ratios with their intervals and write them to
-`values.json`. The thresholds above are the claims they are judged against. A contradicted claim
-will stay in the report.
+- [programs](programs/README.md), [mutants](mutants/README.md): conformance of every backend.
+- [latency](latency/README.md): round trips, same host and cross host, against the bounds of CONTRACT.md.
+- [flow](flow/README.md): bandwidth against size and hosts. [step](step/README.md), [idle](idle/README.md).
+- [round](round/README.md), [fanin](fanin/README.md), [graph](graph/README.md): scaling of the leader and of the proxy benchmark.
+- [simd](simd/README.md): `parallel!` lowered to explicit SIMD.
+- [lib](lib/README.md): the runners' shared modules. [bench](bench/README.md): the benchmark programs.
+- Multi-process backend: [transport](../src/backends/mpi/lab/transport/README.md), [xhost](../src/backends/mpi/lab/xhost/README.md),
+  [baselines](../src/backends/mpi/lab/baselines/README.md).

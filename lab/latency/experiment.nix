@@ -21,7 +21,7 @@ in
   figures = [ "latency" ];
   inherit runs;
   # A bound that is null is no claim: the table lists it as empty.
-  claimIds = [ "latency/<backend>/<placement>/<size>/<key>" ];
+  claimIds = [ "latency/<backend>/<placement>/<size>/p50" "latency/<backend>/<placement>/<size>/p99" ];
   claims = builtins.listToAttrs (map (c: {
     name = c.id;
     # Q1: at most half of the round trips exceed the median bound. Q2: at most one in a hundred exceeds the p99 bound.

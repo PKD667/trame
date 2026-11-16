@@ -123,7 +123,7 @@ path = "check/programs/pipeline_chain.rs"
 name = "ring"
 path = "examples/ring.rs"
 
-# The benchmarks of the lab (lab/bench/, lab/README.md; run by lab/perf.py). Written against the interface only, so
+# The benchmarks of the lab (lab/bench/, lab/README.md; run by lab/lib/bench.py). Written against the interface only, so
 # they run on every backend. Not part of the conformance set.
 [[example]]
 name = "bench_round"

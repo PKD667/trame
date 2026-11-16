@@ -27,10 +27,10 @@ non-zero with that line on stderr), or it times out (a hang counts as a kill).
 
 Two records and one quick loop.
 
-- **mpi: the lab experiment `mutants-mpi`** (`lab/checks.nix`, runner `lab/mutants.py`). Nix
+- **mpi: the lab experiment `mutants-mpi`** (`lab/mutants/`). Nix
   builds each mutant with its patch applied, and a job runs the program set against one mutant. Run it with
-  `nix run .#mutants-mpi`, and commit `lab.lock`. Its dataset `kill` holds one row per program. No analysis
-  judges it yet (lab/README.md, "Claims"): read the rows.
+  `nix run .#mutants-mpi`, and commit `lab.lock`. Its dataset `kill` holds one row per program. No claim
+  judges it yet (`lab/mutants/README.md`): read the rows or the `mutants-kills` table.
 - **seq: the validate verdict `mutants-seq`** (`lab/validate-mutants.nix`), deterministic:
   `nix build .#validate.x86_64-linux.verdicts.mutants-seq`. It applies each patch alone, builds the seq
   examples, and runs every program with `TRAME_SEQ_STEP_LIMIT=1000000` (a count of steps, so a looping
@@ -45,7 +45,7 @@ Two records and one quick loop.
   it does not seal the tree it ran.
 
 Both records judge a program the same way, the rule of `check/programs/run.sh`: a program with `<name>.panics`
-must exit non-zero with that line on stderr (`lab/programs.py`, `judge`, which `mutants.py` imports).
+must exit non-zero with that line on stderr (`lab/lib/judge.py`, which `lab/programs/run.py` and `lab/mutants/run.py` import).
 Without that rule every `abort` program would count as a kill on the unpatched build.
 
 A mutant with a `<id>.skip` file instead of a patch cannot be written as one (its body gives the reason).

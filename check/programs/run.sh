@@ -6,7 +6,7 @@
 # Prints "ok <backend> <h>h <program>" per run and stops at the first "FAIL ...", which check/mutants/mutate.sh
 # reads to name the program that killed a mutant. A host count the backend refuses (launch exits 2) is skipped.
 #
-# Judging, the same rule as lab/programs.py. A program with <name>.panics must end non-zero with that line on the
+# Judging, the same rule as lab/lib/judge.py. A program with <name>.panics must end non-zero with that line on the
 # stderr of some host; any other must exit 0. On one host its stdout must equal <name>.expected. On H hosts the
 # hosts' outputs in order must equal <name>.h<H>.expected when it exists; a program with an .h<K>.expected for
 # another K only is skipped; any other program's every host must equal <name>.expected.

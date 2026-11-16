@@ -9,7 +9,7 @@
 # placement: "same-host" (both workers on one trame host) or "cross-host" (the two on hosts of different machines).
 # A bound that is null is not set: the round trips are measured and no clause is claimed for it (the report says
 # "no bound"). No number has been measured on a reference deployment yet, so none is set here. To set one, measure
-# (nix run .#suite, nix build .#suite-report), read the quantile off the report, and write it here with the date.
+# (nix run .#suite, nix build .#latency), read the quantile off the report, and write it here with the date.
 { lib }:
 let
   sizes = [ 16 1024 65536 ]; # a subset of lab/bench/common.rs SIZES
