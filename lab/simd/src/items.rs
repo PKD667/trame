@@ -62,7 +62,7 @@ pub fn sum32(x: &Xi, slot: &mut f32, _cx: &()) {
     *slot = *slot + x.x;
 }
 
-/// Reduce shape, u64: the add aborts on overflow (spec.md: overflow aborts in every build).
+/// Reduce shape, u64: the add aborts on overflow (INTERFACE.md: overflow aborts in every build).
 #[trame::item(key = x.index as usize)]
 pub fn sum64(x: &Kv64, slot: &mut u64, _cx: &()) {
     *slot += x.v;

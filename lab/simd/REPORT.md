@@ -4,7 +4,7 @@ The prototype's report, written from a hand run on one node (section 1). The lab
 claims and figures, is `README.md`; the files are `src/` (items, lane kernels, `plan::classify`, the bench), `tests/`
 (exhaustive, props, alloc) and `results/` (the raw TSV of section 1).
 
-Question: can `parallel!` (spec.md 5.4) be lowered on CPU to explicit SIMD, forced by trame and not
+Question: can `parallel!` (INTERFACE.md 5.4) be lowered on CPU to explicit SIMD, forced by trame and not
 left to LLVM, with the semantics of 5.4 and results bit-identical to the scalar fold, and is it worth
 it? Short answer: yes for the map shape with contiguous keys, and for heavy bodies; no for
 reduce-by-key with a light body; no for gathers on this CPU. Numbers and provenance below.
@@ -20,7 +20,7 @@ no library file is changed. `trame` is a path dependency; the scalar reference i
 | machine | chiclet-5.lille.grid5000.fr (Grid'5000, Lille), AMD EPYC 7301 (Zen 1), 64 threads, max 2.2 GHz as `lscpu` reports; Linux 6.12.111+deb13-amd64 |
 | flags (lscpu) | avx avx2 fma bmi1 bmi2 f16c, no avx512; Zen 1 executes 256-bit ops as two 128-bit halves and has a slow `vpgather` |
 | toolchain | rustc 1.98.1 (48a229cea 2026-09-01), LLVM 21.1.8, cargo 1.98.0, from the repo's dev environment (`tdev`) |
-| profile | `--release`, `overflow-checks = true` (spec.md: overflow aborts in every build), opt-level 3 |
+| profile | `--release`, `overflow-checks = true` (INTERFACE.md: overflow aborts in every build), opt-level 3 |
 | pinning | `taskset -c 4`, one thread, node otherwise idle (exclusive OAR job) |
 | timing | each call on a fresh copy of the slots (the copy is not timed); 2 warm-up calls; median of 31 calls (items <= 1e5), 15 (<= 1e6), 11 (1e7); `Instant` |
 | result check | every row's result is compared bit for bit with the scalar result of the same input (`eq` column of `results/*.tsv`; 0 rows `DIFF` in both builds) |
@@ -191,19 +191,19 @@ lane operation:
 
 | scalar | lane | why it is exact |
 |---|---|---|
-| f32/f64 `+ - * /`, unary `-`, `abs`, `copysign` | `add/sub/mul/div`, xor sign, and-not sign | IEEE 754 round to nearest even in both; the MXCSR is the same register for SSE scalar and AVX, so denormal handling is the same (spec.md: no flush to zero) |
-| `a * b + c` | `mul` then `add` | Rust does not contract; spec.md forbids FMA contraction. `mul_add` is refused unless the lane op is a true fma (same result as the scalar one), and then only with the `fma` feature; not built |
+| f32/f64 `+ - * /`, unary `-`, `abs`, `copysign` | `add/sub/mul/div`, xor sign, and-not sign | IEEE 754 round to nearest even in both; the MXCSR is the same register for SSE scalar and AVX, so denormal handling is the same (INTERFACE.md: no flush to zero) |
+| `a * b + c` | `mul` then `add` | Rust does not contract; INTERFACE.md forbids FMA contraction. `mul_add` is refused unless the lane op is a true fma (same result as the scalar one), and then only with the `fma` feature; not built |
 | comparisons `< <= > >= == !=` on floats | `cmp_ps` with `_CMP_*_OQ` / `_UQ` chosen to match NaN behaviour (`!=` is unordered-true) | a mask, one per lane |
 | `if c { a } else { b }`, `a`/`b` pure expressions | `blendv(b, a, mask)` | both sides are computed; legal only if computing the untaken side cannot abort (see refused) |
 | integer `+ - *` that abort on overflow | add plus a sticky fault mask (`x + y` unsigned: `r < x`; signed: sign test) | a fault sends the window to the scalar item, which aborts with the scalar message; tested (u64) |
 | `as` between numeric types | exact conversions only: int widening, `f32 as f64`, int to float with the same rounding; `f32 as i32` with the saturating fix (`cvttps` returns `0x80000000` for NaN and out of range; Rust saturates, NaN is 0) | needs the fix-up select; not built |
 | `for i in 0..CONST`, array fields with constant index | unrolled; broadcast | the driver already requires counted loops in items |
-| `trame::math::f32::*`, `f64::*` | the same portable code over lane types | spec.md defines them as portable IEEE code with no backend-specific version, so the lane copy is the same arithmetic; `math::f32::exp` uses `as i32` and `from_bits`, so it needs the cast fix-up. Not built |
+| `trame::math::f32::*`, `f64::*` | the same portable code over lane types | INTERFACE.md defines them as portable IEEE code with no backend-specific version, so the lane copy is the same arithmetic; `math::f32::exp` uses `as i32` and `from_bits`, so it needs the cast fix-up. Not built |
 | reads of `item.field` (numeric fields), `cx.field`, `slot` scalar or numeric struct | load at `offset_of!`, broadcast, gather | see unsafe |
 
 Refused (the item stays scalar; no lowering):
 
-* `f32::min`/`max` (spec.md: the sign of a zero result is unspecified) and every function outside
+* `f32::min`/`max` (INTERFACE.md: the sign of a zero result is unspecified) and every function outside
   the spec's list that is not `trame::math`;
 * a branch whose untaken side can abort (checked arithmetic, indexing, division by an item-dependent
   value) unless the fault mask is masked by the select mask: allowed in principle, not built;
@@ -222,7 +222,7 @@ correct. Refusal is only reported where lowering was requested.
 How the refusal is reported. A lowered item is opt-in: `#[trame::item(key = e, lanes)]`. (That
 is a public attribute change; the task forbade changing the surface, so it is a proposal.) With `lanes`,
 the macro rewrites the body; a construct it cannot rewrite is a macro error at the construct's span
-(`lanes: "f32::max" has no lane form: spec.md 5.1 leaves the sign of a zero result unspecified`);
+(`lanes: "f32::max" has no lane form: INTERFACE.md 5.1 leaves the sign of a zero result unspecified`);
 a type that has no lane form (a field of `Option<_>`) is a rustc error from the lane trait bound.
 The driver already reads item MIR; it should additionally check that the lowered item reaches no
 call outside the lane list, which closes the gap that a macro cannot see through a helper function
@@ -240,7 +240,7 @@ check that makes it sound:
    only caller of the kernels; a test would be a kernel that is not reachable without it (not built).
 2. Loading `W` items by raw pointer: in bounds when `i + W <= items.len()`. Guard: the loop condition.
 3. Raw access to slots (`sp.add(key)`, vector load/store at `sp.add(k0)`, gather): in bounds when every
-   key `< slots.len()`. Guard: pass 1, which is spec.md 5.4's own check and runs before any item or
+   key `< slots.len()`. Guard: pass 1, which is INTERFACE.md 5.4's own check and runs before any item or
    store. A contiguous window's last slot is `k0 + W - 1`, and all W keys are below `n`, so it is in
    bounds too. Gather indices are signed 32-bit: `n <= i32::MAX` is a dispatch condition.
 4. Aliasing: `items: &[I]` and `slots: &mut [S]` cannot overlap (Rust's rule), and within a window the
@@ -268,7 +268,7 @@ kernel: one step per item. Both are instances.
 What the lemma does not cover, and what covers it instead:
 * that each lane operation computes the scalar operation (exact for IEEE add, mul, compare by the
   instruction definitions; checked here by 6000-case property tests on specials, not proved);
-* NaN: spec.md says results are bit-identical except the sign and payload of NaNs, which Rust
+* NaN: INTERFACE.md says results are bit-identical except the sign and payload of NaNs, which Rust
   leaves unspecified. The tests use that clause (`same()`), and count where the strict clause would
   fail: 0 (poly) to 2383 (sum32) slots over 6000 cases per kernel. Every one is NaN against NaN. I
   did not isolate the cause; a likely one is two NaNs of different payload meeting in an add, where x86

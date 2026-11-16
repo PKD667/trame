@@ -2,7 +2,7 @@
 name = "trame-simd-experiment"
 version = "0.0.0"
 edition = "2024"
-description = "Prototype: parallel! (spec.md 5.4) lowered to explicit AVX2 for hand-written lane versions of three item shapes. Not part of trame."
+description = "Prototype: parallel! (INTERFACE.md 5.4) lowered to explicit AVX2 for hand-written lane versions of three item shapes. Not part of trame."
 publish = false
 
 [dependencies]

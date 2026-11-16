@@ -1,6 +1,6 @@
 # simd
 
-Can `parallel!` (spec.md 5.4) be lowered on CPU to explicit SIMD with results bit-identical to the scalar fold, and does it pay?
+Can `parallel!` (INTERFACE.md 5.4) be lowered on CPU to explicit SIMD with results bit-identical to the scalar fold, and does it pay?
 The code is hand-written lane versions of five item bodies against the scalar reference `trame::__rt::parallel`. The prototype,
 its design, its checks and the numbers of one hand run are in `REPORT.md`. This experiment re-measures the benchmark through
 the lab, one run per CPU type.
