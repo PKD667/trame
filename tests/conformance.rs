@@ -292,7 +292,10 @@ fn s0(hot: &mut u64, n0: &mut u64) -> Status {
 }
 
 #[test]
-#[cfg_attr(miri, ignore = "a statistic over 200 ms of steps: Miri's clock is not the steps' speed, so the count of steps is not comparable")]
+#[cfg_attr(
+    miri,
+    ignore = "a statistic over 200 ms of steps: Miri's clock is not the steps' speed, so the count of steps is not comparable"
+)]
 fn shares_follow_weights() {
     let mut t = Topology::new();
     let w = t.worker();

@@ -47,7 +47,10 @@ fn wait_after_every_worker_returned_panics() {
 /// A worker waits for a write to a field that no step of its worker writes, and the other worker
 /// has returned: nothing can move.
 #[test]
-#[cfg_attr(miri, ignore = "the run is dropped with a worker stuck, so its thread outlives the test; Miri refuses a main thread that ends first")]
+#[cfg_attr(
+    miri,
+    ignore = "the run is dropped with a worker stuck, so its thread outlives the test; Miri refuses a main thread that ends first"
+)]
 fn wait_with_a_worker_that_waits_for_a_write_nothing_makes_panics() {
     within_10s(|| {
         let mut g = Topology::new();

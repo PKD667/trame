@@ -389,9 +389,10 @@ impl<S: State> Erased for Core<S> {
         static UNIT: () = ();
         let pool: *const S::Pool = match pool {
             Some(p) => p.downcast_ref::<PoolCore<S::Pool>>().expect("trame: the launch checked the pool's type").ptr(),
-            None => (&UNIT as &dyn Any)
-                .downcast_ref::<S::Pool>()
-                .expect("trame: a worker without a pool has Pool = ()") as *const S::Pool,
+            None => {
+                (&UNIT as &dyn Any).downcast_ref::<S::Pool>().expect("trame: a worker without a pool has Pool = ()")
+                    as *const S::Pool
+            }
         };
         #[cfg(debug_assertions)]
         self.hold(i, true);

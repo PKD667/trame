@@ -72,7 +72,10 @@ fn parallel_equals_the_reference_fold_on_1000_random_inputs() {
         assert_eq!(got, want, "case {case}: {n_items} items, {n_slots} slots");
         total_items += n_items;
     }
-    assert!(total_items > if cfg!(miri) { 200 } else { 10_000 }, "the cases exercised repeated keys: {total_items} items");
+    assert!(
+        total_items > if cfg!(miri) { 200 } else { 10_000 },
+        "the cases exercised repeated keys: {total_items} items"
+    );
 }
 
 #[test]

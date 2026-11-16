@@ -572,7 +572,10 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore = "50 000 starts to resolve a share to 0.001: hours under Miri, and it reads no memory the other sched tests do not")]
+    #[cfg_attr(
+        miri,
+        ignore = "50 000 starts to resolve a share to 0.001: hours under Miri, and it reads no memory the other sched tests do not"
+    )]
     fn contested_shares_follow_weights() {
         for (a, b) in [(1.0, 1.0), (1.0, 0.5), (1.0, 0.25), (0.5, 0.1), (0.2, 0.8)] {
             let got = shares(&[(0, 1, Weight::from_f64(a)), (0, 1, Weight::from_f64(b))], 10_000);

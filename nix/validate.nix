@@ -115,6 +115,7 @@ let
       # The tests that launched no topology ran once, on the probe: their launch is not checked. Their names are the gap's
       # reason, so that a reader can see which tests those are (nixsci validate allows no other key in outcome.json).
       named=$(paste -sd' ' "$TMPDIR/plain.txt")
+      [ -n "$named" ] || named="none: every test launched a topology"
       printf '{"holds":%s,"gaps":[{"id":"doctests","why":"doctests are not run"},{"id":"no-topology","why":"%s"}],"counterexamples":[%s]}\n' "$holds" "$named" "''${items%,}" > $out/outcome.json
     '';
   };
