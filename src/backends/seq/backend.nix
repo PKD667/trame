@@ -17,6 +17,4 @@
   exclude = [ ];
   # Its own validate verdicts, beyond the generic ones (validate.nix): the step-limited mutants. Called with what lab/validate.nix passes.
   validate = args: import ./validate.nix args;
-  # Its own lab experiments, beyond the generic ones (lab/checks.nix, lab/perf.nix): none.
-  experiments = _: [ ];
 }

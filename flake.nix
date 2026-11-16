@@ -29,30 +29,25 @@
       cli = import ./nix/cli.nix { inherit pkgs build; inherit (tc) driverToolchain trameDriver; };
     in {
       validate.${system} = verdicts.suite;
-      checks.${system} = verdicts.checks;
+      checks.${system} = verdicts.checks // { lab-contract = lab.contract; lab-python = lab.python; };
       packages.${system} = {
         trame = cli;
         trame-driver = tc.trameDriver;
-        trame-simd-bench = lab.simd.bin;
-      } // lib.concatMapAttrs (n: b: {
+      } // lab.packages // lib.concatMapAttrs (n: b: {
         "trame-${n}-bins" = b.bins;
         "launch-${n}" = b.launch;
       }) build.backends;
       # An analysis is a derivation over runs in lab.lock, which a fresh clone may not have, and `nix flake check`
-      # evaluates packages: so the report is not under `packages` (nixsci's convention).
-      legacyPackages.${system} = {
-        suite-report = lab.suite.report;
-        suite-report-draft = lab.suite.reportDraft;
-        simd-analysis = lab.simd.analysis;
-        simd-figures = lab.simd.figures;
-      };
+      # evaluates packages: so the analyses are not under `packages` (nixsci's convention). One per experiment, named
+      # for it, and `report` over all of them; `draft.<name>` takes the runs that exist.
+      legacyPackages.${system} = lab.analyses // { draft = lab.drafts; };
       lab.${system} = {
-        inherit (lab) experiments;
+        experiments = lab.runs;
         # The suite's jobs per backend: experiment, kind, machines of a job, and its jobs (sweep x seeds x replicates).
         suiteMatrix = lab.suite.matrix;
       };
       deployments.${system} = shells.deployments;
-      apps.${system} = builtins.mapAttrs (_: e: e.run) lab.experiments // {
+      apps.${system} = builtins.mapAttrs (_: e: e.run) lab.runs // {
         trame = { type = "app"; program = "${cli}/bin/trame"; };
         # Every experiment of the suite, for every backend (nix/lab/suite.nix), one after another.
         suite = lab.suite.app;

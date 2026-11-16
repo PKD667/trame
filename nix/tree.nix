@@ -12,6 +12,18 @@ let
   # What a descriptor excludes from the sources (paths under its directory).
   excluded = lib.concatMap (n: map (e: lib.fileset.maybeMissing (backendDir + "/${n}/${e}")) descriptors.${n}.exclude) backendNames;
 
+  # The lab of a backend (src/backends/<b>/lab/): runners, analyses, crates of their own. Not read by the root build,
+  # except the C files its descriptor compiles in `postInstall`.
+  labDirs = map (n: lib.fileset.maybeMissing (backendDir + "/${n}/lab")) backendNames;
+  # What the root build reads of the backends: Rust and Cargo files, and the C files of the labs. Not *.nix, *.md, python,
+  # launch or the mutant patches (the mutant farm reads those by path), so that editing any of them leaves the
+  # derivations of `packages.*-bins` and the run identities in lab.lock as they were.
+  backendFiles = lib.fileset.unions [
+    (lib.fileset.difference (lib.fileset.fileFilter (f: f.hasExt "rs" || f.name == "Cargo.toml" || f.name == "Cargo.lock") backendDir)
+      (lib.fileset.unions (excluded ++ labDirs)))
+    (lib.fileset.intersection (lib.fileset.unions labDirs) (lib.fileset.fileFilter (f: f.hasExt "c" || f.hasExt "h") backendDir))
+  ];
+
   # The root crate and what its builds read: never crates/driver/ or target/, and not what a descriptor excludes.
   trameFiles = lib.fileset.unions ([
       ../Cargo.toml
@@ -23,9 +35,9 @@ let
       ../src/parallel
       ../check/programs
       ../tests
-      ../lab/bench
+      (lib.fileset.fileFilter (f: f.hasExt "rs") ../lab/bench)
       ../examples
-      (lib.fileset.difference backendDir (lib.fileset.unions excluded))
+      backendFiles
     ] ++ map (n: ../src + "/${n}") (
       builtins.filter (n: lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ../src))
     ));

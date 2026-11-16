@@ -28,9 +28,9 @@ non-zero with that line on stderr), or it times out (a hang counts as a kill).
 Two records and one quick loop. Which record a backend has depends on whether its runs are a function of the program
 (`deterministic` in its `backend.nix`, `src/backends/README.md`).
 
-- **A multi-process backend: the lab experiment `mutants-<b>`** (`lab/`, experiment `mutants`). Nix builds each mutant
+- **A multi-process backend: the lab experiment `mutants-<b>`** (`lab/mutants/`). Nix builds each mutant
   with its patch applied, and a job runs the program set against one mutant. Run it with `nix run .#mutants-<b>`, and
-  commit `lab.lock`. Its dataset `kill` holds one row per program.
+  commit `lab.lock`. Its dataset `kill` holds one row per program; `lab/mutants/README.md` says what is judged.
 - **A deterministic backend: the validate verdict `mutants-<b>`** (`nix/validate.nix`, the backend's `validate.nix`):
   `nix build .#validate.x86_64-linux.verdicts.mutants-<b>`. It applies each patch alone, builds the examples, and runs
   every program under the backend's step limit (a count of steps, so a looping mutant is killed by its count, and the
@@ -45,7 +45,7 @@ Two records and one quick loop. Which record a backend has depends on whether it
   it does not seal the tree it ran.
 
 Both records judge a program the same way, the rule of `check/programs/run.sh`: a program with `<name>.panics`
-must exit non-zero with that line on stderr (the `programs` experiment's `judge`, which the `mutants` runner imports).
+must exit non-zero with that line on stderr (`lab/lib/judge.py`, which `lab/programs/run.py` and `lab/mutants/run.py` import).
 Without that rule every `abort` program would count as a kill on the unpatched build.
 
 A mutant with a `<id>.skip` file instead of a patch cannot be written as one (its body gives the reason).

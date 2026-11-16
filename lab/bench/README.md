@@ -3,8 +3,8 @@
 Five trame programs and three baselines. The trame programs are examples `bench_round`, `bench_flow`,
 `bench_idle`, `bench_fanin` and `bench_graph` (Cargo.toml). The baselines are written against a messaging
 library, not against trame: `barrier.c`, `flow.c` (the ring) and `graph.c`, in the multi-process backend's
-`bench/` directory (`src/backends/README.md`, Benchmarks). The lab experiments `scale-local` and `scale-nN` run
-them (flake.nix, `lab/perf.py`): `nix run .#scale-local`.
+`lab/baselines/` (its README). The experiments `round`, `flow`, `idle`, `fanin`, `graph`, `step` and
+`latency` (`lab/<name>/README.md`) run them: `nix run .#round-<backend>-s1`.
 
 Every trame worker times itself on its own clock and sends one report to the leader. The leader prints
 one JSON line per worker, then an outcomes line. Durations are never compared across workers, since
@@ -46,40 +46,15 @@ Two measurement caveats are part of the design:
 - The ring baseline runs one barrier before its timed steps, and the trame ring does not.
   The two rings therefore start their clocks differently.
 
-## What each benchmark can support
-
-- **Weak scaling** (round, ring, fanin): per-worker time stays flat as W grows, with the work per
-  worker fixed. Flat per-worker time is the claim that the runtime adds no cost that grows with W.
-  *Refuted by*: per-worker time that rises steadily with W on an otherwise idle machine, at one node.
-- **Round**: cost grows with W and with the number of nodes, since every round goes through one leader.
-  Only one node is measured here, so the claim is about the one-node path. *Refuted by*: a per-round
-  cost that grows faster than linearly in W at fixed load. No claim is made against the barrier baseline: a
-  round through the leader does more work than a barrier (see above), and its time is reported next to it.
-- **Ring vs. baseline**: trame's ring is no slower than the baseline ring at the same W and SIZE.
-  *Refuted by*: a trame ring median that is consistently above the baseline's, with both runs at
-  low load. The trame ring also pays for its checked build (`--cfg trame_checked`), which the baseline
-  does not.
-- **Idle**: a waiting worker costs almost no CPU, so CPU seconds per idle worker is near zero. A
-  rank also pays for the messaging library's startup and finalization, so a control run with SECONDS=0 is
-  needed to read the wait cost off the total. *Refuted by*: CPU seconds that grow with SECONDS, rather than
-  staying at the SECONDS=0 level. With nodes > 1, the relay (one core per node) is expected to be the only
-  steady CPU cost. The single-node matrix cannot show it.
-- **Fanin**: the leader is a single sink, so its receive rate sets a ceiling on the total message
-  rate. The claim is the ceiling, not the leader's latency. *Refuted by*: a leader time that grows
-  faster than the number of messages it receives, at fixed load.
-
 ## What the numbers cannot show
 
-- Load. Another session's jobs share the machine in our runs. Repeated runs of one configuration
-  can differ widely (no run in the tree measures how widely), so a single run supports no scaling claim. Each job records
-  `/proc/loadavg` at its start (the `*_config` dataset, source `loadavg`). Read it before reading a number.
-- Nodes. `scale-local` is one node. `scale-nN` (N nodes) is defined in flake.nix, but no locked run is
-  quoted here. The round and idle claims are about the one-node path until those runs exist.
-- Oversubscription. The runner passes `--oversubscribe`, so it would let ranks share fewer cores than
-  they have. The graph sweep avoids this by its `fill` rule: workers per node are the physical cores less
-  two (`full`) or half of them (`half`), so the ranks of a job do not exceed the physical cores. The
-  other benches do not have that rule.
-- Degree. The graph claims use DEGREE 8, which needs W >= 9. With `fill=half` on a 6-core host there
-  are 3 workers per node, so the graph jobs of small N record nothing (see Graph above).
-- The reference backend. Its timings are scheduler timings and are not comparable with a multi-process
-  backend's timings.
+The claims each benchmark can support, with their thresholds, are in the experiment's README; this is what no run here shows.
+
+- Load. Another session's jobs share the machine. Repeated runs of one configuration can differ widely (no run in the tree
+  measures how widely), so a single run supports no scaling claim. Each job records `/proc/loadavg` at its start (the `*_config`
+  dataset, source `loadavg`).
+- Nodes beyond those run. The round and idle claims about the one-node path say nothing about N nodes until those runs exist.
+- Oversubscription. The launch may start more workers than cores (`per` is set by hand in each experiment and not checked
+  against the machine), and ranks then share cores. Read the `cpu` dataset before reading a timing.
+- Degree. The graph benchmark uses DEGREE 8, which needs W >= 9: a job with fewer workers records nothing.
+- The reference backend. Its timings are scheduler timings and are not comparable with a multi-process backend's.

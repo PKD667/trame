@@ -14,7 +14,7 @@ build_or_die() {
   grep -v 'Git tree' <<<"$out" >&2 || true
 }
 build_or_die --no-default-features --features mpi --bins
-# The checks run in the debug build with overflow checks on. Latency is lab/bench/ping.rs's (the `latency` experiment).
+# The checks run in the debug build with overflow checks on. Latency is lab/bench/ping.rs's (`lab/latency/`).
 B="$CARGO_TARGET_DIR/debug"
 OUT="${OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"

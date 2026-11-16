@@ -198,7 +198,6 @@ following fields.
 | `cargoTests` | whether the root crate's cargo tests run on it | true | false |
 | `bins` | extra binaries built from the backend's own sources | none | `check`, `latency` |
 | `postInstall` | shell run after the build | none | builds the plain-MPI baselines |
-| `experiments` | the backend's own lab experiments, as a function of its arguments | none | `experiments.nix` |
 
 `deterministic = true` makes the backend's programs and mutants validate verdicts, which are derivations.
 Otherwise they are lab experiments, which run real processes.
@@ -217,7 +216,7 @@ This section lists those.
 **seq.** The launch tests in `src/backends/seq/tests_launch.rs`, and `launch::build_all` for L3. The exact replay
 of S2. The mutant that forgets deadlines is killed by the outcome check (S3). The domain is the heap (M1), and
 the workers run only inside the leader's calls on the run (M7). The validate verdicts `programs-seq`,
-`tests-seq` and `mutants-seq` are listed in `lab/README.md`.
+`tests-seq` and `mutants-seq` are listed in `nix/validate.nix`.
 
 **mpi, launch and refusal.** Every refusal is decided by a collective reduction, and `agree` in
 `src/backends/mpi/open.rs` decides L2. `imp.rs` builds the plan (L3).
@@ -242,37 +241,23 @@ object, and it assumes atomics in such a mapping order memory across processes a
 
 ## Lab experiments by backend
 
-The lab names its experiments after the backend they run. Each name is a flake attribute: an app (`nix run
-.#<name>`) or a check (a validate verdict). The names below are from `nix eval --json .#apps.x86_64-linux --apply
-builtins.attrNames` and `nix eval --json .#checks.x86_64-linux --apply builtins.attrNames` at this commit.
+An experiment is a directory (`lab/README.md`): `lab/<name>/` for every backend, `src/backends/<b>/lab/<name>/` for one
+backend's own. Run names are `<kind>-<backend>-s<span>` (`programs-<b>` on one local host); the list is
+`nix eval --json .#apps.x86_64-linux --apply builtins.attrNames`. A backend's own experiments here:
 
-| experiment | seq | mpi |
-|---|---|---|
-| programs | `programs-seq`, `programs-seq-s1` | `programs-mpi`, `programs-mpi-s1`, `programs-mpi-s2`, `programs-mpi-s4` |
-| transport | none | `transport-mpi` |
-| mutants | check `mutants-seq` | app `mutants-mpi` |
-| fanin | `fanin-seq-s1` | `fanin-mpi-s1`, `fanin-mpi-s2` |
-| flow-agg | `flow-agg-seq-s1` | `flow-agg-mpi-s1`, `flow-agg-mpi-s2`, `flow-agg-mpi-s4` |
-| flow-bw | `flow-bw-seq-s1` | `flow-bw-mpi-s1`, `flow-bw-mpi-s2` |
-| graph | `graph-seq-s1` | `graph-mpi-s1`, `graph-mpi-s2`, `graph-mpi-s4` |
-| idle | `idle-seq-s1` | `idle-mpi-s1` |
-| latency | `latency-seq-s1` | `latency-mpi-s1`, `latency-mpi-s2` |
-| round | `round-seq-s1` | `round-mpi-s1`, `round-mpi-s2`, `round-mpi-s4` |
-| step | `step-seq-s1` | `step-mpi-s1` |
-| baselines | none | `baseline-flow-agg-mpi-s1`, `-s2`, `-s4`; `baseline-flow-bw-mpi-s1`, `-s2`; `baseline-graph-mpi-s1`; `baseline-osu-bw-mpi-s1`, `-s2`; `baseline-osu-latency-mpi-s1`, `-s2`; `baseline-round-mpi-s1` |
-| checks | `programs-seq`, `tests-seq`, `rejections-seq`, `mutants-seq` | `tests-mpi`, `rejections-mpi`, `protocol-mpi` |
+| backend | experiments |
+|---|---|
+| seq | none |
+| mpi | `transport` (`transport-mpi`), `xhost` (`mpi-cross-host`, `mpi-cross-host-opa`), `baselines` (`baseline-<family>-mpi-s<N>`) |
 
-`programs-<b>` with no span runs on one local host. `-s<N>` runs on N machines (`lab/checks.nix`, `lab/perf.nix`).
-
-The latency experiment and the suite run for every backend, and they need no entry here: `lab/README.md`
-(Experiments and datasets, Suite and report) describes them.
+Verdicts of a deterministic backend (`programs-<b>`, `tests-<b>`, `rejections-<b>`, `mutants-<b>`) are in `nix/validate.nix`.
 
 ## Benchmarks
 
-The scale experiments run the programs of `lab/bench/` and their baselines. The multi-process backend keeps its
-baselines in `src/backends/mpi/bench/`: `barrier.c`, `flow.c` and `graph.c`. The baselines are not trame: they
-measure what the same communication costs when written against the messaging library directly. The claims the scale experiments test, and what the numbers cannot show, are
-in `lab/bench/README.md` and `lab/README.md`.
+The benchmarks are the programs of `lab/bench/` (`lab/bench/README.md`), run by the experiments `round`, `flow`, `idle`, `fanin`,
+`graph`, `step` and `latency`. A backend may add plain-library baselines of them in its `lab/baselines/`: the multi-process
+backend's are `barrier.c`, `flow.c` and `graph.c`. They are not trame: they measure what the same communication costs
+written against the messaging library directly. The claims are in each experiment's README.
 
 A timing from the reference backend is a scheduler timing, not a host timing, so it is not comparable with a
 timing from a multi-process backend.

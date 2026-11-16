@@ -185,7 +185,7 @@ stops.
 - `check/programs/`: shared programs with their expected output, run by `check/programs/run.sh`.
 - `check/proofs/`: the TLA+ models of some backends' protocols.
 - `check/rejections/`: cases the compile-time checks must refuse or accept.
-- `lab/bench/`: scaling benchmarks and their baselines (`src/backends/README.md`, Benchmarks).
+- `lab/`: the experiments, one directory each (`lab/README.md`); `lab/bench/`: the benchmark programs.
 - `tests/`: crate tests for allocation, `parallel!`, conformance, and this README's example.
 - `examples/`: the example in this README.
 - Top level: `INTERFACE.md` (the behaviour), `CONTRACT.md` (what a backend keeps), `PROOFS.md` (how that is

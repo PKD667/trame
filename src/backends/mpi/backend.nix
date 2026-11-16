@@ -18,16 +18,14 @@ in
   cargoTests = false;
   # The transport's own checks, below the interface (tests/).
   bins = [ "check" ];
-  # The plain-MPI baselines of the lab's benchmarks (bench/).
+  # The plain-MPI baselines of the lab's benchmarks (lab/baselines/).
   postInstall = ''
-    mpicc -O2 -o $out/bin/mpi_barrier src/backends/mpi/bench/barrier.c
-    mpicc -O2 -o $out/bin/mpi_flow src/backends/mpi/bench/flow.c
-    mpicc -O2 -o $out/bin/mpi_graph src/backends/mpi/bench/graph.c
+    mpicc -O2 -o $out/bin/mpi_barrier src/backends/mpi/lab/baselines/barrier.c
+    mpicc -O2 -o $out/bin/mpi_flow src/backends/mpi/lab/baselines/flow.c
+    mpicc -O2 -o $out/bin/mpi_graph src/backends/mpi/lab/baselines/graph.c
   '';
   # mpi-rma/: a crate of its own (a submodule: typed one-sided communication over rsmpi), not part of any build here.
   exclude = [ "mpi-rma" ];
   # The wait protocols, model-checked (validate.nix).
   validate = args: import ./validate.nix args;
-  # This backend's own experiments: the transport checks and the baselines (experiments.nix).
-  experiments = args: import ./experiments.nix ({ inherit pkgs; } // args);
 }
