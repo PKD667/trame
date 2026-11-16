@@ -18,7 +18,8 @@ giving that job to one worker would make that worker special. The leader runs no
 | `roles/` | worker, leader, results and aborts, the deadlock detector | `roles/README.md` |
 | `tests/` | the transport's own checks, run under `mpirun` | `tests/README.md` |
 | `mutants/` | patches against these files, run by the lab | `check/mutants/README.md` |
-| `bench/`, `experiments.nix`, `validate.nix` | baselines, lab experiments, the TLC check | `lab/README.md` |
+| `lab/` | the backend's own experiments (transport, xhost, plain-MPI baselines), a directory each | `lab/*/README.md`; the contract is `lab/README.md` at the root |
+| `validate.nix` | the TLC check (`protocol-mpi`) | `check/proofs/README.md` |
 | `mpi-rma/` | a submodule: a crate of its own, not built here | its own README |
 | `launch` | the launcher every backend provides | `src/backends/README.md`, Launch |
 

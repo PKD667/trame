@@ -155,7 +155,7 @@ across two, at several message sizes. Round trips in one run are autocorrelated,
 the test counts runs, not round trips. A claim is a proportion: the fraction of round trips over the p99 bound
 is below 0.01, judged with `nixsci.stats` over the runs.
 
-The bounds are the Q clauses of the backend contract, set per placement and size in `lab/q.nix` for a named
+The bounds are the Q clauses of the backend contract, set per placement and size in `lab/latency/q.nix` for a named
 reference deployment. A bound that is still null is stated as absent: the experiment measures that placement and
 size, and no claim is judged on it.
 
