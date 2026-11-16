@@ -5,8 +5,7 @@ target/
 result
 result-*
 
-# Output of src/backends/mpi/tests/progress/run.sh
-/src/backends/mpi/tests/progress/out/
+# Backend scratch output: see src/backends/<b>/.gitignore
 
 # Scratch crates of crates/driver/fuzz/run.sh
 /crates/driver/fuzz/work/

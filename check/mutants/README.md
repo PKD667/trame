@@ -14,7 +14,7 @@ non-zero with that line on stderr), or it times out (a hang counts as a kill).
 ## Mutants
 
 - A mutant is one patch, `mutants/<backend>/<id>.patch`, applied with `git apply` to the working tree.
-- Each backend has its own mutants (seq and mpi are independent implementations). Where the code is shared
+- Each backend has its own mutants (backends are independent implementations). Where the code is shared
   (`sched.rs`, `concurrent.rs`, `io.rs`, `launch.rs`, `cells.rs`, `run.rs`), the same patch is kept under both
   backends and run once per backend. The kill is then a property of the shared code as the backend runs it,
   so both copies carry the same `# expect:` meaning.
@@ -25,19 +25,19 @@ non-zero with that line on stderr), or it times out (a hang counts as a kill).
 
 ## Runner
 
-Two records and one quick loop.
+Two records and one quick loop. Which record a backend has depends on whether its runs are a function of the program
+(`deterministic` in its `backend.nix`, `src/backends/README.md`).
 
-- **mpi: the lab experiment `mutants-mpi`** (`lab/checks.nix`, runner `lab/mutants.py`). Nix
-  builds each mutant with its patch applied, and a job runs the program set against one mutant. Run it with
-  `nix run .#mutants-mpi`, and commit `lab.lock`. Its dataset `kill` holds one row per program. No analysis
-  judges it yet (lab/README.md, "Claims"): read the rows.
-- **seq: the validate verdict `mutants-seq`** (`lab/validate-mutants.nix`), deterministic:
-  `nix build .#validate.x86_64-linux.verdicts.mutants-seq`. It applies each patch alone, builds the seq
-  examples, and runs every program with `TRAME_SEQ_STEP_LIMIT=1000000` (a count of steps, so a looping
-  mutant is killed by its count, and the run also has a 60 s guard). It holds when every `killed` mutant fails a
-  program and every `equivalent` one passes all. A patch that does not apply is a counterexample, not a skip.
-  Its verdict lists the mutants that contradict their headers in `outcome.json`. Read it there, not here.
-- **`check/mutants/mutate.sh [seq|mpi|both] [regex]`**: the quick local loop, not the record. It copies the
+- **A multi-process backend: the lab experiment `mutants-<b>`** (`lab/`, experiment `mutants`). Nix builds each mutant
+  with its patch applied, and a job runs the program set against one mutant. Run it with `nix run .#mutants-<b>`, and
+  commit `lab.lock`. Its dataset `kill` holds one row per program.
+- **A deterministic backend: the validate verdict `mutants-<b>`** (`nix/validate.nix`, the backend's `validate.nix`):
+  `nix build .#validate.x86_64-linux.verdicts.mutants-<b>`. It applies each patch alone, builds the examples, and runs
+  every program under the backend's step limit (a count of steps, so a looping mutant is killed by its count, and the
+  run also has a 60 s guard). It holds when every `killed` mutant fails a program and every `equivalent` one passes all.
+  A patch that does not apply is a counterexample, not a skip. Its verdict lists the mutants that contradict their
+  headers in `outcome.json`. Read it there, not here.
+- **`check/mutants/mutate.sh [<backend>|all] [regex]`**: the quick local loop, not the record. It copies the
   working tree into `/tmp/trame-mutate/<backend>` (or `$TRAME_MUTATE_DIR/<backend>`), kept with its `target/`
   between runs, so builds are incremental. For each patch it restores the copy, applies the patch, builds,
   runs `check/programs/run.sh <backend>` and records the first failing program. It prints a table and exits
@@ -45,7 +45,7 @@ Two records and one quick loop.
   it does not seal the tree it ran.
 
 Both records judge a program the same way, the rule of `check/programs/run.sh`: a program with `<name>.panics`
-must exit non-zero with that line on stderr (`lab/programs.py`, `judge`, which `mutants.py` imports).
+must exit non-zero with that line on stderr (the `programs` experiment's `judge`, which the `mutants` runner imports).
 Without that rule every `abort` program would count as a kill on the unpatched build.
 
 A mutant with a `<id>.skip` file instead of a patch cannot be written as one (its body gives the reason).
@@ -73,7 +73,7 @@ is. The header of each such mutant says what it changes beyond output.
 | m02 | a route is full at `cap - 1` | Full |
 | m03 | a lossy route keeps the oldest frame | Overwrite |
 | m04 | `recv` takes the newest frame of a route | Offers, Recv |
-| m05 | `recv` ignores the message type (seq) or takes the first inbox type as the leader's owned type (mpi) | Ownership |
+| m05 | `recv` ignores the message type, or takes the first inbox type as the leader's owned type | Ownership |
 | m06 | a frame arrival does not wake its receiver | Progress |
 | m07 | the frame condition holds for any queued frame | Enabled |
 | m08 | `until` holds at once | Status (until) |
@@ -85,7 +85,7 @@ is. The header of each such mutant says what it changes beyond output.
 | m14 | a publication is never installed | Publish |
 | m15 | a barrier answers the old publication to worker 0 | Barrier (one Pub for all) |
 | m16 | a returned worker does not release barrier waiters | Deadlock, Join |
-| m17 | `join` reports `Deadlock` for a worker waiting on a deadline (seq); skipped on mpi, which reports no Deadlock for an idle worker | Deadlock |
+| m17 | `join` reports `Deadlock` for a worker waiting on a deadline (skipped where the backend reports no Deadlock for an idle worker) | Deadlock |
 | m18 | a panic does not end the run: the panicking worker counts as returned, the others go on, and the leader does not panic | Abort |
 | m19 | a duplicate route is accepted | Launch checks |
 | m20 | a route of capacity 0 is accepted | Launch checks |
