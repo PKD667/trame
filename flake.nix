@@ -29,7 +29,11 @@
       cli = import ./nix/cli.nix { inherit pkgs build; inherit (tc) driverToolchain trameDriver; };
     in {
       validate.${system} = verdicts.suite;
-      checks.${system} = verdicts.checks // { lab-contract = lab.contract; lab-python = lab.python; };
+      checks.${system} = verdicts.checks // {
+        lab-contract = lab.contract;
+        lab-python = lab.python;
+        no-backend-names = import ./nix/names.nix { inherit pkgs self; inherit (tree) backendNames; };
+      };
       packages.${system} = {
         trame = cli;
         trame-driver = tc.trameDriver;

@@ -3,7 +3,7 @@
 A backend runs a launched topology. It implements the trait `Backend` in `backend.rs`, the one seam
 between the surface and the hardware, and it keeps the clauses of `CONTRACT.md`. This file is the only
 place in the repository that describes the backends one by one. Everything outside `src/backends/` is
-written so that it holds for any backend.
+written so that it holds for any backend. The flake check `no-backend-names` (`nix/names.nix`) fails on a backend name outside it.
 
 A build selects one backend by a cargo feature. The features are exclusive, and a build with none of
 them refuses every launch. There is no default feature: every cargo command names one.
