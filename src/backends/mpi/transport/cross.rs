@@ -52,9 +52,9 @@ use mpi::traits::*;
 use crate::launch::{Plan, Refused};
 use crate::topology::{End, HERE};
 
-use crate::backends::mpi::hosts::host;
 use crate::backends::mpi::memory::layout::{Layout, RouteLayout};
 use crate::backends::mpi::memory::shm::Window;
+use crate::backends::mpi::transport::hosts::host;
 use crate::backends::mpi::types::Answer;
 
 fn ok(rc: i32, what: &str) {
@@ -118,7 +118,7 @@ impl Count {
 }
 
 /// The sending end of a lane.
-pub(super) struct Out {
+pub(crate) struct Out {
     comm: ffi::MPI_Comm,
     peer: i32,
     lane: i32,
@@ -142,7 +142,7 @@ pub(super) struct Out {
 }
 
 /// The receiving end of a lane.
-pub(super) struct In {
+pub(crate) struct In {
     comm: ffi::MPI_Comm,
     peer: i32,
     lane: i32,
@@ -163,14 +163,14 @@ pub(super) struct In {
     got: Count,
 }
 
-pub(super) enum Lane {
+pub(crate) enum Lane {
     Out(Out),
     In(In),
 }
 
 /// The lanes of the endpoint of rank `me`, by route: one per route between hosts that it sends or
 /// receives. Posts the receives. Allocates: called at launch, before any step.
-pub(super) fn lanes(lay: &Layout, me: u32, win: &Window) -> Vec<Option<Lane>> {
+pub(crate) fn lanes(lay: &Layout, me: u32, win: &Window) -> Vec<Option<Lane>> {
     let mut out = Vec::with_capacity(lay.routes.len());
     for r in &lay.routes {
         out.push(r.remote.filter(|_| r.sent_by(me) || r.received_by(me)).map(|x| lane(r, x, win)));
@@ -237,7 +237,7 @@ impl Out {
     }
 
     /// Take every credit that has arrived. Answers whether room grew.
-    pub(super) fn poll(&mut self) -> bool {
+    pub(crate) fn poll(&mut self) -> bool {
         let mut grew = false;
         while test(&mut self.credit_req) {
             self.got.add();
@@ -268,13 +268,13 @@ impl Out {
     }
 
     /// Frames sent, and the largest credit received.
-    pub(super) fn counts(&self) -> (u64, u64) {
+    pub(crate) fn counts(&self) -> (u64, u64) {
         (self.p, self.c)
     }
 
     /// Send `msg`. Answers Full only on a lossless lane with `cap` frames uncredited; the second
     /// value says whether room grew meanwhile (a credit arrived).
-    pub(super) fn send(&mut self, msg: &[u8]) -> (Answer, bool) {
+    pub(crate) fn send(&mut self, msg: &[u8]) -> (Answer, bool) {
         let grew = self.poll();
         if self.p - self.c < self.cap {
             self.put(msg);
@@ -291,7 +291,7 @@ impl Out {
     }
 
     /// Whether a send would find room; the second value as `send`'s.
-    pub(super) fn room(&mut self) -> (bool, bool) {
+    pub(crate) fn room(&mut self) -> (bool, bool) {
         let grew = self.poll();
         (self.lossy || self.p - self.c < self.cap, grew)
     }
@@ -331,12 +331,12 @@ impl In {
     }
 
     /// Frames consumed: the index of the head.
-    pub(super) fn consumed(&self) -> u64 {
+    pub(crate) fn consumed(&self) -> u64 {
         self.c
     }
 
     /// Whether frame C has arrived; the second value says whether it arrived just now.
-    pub(super) fn head(&mut self) -> (bool, bool) {
+    pub(crate) fn head(&mut self) -> (bool, bool) {
         self.credit();
         let s = (self.c % self.cap) as usize;
         if self.arrived[s] {
@@ -365,7 +365,7 @@ impl In {
 
     /// Take frame C into `out` if it has arrived: its buffer gets the receive of frame C + cap, and a
     /// credit goes back. The second value as `head`'s.
-    pub(super) fn take(&mut self, out: &mut [u8]) -> (Option<u64>, bool) {
+    pub(crate) fn take(&mut self, out: &mut [u8]) -> (Option<u64>, bool) {
         let (here, now) = self.head();
         if !here {
             return (None, now);
@@ -403,7 +403,7 @@ impl In {
 
 impl Lane {
     /// Progress: take credits, test the head. Answers whether anything arrived.
-    pub(super) fn poll(&mut self) -> bool {
+    pub(crate) fn poll(&mut self) -> bool {
         match self {
             Lane::Out(o) => o.poll(),
             Lane::In(i) => {
@@ -429,7 +429,7 @@ impl Lane {
 }
 
 /// Before MPI_Finalize, on every rank of the world (see the module comment). `lanes` are this rank's.
-pub(super) fn quiesce(lanes: &mut [Option<Lane>]) {
+pub(crate) fn quiesce(lanes: &mut [Option<Lane>]) {
     let idle = || std::thread::sleep(std::time::Duration::from_micros(20));
     let all = |lanes: &mut [Option<Lane>]| lanes.iter_mut().flatten().fold(true, |a, l| l.drain() && a);
     while !all(lanes) {
@@ -491,7 +491,7 @@ struct Port {
 }
 
 /// An end with its host: this host's id for an end here.
-pub(super) fn global(e: End, workers: u32, me: u32) -> (u32, u32) {
+pub(crate) fn global(e: End, workers: u32, me: u32) -> (u32, u32) {
     match e {
         End::Worker(w) if w.1 == HERE => (me, w.0),
         End::Worker(w) => (w.1, w.0),
@@ -582,7 +582,7 @@ const CONNECT_TAG: i32 = 8;
 /// no route with this one is not asked, and a host that declares routes with a host that declares
 /// none back waits for its answer, which comes at the latest when that host ends (`answer_connects`). `fine` is whether this host's own checks passed; a host that fails them
 /// still answers, so its peers are refused too.
-pub(super) fn connect(plan: &Plan, fine: bool) -> Result<(), Refused> {
+pub(crate) fn connect(plan: &Plan, fine: bool) -> Result<(), Refused> {
     let h = host();
     if h.count == 1 {
         return Ok(());

@@ -31,7 +31,7 @@ use crate::backends::mpi::memory::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADE
 impl Transport {
     /// The epoch word and the sleep flag of agent `w`: a worker's, or the leader's when `w` is the
     /// leader's rank.
-    pub(super) fn words(&self, w: u32) -> (usize, usize) {
+    pub(crate) fn words(&self, w: u32) -> (usize, usize) {
         if w >= self.lay().workers {
             (LEADER_EPOCH, LEADER_SLEEP)
         } else {

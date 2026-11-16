@@ -27,7 +27,7 @@ pub(super) struct Local {
     /// The worker endpoint, once this rank has opened the window as a worker.
     pub endpoint: Option<Transport>,
     /// This process's host (hosts.rs).
-    pub host: Option<crate::backends::mpi::hosts::Host>,
+    pub host: Option<crate::backends::mpi::transport::hosts::Host>,
 }
 
 struct Slot(UnsafeCell<Option<Local>>);
@@ -88,7 +88,7 @@ pub fn finalize() {
     if l.host.is_some() {
         match l.endpoint.as_mut() {
             Some(t) => t.quiesce(),
-            None => crate::backends::mpi::cross::quiesce(&mut []),
+            None => crate::backends::mpi::transport::cross::quiesce(&mut []),
         }
     }
     // SAFETY: MPI is up and not finalized; every lane's message is complete.

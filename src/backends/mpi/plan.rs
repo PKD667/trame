@@ -86,8 +86,8 @@ pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
 pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
     let workers =
         u32::try_from(plan.workers.len()).map_err(|_| Refused::Backend { reason: "too many workers".into() })?;
-    let h = crate::backends::mpi::hosts::host();
-    let g = |e: End| crate::backends::mpi::cross::global(e, workers, h.id);
+    let h = crate::backends::mpi::transport::hosts::host();
+    let g = |e: End| crate::backends::mpi::transport::cross::global(e, workers, h.id);
     let mut tags: Vec<TypeId> = Vec::new();
     let mut routes = Vec::with_capacity(plan.routes.len());
     for r in &plan.routes {

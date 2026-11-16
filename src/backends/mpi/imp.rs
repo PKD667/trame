@@ -110,7 +110,7 @@ fn build_or_adopt(plan: &mut Plan, t: &Transport) {
             segment::pool_slot().store(pool.addr() as u64, Release);
         }
     }
-    mpi::traits::CommunicatorCollectives::barrier(&crate::backends::mpi::hosts::host().comm);
+    mpi::traits::CommunicatorCollectives::barrier(&crate::backends::mpi::transport::hosts::host().comm);
     if !builder {
         for &w in &mine {
             // SAFETY: the node's builder filled a Core of the same type at this address, in the
@@ -159,15 +159,16 @@ impl Backend for Selected {
             crate::backends::mpi::state::finalize();
             std::process::exit(0);
         }
-        let here = agree(&crate::backends::mpi::hosts::host().comm, &encode_plan(plan), ranks).map_err(refused);
+        let here =
+            agree(&crate::backends::mpi::transport::hosts::host().comm, &encode_plan(plan), ranks).map_err(refused);
         let checked = here.and_then(|()| crate::launch::check(plan));
-        let joined = crate::backends::mpi::cross::connect(plan, checked.is_ok());
+        let joined = crate::backends::mpi::transport::cross::connect(plan, checked.is_ok());
         checked.and(joined)
     }
 
     fn launch(mut plan: Plan) -> Result<Leader, Refused> {
         let topo = topology(&plan)?;
-        let role = open(&crate::backends::mpi::hosts::host().comm, &topo).map_err(refused)?;
+        let role = open(&crate::backends::mpi::transport::hosts::host().comm, &topo).map_err(refused)?;
         let t = match &role {
             Role::Leader(t) | Role::Worker(t) => t,
         };
@@ -305,7 +306,7 @@ impl Backend for Selected {
     }
 
     fn host() -> u32 {
-        crate::backends::mpi::hosts::host().id
+        crate::backends::mpi::transport::hosts::host().id
     }
 
     fn hosts() -> u32 {
@@ -315,16 +316,16 @@ impl Backend for Selected {
                 return h;
             }
         }
-        crate::backends::mpi::hosts::host().count
+        crate::backends::mpi::transport::hosts::host().count
     }
 
     fn peer_send(_run: &Leader, to: u32, tag: u64, bytes: &[u8]) -> Result<(), Full> {
-        crate::backends::mpi::hosts::send(to, tag, bytes);
+        crate::backends::mpi::transport::hosts::send(to, tag, bytes);
         Ok(())
     }
 
     fn peer_recv(_run: &Leader, tag: u64, out: &mut [u8]) -> Option<u32> {
-        crate::backends::mpi::hosts::recv(tag, out)
+        crate::backends::mpi::transport::hosts::recv(tag, out)
     }
 
     fn leader_join(run: Leader) -> Vec<Outcome> {

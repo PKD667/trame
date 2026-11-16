@@ -35,7 +35,7 @@ impl Transport {
         }
         if r.remote.is_some() {
             let me = self.me();
-            let crate::backends::mpi::cross::Lane::Out(o) = self.lane(id) else {
+            let crate::backends::mpi::transport::cross::Lane::Out(o) = self.lane(id) else {
                 unreachable!("a lane this endpoint sends on is Out")
             };
             let (room, grew) = o.room();

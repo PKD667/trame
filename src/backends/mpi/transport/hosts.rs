@@ -17,10 +17,10 @@ use mpi::point_to_point::{Destination, Source};
 use mpi::topology::{Color, Communicator, SimpleCommunicator};
 use mpi::traits::*;
 
-use crate::backends::mpi::nodes::{discover, node_ranks_setting, split_groups};
 use crate::backends::mpi::state::{local, world};
+use crate::backends::mpi::transport::nodes::{discover, node_ranks_setting, split_groups};
 
-pub(super) struct Host {
+pub(crate) struct Host {
     /// This host's communicator: its launch's world.
     pub comm: SimpleCommunicator,
     /// This host's number, and the number of hosts.
@@ -46,7 +46,7 @@ pub(super) struct Host {
 const PEER_TAG: i32 = 7;
 
 /// This process's host, made at the first call (collective over the world, see the module comment).
-pub(super) fn host() -> &'static mut Host {
+pub(crate) fn host() -> &'static mut Host {
     if local().host.is_none() {
         let w = world();
         let setting = node_ranks_setting();
@@ -81,7 +81,7 @@ pub(super) fn host() -> &'static mut Host {
 }
 
 /// Send a peer message (F6): blocking, so `Full` is never answered; MPI buffers small messages.
-pub(super) fn send(to: u32, tag: u64, bytes: &[u8]) {
+pub(crate) fn send(to: u32, tag: u64, bytes: &[u8]) {
     let h = host();
     assert!(to != h.id && to < h.count, "trame: host {to} is not a peer of host {}", h.id);
     let peers = h.peers.as_ref().expect("trame: only a leader has peers");
@@ -93,7 +93,7 @@ pub(super) fn send(to: u32, tag: u64, bytes: &[u8]) {
 }
 
 /// Move every peer message MPI holds for this leader into `pending`. Answers whether one came.
-pub(super) fn drain() -> bool {
+pub(crate) fn drain() -> bool {
     let h = host();
     let Some(peers) = h.peers.as_ref() else { return false };
     let mut any = false;
@@ -110,7 +110,7 @@ pub(super) fn drain() -> bool {
 }
 
 /// Take the oldest pending peer message of tag `tag` into `out`; answers its host.
-pub(super) fn recv(tag: u64, out: &mut [u8]) -> Option<u32> {
+pub(crate) fn recv(tag: u64, out: &mut [u8]) -> Option<u32> {
     drain();
     let h = host();
     let i = h.pending.iter().position(|(_, t, _)| *t == tag)?;

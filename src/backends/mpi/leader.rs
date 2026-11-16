@@ -163,11 +163,12 @@ pub(super) fn wait(run: &Leader, seen: u64) -> u64 {
     };
     // With peers, a peer message is a change too, and nothing on this host can wake the leader for
     // it (it arrives through MPI, not the window): the leader spins on both.
-    let e = if crate::backends::mpi::hosts::host().count > 1 {
+    let e = if crate::backends::mpi::transport::hosts::host().count > 1 {
         // The seen word is the epoch in the low half and the count of peer arrivals in the high half.
         loop {
-            crate::backends::mpi::hosts::drain();
-            let e = run.get().leader_epoch() | (crate::backends::mpi::hosts::host().arrivals & 0xffff_ffff) << 32;
+            crate::backends::mpi::transport::hosts::drain();
+            let e = run.get().leader_epoch()
+                | (crate::backends::mpi::transport::hosts::host().arrivals & 0xffff_ffff) << 32;
             if e != seen {
                 break e;
             }

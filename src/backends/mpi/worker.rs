@@ -218,7 +218,7 @@ pub(super) fn edit_held(held: bool) {
     let e = unsafe { &*(f.leader_epoch as *const AtomicU32) };
     e.fetch_add(1, SeqCst);
     if word64(f.leader_sleep).load(SeqCst) != 0 {
-        crate::backends::mpi::futex::wake_addr(f.leader_epoch);
+        crate::backends::mpi::waiting::futex::wake_addr(f.leader_epoch);
     }
 }
 
@@ -281,5 +281,5 @@ pub(super) fn now() -> (ClockId, u64) {
     let _x = xport();
     let (t, _) = parts();
     // The clock is named by the host: each host has its own CLOCK_MONOTONIC start (hosts.rs).
-    (ClockId::new(crate::backends::mpi::hosts::host().id + 1), t.elapsed())
+    (ClockId::new(crate::backends::mpi::transport::hosts::host().id + 1), t.elapsed())
 }

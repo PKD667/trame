@@ -52,11 +52,11 @@ impl Transport {
     }
 
     /// The index of the head of route `id`, or None when it has no frame.
-    pub(super) fn peek(&mut self, id: RouteId) -> Result<Option<u64>, Error> {
+    pub(crate) fn peek(&mut self, id: RouteId) -> Result<Option<u64>, Error> {
         let r = *self.route(id)?;
         if r.remote.is_some() {
             let me = self.me();
-            let crate::backends::mpi::cross::Lane::In(i) = self.lane(id) else {
+            let crate::backends::mpi::transport::cross::Lane::In(i) = self.lane(id) else {
                 unreachable!("a lane this endpoint receives is In")
             };
             let ((here, now), index) = (i.head(), i.consumed());
@@ -100,7 +100,7 @@ impl Transport {
         let before = if tracing { clock() } else { 0 };
         if r.remote.is_some() {
             let me = self.me();
-            let crate::backends::mpi::cross::Lane::In(i) = self.lane(id) else {
+            let crate::backends::mpi::transport::cross::Lane::In(i) = self.lane(id) else {
                 unreachable!("a lane this endpoint receives is In")
             };
             let (took, now) = i.take(out);

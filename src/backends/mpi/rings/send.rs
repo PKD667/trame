@@ -22,7 +22,7 @@ use crate::backends::mpi::Transport;
 use crate::backends::mpi::memory::layout::{LINE, RouteLayout, SLOT_HEAD};
 use crate::backends::mpi::types::{Answer, Error, Event, RouteId, clock};
 
-pub(super) fn checked_seq(index: u64) -> Result<u64, Error> {
+pub(crate) fn checked_seq(index: u64) -> Result<u64, Error> {
     index.checked_mul(2).and_then(|x| x.checked_add(2)).ok_or(Error::Broken("frame index overflows the sequence word"))
 }
 
@@ -71,7 +71,7 @@ impl Transport {
     fn send_far(&mut self, id: RouteId, msg: &[u8]) -> Answer {
         let me = self.me();
         let before = if self.trace.is_some() { clock() } else { 0 };
-        let crate::backends::mpi::cross::Lane::Out(o) = self.lane(id) else {
+        let crate::backends::mpi::transport::cross::Lane::Out(o) = self.lane(id) else {
             unreachable!("a lane this endpoint sends on is Out")
         };
         let (index, read) = o.counts();
@@ -85,7 +85,7 @@ impl Transport {
     }
 
     /// Write frame `index` into its slot as a seqlock writer: odd sequence, payload, even sequence.
-    pub(super) fn put(&self, r: &RouteLayout, index: u64, msg: &[u8]) -> Result<(), Error> {
+    pub(crate) fn put(&self, r: &RouteLayout, index: u64, msg: &[u8]) -> Result<(), Error> {
         let at = self.lay().slot(r, index);
         let done = checked_seq(index)?;
         let win = self.win();
@@ -102,7 +102,7 @@ impl Transport {
 
     /// Read frame `index` as a seqlock reader, copying the payload into `out` when given. Returns
     /// false when the slot no longer holds frame `index`.
-    pub(super) fn read_slot(&self, r: &RouteLayout, index: u64, out: Option<&mut [u8]>) -> Result<bool, Error> {
+    pub(crate) fn read_slot(&self, r: &RouteLayout, index: u64, out: Option<&mut [u8]>) -> Result<bool, Error> {
         let at = self.lay().slot(r, index);
         let want = checked_seq(index)?;
         let win = self.win();

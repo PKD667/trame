@@ -37,8 +37,8 @@ use mpi::ffi;
 use mpi::traits::AsRaw;
 
 use crate::backends::mpi::Transport;
-use crate::backends::mpi::hosts::{self, host};
 use crate::backends::mpi::memory::layout::{DEADLOCK, K_ACTS, K_EPOCH, K_IDLE, K_OUTCOME, K_RUN, LEADER_EPOCH, LINE};
+use crate::backends::mpi::transport::hosts::{self, host};
 
 /// The pause of a waiting or joining leader between rounds, in nanoseconds.
 const PAUSE_MIN: u64 = 20_000;

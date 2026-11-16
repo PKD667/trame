@@ -18,26 +18,21 @@
 //! - A route between workers of two hosts is a lane (cross.rs): two-sided MPI from rank to rank, with
 //!   credits back. Those are the only MPI calls after launch, and only ranks with a lane make them.
 
-mod cross;
 mod detect;
-mod epoch;
-mod futex;
 mod harness;
-mod hosts;
 mod imp;
 mod leader;
 mod memory;
-mod nodes;
 mod open;
 mod plan;
-mod poll;
-mod recv;
 mod refusal;
 mod results;
-mod ring;
+mod rings;
 mod shape;
 mod state;
+mod transport;
 mod types;
+mod waiting;
 mod worker;
 
 /// The backend the surface calls: `impl Backend for Selected` lives in imp.rs.
@@ -73,7 +68,7 @@ pub struct Transport {
     rr: Vec<usize>,
     trace: Option<Vec<Event>>,
     /// Per route, this endpoint's lane when the route joins it to another host (cross.rs).
-    lanes: Vec<Option<cross::Lane>>,
+    lanes: Vec<Option<transport::cross::Lane>>,
 }
 
 impl Drop for Transport {
@@ -94,7 +89,7 @@ impl Transport {
     /// Post this endpoint's lanes (cross.rs). At launch, once, when a route joins hosts.
     pub(crate) fn open_lanes(&mut self) {
         if self.lay.routes.iter().any(|r| r.remote.is_some()) {
-            self.lanes = cross::lanes(&self.lay, self.me, &self.win);
+            self.lanes = transport::cross::lanes(&self.lay, self.me, &self.win);
         }
     }
 
@@ -116,10 +111,10 @@ impl Transport {
 
     /// Before MPI_Finalize (state.rs): complete this endpoint's lanes (cross.rs `quiesce`).
     pub(crate) fn quiesce(&mut self) {
-        cross::quiesce(&mut self.lanes);
+        transport::cross::quiesce(&mut self.lanes);
     }
 
-    fn lane(&mut self, id: RouteId) -> &mut cross::Lane {
+    fn lane(&mut self, id: RouteId) -> &mut transport::cross::Lane {
         self.lanes.get_mut(id.0 as usize).and_then(Option::as_mut).expect("trame: a route between hosts has its lane")
     }
 
