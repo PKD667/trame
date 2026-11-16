@@ -566,7 +566,7 @@ fn ended(r: Result<Status, ()>, clock: time::ClockId, service: u64) -> (Ended, W
 
 /// One agent of the reference scheduler: run steps of `slot` until the worker has a result. Several
 /// agents may run one slot at once; each step runs on the agent that started it. `service` measures a
-/// step that ran from `t0` (seq: 1 per step).
+/// step that ran from `t0`: the backend's measure of what it used (sched.rs, service).
 pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn Any + Send + Sync)>) -> Answer {
     let clock = time::now().clock();
     let obj = &*slot.obj;
