@@ -36,10 +36,10 @@ fn type_bytes(ty: TypeId) -> Vec<u8> {
 }
 
 /// An end of a route: (host, rank), the host `HERE` for this host's.
-pub(super) type Peer = (u32, u32);
+pub(crate) type Peer = (u32, u32);
 
 /// The end of an agent: a worker's index on its host, or `workers` for this host's leader.
-pub(super) fn rank_of(id: End, workers: u32) -> Peer {
+pub(crate) fn rank_of(id: End, workers: u32) -> Peer {
     match id {
         End::Worker(w) => (w.1, w.0),
         End::Leader => (HERE, workers),
@@ -47,7 +47,7 @@ pub(super) fn rank_of(id: End, workers: u32) -> Peer {
 }
 
 /// This host's end of rank `me`.
-pub(super) fn here(me: u32) -> Peer {
+pub(crate) fn here(me: u32) -> Peer {
     (HERE, me)
 }
 
@@ -61,7 +61,7 @@ fn put_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
 /// Worker bodies are not in it. A function pointer differs between processes (address space layout
 /// randomization), so the plan gives only the worker count. Every rank runs the same binary, so
 /// worker `i` is the same code on each rank.
-pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
+pub(crate) fn encode_plan(plan: &Plan) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(&(plan.workers.len() as u64).to_le_bytes());
     put_bytes(&mut out, &[]);
@@ -83,7 +83,7 @@ pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
 /// The transport's topology for a checked plan. Each distinct message type is a tag, numbered in the
 /// order the plan first uses it, so every rank numbers them the same. A route to or from another
 /// host's worker gets its `Remote`: that worker's world rank, and the route's lane (cross.rs).
-pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
+pub(crate) fn topology(plan: &Plan) -> Result<Topology, Refused> {
     let workers =
         u32::try_from(plan.workers.len()).map_err(|_| Refused::Backend { reason: "too many workers".into() })?;
     let h = crate::backends::mpi::transport::hosts::host();
@@ -144,14 +144,14 @@ pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
 }
 
 /// One route as an endpoint looks it up: sender and receiver, its message type, and its id.
-pub(super) struct Entry {
+pub(crate) struct Entry {
     pub from: Peer,
     pub to: Peer,
     pub ty: TypeId,
     pub id: RouteId,
 }
 
-pub(super) fn entries(plan: &Plan) -> Vec<Entry> {
+pub(crate) fn entries(plan: &Plan) -> Vec<Entry> {
     let workers = plan.workers.len() as u32;
     plan.routes
         .iter()
@@ -167,7 +167,7 @@ pub(super) fn entries(plan: &Plan) -> Vec<Entry> {
 
 /// The routes that rank `me` receives, grouped by message type. The scan of each group keeps its
 /// own rotation (see recv.rs), so the group of one type never shares a rotation with another.
-pub(super) fn inbox(entries: &[Entry], me: u32) -> Vec<(TypeId, Vec<RouteId>)> {
+pub(crate) fn inbox(entries: &[Entry], me: u32) -> Vec<(TypeId, Vec<RouteId>)> {
     let mut groups: Vec<(TypeId, Vec<RouteId>)> = Vec::new();
     for e in entries.iter().filter(|e| e.to == here(me)) {
         match groups.iter_mut().find(|(t, _)| *t == e.ty) {
@@ -179,17 +179,17 @@ pub(super) fn inbox(entries: &[Entry], me: u32) -> Vec<(TypeId, Vec<RouteId>)> {
 }
 
 /// The receive set of type `ty` in an inbox, or none.
-pub(super) fn owned(inbox: &[(TypeId, Vec<RouteId>)], ty: TypeId) -> &[RouteId] {
+pub(crate) fn owned(inbox: &[(TypeId, Vec<RouteId>)], ty: TypeId) -> &[RouteId] {
     inbox.iter().find(|(t, _)| *t == ty).map_or(&[], |(_, ids)| ids.as_slice())
 }
 
 /// The routes rank `from` sends, in plan order. The position of a route in this sequence is the index
 /// `Backend::worker_route` answers, so the sequential backend and this one number them alike.
-pub(super) fn outgoing(entries: &[Entry], from: u32) -> impl Iterator<Item = &Entry> {
+pub(crate) fn outgoing(entries: &[Entry], from: u32) -> impl Iterator<Item = &Entry> {
     entries.iter().filter(move |e| e.from == here(from))
 }
 
 /// The route from `from` to `to` with message type `ty`, if the plan has one.
-pub(super) fn find(entries: &[Entry], from: Peer, to: Peer, ty: TypeId) -> Option<RouteId> {
+pub(crate) fn find(entries: &[Entry], from: Peer, to: Peer, ty: TypeId) -> Option<RouteId> {
     entries.iter().find(|e| e.from == from && e.to == to && e.ty == ty).map(|e| e.id)
 }

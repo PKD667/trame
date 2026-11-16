@@ -28,7 +28,7 @@ use crate::backends::mpi::memory::layout::{
     ABORT_BIT, ABORT_LEN, ABORT_WORKER, DONE, K_OUTCOME, OUT_ABORT, RESULT, START, STOP,
 };
 use crate::backends::mpi::memory::object;
-use crate::backends::mpi::state::finalize;
+use crate::backends::mpi::setup::state::finalize;
 
 impl Transport {
     /// Record this worker's result, unless one is already set. Answers whether this call set it.
@@ -101,10 +101,11 @@ impl Transport {
             if seen & ABORT_BIT != 0 || (seen / RESULT >= workers && !aborting) {
                 break;
             }
-            let pause = std::time::Duration::from_nanos(crate::backends::mpi::detect::pause());
+            let pause = std::time::Duration::from_nanos(crate::backends::mpi::roles::detect::pause());
             self.win().wait_for(DONE, seen, Some(pause));
-            if crate::backends::mpi::detect::round(false) == crate::backends::mpi::detect::Verdict::Stuck {
-                crate::backends::mpi::detect::end_stuck(self);
+            if crate::backends::mpi::roles::detect::round(false) == crate::backends::mpi::roles::detect::Verdict::Stuck
+            {
+                crate::backends::mpi::roles::detect::end_stuck(self);
             }
         }
         (0..workers).map(|w| self.win().word(self.lay().per_worker(K_OUTCOME, w)).load(Acquire)).collect()
@@ -112,7 +113,7 @@ impl Transport {
 
     /// Leader only. If the run aborted, end it the way `join` does, then panic with the text
     /// `trame: worker <w> panicked: <message>`. Otherwise do nothing. Every leader call starts with this.
-    pub(super) fn fail_if_aborted(&self) {
+    pub(crate) fn fail_if_aborted(&self) {
         if !self.aborted() {
             return;
         }
@@ -134,12 +135,12 @@ impl Transport {
     }
 
     /// Leader only, before the launch barrier.
-    pub(super) fn set_start(&self, nanos: u64) {
+    pub(crate) fn set_start(&self, nanos: u64) {
         self.win().word(START).store(nanos, Release);
     }
 
     /// Leader only, after `join`: every result is in, so no worker can still read the abort message.
-    pub(super) fn end_run(&self) {
+    pub(crate) fn end_run(&self) {
         self.unlink_abort();
     }
 

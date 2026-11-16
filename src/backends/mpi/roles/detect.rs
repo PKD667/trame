@@ -46,7 +46,7 @@ const PAUSE_MAX: u64 = 20_000_000;
 
 /// What a round showed.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Verdict {
+pub(crate) enum Verdict {
     /// No verdict yet: something may still move, or the round is still in progress.
     Live,
     /// Every live leader's workers are stuck (the module comment).
@@ -56,7 +56,7 @@ pub(super) enum Verdict {
 }
 
 /// One leader's detector, in its host (hosts.rs).
-pub(super) struct Watch {
+pub(crate) struct Watch {
     /// Addresses of the words of the snapshot: per worker the five K_ words, then the leader's epoch.
     words: Vec<usize>,
     /// Addresses of the count words of the routes between hosts: P (sent), then C (arrived).
@@ -76,7 +76,7 @@ struct Round {
 }
 
 /// At launch, on the leader: watch the words of `t`'s window.
-pub(super) fn watch(t: &Transport) {
+pub(crate) fn watch(t: &Transport) {
     let lay = t.lay();
     let at = |off: usize| t.win().ptr(off, 8) as usize;
     let mut words = Vec::new();
@@ -129,7 +129,7 @@ fn verdict(r: &[u64; 4]) -> Verdict {
 
 /// Progress this leader's rounds once, without blocking. `ended`: this host's leader has ended. A
 /// host whose leader never launched (a refusal) takes part with no workers.
-pub(super) fn round(ended: bool) -> Verdict {
+pub(crate) fn round(ended: bool) -> Verdict {
     hosts::drain();
     let h = host();
     let (peer_sent, peer_got, count) = (h.sent, h.arrivals, h.count);
@@ -177,7 +177,7 @@ pub(super) fn round(ended: bool) -> Verdict {
 }
 
 /// The pause before the next round, doubled each time up to PAUSE_MAX (the module comment).
-pub(super) fn pause() -> u64 {
+pub(crate) fn pause() -> u64 {
     let w = host().watch.as_mut().expect("trame: the leader watches from its launch on");
     let p = w.pause;
     w.pause = (p * 2).min(PAUSE_MAX);
@@ -185,7 +185,7 @@ pub(super) fn pause() -> u64 {
 }
 
 /// The leader joins and its workers are stuck: each ends with Deadlock at its next round (worker.rs).
-pub(super) fn end_stuck(t: &Transport) {
+pub(crate) fn end_stuck(t: &Transport) {
     t.win().word(DEADLOCK).store(1, SeqCst);
     t.bump_all();
 }

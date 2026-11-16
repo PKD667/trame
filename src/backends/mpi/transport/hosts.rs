@@ -17,7 +17,7 @@ use mpi::point_to_point::{Destination, Source};
 use mpi::topology::{Color, Communicator, SimpleCommunicator};
 use mpi::traits::*;
 
-use crate::backends::mpi::state::{local, world};
+use crate::backends::mpi::setup::state::{local, world};
 use crate::backends::mpi::transport::nodes::{discover, node_ranks_setting, split_groups};
 
 pub(crate) struct Host {
@@ -35,7 +35,7 @@ pub(crate) struct Host {
     pub arrivals: u64,
     pub sent: u64,
     /// The leader's deadlock detector, from its launch on (detect.rs).
-    pub watch: Option<crate::backends::mpi::detect::Watch>,
+    pub watch: Option<crate::backends::mpi::roles::detect::Watch>,
     /// Per host, its world ranks: worker k of host h is `members[h][k]`, its leader the last.
     pub members: Vec<Vec<i32>>,
     /// The world, duplicated for the frames and credits of routes between hosts (cross.rs).

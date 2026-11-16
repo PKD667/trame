@@ -14,11 +14,11 @@ use mpi::topology::SimpleCommunicator;
 
 use crate::launch::Refused;
 
-use crate::backends::mpi::plan::Entry;
-use crate::backends::mpi::refusal::Refusal;
+use crate::backends::mpi::setup::plan::Entry;
+use crate::backends::mpi::setup::refusal::Refusal;
 use crate::backends::mpi::{RouteId, Transport};
 
-pub(super) struct Local {
+pub(crate) struct Local {
     pub world: Option<SimpleCommunicator>,
     /// Every route of the plan, for lookups by rank and type.
     pub entries: Vec<Entry>,
@@ -38,7 +38,7 @@ unsafe impl Sync for Slot {}
 static LOCAL: Slot = Slot(UnsafeCell::new(None));
 
 /// This process's state. The caller must not keep the reference across another call to `local`.
-pub(super) fn local() -> &'static mut Local {
+pub(crate) fn local() -> &'static mut Local {
     // SAFETY: one thread per rank (see the module comment), and no reference is held across calls.
     let slot = unsafe { &mut *LOCAL.0.get() };
     slot.get_or_insert_with(|| Local {
@@ -52,7 +52,7 @@ pub(super) fn local() -> &'static mut Local {
 
 /// The MPI world of this process. MPI is initialised once; the universe is forgotten, not dropped,
 /// so that its drop does not finalize at a moment of our choosing. `finalize` does that instead.
-pub(super) fn world() -> &'static SimpleCommunicator {
+pub(crate) fn world() -> &'static SimpleCommunicator {
     let l = local();
     if l.world.is_none() {
         if let Some((universe, _)) = mpi::initialize_with_threading(mpi::Threading::Multiple) {
@@ -96,6 +96,6 @@ pub fn finalize() {
 }
 
 /// Map a transport refusal to the surface's, with its message whole (refusal.rs).
-pub(super) fn refused(r: Refusal) -> Refused {
+pub(crate) fn refused(r: Refusal) -> Refused {
     Refused::Backend { reason: alloc::format!("{r}") }
 }

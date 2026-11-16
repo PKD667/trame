@@ -18,22 +18,15 @@
 //! - A route between workers of two hosts is a lane (cross.rs): two-sided MPI from rank to rank, with
 //!   credits back. Those are the only MPI calls after launch, and only ranks with a lane make them.
 
-mod detect;
 mod harness;
 mod imp;
-mod leader;
 mod memory;
-mod open;
-mod plan;
-mod refusal;
-mod results;
 mod rings;
-mod shape;
-mod state;
+mod roles;
+mod setup;
 mod transport;
 mod types;
 mod waiting;
-mod worker;
 
 /// The backend the surface calls: `impl Backend for Selected` lives in imp.rs.
 pub struct Selected;
@@ -44,10 +37,10 @@ use std::vec;
 use std::vec::Vec;
 
 pub use memory::layout::{Route, Topology};
-pub use open::{agree, launch, open};
-pub use refusal::Refusal;
-pub use shape::encode;
-pub use state::finalize;
+pub use setup::open::{agree, launch, open};
+pub use setup::refusal::Refusal;
+pub use setup::shape::encode;
+pub use setup::state::finalize;
 
 pub use harness::{leader_join, returned};
 pub use types::{Answer, Error, Event, Received, Role, RouteId, clock};

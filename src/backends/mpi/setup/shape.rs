@@ -9,7 +9,7 @@ use std::string::String;
 use std::vec::Vec;
 
 use crate::backends::mpi::memory::layout::{LINE, Layout, PER_WORKER, RouteLayout, SLOT_HEAD, Topology, WORKER_LINES};
-use crate::backends::mpi::refusal::Refusal;
+use crate::backends::mpi::setup::refusal::Refusal;
 
 fn refuse(why: impl Into<String>) -> Refusal {
     Refusal::Topology(why.into())

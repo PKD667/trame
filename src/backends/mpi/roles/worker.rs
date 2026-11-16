@@ -30,8 +30,8 @@ use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use crate::backends::mpi::memory::layout::{ABORT_BIT, DEADLOCK, DONE, K_ACTS, K_EDIT, K_HELD, K_IDLE, K_RUN, STOP};
 
-use crate::backends::mpi::plan::{self, Entry, rank_of};
-use crate::backends::mpi::state::local;
+use crate::backends::mpi::setup::plan::{self, Entry, rank_of};
+use crate::backends::mpi::setup::state::local;
 use crate::backends::mpi::types::{Answer, Received};
 use crate::backends::mpi::{RouteId, Transport};
 
@@ -43,10 +43,10 @@ fn xport() -> MutexGuard<'static, ()> {
 }
 
 /// The payload of the unwind that ends an aborted worker. Not a panic: the hook never runs for it.
-pub(super) struct Aborted;
+pub(crate) struct Aborted;
 
 /// The payload of the unwind that ends a worker the leader showed stuck (detect.rs). Not a panic.
-pub(super) struct Deadlocked;
+pub(crate) struct Deadlocked;
 
 /// End this worker if the run aborted.
 fn live(t: &Transport) {
@@ -69,7 +69,7 @@ fn route(entries: &[Entry], t: &Transport, to: End, ty: TypeId, name: &str) -> R
         .unwrap_or_else(|| panic!("trame: worker {} has no route of {name} to {to:?}", t.me()))
 }
 
-pub(super) fn send(to: End, ty: TypeId, name: &str, bytes: &[u8]) -> Result<(), Full> {
+pub(crate) fn send(to: End, ty: TypeId, name: &str, bytes: &[u8]) -> Result<(), Full> {
     let _x = xport();
     let (t, entries) = parts();
     let id = route(entries, t, to, ty, name);
@@ -80,7 +80,7 @@ pub(super) fn send(to: End, ty: TypeId, name: &str, bytes: &[u8]) -> Result<(), 
     }
 }
 
-pub(super) fn recv(ty: TypeId, out: &mut [u8]) -> bool {
+pub(crate) fn recv(ty: TypeId, out: &mut [u8]) -> bool {
     let _x = xport();
     let l = local();
     let t = l.endpoint.as_mut().expect("trame: a worker operation outside a worker");
@@ -93,7 +93,7 @@ pub(super) fn recv(ty: TypeId, out: &mut [u8]) -> bool {
     }
 }
 
-pub(super) fn offer(ty: TypeId) -> bool {
+pub(crate) fn offer(ty: TypeId) -> bool {
     let _x = xport();
     let l = local();
     let t = l.endpoint.as_mut().expect("trame: a worker operation outside a worker");
@@ -106,7 +106,7 @@ pub(super) fn offer(ty: TypeId) -> bool {
 }
 
 /// The index of this worker's route to `to` with `ty` among its outgoing routes (plan.rs `outgoing`).
-pub(super) fn route_index(to: End, ty: TypeId) -> Option<usize> {
+pub(crate) fn route_index(to: End, ty: TypeId) -> Option<usize> {
     let _x = xport();
     let (t, entries) = parts();
     let to = rank_of(to, t.lay().workers);
@@ -114,7 +114,7 @@ pub(super) fn route_index(to: End, ty: TypeId) -> Option<usize> {
 }
 
 /// Whether the outgoing route at index `route` has room, as `route_index` numbers it.
-pub(super) fn room(route: usize) -> bool {
+pub(crate) fn room(route: usize) -> bool {
     let _x = xport();
     let (t, entries) = parts();
     let me = t.me();
@@ -150,7 +150,7 @@ struct Fast {
 }
 
 /// Record this worker's round words (imp.rs, before the agents start).
-pub(super) fn fast_init() {
+pub(crate) fn fast_init() {
     let _x = xport();
     let (t, _) = parts();
     let at = |off: usize| t.win().ptr(off, 8) as usize;
@@ -183,7 +183,7 @@ fn word64(addr: usize) -> &'static AtomicU64 {
 }
 
 /// A step starts (Backend::worker_mark_start): under the scheduler's lock, so without XPORT.
-pub(super) fn mark_start() {
+pub(crate) fn mark_start() {
     let f = FAST.get().expect("trame: fast_init runs before the agents");
     word64(f.run).fetch_add(1, SeqCst);
     word64(f.acts).fetch_add(1, SeqCst);
@@ -191,27 +191,27 @@ pub(super) fn mark_start() {
 }
 
 /// A step ends.
-pub(super) fn mark_end() {
+pub(crate) fn mark_end() {
     let f = FAST.get().expect("trame: fast_init runs before the agents");
     word64(f.run).fetch_sub(1, SeqCst);
     word64(f.idle).store(0, SeqCst);
 }
 
 /// An agent idles at `epoch`: IDLE says so when it has no deadline (layout.rs IDLE).
-pub(super) fn mark_quiet(epoch: u64, deadline: bool) {
+pub(crate) fn mark_quiet(epoch: u64, deadline: bool) {
     let f = FAST.get().expect("trame: fast_init runs before the agents");
     word64(f.idle).store(if deadline { 0 } else { epoch + 1 }, SeqCst);
 }
 
 /// The fields the leader asks this worker to hold, 0 if none (layout.rs EDIT). Without the lock.
-pub(super) fn edit_request() -> u64 {
+pub(crate) fn edit_request() -> u64 {
     let f = FAST.get().expect("trame: fast_init runs before the agents");
     word64(f.edit).load(SeqCst)
 }
 
 /// Answer the leader's edit request (layout.rs HELD), and wake it: the same protocol as
 /// `Transport::bump` on the leader's epoch (epoch.rs), on raw addresses, without the lock.
-pub(super) fn edit_held(held: bool) {
+pub(crate) fn edit_held(held: bool) {
     let f = FAST.get().expect("trame: fast_init runs before the agents");
     word64(f.held).store(u64::from(held), SeqCst);
     // SAFETY: the leader's epoch is an aligned u32 of the window (as `fast`).
@@ -224,7 +224,7 @@ pub(super) fn edit_held(held: bool) {
 
 /// The worker's epoch, widened to the surface's u64. Read without the transport lock (FAST); an
 /// aborted run unwinds here, as at every effect, so an agent whose steps make no effects still ends.
-pub(super) fn epoch() -> u64 {
+pub(crate) fn epoch() -> u64 {
     let (e, _, d) = fast();
     if d.load(SeqCst) & ABORT_BIT != 0 {
         resume_unwind(Box::new(Aborted));
@@ -237,7 +237,7 @@ pub(super) fn epoch() -> u64 {
 }
 
 /// Sleep on the epoch `epoch` came from (see `epoch`). The narrowing is exact: the value was a u32.
-pub(super) fn idle(until: Option<u64>, epoch: u64) {
+pub(crate) fn idle(until: Option<u64>, epoch: u64) {
     let x = xport();
     let t = parts().0;
     if !t.has_lanes() {
@@ -260,24 +260,24 @@ pub(super) fn idle(until: Option<u64>, epoch: u64) {
 }
 
 /// Run `f` on this rank's endpoint under the transport lock (imp.rs: results and aborts).
-pub(super) fn with_endpoint<R>(f: impl FnOnce(&Transport) -> R) -> R {
+pub(crate) fn with_endpoint<R>(f: impl FnOnce(&Transport) -> R) -> R {
     let _x = xport();
     let l = local();
     f(l.endpoint.as_ref().expect("trame: a worker operation outside a worker"))
 }
 
 /// Whether the leader stopped the run. Without the transport lock (FAST).
-pub(super) fn stop_requested() -> bool {
+pub(crate) fn stop_requested() -> bool {
     fast().1.load(Acquire) != 0
 }
 
 /// This worker's rank.
-pub(super) fn me() -> u32 {
+pub(crate) fn me() -> u32 {
     let _x = xport();
     parts().0.me()
 }
 
-pub(super) fn now() -> (ClockId, u64) {
+pub(crate) fn now() -> (ClockId, u64) {
     let _x = xport();
     let (t, _) = parts();
     // The clock is named by the host: each host has its own CLOCK_MONOTONIC start (hosts.rs).

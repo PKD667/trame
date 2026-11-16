@@ -17,8 +17,8 @@ use crate::backend::Target;
 use crate::backends::mpi::memory::layout::{
     K_EDIT, K_HELD, K_OUTCOME, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED,
 };
-use crate::backends::mpi::plan::{self, Entry, rank_of};
-use crate::backends::mpi::state::{finalize, local};
+use crate::backends::mpi::setup::plan::{self, Entry, rank_of};
+use crate::backends::mpi::setup::state::{finalize, local};
 use crate::backends::mpi::types::{Answer, Received};
 use crate::backends::mpi::{RouteId, Transport};
 use std::sync::atomic::Ordering::SeqCst;
@@ -30,7 +30,7 @@ impl Transport {
     /// worker before the leader's panic, and then nothing else ends the run (check/proofs/mpi, `MCAbortEarly`).
     /// `end_run` may run twice: an object already gone is not an error. After `MPI_Finalize`
     /// (`fail_if_aborted` ended the run) there is nothing left to do.
-    pub(super) fn leader_panicked(&self) {
+    pub(crate) fn leader_panicked(&self) {
         let mut done: i32 = 0;
         // SAFETY: MPI_Finalized takes one out-pointer and may be called at any time.
         unsafe { mpi::ffi::MPI_Finalized(&mut done) };
@@ -52,10 +52,10 @@ impl Transport {
 pub struct Leader(UnsafeCell<Transport>, core::mem::ManuallyDrop<Built>);
 
 /// What the leader built, kept alive for the run (see `Leader`).
-pub(super) type Built = (Vec<std::sync::Arc<dyn crate::worker::Erased>>, Option<crate::backend::PoolRef>);
+pub(crate) type Built = (Vec<std::sync::Arc<dyn crate::worker::Erased>>, Option<crate::backend::PoolRef>);
 
 impl Leader {
-    pub(super) fn new(t: Transport, built: Built) -> Leader {
+    pub(crate) fn new(t: Transport, built: Built) -> Leader {
         Leader(UnsafeCell::new(t), core::mem::ManuallyDrop::new(built))
     }
 
@@ -75,7 +75,7 @@ fn route(entries: &[Entry], t: &Transport, to: WorkerId, ty: TypeId, name: &str)
         .unwrap_or_else(|| panic!("trame: the leader has no route of {name} to {to:?}"))
 }
 
-pub(super) fn send(run: &Leader, to: WorkerId, ty: TypeId, name: &str, bytes: &[u8]) -> Result<(), Full> {
+pub(crate) fn send(run: &Leader, to: WorkerId, ty: TypeId, name: &str, bytes: &[u8]) -> Result<(), Full> {
     let t = run.get();
     t.fail_if_aborted();
     let id = route(&local().entries, t, to, ty, name);
@@ -86,7 +86,7 @@ pub(super) fn send(run: &Leader, to: WorkerId, ty: TypeId, name: &str, bytes: &[
     }
 }
 
-pub(super) fn recv(run: &Leader, ty: TypeId, out: &mut [u8]) -> bool {
+pub(crate) fn recv(run: &Leader, ty: TypeId, out: &mut [u8]) -> bool {
     let t = run.get();
     t.fail_if_aborted();
     let owned = plan::owned(&local().inbox, ty);
@@ -98,13 +98,13 @@ pub(super) fn recv(run: &Leader, ty: TypeId, out: &mut [u8]) -> bool {
 }
 
 /// Stop the run: workers see STOP at their next scheduling round (results.rs `stop`).
-pub(super) fn stop(run: &Leader) {
+pub(crate) fn stop(run: &Leader) {
     run.get().fail_if_aborted();
     run.get().stop()
 }
 
 /// The host's workers: their states and the pool are in its segment (segment.rs).
-pub(super) fn local_workers(run: &Leader) -> Vec<u32> {
+pub(crate) fn local_workers(run: &Leader) -> Vec<u32> {
     (0..run.get().lay().workers).collect()
 }
 
@@ -113,7 +113,7 @@ pub(super) fn local_workers(run: &Leader) -> Vec<u32> {
 /// this process, on the segment; withdraw the request and wait until each gave them back or has a
 /// result. A worker edit answers false, without running `f`, when the worker has a result before it
 /// holds.
-pub(super) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
+pub(crate) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
     let t = run.get();
     t.fail_if_aborted();
     let here = local_workers(run);
@@ -154,10 +154,10 @@ pub(super) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
 
 /// Block until the leader's epoch differs from `seen`, and answer the new value (epoch.rs). Panics
 /// when the detector shows that nothing can arrive (detect.rs), as seq does (INTERFACE.md 5, Deadlock).
-pub(super) fn wait(run: &Leader, seen: u64) -> u64 {
+pub(crate) fn wait(run: &Leader, seen: u64) -> u64 {
     run.get().fail_if_aborted();
     let stuck = || {
-        if crate::backends::mpi::detect::round(false) == crate::backends::mpi::detect::Verdict::Stuck {
+        if crate::backends::mpi::roles::detect::round(false) == crate::backends::mpi::roles::detect::Verdict::Stuck {
             panic!("trame: deadlock: the leader waits and nothing can arrive");
         }
     };
@@ -182,7 +182,7 @@ pub(super) fn wait(run: &Leader, seen: u64) -> u64 {
                 break e;
             }
             stuck();
-            run.get().leader_nap(e as u32, crate::backends::mpi::detect::pause());
+            run.get().leader_nap(e as u32, crate::backends::mpi::roles::detect::pause());
         }
     };
     run.get().fail_if_aborted();
@@ -191,7 +191,7 @@ pub(super) fn wait(run: &Leader, seen: u64) -> u64 {
 
 /// Wait for every worker's result (see `join` in results.rs), in declaration order. Then finalize:
 /// every outcome is read, so no result can depend on this rank's exit. An aborted run panics instead.
-pub(super) fn join(run: Leader) -> Vec<Outcome> {
+pub(crate) fn join(run: Leader) -> Vec<Outcome> {
     let words = run.get().join();
     run.get().fail_if_aborted();
     let out = words

@@ -14,7 +14,7 @@ use mpi::ffi;
 use mpi::topology::SimpleCommunicator;
 use mpi::traits::*;
 
-use crate::backends::mpi::refusal::{Refusal, mpi_text};
+use crate::backends::mpi::setup::refusal::{Refusal, mpi_text};
 
 const SUCCESS: i32 = ffi::MPI_SUCCESS as i32; // MPI_SUCCESS as the `int` the C calls return.
 pub(crate) struct Window {

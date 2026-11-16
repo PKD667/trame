@@ -442,7 +442,7 @@ pub(crate) fn quiesce(lanes: &mut [Option<Lane>]) {
     let mut answers = Vec::new();
     // A leader takes part in the detector's rounds until every leader has ended (detect.rs).
     if host().peers.is_some() {
-        while crate::backends::mpi::detect::round(true) != crate::backends::mpi::detect::Verdict::Over {
+        while crate::backends::mpi::roles::detect::round(true) != crate::backends::mpi::roles::detect::Verdict::Over {
             answer_connects(&mut answers);
             idle();
         }

@@ -18,8 +18,8 @@ use crate::backends::mpi::Transport;
 use crate::backends::mpi::memory::layout::Topology;
 use crate::backends::mpi::memory::segment;
 use crate::backends::mpi::memory::shm::Window;
-use crate::backends::mpi::refusal::Refusal;
-use crate::backends::mpi::shape::{encode, plan};
+use crate::backends::mpi::setup::refusal::Refusal;
+use crate::backends::mpi::setup::shape::{encode, plan};
 use crate::backends::mpi::transport::nodes::node_ranks_setting;
 use crate::backends::mpi::types::{Role, clock};
 
