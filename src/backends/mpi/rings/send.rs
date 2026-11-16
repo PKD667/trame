@@ -20,6 +20,7 @@ use std::sync::atomic::{
 
 use crate::backends::mpi::Transport;
 use crate::backends::mpi::memory::layout::{LINE, RouteLayout, SLOT_HEAD};
+use crate::backends::mpi::transport::cross::Lane;
 use crate::backends::mpi::types::{Answer, Error, Event, RouteId, clock};
 
 pub(crate) fn checked_seq(index: u64) -> Result<u64, Error> {
@@ -71,9 +72,7 @@ impl Transport {
     fn send_far(&mut self, id: RouteId, msg: &[u8]) -> Answer {
         let me = self.me();
         let before = if self.trace.is_some() { clock() } else { 0 };
-        let crate::backends::mpi::transport::cross::Lane::Out(o) = self.lane(id) else {
-            unreachable!("a lane this endpoint sends on is Out")
-        };
+        let Lane::Out(o) = self.lane(id) else { unreachable!("a lane this endpoint sends on is Out") };
         let (index, read) = o.counts();
         let (answer, grew) = o.send(msg);
         if grew {

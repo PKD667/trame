@@ -10,6 +10,7 @@ extern crate std;
 use std::sync::atomic::Ordering::{Acquire, Relaxed};
 
 use crate::backends::mpi::memory::layout::LINE;
+use crate::backends::mpi::transport::cross::Lane;
 use crate::backends::mpi::{Error, RouteId, Transport};
 
 impl Transport {
@@ -35,9 +36,7 @@ impl Transport {
         }
         if r.remote.is_some() {
             let me = self.me();
-            let crate::backends::mpi::transport::cross::Lane::Out(o) = self.lane(id) else {
-                unreachable!("a lane this endpoint sends on is Out")
-            };
+            let Lane::Out(o) = self.lane(id) else { unreachable!("a lane this endpoint sends on is Out") };
             let (room, grew) = o.room();
             if grew {
                 self.bump(me);

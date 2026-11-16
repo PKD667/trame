@@ -15,6 +15,7 @@ use std::sync::atomic::{
 
 use crate::backends::mpi::Transport;
 use crate::backends::mpi::memory::layout::{LINE, RouteLayout};
+use crate::backends::mpi::transport::cross::Lane;
 use crate::backends::mpi::types::{Error, Event, Received, RouteId, clock};
 
 impl Transport {
@@ -56,9 +57,7 @@ impl Transport {
         let r = *self.route(id)?;
         if r.remote.is_some() {
             let me = self.me();
-            let crate::backends::mpi::transport::cross::Lane::In(i) = self.lane(id) else {
-                unreachable!("a lane this endpoint receives is In")
-            };
+            let Lane::In(i) = self.lane(id) else { unreachable!("a lane this endpoint receives is In") };
             let ((here, now), index) = (i.head(), i.consumed());
             if now {
                 self.bump(me);
@@ -100,9 +99,7 @@ impl Transport {
         let before = if tracing { clock() } else { 0 };
         if r.remote.is_some() {
             let me = self.me();
-            let crate::backends::mpi::transport::cross::Lane::In(i) = self.lane(id) else {
-                unreachable!("a lane this endpoint receives is In")
-            };
+            let Lane::In(i) = self.lane(id) else { unreachable!("a lane this endpoint receives is In") };
             let (took, now) = i.take(out);
             if now {
                 self.bump(me);
