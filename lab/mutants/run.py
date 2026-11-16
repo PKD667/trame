@@ -1,11 +1,11 @@
 """Conformance by mutation: one mutant against every program of the table (check/mutants/README.md).
 
 Parameters: backend (a directory of src/backends/), mutant (a patch id such as m01, or none: the unpatched build,
-the control), timeout (seconds, default 120), and split and bind as lab/launch.py reads them.
-Environment (set by lab/checks.nix): LAUNCH (the backend's launch), MUTANTS (one directory per id, with programs/ and
+the control), timeout (seconds, default 120), and split and bind as lib/launch.py reads them.
+Environment (set by experiment.nix): LAUNCH (the backend's launch), MUTANTS (one directory per id, with programs/ and
 share/expected/ of that mutant's build), PATCHES (src/backends/<backend>/mutants: the headers `# violates:` and
 `# expect:` of <id>.patch or <id>.skip, and the reason of a skip), and PANICS (the programs directory: the
-<program>.panics files, judged as programs.py judges them).
+<program>.panics files, judged as lib/judge.py judges them).
 
 Dataset `kill`, one row per program: killed is true when the program fails (how is diff, exit or
 timeout). A mutant with a .skip file has no build; it records one row, program "-", how "skipped".
@@ -21,7 +21,7 @@ from pathlib import Path
 from nixsci import lab
 
 import launch
-import programs
+import judge
 
 
 def header(path: Path, key: str) -> str:
@@ -58,8 +58,8 @@ def main() -> None:
     stderr_dir.mkdir(parents=True, exist_ok=True)
     for path in sorted((root / "programs").iterdir()):
         name = path.name
-        panic = programs.panic_line(name)
-        judged = programs.expected_for(root / "share" / "expected", name, 1, panic)
+        panic = judge.panic_line(name)
+        judged = judge.expected_for(root / "share" / "expected", name, 1, panic)
         if judged is None:
             continue
         expected = judged[1]
@@ -68,10 +68,10 @@ def main() -> None:
         launch.record_config(res, argv)
         if res.stderr:
             (stderr_dir / f"{mutant}.{name}.txt").write_text(res.stderr)
-        got = programs.normalise(res.hosts[0]) if res.hosts else ""
-        how = programs.judge(res, got, expected, panic)
+        got = judge.normalise(res.hosts[0]) if res.hosts else ""
+        how = judge.judge(res, got, expected, panic)
         record(mutant, rule, expect, name, how != "ok", how)
 
 
-if __name__ == "__main__":
-    main()
+
+main()

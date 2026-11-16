@@ -5,7 +5,7 @@ per machine, default 1) and bind. Environment (set by flake.nix): LAUNCH (the ba
 program binaries), EXPECTED (<program>.expected files) and PANICS (optional: the directory of <program>.panics files,
 the programs that must panic, as check/programs/run.sh). The programs are the files of PROGRAMS.
 
-Every run goes through the launch (lab/launch.py). A job of H hosts (machines x split) starts the whole program on
+Every run goes through the launch (lab/lib/launch.py). A job of H hosts (machines x split) starts the whole program on
 each host, and the launch writes each host's stdout alone. With one host it must equal <name>.expected. With H hosts:
 the hosts' outputs one after the other must equal <name>.h<H>.expected when it exists; a program that has an
 .h<K>.expected for another K only (it is written for K hosts) is not run; any other program's every host must equal
@@ -20,7 +20,7 @@ stdout_sha256 hashes the text compared (host 0's, when each host is compared alo
 for the same program. Dataset `launch_config`: what the launch ran under (first run of the job).
 The job exits 0 when every run was recorded, whatever the verdicts: a failed program is a result.
 
-mutants.py imports panic_line, read_expected, judge, normalise and expected_for from here: one rule for both runners.
+The verdicts and their rule are lib/judge.py's; mutants/run.py uses the same.
 """
 
 from __future__ import annotations
@@ -31,65 +31,8 @@ import sys
 from pathlib import Path
 
 import launch
+from judge import expected_for, judge, normalise, panic_line, programs
 from nixsci import lab
-
-
-def programs() -> list[str]:
-    """The programs of this build: the executable files of PROGRAMS, by name."""
-    return sorted(p.name for p in Path(os.environ["PROGRAMS"]).iterdir() if os.access(p, os.X_OK))
-
-
-def panic_line(name: str) -> str | None:
-    """The line a program must print on stderr when it must panic (<name>.panics), else None."""
-    if not os.environ.get("PANICS"):
-        return None
-    path = Path(os.environ["PANICS"]) / f"{name}.panics"
-    return path.read_text().rstrip("\n") if path.exists() else None
-
-
-def read_expected(directory: Path, name: str, panic: str | None) -> str | None:
-    """<name>.expected as text. A program that must panic may have none (leader_panics): None then."""
-    path = directory / f"{name}.expected"
-    if path.exists():
-        return path.read_text()
-    if panic is None:
-        raise SystemExit(f"{name}: no {name}.expected, and no {name}.panics")
-    return None
-
-
-def normalise(stdout: str) -> str:
-    """The text that is compared: trailing newlines dropped, one newline per line."""
-    text = stdout.rstrip("\n")
-    return text + "\n" if text else ""
-
-
-def judge(res: launch.Run, got: str, expected: str | None, panic: str | None) -> str:
-    """The verdict of one run, as check/programs/run.sh: ok, diff, exit or timeout (the module docstring)."""
-    if res.timed_out:
-        return "timeout"
-    if panic is not None:
-        # A program that must panic: non-zero status, and the panic line on stderr. Its stdout is judged
-        # only when it has an .expected file.
-        if res.rc == 0 or panic not in res.stderr.split("\n"):
-            return "exit"
-        return "ok" if expected is None or got == expected else "diff"
-    if res.rc != 0:
-        return "exit"
-    return "ok" if got == expected else "diff"
-
-
-def expected_for(directory: Path, name: str, hosts: int, panic: str | None) -> tuple[str, str | None] | None:
-    """How a program is judged on `hosts` hosts: ("each", text) compares every host with text,
-    ("all", text) the hosts' outputs one after the other. None: the program is written for another count."""
-    if hosts > 1:
-        exact = directory / f"{name}.h{hosts}.expected"
-        if exact.exists():
-            return ("all", exact.read_text())
-        if any(directory.glob(f"{name}.h*.expected")):
-            return None
-    elif any(directory.glob(f"{name}.h*.expected")) and not (directory / f"{name}.expected").exists():
-        return None
-    return ("each", read_expected(directory, name, panic))
 
 
 def main() -> None:
@@ -140,5 +83,5 @@ def main() -> None:
     print(f"verdicts: {verdicts}", file=sys.stderr)
 
 
-if __name__ == "__main__":
-    main()
+
+main()

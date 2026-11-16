@@ -7,7 +7,7 @@ same_host (default false: a job whose two ranks land on one machine is refused, 
 memory and not a network). Environment: BIN (the binary), RUSTC_VERSION and OPENMPI_VERSION (what the
 closure was built with), NIX_LAB_DIR.
 
-Placement: one slot per host, rank 0 on the first host of the job, rank 1 on the second (mpirun.py, nixsci.lab.mpi).
+Placement: one slot per host, rank 0 on the first host of the job, rank 1 on the second (lib/mpirun.py, nixsci.lab.mpi).
 
 Dataset `latency`, one row per (mode, phase, size). Times are nanoseconds. `phase` rtt: the latency is half
 the round trip, `size` the frame's bytes. `phase` wake: the latency of a local wake (size 1); the rows
@@ -15,7 +15,7 @@ of mixed_self, mixed_flag and wake_futex. `cpu0_ns` and `cpu1_ns` are the CPU ti
 and rank 1 per iteration; `sys0_ns` and `sys1_ns` the system part (the split is the kernel's estimate).
 For wake rows the CPU is per wake over the warm-up and measured wakes together, pauses included.
 
-Each job also writes `mpi_config` rows: mpirun.py's, and the host of each rank, the CPU model, the network
+Each job also writes `mpi_config` rows: lib/mpirun.py's, and the host of each rank, the CPU model, the network
 interfaces with their speed, the InfiniBand/Omni-Path devices, the compiler and Open MPI the closure was built
 with, the MCA settings of this job, the MPI library string that rank 0 printed, and `transport` rows: the selection
 lines of a short probe run of the same placement with Open MPI's pml, btl and mtl selection verbose.

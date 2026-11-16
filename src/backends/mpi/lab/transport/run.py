@@ -1,10 +1,10 @@
-"""The MPI transport checks of src/backends/mpi/tests/run.sh, as run.sh runs them.
+"""The MPI transport checks of tests/run.sh, as run.sh runs them.
 
 The checks run on one host: a split or several machines would make several hosts, each with too few
-ranks for the check. Routes between hosts are checked by the programs (programs.py, xhost_ring, peers).
+ranks for the check. Routes between hosts are checked by the programs (lab/programs, xhost_ring, peers).
 
 Parameters: repeats (default 1), timeout (seconds, default 120), and the mpirun parameters of
-mpirun.py. Environment: BIN (the check binary), NIX_LAB_DIR.
+lib/mpirun.py. Environment: BIN (the check binary), NIX_LAB_DIR.
 
 Dataset `check`, one row per check run. `workers` and `case_seed` are the numbers run.sh gives each check:
 the fifo checks start workers+1 ranks (the leader is the last); the checks without a --seed (fair,
@@ -52,7 +52,7 @@ def fifo(root: Path, workers: int, seed: int) -> list[Case]:
 
 
 def plan(root: Path) -> list[Case]:
-    """src/backends/mpi/tests/run.sh: the fifo runs of W = 3, 4, 6 with seeds 1-5, then the other checks. The
+    """tests/run.sh: the fifo runs of W = 3, 4, 6 with seeds 1-5, then the other checks. The
     transport checks run on one host; routes between hosts are checked by programs (xhost_ring, peers)."""
     cases = [c for w in (3, 4, 6) for s in range(1, 6) for c in fifo(root, w, s)]
     cases += [

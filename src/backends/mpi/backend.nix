@@ -28,6 +28,4 @@ in
   exclude = [ "mpi-rma" ];
   # The wait protocols, model-checked (validate.nix).
   validate = args: import ./validate.nix args;
-  # This backend's own experiments: the transport checks and the baselines (experiments.nix).
-  experiments = args: import ./experiments.nix ({ inherit pkgs; } // args);
 }

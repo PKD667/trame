@@ -1,6 +1,6 @@
 # The datasets the lab's benchmark runners record, from lab/columns.json: the columns of each, with the job's common
-# columns, and the columns that may differ between replicates (the clocks'). One declaration for lab/perf.py and for
-# a backend's own runners that record beside it (src/backends/<b>/experiments.nix).
+# columns, and the columns that may differ between replicates (the clocks'). One declaration for lab/lib/bench.py and for
+# a backend's own runners that record beside it (src/backends/<b>/lab/).
 { lib }:
 let
   cols = builtins.fromJSON (builtins.readFile ../../lab/columns.json);

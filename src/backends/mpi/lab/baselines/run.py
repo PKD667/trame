@@ -1,12 +1,11 @@
-"""The plain-MPI baselines of the lab's benchmarks (experiment `baselines-mpi`, experiments.nix): the C programs of
+"""The plain-MPI baselines of the lab's benchmarks (experiment.nix): the C programs of
 this directory and the OSU micro-benchmarks, run by mpirun without trame.
 
 Parameters: bench (ping | flow | round | graph), impl (plain: the C programs here; osu: the OSU micro-benchmarks),
 per (ranks per machine), size, cap, steps, samples, pattern, rounds, graph_*, bind, timeout (seconds).
-Environment: BIN (mpi_barrier, mpi_flow, mpi_graph), OSU (the directory of osu_latency and osu_bw), NIX_LAB_DIR.
+Environment: COLUMNS, BIN (mpi_barrier, mpi_flow, mpi_graph), OSU (the directory of osu_latency and osu_bw), NIX_LAB_DIR.
 
-The rows have the columns of the trame families of lab/perf.py (lab/columns.json, which the closure copies next to this
-file), so an analysis sets a baseline beside the backend it was written for; `backend` is "mpi" and `impl` is plain or osu.
+The rows have the columns of the trame families of lab/lib/bench.py (lab/columns.json, in the environment as COLUMNS), so an analysis sets a baseline beside the backend it was written for; `backend` is "mpi" and `impl` is plain or osu.
 Datasets: the bench's own (flow, round, graph), `osu` (size, value, unit, min, max), `cpu`, and `mpi_config` (mpirun.py)."""
 
 from __future__ import annotations
@@ -77,7 +76,7 @@ def parse(stdout: str, stderr: str) -> tuple[list[tuple[int, str]], dict[int, di
     return out, ranks
 
 
-COLUMNS = json.loads((Path(__file__).parent / "columns.json").read_text())  # lab/columns.json, copied next to this file
+COLUMNS = json.loads(Path(os.environ["COLUMNS"]).read_text())  # lab/columns.json
 
 
 def row_of(dataset: str, common: dict, obj: dict) -> dict:
