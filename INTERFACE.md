@@ -124,6 +124,38 @@ Counted loops over an acyclic call graph are LOOP programs (Meyer & Ritchie, 196
 always terminate. This is why every step returns. It bounds the work of a step but not its duration.
 Unbounded work must be split into more steps or more items.
 
+### 3.1 What a step body may call
+
+The lists $A_C$ and $A_I$ are the files `crates/driver/lists/A_C.txt` and `A_I.txt`; the checker reads
+them and nothing else. What they mean for a program:
+
+| In a step | Allowed | Refused |
+| --- | --- | --- |
+| Control flow | `for` over a range, slice or array; `if`, `match`, `?` | `while`, `loop`, recursion |
+| `Vec`, `String`, `Box` | read and rewrite in place: `len`, `is_empty`, `capacity`, indexing, `as_slice`, `as_mut_slice`, borrowing iteration, `==`, `cmp` | anything that grows, shrinks, copies or frees: `push`, `pop`, `insert`, `remove`, `clear`, `truncate`, `extend`, `resize`, `clone`, `collect`, dropping a value that owns a buffer |
+| Slices, arrays | every `core::slice` method, `core::mem::{swap, replace, take}` | |
+| Other collections | none | `VecDeque`, `BTreeMap` and the rest of `alloc::collections`; `HashMap` and `HashSet` in any level, because no hasher is listed |
+| Text | reading a `String` or `&str` | `format!`, building a `String` |
+| Numbers | `+ - * /` with overflow checks, comparisons, `Option` and `Result` combinators, the float operations listed under Floating point | `std` anything, so `f64::exp`, `ln`, `powf`, `sqrt`; use `trame::math`. `f64::max` and `min` |
+| Memory | the fields of the write set | `static`, `thread_local!`, `Cell`, atomics, `Rc`, `Arc`, raw pointers, `unsafe` |
+
+A field is a buffer of fixed capacity. The builder or an edit allocates it at the size it will need, and
+the step keeps how much of it is in use in another plain field. A queue is an array, a head and a
+length; a table that grows is built by an edit between steps. A step that needs room it was not given
+returns `Status::wait()` or fails, because it cannot ask for more.
+
+A function a step calls is judged at the step's level, whatever crate it is in, so a helper that
+allocates or loops with `while` is refused where the step calls it. A function reached from several
+levels is judged at the strictest. The checker does not yet judge builders and edits, which the
+driver calls the worker level; Section 1 says a host is any Rust, and this section says "all levels".
+The driver is the authority until the two agree.
+
+To run the checker on a crate, build `trame-driver` from `flake.nix`, put its `bin/` on `PATH`, and run
+`cargo trame check --features <backend>` under the toolchain in `crates/driver/rust-toolchain.toml`
+(`nix develop "path:$PWD#driver"` provides it). A checked build compiles with `--cfg trame_checked`,
+which `cargo trame` sets; a crate that does not declare it as a known cfg gets one `unexpected_cfgs`
+warning per state.
+
 > **Requirement (State and step).** A state is a struct with named fields, at most 63 of them, and at
 > most 64 steps, the stop step included. A step's parameters each name a field of its state, with the
 > field's type, as `&T` (read) or `&mut T` (write), or are `pool: &P`, the pool of the state's pool
