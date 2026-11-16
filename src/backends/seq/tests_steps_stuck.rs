@@ -46,7 +46,7 @@ fn a_frame_wait_that_no_leader_can_satisfy_is_deadlock() {
 #[test]
 fn two_idle_workers_all_finish_over_many_rounds() {
     within_10s(|| {
-        for round in 0..200_u32 {
+        for round in 0..(if cfg!(miri) { 4 } else { 200 }) {
             let mut g = Topology::new();
             let a = g.worker::<Await>();
             g.set(&a, || Await {});

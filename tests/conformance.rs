@@ -27,7 +27,7 @@ impl Ctl {
             rng: seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (k + 1).wrapping_mul(0xD1B5_4A32_D192_ED03) | 1,
             left: 0,
         };
-        c.left = 5 + (c.next() % 40) as u32;
+        c.left = 5 + (c.next() % if cfg!(miri) { 10 } else { 40 }) as u32;
         c
     }
 
@@ -114,7 +114,7 @@ shape!(Readers {
 });
 
 /// Seeds every run tries: 0..SEEDS, then every seed in REGRESSIONS.
-const SEEDS: u64 = 300;
+const SEEDS: u64 = if cfg!(miri) { 2 } else { 300 };
 
 /// Seeds that once failed: a failure prints its seed; add it here so it is tried on every run.
 const REGRESSIONS: &[u64] = &[];
@@ -292,6 +292,7 @@ fn s0(hot: &mut u64, n0: &mut u64) -> Status {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "a statistic over 200 ms of steps: Miri's clock is not the steps' speed, so the count of steps is not comparable")]
 fn shares_follow_weights() {
     let mut t = Topology::new();
     let w = t.worker();
@@ -360,9 +361,9 @@ macro_rules! disjoint_step {
         #[trame::step(Disjoint)]
         fn $f($x: &mut u64) -> Status {
             enter();
-            *$x += 1 + spin(200_000);
+            *$x += 1 + spin(if cfg!(miri) { 200 } else { 200_000 });
             leave();
-            if *$x >= 50 { Status::Done } else { Status::Progress }
+            if *$x >= if cfg!(miri) { 5 } else { 50 } { Status::Done } else { Status::Progress }
         }
     )*};
 }

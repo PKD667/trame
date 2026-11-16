@@ -57,7 +57,7 @@ fn reference(items: &[Work], slots: &mut [u64], cx: &Ctx) {
 fn parallel_equals_the_reference_fold_on_1000_random_inputs() {
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
     let mut total_items = 0;
-    for case in 0..1000 {
+    for case in 0..(if cfg!(miri) { 20 } else { 1000 }) {
         let n_slots = 1 + rng.below(8) as usize;
         let n_items = rng.below(40) as usize;
         let items: Vec<Work> =
@@ -72,7 +72,7 @@ fn parallel_equals_the_reference_fold_on_1000_random_inputs() {
         assert_eq!(got, want, "case {case}: {n_items} items, {n_slots} slots");
         total_items += n_items;
     }
-    assert!(total_items > 10_000, "the cases exercised repeated keys: {total_items} items");
+    assert!(total_items > if cfg!(miri) { 200 } else { 10_000 }, "the cases exercised repeated keys: {total_items} items");
 }
 
 #[test]

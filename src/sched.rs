@@ -572,6 +572,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "50 000 starts to resolve a share to 0.001: hours under Miri, and it reads no memory the other sched tests do not")]
     fn contested_shares_follow_weights() {
         for (a, b) in [(1.0, 1.0), (1.0, 0.5), (1.0, 0.25), (0.5, 0.1), (0.2, 0.8)] {
             let got = shares(&[(0, 1, Weight::from_f64(a)), (0, 1, Weight::from_f64(b))], 10_000);
@@ -583,10 +584,11 @@ mod tests {
 
     #[test]
     fn weight_zero_is_background_and_round_robin_among_itself() {
-        let got = shares(&[(0, 1, Weight::from_f64(0.1)), (0, 1, Weight::ZERO)], 1000);
-        assert_eq!(got, [1000, 0], "a weight-0 step never beats a ready positive one");
-        let got = shares(&[(0, 1, Weight::ZERO), (0, 1, Weight::ZERO), (0, 1, Weight::ZERO)], 999);
-        assert_eq!(got, [333, 333, 333]);
+        let n = if cfg!(miri) { 60 } else { 1000 };
+        let got = shares(&[(0, 1, Weight::from_f64(0.1)), (0, 1, Weight::ZERO)], n);
+        assert_eq!(got, [n, 0], "a weight-0 step never beats a ready positive one");
+        let got = shares(&[(0, 1, Weight::ZERO), (0, 1, Weight::ZERO), (0, 1, Weight::ZERO)], n - n % 3);
+        assert_eq!(got, [n / 3, n / 3, n / 3]);
     }
 
     #[test]
@@ -644,7 +646,7 @@ mod tests {
         let now = Now::default();
         let mut running: [Option<usize>; 2] = [None, None];
         let mut writer_starts = 0;
-        for round in 0..1000 {
+        for round in 0..(if cfg!(miri) { 60 } else { 1000 }) {
             let agent = round % 2;
             if let Some(i) = running[agent].take() {
                 s.end(i, Ended { st: St::Progress, weight: None, service: 1 });
@@ -663,7 +665,7 @@ mod tests {
     /// 0..2000, xorshift; a failure names its seed.
     #[test]
     fn choose_is_the_best_ranked_step_may_start_admits() {
-        for seed in 0..2000u64 {
+        for seed in 0..(if cfg!(miri) { 12 } else { 2000u64 }) {
             let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
             let mut next = move || {
                 x ^= x << 13;

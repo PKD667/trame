@@ -23,12 +23,13 @@ pub(super) struct Ping(pub u32);
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Pong(pub u32);
 
-/// Run `f` on its own thread. Fail if it has not answered in 10 s, so a hang cannot stall the suite.
+/// Run `f` on its own thread. Fail if it has not answered in 10 s, so a hang cannot stall the suite. Under Miri,
+/// which runs about 100 times slower, the guard is 10 minutes.
 /// A panic of `f` is raised again here, with its own payload.
 pub(super) fn within_10s<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
     let (answer, answered) = mpsc::channel();
     let body = thread::spawn(move || answer.send(f()));
-    match answered.recv_timeout(Duration::from_secs(10)) {
+    match answered.recv_timeout(Duration::from_secs(if cfg!(miri) { 600 } else { 10 })) {
         Ok(out) => out,
         Err(RecvTimeoutError::Timeout) => panic!("hung: no answer within 10 s"),
         Err(RecvTimeoutError::Disconnected) => match body.join() {

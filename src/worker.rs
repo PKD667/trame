@@ -59,8 +59,10 @@ pub unsafe trait State: Send + Sync + Sized + 'static {
     /// # Safety
     /// `this` points to a live state, and the caller holds step i's fields (CONTRACT.md,
     /// S1): no other code reads a field of its write set or writes a field of its read or write set
-    /// until this returns.
-    unsafe fn run(this: *mut Self, pool: &Self::Pool, i: usize) -> Result<Status, Self::Error>;
+    /// until this returns. `pool` points to the pool, and only a step that takes it (its POOL bit
+    /// is in S1's read set) makes a reference to it: a pointer, so that another step does not hold
+    /// a `&P` while the leader edits the pool (P2).
+    unsafe fn run(this: *mut Self, pool: *const Self::Pool, i: usize) -> Result<Status, Self::Error>;
 }
 
 /// What a worker's domain holds for it (CONTRACT.md, M1): its state and, once a step failed, its
@@ -268,11 +270,10 @@ impl<P> PoolCore<P> {
         p
     }
 
-    /// # Safety
-    /// The caller holds the POOL bit for reading (a step that takes the pool; CONTRACT.md, P1).
-    pub(crate) unsafe fn get(&self) -> &P {
-        // SAFETY: built, and no writer while the caller reads (P1).
-        unsafe { &*self.at() }
+    /// The pool's address, which a step turns into `&P` only if it holds the POOL bit (`State::run`).
+    /// Makes no reference.
+    pub(crate) fn ptr(&self) -> *const P {
+        self.at()
     }
 
     /// # Safety
@@ -386,14 +387,11 @@ impl<S: State> Erased for Core<S> {
     }
     unsafe fn run(&self, i: usize, pool: Option<&(dyn Any + Send + Sync)>) -> Result<Status, ()> {
         static UNIT: () = ();
-        let pool: &S::Pool = match pool {
-            // SAFETY: a step that takes the pool reads the POOL bit, held with its fields (S1, P1).
-            Some(p) => unsafe {
-                p.downcast_ref::<PoolCore<S::Pool>>().expect("trame: the launch checked the pool's type").get()
-            },
-            None => {
-                (&UNIT as &dyn Any).downcast_ref::<S::Pool>().expect("trame: a worker without a pool has Pool = ()")
-            }
+        let pool: *const S::Pool = match pool {
+            Some(p) => p.downcast_ref::<PoolCore<S::Pool>>().expect("trame: the launch checked the pool's type").ptr(),
+            None => (&UNIT as &dyn Any)
+                .downcast_ref::<S::Pool>()
+                .expect("trame: a worker without a pool has Pool = ()") as *const S::Pool,
         };
         #[cfg(debug_assertions)]
         self.hold(i, true);

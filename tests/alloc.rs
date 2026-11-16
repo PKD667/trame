@@ -54,14 +54,14 @@ fn parallel_never_allocates() {
     drop(std::hint::black_box(Box::new(7_u64)));
     assert!(count() > before_control, "the control allocation was counted (the counter works)");
 
-    for n in [0_u32, 1, 64, 1000] {
+    for n in [0_u32, 1, 64, if cfg!(miri) { 100 } else { 1000 }] {
         let items: Vec<Work> = (0..n).map(|i| Work { key: i % 4, value: u64::from(i) }).collect();
         let mut slots = [0_u64; 4];
         let at = count();
-        for _ in 0..100 {
+        for _ in 0..(if cfg!(miri) { 3 } else { 100 }) {
             trame::parallel!(add, &Ctx, &items, &mut slots);
         }
-        assert_eq!(count() - at, 0, "100 calls over {n} items allocated, the first included");
+        assert_eq!(count() - at, 0, "repeated calls over {n} items allocated, the first included");
     }
 }
 
@@ -70,7 +70,7 @@ fn parallel_never_allocates() {
 #[derive(Debug, PartialEq, Eq)]
 struct Tick(u32);
 
-const N: u32 = 1000;
+const N: u32 = if cfg!(miri) { 20 } else { 1000 };
 
 /// One step sends a frame to its own worker and takes it back, N times. It reads this thread's
 /// allocation count at its first and at its last run, so the difference covers N - 1 whole rounds of

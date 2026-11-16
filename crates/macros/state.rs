@@ -123,7 +123,7 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
                     _ => ::core::unreachable!("step index out of range"),
                 }
             }
-            unsafe fn run(this: *mut Self, pool: &Self::Pool, i: usize) -> ::core::result::Result<::trame::Status, Self::Error> {
+            unsafe fn run(this: *mut Self, pool: *const Self::Pool, i: usize) -> ::core::result::Result<::trame::Status, Self::Error> {
                 match i {
                     // SAFETY: forwarded from the caller (State::run; S1).
                     #(#idx => unsafe { #all::__trame_run(this, pool) },)*
@@ -209,7 +209,7 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
                 return Err(syn::Error::new_spanned(&pt.ty, "the pool is read-only: `pool: &P`"));
             }
             reads.push(quote! { ::trame::__rt::POOL });
-            call.push(quote! { pool });
+            call.push(quote! { &*pool });
             continue;
         }
         let bit = format_ident!("__trame_f_{}", field);
@@ -243,7 +243,7 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
     let run = match fallible {
         None => quote! {
             #[inline(always)]
-            pub unsafe fn __trame_run<E>(this: *mut #st, pool: &<#st as ::trame::__rt::State>::Pool) -> ::core::result::Result<::trame::Status, E> {
+            pub unsafe fn __trame_run<E>(this: *mut #st, pool: *const <#st as ::trame::__rt::State>::Pool) -> ::core::result::Result<::trame::Status, E> {
                 let _ = pool;
                 // SAFETY: the caller holds these fields (State::run; S1), and the references are
                 // those of the step's signature.
@@ -252,7 +252,7 @@ pub fn expand_step(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
         },
         Some(t) => quote! {
             #[inline(always)]
-            pub unsafe fn __trame_run(this: *mut #st, pool: &<#st as ::trame::__rt::State>::Pool) -> #t {
+            pub unsafe fn __trame_run(this: *mut #st, pool: *const <#st as ::trame::__rt::State>::Pool) -> #t {
                 let _ = pool;
                 // SAFETY: the caller holds these fields (State::run; S1), and the references are
                 // those of the step's signature.
