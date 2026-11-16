@@ -1,10 +1,16 @@
 //! frame_other: two steps in one worker. `picky` (declared first) receives `Want` and waits for a frame.
-//! `taker` (declared second) receives `Noise` and waits for a frame. The leader sends `Noise`, waits
-//! until `taker` reports it took the frame, then sends `Want`. `picky` is woken only by a frame it
-//! receives, so it is called once for `Ready` and once for `Want`: it reports n = 2. A step woken by a
-//! frame of another step would be called a third time before `Want`, and report n = 3.
+//! `taker` (declared second) receives `Noise` and waits for a frame. Each says hello to the leader and then
+//! waits, and the leader sends `Noise` only after both hellos, so both are waiting when `Noise` is queued. The
+//! leader then waits until `taker` reports it took the frame, and sends `Want`. `picky` is woken only by a frame
+//! it receives, so it is called once for `Ready` and once for `Want`: it reports n = 2. A step woken by another
+//! step's frame is enabled while `Noise` is queued. Both steps have weight 0, so the least recently started goes
+//! first, and `picky`, which started first, runs once more before `taker` takes `Noise`: it reports n = 3.
 
 use trame::{Leader, Outcome, Status, Topology};
+
+#[trame::message]
+#[derive(Debug, PartialEq, Eq)]
+struct Hello;
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -28,11 +34,12 @@ struct Calls {
     n: u32,
 }
 
-/// The state: `picky`'s call count and whether it said `Ready`. `taker` uses no field.
+/// The state: `picky`'s call count, whether it has said `Ready`, and whether `taker` has said `Hello`.
 #[trame::state(steps(picky, taker))]
 struct Pair {
     calls: u32,
     said_ready: bool,
+    said_hello: bool,
 }
 
 #[trame::step(Pair, receives = Want)]
@@ -53,7 +60,12 @@ fn picky(calls: &mut u32, said_ready: &mut bool) -> Status {
 }
 
 #[trame::step(Pair, receives = Noise)]
-fn taker() -> Status {
+fn taker(said_hello: &mut bool) -> Status {
+    if !*said_hello {
+        *said_hello = true;
+        assert!(trame::send(Leader, Hello).is_ok(), "hello did not fit");
+        return Status::wait().frame();
+    }
     match trame::recv::<Noise>() {
         Some(Noise) => {
             assert!(trame::send(Leader, Took).is_ok(), "took did not fit");
@@ -66,8 +78,9 @@ fn taker() -> Status {
 fn main() {
     let mut t = Topology::new();
     let w_worker = t.worker();
-    t.set(&w_worker, || Pair { calls: 0, said_ready: false });
+    t.set(&w_worker, || Pair { calls: 0, said_ready: false, said_hello: false });
     let w = w_worker.id();
+    t.route::<Hello>(w, Leader, 2);
     t.route::<Ready>(w, Leader, 2);
     t.route::<Took>(w, Leader, 2);
     t.route::<Calls>(w, Leader, 2);
@@ -80,7 +93,11 @@ fn main() {
             return;
         }
     };
+    // Both steps must be waiting before Noise is sent: `picky` says Ready, `taker` says Hello.
     while run.recv::<Ready>().is_none() {
+        run.wait();
+    }
+    while run.recv::<Hello>().is_none() {
         run.wait();
     }
     assert!(run.send(w, Noise).is_ok(), "noise did not fit");

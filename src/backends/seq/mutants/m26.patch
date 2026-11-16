@@ -1,12 +1,10 @@
-# violates: none that a program's output shows (a busy wait: CPU use only, see the expect line)
-# expect: equivalent: worker_idle returns at once, so an idle worker re-checks its conditions in a busy loop. The
-#   scheduler (sched::start, concurrent.rs) still starts a process only when it is enabled (INTERFACE.md, Definition
-#   Enabled), so no transition runs without its frame or deadline. Every program of check/programs/ gives its expected
-#   output (run: mutate.sh seq '^m26$', survived). One difference is not output: a run that is stuck after join
-#   with an idle worker, unpatched, ends with deadlock (seq/state.rs, advance); with this patch it spins and never
-#   ends. Definition (Deadlock) says a backend may end such an agent, so the spec permits both; whether a run must
-#   end is not stated in INTERFACE.md. A probe outside the tree (one worker waiting for a frame that never comes, the
-#   leader joins) gives [Deadlock] unpatched and times out with this patch. No program of check/programs/ does this.
+# violates: Deadlock (INTERFACE.md 5), with Join: after join a stuck worker gets deadlock, so join returns
+# expect: killed
+# worker_idle returns at once, so an idle worker never gives up the baton: it re-checks its conditions in a busy
+#   loop. A worker that no run can start again is stuck (Definition Deadlock). Unpatched it ends with deadlock, and
+#   join returns. Patched it spins and join never returns. Only the step limit or the timeout ends the run.
+#   xhost_deadlock kills it on one host: unpatched it prints `host 0: [Deadlock, Deadlock]`
+#   (xhost_deadlock.expected); patched it reaches TRAME_SEQ_STEP_LIMIT (exit 3). Run: mutate.sh seq '^m26$'.
 --- a/backends/seq/ops.rs
 +++ b/backends/seq/ops.rs
 @@ -191,9 +191,11 @@
