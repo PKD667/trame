@@ -94,7 +94,7 @@ is. The header of each such mutant says what it changes beyond output.
 | m23 | frames queued when `concurrent!` answers are dropped (skipped: no patch) | Ownership (after concurrent) |
 | m24 | `recv` never rotates its route scan | Progress (fairness, section 6) |
 | m25 | `Run::wait` returns at once when its counter is not `u64::MAX` (shared `run.rs`): the leader never checks for an abort | Abort: killed by `abort` |
-| m26 | `worker_idle` returns at once: a busy wait (equivalent for output; see its header) | Efficiency |
+| m26 | `worker_idle` returns at once: an idle worker spins, and a stuck one never gets deadlock | Deadlock (with Join) |
 
 The spec rule names are those of `INTERFACE.md`: Full, Overwrite, Offers, Recv, Ownership, Progress, Enabled,
 Status, End, Start, Fail, Barrier, Publish, Deadlock, Abort, Launch checks, Take, Join.
