@@ -9,7 +9,7 @@ The transport's own checks, below the interface: N - 1 workers and the leader as
 | `run.sh` | every check, in the debug build; exits non-zero on the first failure |
 | `transport.py` | the same checks as a lab experiment |
 | `progress/` | the credit-return matrix that chose a shared window over one-sided RMA (`progress/RESULT.md`) |
-| `RESULT.md` | what `run.sh` showed, with machine and versions |
+| `RESULT.md` | a measurement record: what `run.sh` showed, with machine and versions. Probably belongs in `lab/` |
 
 Inside `nix develop .#mpi`:
 

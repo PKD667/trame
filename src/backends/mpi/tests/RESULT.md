@@ -1,10 +1,11 @@
-# Results of `run.sh` (single node)
+# MPI transport: results (single node)
 
 Machine: MIST, AMD Ryzen 5 PRO 4650U (12 threads), Linux 7.2.7, x86_64, 14 GB. Open MPI 5.0.11
-from the `mpi` Nix shell. Rust 1.98.1. The checks run the debug build (`cargo build --bins`) under `mpirun --oversubscribe`.
+from the `mpi` Nix shell. Rust 1.98.1. The checks run the debug build (`cargo build --bins`); the
+latency record is a release build. `mpirun --oversubscribe`.
 Load average during runs: 2 to 3. The machine is shared, so timings vary between runs (see below).
 
-Command: `OUT=<dir> src/backends/mpi/tests/run.sh` inside `nix develop .#mpi`. Every check below is in that run except Stability, which is a loop over `fifo --seed 4`.
+Command: `OUT=<dir> src/backends/mpi/tests/run.sh` inside `nix develop .#mpi`. Every check below is in that run.
 
 ## Checks
 
@@ -21,8 +22,20 @@ route. It does not read the transport's internal state.
 
 ## Latency
 
-`check` has no latency subcommand. Round trips are measured by `lab/bench/ping.rs`, which runs on every backend.
-Unpinned runs on a loaded laptop gave medians about 2.4 times apart for the same binary, so a kept record must
-state where each rank ran. No record is kept in this tree.
+The `latency` binary named here is not in the tree now; round trips are measured by the lab's `latency`
+experiment (`lab/bench/ping.rs`, `lab/README.md`). The text below is the record of what it wrote then.
 
-What these runs do not cover is in `README.md`, Not checked.
+`latency` writes raw round trips, one JSON line each, in nixsci record format (`kind: value`, name
+`rtt`): `ns` is A's round trip on A's clock (CLOCK_MONOTONIC), `bytes` is `size_of::<Probe>()`,
+plus the drawn and measured gap before the send, the seed and `seq`. No verdict is computed here:
+an importer states its claim over the records with nixsci.stats.
+
+No record is kept in this tree. Unpinned runs on a loaded laptop gave medians about 2.4 times apart
+for the same binary, so a kept record must state where each rank ran.
+
+## Not checked
+
+- Several real nodes. Several hosts are tested on one machine split into hosts (`transport/README.md`,
+  `TRAME_MPI_NODE_RANKS`); runs on separate machines are lab experiments (lab/).
+- Other MPI implementations and other CPUs. Timings are on this machine only.
+- The traced build adds SeqCst fences, so trace checks exercise a more strongly ordered variant than production, which relies on the standard SPSC acquire/release and seqlock (Boehm 2012) argument.

@@ -19,7 +19,8 @@ What a rank does once launched: rank i < W is worker i, rank W is the leader.
   those arrived, and the leaders that have not ended. A round with nothing moved and as many arrived as sent
   shows an instant at which no step runs, no message is in flight and no epoch can move.
 - A joining leader then ends its workers with `Deadlock`, and a waiting leader panics, as on seq. A leader that
-  runs its own code holds the rounds back, so nothing is shown while it does.
+  runs its own code holds the rounds back, so nothing is shown while it does; that is sound, since it may
+  still send.
 - Each end of a lane counts, in its route's two window words, the messages it sent and those it saw arrive,
   credits included; an ended end keeps observing its posted receives until the final barrier.
 - A route that one host declares and the other does not is refused on the declaring host when the other host's

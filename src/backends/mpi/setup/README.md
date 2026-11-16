@@ -13,8 +13,8 @@ From `mpirun` to a launched run: what every rank agrees on, the window it maps, 
 
 (The directory is not `launch/`: that is the launcher script of every backend.)
 
-- Every collective is reached on every rank, so a refusal happens on all ranks or none (L1, L2). `agree` runs
-  before `open`, and `Backend::agree` also runs the hosts' route comparison (`transport/cross/connect.rs`).
+- Every refusal is decided by a collective reduction, so every rank of a host sees it (L2). `agree` runs before
+  `open`, and `Backend::agree` also runs the hosts' route comparison (`transport/cross/connect.rs`).
 - Only the rank's main thread touches `state.rs`. A host that calls the backend from threads it spawned is
   outside the backend's contract: the global is not synchronised.
 - **Finalization.** A worker records its outcome in the window and wakes the leader before it calls
