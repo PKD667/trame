@@ -6,7 +6,7 @@ let
   cols = builtins.fromJSON (builtins.readFile ../../lab/columns.json);
   noisy = { ns = 1.0; compute_ns = 1.0; user_s = 1.0; sys_s = 1.0; wall_s = 1.0; value = 1.0; };
   dataset = name: {
-    columns = (if name == "launch_config" || name == "mpi_config" then { } else cols.common) // cols.${name};
+    columns = (if lib.hasSuffix "_config" name then { } else cols.common) // cols.${name};
     noisy = lib.filterAttrs (c: _: cols.${name} ? ${c}) noisy;
   };
 in
