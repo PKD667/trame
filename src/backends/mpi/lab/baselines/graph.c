@@ -3,7 +3,7 @@
  * step a rank computes ITERS rounds, posts MPI_Irecv from each in-neighbour and MPI_Isend to each
  * out-neighbour, then MPI_Waitall. The first WARM steps are a warm-up; the clock runs for STEPS steps.
  * Rank 0 gathers the spans and prints one JSON line per rank (bench "mpi_graph", "worker" = rank).
- * Build: mpicc -O2 -o mpi_graph src/backends/mpi/bench/graph.c
+ * Build: mpicc -O2 -o mpi_graph src/backends/mpi/lab/baselines/graph.c
  * Run:   mpirun -n W ./mpi_graph W STEPS SIZE DEGREE ITERS SEED   (SIZE 64 or 1024) */
 #include <mpi.h>
 #include <stdio.h>
