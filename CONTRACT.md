@@ -151,8 +151,9 @@ run. A route between a leader and a worker of another host is refused at launch.
 on such a route forever is stuck, and ends with `Deadlock` once every leader waits, joins or has
 ended (E2).
 
-**F6 Peer channel.** Leaders exchange messages over a peer channel that is not a route. A host is not
-its own peer; a send to a host that is not a peer panics.
+**F6 Peer channel.** A peer of a leader is the leader of any other host. Leaders exchange messages over a
+peer channel that is not a route. A host is not its own peer, and a host number of H or more names no
+host; a send to either panics.
 
 ## End
 

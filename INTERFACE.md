@@ -659,11 +659,17 @@ Only hosts that share routes wait for each other's launch. A message type crossi
 by a hash of its type path and its size, so both hosts must compile the same type under the same
 path.
 
-> **Definition (Peer channel).** Leaders exchange messages over a channel that is not a route.
-> `Run::leader_send(HostId(h), m)` sends to host $h$'s leader, and `Run::leader_recv::<M>()` answers
-> the next message of type `M` from a peer leader with the host it came from, or `None`. Messages of
-> one type from one peer arrive in the order they were sent. A host is not its own peer; a send to a
-> host that is not a peer panics.
+> **Definition (Peer channel).** A peer of a leader is the leader of any other host: with $H$ hosts,
+> every leader has the $H - 1$ others, whether or not their hosts share a route. Leaders exchange
+> messages over a channel that is not a route. `Run::leader_send(HostId(h), m)` sends to host $h$'s
+> leader, and `Run::leader_recv::<M>()` answers the next message of type `M` from a peer leader with
+> the host it came from, or `None`. Messages of one type from one peer arrive in the order they were
+> sent. A host is not its own peer, and a host number of $H$ or more names no host; a send to either
+> panics.
+
+A leader may rely on a peer having launched when its host shares a route with the peer's host,
+because those hosts wait for each other's launch. For any other peer, a program that must know the
+peer is running has to be told so by a message.
 
 Each host has its own clocks, so readings of two hosts never compare (Section 5.1). Definition
 (Deadlock) holds across hosts: a worker waiting on a route from a host that has ended is stuck.
@@ -724,6 +730,10 @@ Limits, which are implementation limits, not part of $T$:
 - A state has at most 63 fields and at most 64 steps; a step receives at most 16 message types; a
   `.room` wait names one of a worker's first 64 routes. Exceeding one is refused or aborts with a
   message naming it.
+- A program cannot size a domain: no call of `Topology` states how much memory a state or the pool
+  will hold, and the backend chooses the size (Section 4, Definition (Building)). An allocation past
+  it, including one in an edit, ends the process. A program that must hold a value whose size it
+  knows only at run time, such as a graph read from a file, cannot tell the launch.
 - A route between a leader and a worker of another host is refused.
 - A backend may hold back the detection of a stuck run across hosts while a leader runs its own code
   rather than waiting or joining.
