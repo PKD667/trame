@@ -48,8 +48,14 @@ pub use trame_macros::step;
 
 /// The runtime the macros call (INTERFACE.md 5.3, 5.4). Not for direct use.
 #[doc(hidden)]
-#[path = "parallel.rs"]
+#[path = "parallel/mod.rs"]
 pub mod __rt;
+
+#[cfg(all(feature = "lanes-avx2", feature = "lanes-avx512"))]
+compile_error!("features `lanes-avx2` and `lanes-avx512` are exclusive: choose at most one lane backend");
+
+#[cfg(all(any(feature = "lanes-avx2", feature = "lanes-avx512"), not(target_arch = "x86_64")))]
+compile_error!("lane features `lanes-avx2` and `lanes-avx512` are only available on x86_64 (target_arch)");
 
 /// Level markers the macros emit and the driver reads. Not for direct use.
 #[doc(hidden)]

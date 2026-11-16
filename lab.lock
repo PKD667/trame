@@ -3826,6 +3826,237 @@
         "path": "/nix/store/mim68vvpiw7aasha3546q185n1ma2qjc-programs-seq-s1-fc285afc27c7-r1",
         "sha256": "sha256-vY6A1xlBTYSa1W46NEeU4lzs4Vl/mP8kCK7nm90WQz0="
       }
+    ],
+    "simd-bench-avx512": [
+      {
+        "facts": {
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "06856bc3b49e8578bfd09c1ccf406b482bb0c15720a52162ffd6a5f1fc4edee2",
+          "params": {
+            "cpu_type": "intel-avx512"
+          },
+          "replicate": 1,
+          "run": "simd-bench-avx512-06856bc3b49e-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-avx512-06856bc3b49e-r1",
+        "path": "/nix/store/4qj88h2s3nivd6hqs194c1snyw7drwkf-simd-bench-avx512-06856bc3b49e-r1",
+        "sha256": "sha256-KQZHvZ52zE3nV8H0LlXprlXbtSpjMW7v2CLGUqEB5Oo="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "06856bc3b49e8578bfd09c1ccf406b482bb0c15720a52162ffd6a5f1fc4edee2",
+          "params": {
+            "cpu_type": "intel-avx512"
+          },
+          "replicate": 2,
+          "run": "simd-bench-avx512-06856bc3b49e-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-avx512-06856bc3b49e-r2",
+        "path": "/nix/store/5i043kak885z4cb8c33hlpm2f0gdb4fj-simd-bench-avx512-06856bc3b49e-r2",
+        "sha256": "sha256-2c1slpgFcPfg5wEGbIWzuPg8q5H2d/5zAvnDzCHm1ds="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "06856bc3b49e8578bfd09c1ccf406b482bb0c15720a52162ffd6a5f1fc4edee2",
+          "params": {
+            "cpu_type": "intel-avx512"
+          },
+          "replicate": 3,
+          "run": "simd-bench-avx512-06856bc3b49e-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-avx512-06856bc3b49e-r3",
+        "path": "/nix/store/w34bla9psznpwp90hb4iq4fcjljil0zb-simd-bench-avx512-06856bc3b49e-r3",
+        "sha256": "sha256-3zmFHQcYEriP3dxjn3RNpVoU+jmWvG6MCLSglpQ1VOs="
+      }
+    ],
+    "simd-bench-zen1": [
+      {
+        "facts": {
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "cd42154781ce5eb6cde9a58b53268cf3f1995fbbd80b1d366766786d3cccf86d",
+          "params": {
+            "cpu_type": "zen1"
+          },
+          "replicate": 1,
+          "run": "simd-bench-zen1-cd42154781ce-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-zen1-cd42154781ce-r1",
+        "path": "/nix/store/9xpv6hp69c04xvf3nfwfi3rhbwfz6frl-simd-bench-zen1-cd42154781ce-r1",
+        "sha256": "sha256-mABb5tqXAuXEkK+pdVaarhEn/Rdkid0chJd79yZNFbE="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "cd42154781ce5eb6cde9a58b53268cf3f1995fbbd80b1d366766786d3cccf86d",
+          "params": {
+            "cpu_type": "zen1"
+          },
+          "replicate": 2,
+          "run": "simd-bench-zen1-cd42154781ce-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-zen1-cd42154781ce-r2",
+        "path": "/nix/store/wd9llvizqzmnc9z0gnbzywzbpfiyvmcy-simd-bench-zen1-cd42154781ce-r2",
+        "sha256": "sha256-+G6werbSpo4WXiwwN1ChRCDasgIV19e2huKBZj1YVlo="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/q1p99jzb5kn8s5h2kabxlnk489ycb2yn-experiment-simd-bench",
+          "format": "2.0",
+          "input_id": "cd42154781ce5eb6cde9a58b53268cf3f1995fbbd80b1d366766786d3cccf86d",
+          "params": {
+            "cpu_type": "zen1"
+          },
+          "replicate": 3,
+          "run": "simd-bench-zen1-cd42154781ce-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "simd-bench-zen1-cd42154781ce-r3",
+        "path": "/nix/store/4m629pc0ax835kbfi2sj6m6z58c20bja-simd-bench-zen1-cd42154781ce-r3",
+        "sha256": "sha256-M271qfvY+ZjX4GS6JgnLN0zZzbOk21Hyuut9ywbznMI="
+      }
+    ],
+    "transport-cluster": [
+      {
+        "facts": {
+          "closure": "/nix/store/6ha74naa54z8w8920xwg6vcwsmi9gn6m-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "5d704a55ab8cab3920435e5f43c1b5a602d534ab5b495a36be536d957382458c",
+          "params": {
+            "node_ranks": 0
+          },
+          "replicate": 1,
+          "run": "transport-cluster-5d704a55ab8c-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-cluster-5d704a55ab8c-r1",
+        "path": "/nix/store/x4wyrh3qaflvs5r2xasbs9bywiqqrwd0-transport-cluster-5d704a55ab8c-r1",
+        "sha256": "sha256-ltHjiMthv0SMLPWzD98G0hmMtk03sdXtjOK84K1S3N4="
+      }
+    ],
+    "transport-mpi": [
+      {
+        "facts": {
+          "closure": "/nix/store/40ppq0xxz7njh9q0hwb2ya6bbzm15ddf-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "3bb49d7595d190ee381f715c7c7cd11a2fd91468b3f9de1c56738c06187c7ec4",
+          "params": {
+            "node_ranks": 2
+          },
+          "replicate": 1,
+          "run": "transport-mpi-3bb49d7595d1-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-mpi-3bb49d7595d1-r1",
+        "path": "/nix/store/b150gvshsknqdcvq98iq35wrh141zbyw-transport-mpi-3bb49d7595d1-r1",
+        "sha256": "sha256-jYvEiHvl8JRUoTmA5GuVZbI0qYbLXKvaagyYMY3XBFA="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/40ppq0xxz7njh9q0hwb2ya6bbzm15ddf-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "95258257a99a2efa582edb4592d5007eed879f77e9ba74c60406d5e78200ab52",
+          "params": {
+            "node_ranks": 1
+          },
+          "replicate": 1,
+          "run": "transport-mpi-95258257a99a-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-mpi-95258257a99a-r1",
+        "path": "/nix/store/1jxj7zrlrayanmwiicibddvwg870w8sz-transport-mpi-95258257a99a-r1",
+        "sha256": "sha256-pygn6s/3RGi0PXFRASAZzOJ8T4o2iil+h5rreyF1NZI="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/40ppq0xxz7njh9q0hwb2ya6bbzm15ddf-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "f9caa77b2f8bcb130746fa35b35c022ed3f4b85144b79ee5bb0316b561863e49",
+          "params": {
+            "node_ranks": 0
+          },
+          "replicate": 1,
+          "run": "transport-mpi-f9caa77b2f8b-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-mpi-f9caa77b2f8b-r1",
+        "path": "/nix/store/3gw6yjp8rh0axnyj53hh6x1h88x4a8xs-transport-mpi-f9caa77b2f8b-r1",
+        "sha256": "sha256-GXrsApleUyoKSZC/A9i2g9rhQrC+Nh3E6oK0MwE25nM="
+      }
+    ],
+    "transport-node": [
+      {
+        "facts": {
+          "closure": "/nix/store/67i07ij709mvma4kmxv0ysaf6g1kyfx5-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "879e347cb716b9df20d887a1a8aaf03135b3ad03e33087b850c86e28c4917a6c",
+          "params": {
+            "node_ranks": 0
+          },
+          "replicate": 1,
+          "run": "transport-node-879e347cb716-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-node-879e347cb716-r1",
+        "path": "/nix/store/6l8pwb52b4n5km7iqskmg8db70nd8zlz-transport-node-879e347cb716-r1",
+        "sha256": "sha256-2MbLFlDqSK7RRy3QSZBkbhDoFe+wEBi8PuEDEGfHuWg="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/67i07ij709mvma4kmxv0ysaf6g1kyfx5-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "e314468b30bd545a37f86b548ee477e64a0872b2f5b49e9a1d5c87915f6343aa",
+          "params": {
+            "node_ranks": 1
+          },
+          "replicate": 1,
+          "run": "transport-node-e314468b30bd-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-node-e314468b30bd-r1",
+        "path": "/nix/store/kqc4vrx5pqd02dm4nk7406ls26n44gkv-transport-node-e314468b30bd-r1",
+        "sha256": "sha256-sQfN5ugH8/mh1fbksknrY0eCKbwdhxcoxF4cKOVMK34="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/67i07ij709mvma4kmxv0ysaf6g1kyfx5-experiment-transport-mpi",
+          "format": "2.0",
+          "input_id": "ec91417f65645935914bc8b5dd2aa483c589f9c951e5146ac82fb2d5b9553ace",
+          "params": {
+            "node_ranks": 2
+          },
+          "replicate": 1,
+          "run": "transport-node-ec91417f6564-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "transport-node-ec91417f6564-r1",
+        "path": "/nix/store/f6hvbznw7qg2h5q06rlfpvs7mk44150i-transport-node-ec91417f6564-r1",
+        "sha256": "sha256-imXQ+sML/2X2jO+ZG2r+Y4SzJvBMqAQQh1NPxTesa3E="
+      }
     ]
   }
 }

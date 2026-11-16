@@ -44,3 +44,13 @@ where
         f(item, &mut slots[key(item)], cx);
     }
 }
+
+// The lane sub-backends (features `lanes-avx2`, `lanes-avx512`; lane.rs). Nothing calls them yet: `parallel!`
+// still expands to the scalar fold above. They are declared here, after the runtime, so the runtime's own items
+// are the same with or without a lane feature.
+#[cfg(feature = "lanes-avx2")]
+pub mod avx2;
+#[cfg(feature = "lanes-avx512")]
+pub mod avx512;
+#[cfg(any(feature = "lanes-avx2", feature = "lanes-avx512"))]
+pub mod lane;

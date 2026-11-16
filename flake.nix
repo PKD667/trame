@@ -51,6 +51,7 @@
           ./INTERFACE.md
           ./crates/macros
           ./src/math
+          ./src/parallel
           ./check/programs
           ./tests
           ./lab/bench
@@ -164,8 +165,11 @@
         import ./lab/checks.nix labArgs
         ++ import ./lab/perf.nix (labArgs // { q = qm; })
         ++ lib.concatMap (n: backends.${n}.d.experiments (labArgs // { b = backends.${n}; data = import ./lab/data.nix { inherit lib; }; }))
-          backendNames;
+          backendNames
+        ++ simd.experiments;
       experiments = builtins.listToAttrs (map (i: { inherit (i) name; value = i.exp; }) catalogue);
+      # The SIMD benchmark (lab/simd.nix): experiments and their analysis, not in the suite.
+      simd = import ./lab/simd.nix { inherit pkgs lib labLib system nixsci runners labPy trameFiles; };
       labSuite = import ./lab/suite.nix {
         inherit pkgs lib labLib catalogue machines qm;
         python = nixsci.packages.${system}.python;
@@ -208,6 +212,7 @@
       packages.${system} = {
         trame = trameCli;
         trame-driver = trameDriver;
+        trame-simd-bench = simd.bin;
       } // lib.concatMapAttrs (n: b: {
         "trame-${n}-bins" = b.bins;
         "launch-${n}" = b.launch;
@@ -217,6 +222,8 @@
       legacyPackages.${system} = {
         suite-report = labSuite.report;
         suite-report-draft = labSuite.reportDraft;
+        simd-analysis = simd.analysis;
+        simd-figures = simd.figures;
       };
       lab.${system} = {
         inherit experiments;

@@ -1,0 +1,22 @@
+[package]
+name = "trame-simd-experiment"
+version = "0.0.0"
+edition = "2024"
+description = "Prototype: parallel! (spec.md 5.4) lowered to explicit AVX2 for hand-written lane versions of three item shapes. Not part of trame."
+publish = false
+
+[dependencies]
+# The root crate refuses a build with no backend (src/backends/mod.rs). The bench calls only trame::__rt::parallel, the
+# scalar reference, which does not depend on the backend; `seq` is named here for that compile alone (see the report).
+trame = { path = "../..", default-features = false, features = ["seq"] }
+
+# Its own workspace root: the experiment is not a member of trame's workspace.
+[workspace]
+
+# The spec aborts on overflow in every build; the reference and the lanes are measured with it on.
+[profile.release]
+overflow-checks = true
+debug = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trame_checked)'] }
