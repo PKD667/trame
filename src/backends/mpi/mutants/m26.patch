@@ -3,8 +3,8 @@
 #   still runs only when sched::start (concurrent.rs, shared) finds the process enabled, so the output of a run that
 #   ends does not change; only CPU use does. The mpi backend reports no Deadlock for an idle worker (m17.skip), so a
 #   stuck run hangs with or without this patch. Not run here; the seq argument (seq/m26.patch) is the same.
---- a/backends/mpi/worker.rs
-+++ b/backends/mpi/worker.rs
+--- a/backends/mpi/roles/worker.rs
++++ b/backends/mpi/roles/worker.rs
 @@ -241,7 +241,7 @@
      let x = xport();
      let t = parts().0;

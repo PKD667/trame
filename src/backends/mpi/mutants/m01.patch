@@ -1,7 +1,7 @@
 # violates: Full
 # expect: killed
---- a/backends/mpi/ring.rs
-+++ b/backends/mpi/ring.rs
+--- a/backends/mpi/rings/send.rs
++++ b/backends/mpi/rings/send.rs
 @@ -53,8 +53,8 @@
          }
          let after = if tracing { clock() } else { 0 };

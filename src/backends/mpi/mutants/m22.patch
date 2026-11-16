@@ -1,7 +1,7 @@
 # violates: Take
 # expect: killed
---- a/backends/mpi/leader.rs
-+++ b/backends/mpi/leader.rs
+--- a/backends/mpi/roles/leader.rs
++++ b/backends/mpi/roles/leader.rs
 @@ -59,7 +59,11 @@
      t.fail_if_aborted();
      let owned = plan::owned(&local().inbox, ty);
