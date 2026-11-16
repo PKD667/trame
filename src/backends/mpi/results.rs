@@ -23,10 +23,12 @@ use std::string::String;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 use std::vec::Vec;
 
-use super::Transport;
-use super::layout::{ABORT_BIT, ABORT_LEN, ABORT_WORKER, DONE, K_OUTCOME, OUT_ABORT, RESULT, START, STOP};
-use super::object;
-use super::state::finalize;
+use crate::backends::mpi::Transport;
+use crate::backends::mpi::layout::{
+    ABORT_BIT, ABORT_LEN, ABORT_WORKER, DONE, K_OUTCOME, OUT_ABORT, RESULT, START, STOP,
+};
+use crate::backends::mpi::object;
+use crate::backends::mpi::state::finalize;
 
 impl Transport {
     /// Record this worker's result, unless one is already set. Answers whether this call set it.
@@ -99,10 +101,10 @@ impl Transport {
             if seen & ABORT_BIT != 0 || (seen / RESULT >= workers && !aborting) {
                 break;
             }
-            let pause = std::time::Duration::from_nanos(super::detect::pause());
+            let pause = std::time::Duration::from_nanos(crate::backends::mpi::detect::pause());
             self.win().wait_for(DONE, seen, Some(pause));
-            if super::detect::round(false) == super::detect::Verdict::Stuck {
-                super::detect::end_stuck(self);
+            if crate::backends::mpi::detect::round(false) == crate::backends::mpi::detect::Verdict::Stuck {
+                crate::backends::mpi::detect::end_stuck(self);
             }
         }
         (0..workers).map(|w| self.win().word(self.lay().per_worker(K_OUTCOME, w)).load(Acquire)).collect()

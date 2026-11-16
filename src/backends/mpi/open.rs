@@ -14,14 +14,14 @@ use mpi::collective::SystemOperation;
 use mpi::topology::SimpleCommunicator;
 use mpi::traits::*;
 
-use super::Transport;
-use super::layout::Topology;
-use super::nodes::node_ranks_setting;
-use super::refusal::Refusal;
-use super::segment;
-use super::shape::{encode, plan};
-use super::shm::Window;
-use super::types::{Role, clock};
+use crate::backends::mpi::Transport;
+use crate::backends::mpi::layout::Topology;
+use crate::backends::mpi::nodes::node_ranks_setting;
+use crate::backends::mpi::refusal::Refusal;
+use crate::backends::mpi::segment;
+use crate::backends::mpi::shape::{encode, plan};
+use crate::backends::mpi::shm::Window;
+use crate::backends::mpi::types::{Role, clock};
 
 /// Every rank of the launch checks that it was given the same bytes. Collective over `world`: every
 /// rank calls it, and every rank gets the same answer. The bytes of the last rank (the leader, when

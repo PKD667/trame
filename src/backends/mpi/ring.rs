@@ -18,9 +18,9 @@ use std::sync::atomic::{
     fence,
 };
 
-use super::Transport;
-use super::layout::{LINE, RouteLayout, SLOT_HEAD};
-use super::types::{Answer, Error, Event, RouteId, clock};
+use crate::backends::mpi::Transport;
+use crate::backends::mpi::layout::{LINE, RouteLayout, SLOT_HEAD};
+use crate::backends::mpi::types::{Answer, Error, Event, RouteId, clock};
 
 pub(super) fn checked_seq(index: u64) -> Result<u64, Error> {
     index.checked_mul(2).and_then(|x| x.checked_add(2)).ok_or(Error::Broken("frame index overflows the sequence word"))
@@ -71,7 +71,9 @@ impl Transport {
     fn send_far(&mut self, id: RouteId, msg: &[u8]) -> Answer {
         let me = self.me();
         let before = if self.trace.is_some() { clock() } else { 0 };
-        let super::cross::Lane::Out(o) = self.lane(id) else { unreachable!("a lane this endpoint sends on is Out") };
+        let crate::backends::mpi::cross::Lane::Out(o) = self.lane(id) else {
+            unreachable!("a lane this endpoint sends on is Out")
+        };
         let (index, read) = o.counts();
         let (answer, grew) = o.send(msg);
         if grew {

@@ -9,8 +9,8 @@ extern crate std;
 
 use std::sync::atomic::Ordering::{Acquire, Relaxed};
 
-use super::layout::LINE;
-use super::{Error, RouteId, Transport};
+use crate::backends::mpi::layout::LINE;
+use crate::backends::mpi::{Error, RouteId, Transport};
 
 impl Transport {
     /// Whether a frame is an offer to this endpoint on one of `owned`, which it must own.
@@ -35,7 +35,7 @@ impl Transport {
         }
         if r.remote.is_some() {
             let me = self.me();
-            let super::cross::Lane::Out(o) = self.lane(id) else {
+            let crate::backends::mpi::cross::Lane::Out(o) = self.lane(id) else {
                 unreachable!("a lane this endpoint sends on is Out")
             };
             let (room, grew) = o.room();

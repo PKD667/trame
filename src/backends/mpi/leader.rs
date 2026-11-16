@@ -13,12 +13,12 @@ use crate::io::Full;
 use crate::run::Outcome;
 use crate::topology::{End, WorkerId};
 
-use super::layout::{K_EDIT, K_HELD, K_OUTCOME, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
-use super::plan::{self, Entry, rank_of};
-use super::state::{finalize, local};
-use super::types::{Answer, Received};
-use super::{RouteId, Transport};
 use crate::backend::Target;
+use crate::backends::mpi::layout::{K_EDIT, K_HELD, K_OUTCOME, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
+use crate::backends::mpi::plan::{self, Entry, rank_of};
+use crate::backends::mpi::state::{finalize, local};
+use crate::backends::mpi::types::{Answer, Received};
+use crate::backends::mpi::{RouteId, Transport};
 use std::sync::atomic::Ordering::SeqCst;
 
 impl Transport {
@@ -155,17 +155,17 @@ pub(super) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
 pub(super) fn wait(run: &Leader, seen: u64) -> u64 {
     run.get().fail_if_aborted();
     let stuck = || {
-        if super::detect::round(false) == super::detect::Verdict::Stuck {
+        if crate::backends::mpi::detect::round(false) == crate::backends::mpi::detect::Verdict::Stuck {
             panic!("trame: deadlock: the leader waits and nothing can arrive");
         }
     };
     // With peers, a peer message is a change too, and nothing on this host can wake the leader for
     // it (it arrives through MPI, not the window): the leader spins on both.
-    let e = if super::hosts::host().count > 1 {
+    let e = if crate::backends::mpi::hosts::host().count > 1 {
         // The seen word is the epoch in the low half and the count of peer arrivals in the high half.
         loop {
-            super::hosts::drain();
-            let e = run.get().leader_epoch() | (super::hosts::host().arrivals & 0xffff_ffff) << 32;
+            crate::backends::mpi::hosts::drain();
+            let e = run.get().leader_epoch() | (crate::backends::mpi::hosts::host().arrivals & 0xffff_ffff) << 32;
             if e != seen {
                 break e;
             }
@@ -179,7 +179,7 @@ pub(super) fn wait(run: &Leader, seen: u64) -> u64 {
                 break e;
             }
             stuck();
-            run.get().leader_nap(e as u32, super::detect::pause());
+            run.get().leader_nap(e as u32, crate::backends::mpi::detect::pause());
         }
     };
     run.get().fail_if_aborted();

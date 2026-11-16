@@ -52,10 +52,10 @@ use mpi::traits::*;
 use crate::launch::{Plan, Refused};
 use crate::topology::{End, HERE};
 
-use super::hosts::host;
-use super::layout::{Layout, RouteLayout};
-use super::shm::Window;
-use super::types::Answer;
+use crate::backends::mpi::hosts::host;
+use crate::backends::mpi::layout::{Layout, RouteLayout};
+use crate::backends::mpi::shm::Window;
+use crate::backends::mpi::types::Answer;
 
 fn ok(rc: i32, what: &str) {
     assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_{what} failed on a route between hosts");
@@ -178,8 +178,8 @@ pub(super) fn lanes(lay: &Layout, me: u32, win: &Window) -> Vec<Option<Lane>> {
     out
 }
 
-fn lane(r: &RouteLayout, x: super::layout::Remote, win: &Window) -> Lane {
-    let (sent, got) = (Count::at(win, r.base), Count::at(win, r.base + super::layout::LINE));
+fn lane(r: &RouteLayout, x: crate::backends::mpi::layout::Remote, win: &Window) -> Lane {
+    let (sent, got) = (Count::at(win, r.base), Count::at(win, r.base + crate::backends::mpi::layout::LINE));
     let comm = host().cross.as_raw();
     let n = r.size;
     let cap = r.cap as usize;
@@ -442,7 +442,7 @@ pub(super) fn quiesce(lanes: &mut [Option<Lane>]) {
     let mut answers = Vec::new();
     // A leader takes part in the detector's rounds until every leader has ended (detect.rs).
     if host().peers.is_some() {
-        while super::detect::round(true) != super::detect::Verdict::Over {
+        while crate::backends::mpi::detect::round(true) != crate::backends::mpi::detect::Verdict::Over {
             answer_connects(&mut answers);
             idle();
         }

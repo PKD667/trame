@@ -24,13 +24,13 @@ use crate::time::ClockId;
 use crate::topology::{End, WorkerId};
 use crate::worker::{Erased, Slot, agent};
 
-use super::layout::{OUT_ABORT, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
-use super::leader::{self, Leader};
-use super::open::{agree, open};
-use super::plan::{encode_plan, entries, inbox, topology};
-use super::state::{finalize, local, refused};
-use super::types::Role;
-use super::{Selected, Transport, segment, worker};
+use crate::backends::mpi::layout::{OUT_ABORT, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
+use crate::backends::mpi::leader::{self, Leader};
+use crate::backends::mpi::open::{agree, open};
+use crate::backends::mpi::plan::{encode_plan, entries, inbox, topology};
+use crate::backends::mpi::state::{finalize, local, refused};
+use crate::backends::mpi::types::Role;
+use crate::backends::mpi::{Selected, Transport, segment, worker};
 use crate::run::panic_message;
 
 /// Run this worker: `agents` agents of the reference scheduler (worker.rs), the main thread one of
@@ -108,7 +108,7 @@ fn build_or_adopt(plan: &mut Plan, t: &Transport) {
             segment::pool_slot().store(pool.addr() as u64, Release);
         }
     }
-    mpi::traits::CommunicatorCollectives::barrier(&super::hosts::host().comm);
+    mpi::traits::CommunicatorCollectives::barrier(&crate::backends::mpi::hosts::host().comm);
     if !builder {
         for &w in &mine {
             // SAFETY: the node's builder filled a Core of the same type at this address, in the
@@ -154,18 +154,18 @@ impl Backend for Selected {
                 }
                 None => std::println!("trame-ranks {ranks}"),
             }
-            super::state::finalize();
+            crate::backends::mpi::state::finalize();
             std::process::exit(0);
         }
-        let here = agree(&super::hosts::host().comm, &encode_plan(plan), ranks).map_err(refused);
+        let here = agree(&crate::backends::mpi::hosts::host().comm, &encode_plan(plan), ranks).map_err(refused);
         let checked = here.and_then(|()| crate::launch::check(plan));
-        let joined = super::cross::connect(plan, checked.is_ok());
+        let joined = crate::backends::mpi::cross::connect(plan, checked.is_ok());
         checked.and(joined)
     }
 
     fn launch(mut plan: Plan) -> Result<Leader, Refused> {
         let topo = topology(&plan)?;
-        let role = open(&super::hosts::host().comm, &topo).map_err(refused)?;
+        let role = open(&crate::backends::mpi::hosts::host().comm, &topo).map_err(refused)?;
         let t = match &role {
             Role::Leader(t) | Role::Worker(t) => t,
         };
@@ -176,7 +176,7 @@ impl Backend for Selected {
         match role {
             Role::Leader(t) => {
                 l.inbox = inbox(&l.entries, t.me());
-                super::detect::watch(&t);
+                crate::backends::mpi::detect::watch(&t);
                 Ok(Leader::new(t, (core::mem::take(&mut plan.workers), plan.pool.take())))
             }
             Role::Worker(t) => {
@@ -303,7 +303,7 @@ impl Backend for Selected {
     }
 
     fn host() -> u32 {
-        super::hosts::host().id
+        crate::backends::mpi::hosts::host().id
     }
 
     fn hosts() -> u32 {
@@ -313,16 +313,16 @@ impl Backend for Selected {
                 return h;
             }
         }
-        super::hosts::host().count
+        crate::backends::mpi::hosts::host().count
     }
 
     fn peer_send(_run: &Leader, to: u32, tag: u64, bytes: &[u8]) -> Result<(), Full> {
-        super::hosts::send(to, tag, bytes);
+        crate::backends::mpi::hosts::send(to, tag, bytes);
         Ok(())
     }
 
     fn peer_recv(_run: &Leader, tag: u64, out: &mut [u8]) -> Option<u32> {
-        super::hosts::recv(tag, out)
+        crate::backends::mpi::hosts::recv(tag, out)
     }
 
     fn leader_join(run: Leader) -> Vec<Outcome> {

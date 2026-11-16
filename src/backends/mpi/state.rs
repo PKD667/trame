@@ -14,9 +14,9 @@ use mpi::topology::SimpleCommunicator;
 
 use crate::launch::Refused;
 
-use super::plan::Entry;
-use super::refusal::Refusal;
-use super::{RouteId, Transport};
+use crate::backends::mpi::plan::Entry;
+use crate::backends::mpi::refusal::Refusal;
+use crate::backends::mpi::{RouteId, Transport};
 
 pub(super) struct Local {
     pub world: Option<SimpleCommunicator>,
@@ -27,7 +27,7 @@ pub(super) struct Local {
     /// The worker endpoint, once this rank has opened the window as a worker.
     pub endpoint: Option<Transport>,
     /// This process's host (hosts.rs).
-    pub host: Option<super::hosts::Host>,
+    pub host: Option<crate::backends::mpi::hosts::Host>,
 }
 
 struct Slot(UnsafeCell<Option<Local>>);
@@ -88,7 +88,7 @@ pub fn finalize() {
     if l.host.is_some() {
         match l.endpoint.as_mut() {
             Some(t) => t.quiesce(),
-            None => super::cross::quiesce(&mut []),
+            None => crate::backends::mpi::cross::quiesce(&mut []),
         }
     }
     // SAFETY: MPI is up and not finalized; every lane's message is complete.

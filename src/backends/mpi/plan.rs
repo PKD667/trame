@@ -13,8 +13,8 @@ use std::vec::Vec;
 use crate::launch::{Plan, Refused};
 use crate::topology::{End, HERE};
 
-use super::layout::Remote;
-use super::{Route, RouteId, Topology};
+use crate::backends::mpi::layout::Remote;
+use crate::backends::mpi::{Route, RouteId, Topology};
 
 /// A hasher that keeps every byte it is given. A `TypeId` hashes its own bytes, so this encodes the
 /// id exactly, with no collision to let two different types look equal.
@@ -86,8 +86,8 @@ pub(super) fn encode_plan(plan: &Plan) -> Vec<u8> {
 pub(super) fn topology(plan: &Plan) -> Result<Topology, Refused> {
     let workers =
         u32::try_from(plan.workers.len()).map_err(|_| Refused::Backend { reason: "too many workers".into() })?;
-    let h = super::hosts::host();
-    let g = |e: End| super::cross::global(e, workers, h.id);
+    let h = crate::backends::mpi::hosts::host();
+    let g = |e: End| crate::backends::mpi::cross::global(e, workers, h.id);
     let mut tags: Vec<TypeId> = Vec::new();
     let mut routes = Vec::with_capacity(plan.routes.len());
     for r in &plan.routes {

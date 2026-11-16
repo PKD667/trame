@@ -13,9 +13,9 @@ use std::sync::atomic::{
     fence,
 };
 
-use super::Transport;
-use super::layout::{LINE, RouteLayout};
-use super::types::{Error, Event, Received, RouteId, clock};
+use crate::backends::mpi::Transport;
+use crate::backends::mpi::layout::{LINE, RouteLayout};
+use crate::backends::mpi::types::{Error, Event, Received, RouteId, clock};
 
 impl Transport {
     /// Receive a frame from the owned routes, which this worker must own, into `out`. Takes the
@@ -56,7 +56,9 @@ impl Transport {
         let r = *self.route(id)?;
         if r.remote.is_some() {
             let me = self.me();
-            let super::cross::Lane::In(i) = self.lane(id) else { unreachable!("a lane this endpoint receives is In") };
+            let crate::backends::mpi::cross::Lane::In(i) = self.lane(id) else {
+                unreachable!("a lane this endpoint receives is In")
+            };
             let ((here, now), index) = (i.head(), i.consumed());
             if now {
                 self.bump(me);
@@ -98,7 +100,9 @@ impl Transport {
         let before = if tracing { clock() } else { 0 };
         if r.remote.is_some() {
             let me = self.me();
-            let super::cross::Lane::In(i) = self.lane(id) else { unreachable!("a lane this endpoint receives is In") };
+            let crate::backends::mpi::cross::Lane::In(i) = self.lane(id) else {
+                unreachable!("a lane this endpoint receives is In")
+            };
             let (took, now) = i.take(out);
             if now {
                 self.bump(me);

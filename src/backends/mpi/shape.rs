@@ -8,8 +8,8 @@ use std::format;
 use std::string::String;
 use std::vec::Vec;
 
-use super::layout::{LINE, Layout, PER_WORKER, RouteLayout, SLOT_HEAD, Topology, WORKER_LINES};
-use super::refusal::Refusal;
+use crate::backends::mpi::layout::{LINE, Layout, PER_WORKER, RouteLayout, SLOT_HEAD, Topology, WORKER_LINES};
+use crate::backends::mpi::refusal::Refusal;
 
 fn refuse(why: impl Into<String>) -> Refusal {
     Refusal::Topology(why.into())

@@ -25,8 +25,8 @@ extern crate std;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
-use super::Transport;
-use super::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADER_SLEEP, START};
+use crate::backends::mpi::Transport;
+use crate::backends::mpi::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADER_SLEEP, START};
 
 impl Transport {
     /// The epoch word and the sleep flag of agent `w`: a worker's, or the leader's when `w` is the
@@ -119,6 +119,6 @@ impl Transport {
 
     /// Nanoseconds since the run started, on `CLOCK_MONOTONIC` (see `clock` in types.rs).
     pub(crate) fn elapsed(&self) -> u64 {
-        super::types::clock().saturating_sub(self.win().word(START).load(SeqCst))
+        crate::backends::mpi::types::clock().saturating_sub(self.win().word(START).load(SeqCst))
     }
 }

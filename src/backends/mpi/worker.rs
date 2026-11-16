@@ -28,12 +28,12 @@ use std::sync::atomic::Ordering::{Acquire, SeqCst};
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
-use super::layout::{ABORT_BIT, DEADLOCK, DONE, K_ACTS, K_EDIT, K_HELD, K_IDLE, K_RUN, STOP};
+use crate::backends::mpi::layout::{ABORT_BIT, DEADLOCK, DONE, K_ACTS, K_EDIT, K_HELD, K_IDLE, K_RUN, STOP};
 
-use super::plan::{self, Entry, rank_of};
-use super::state::local;
-use super::types::{Answer, Received};
-use super::{RouteId, Transport};
+use crate::backends::mpi::plan::{self, Entry, rank_of};
+use crate::backends::mpi::state::local;
+use crate::backends::mpi::types::{Answer, Received};
+use crate::backends::mpi::{RouteId, Transport};
 
 /// The rank's transport lock (see the module comment).
 static XPORT: Mutex<()> = Mutex::new(());
@@ -218,7 +218,7 @@ pub(super) fn edit_held(held: bool) {
     let e = unsafe { &*(f.leader_epoch as *const AtomicU32) };
     e.fetch_add(1, SeqCst);
     if word64(f.leader_sleep).load(SeqCst) != 0 {
-        super::futex::wake_addr(f.leader_epoch);
+        crate::backends::mpi::futex::wake_addr(f.leader_epoch);
     }
 }
 
@@ -281,5 +281,5 @@ pub(super) fn now() -> (ClockId, u64) {
     let _x = xport();
     let (t, _) = parts();
     // The clock is named by the host: each host has its own CLOCK_MONOTONIC start (hosts.rs).
-    (ClockId::new(super::hosts::host().id + 1), t.elapsed())
+    (ClockId::new(crate::backends::mpi::hosts::host().id + 1), t.elapsed())
 }
