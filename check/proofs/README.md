@@ -33,6 +33,20 @@ the code has it.
   (`NoBlock`), one credit send outstanding, and every frame eventually taken and credited. Configurations
   C=2 N=5 (58 distinct states) and C=3 N=7 (177) hold (TLC 2.19, chiclet-6). `MCLaneOver.cfg` gives the sender
   one frame more room than its credits and must violate `Chain`; it does, once the sender has sent C + 1 frames on no credit.
+- **Detect** (`Detect.tla`, `MCDetect.cfg`, `MCDetectOnce.cfg`). The stuck detector: a Stuck verdict is given only when
+  every worker is quiet or done and nothing is in flight. H = 2 hosts, STABLE = TRUE, BUDGET = 2, ROUNDS = 3 holds
+  (7,351,279 distinct states, depth 49; TLC 2.19, MIST, 2026-11-16, in `run.sh`). Wider bounds also hold, run by hand
+  with 2 workers and a 2.5 GB heap: BUDGET 2 ROUNDS 2 (2,215,512 states), BUDGET 3 ROUNDS 2 (24,660,766 states, 313 s).
+  BUDGET 3 ROUNDS 3 did not finish in 900 s (39 M states, no error yet). `MCDetectOnce` is the mutant that skips the
+  comparison with the previous round; it fails `Sound` (119,025 states), as it must.
+- **Edit** (`Edit.tla`, `MCEdit*.cfg`). The handshake of a leader edit with a worker's steps (`worker.rs` `remote_edit`,
+  `backends/mpi/worker.rs` `edit_held`, `leader.rs`): the worker holds its fields while the leader's closure runs.
+  Two model bugs were found and fixed against the code while writing it (the leader's kernel entry of its sleep,
+  and the Dekker re-read on the worker side). `MCEditNoWait` (`WAITREL = FALSE`, the leader does not wait for the
+  release) fails `Held` (168,817 states), as it must; it is in `run.sh`. `MCEdit`, `MCEdit2`, `MCEdit22` and
+  `MCEditXportAck` are larger models that did not finish: TLC found no error in 0.3 to 2.5 M distinct states before the
+  timeout (1,200 to 30,854 s; `MCEdit` ran 8.5 hours). They check nothing yet beyond that prefix. Not modelled:
+  the pool target, the `has_lanes` branch of `idle`, `fail_if_aborted`, the IDLE word.
 
 ## Not modelled
 
@@ -46,3 +60,12 @@ another waits on a lane.
 `sh check/proofs/mpi/run.sh OUTDIR` with `TLC` set to a tlc binary, with `tlc` from nixpkgs' `tlaplus`.
 The check runs all the MC configs and writes `outcome.json`, `results.txt` and the logs. Numbers of distinct
 states for failing runs vary between runs (TLC stops at the first violation with 4 workers).
+
+## Unsafe code and Miri
+
+- `unsafe-registry.sh ROOT` lists every `unsafe` site in the Rust sources and fails on a site with no `SAFETY:` comment
+  citing a clause of `CONTRACT.md`. It reads source only. It is a measure, not yet a gate: no check runs it, and many
+  sites still fail it. `sh check/proofs/unsafe-registry.sh .` prints them.
+- `miri.sh` runs the seq backend's tests under Miri with Tree Borrows, in `nix develop .#miri`. Isolation stays on.
+- Kani harnesses for `sched.rs` (may_start, choose) and the segment allocator are not ported to this tree
+  (branch `wm-proofs`, `proofs/kani/`).

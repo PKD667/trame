@@ -38,6 +38,9 @@ EpochWrap:MCEpochWrap:Invariant NoLostWakeup is violated
 Lane:MCLane:No error has been found
 Lane3:MCLane3:No error has been found
 LaneOver:MCLaneOver:Invariant Chain is violated
+Detect:MCDetect:No error has been found
+DetectOnce:MCDetectOnce:Invariant Sound is violated
+EditNoWait:MCEditNoWait:Invariant Held is violated
 MODELS
 items="[${items%,}]"
 printf '{"holds":%s,"gaps":[{"id":"not-modelled","why":"memory orderings weaker than SeqCst; timeouts of sleep_on; the kernel futex beyond compare-and-sleep; MPI progress beyond weak fairness; several lanes; lossy routes; process exit, quiesce and MPI_Finalize. See check/proofs/README.md"}],"counterexamples":%s}\n' "$holds" "$items" > "$out/outcome.json"
