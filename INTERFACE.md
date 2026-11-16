@@ -136,7 +136,7 @@ them and nothing else. What they mean for a program:
 | Slices, arrays | every `core::slice` method, `core::mem::{swap, replace, take}` | |
 | Other collections | none | `VecDeque`, `BTreeMap` and the rest of `alloc::collections`; `HashMap` and `HashSet` in any level, because no hasher is listed |
 | Text | reading a `String` or `&str` | `format!`, building a `String` |
-| Numbers | `+ - * /` with overflow checks, comparisons, `Option` and `Result` combinators, the float operations listed under Floating point | `std` anything, so `f64::exp`, `ln`, `powf`, `sqrt`; use `trame::math`. `f64::max` and `min` |
+| Numbers | `+ - * /` with overflow checks, comparisons, `Option` and `Result` combinators, the float operations listed under Floating point | `std` anything, so `f64::exp`, `ln`, `powf`, `sqrt`; use `trame::math::f64::exp` and the like (`math::f32` for `f32`). `f64::max` and `min` |
 | Memory | the fields of the write set | `static`, `thread_local!`, `Cell`, atomics, `Rc`, `Arc`, raw pointers, `unsafe` |
 
 A field is a buffer of fixed capacity. The builder or an edit allocates it at the size it will need, and
