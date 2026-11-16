@@ -87,20 +87,34 @@ impl Comm {
     fn recv(self, src: i32, tag: i32, buf: &mut [u8]) {
         let n = i32::try_from(buf.len()).expect("length fits i32");
         let rc = unsafe {
-            ffi::MPI_Recv(buf.as_mut_ptr() as *mut c_void, n, ffi::RSMPI_UINT8_T, src, tag, self.0, ffi::RSMPI_STATUS_IGNORE)
+            ffi::MPI_Recv(
+                buf.as_mut_ptr() as *mut c_void,
+                n,
+                ffi::RSMPI_UINT8_T,
+                src,
+                tag,
+                self.0,
+                ffi::RSMPI_STATUS_IGNORE,
+            )
         };
         ok(rc, "Recv");
     }
     fn isend(self, dest: i32, tag: i32, buf: &[u8]) -> Req {
         let n = i32::try_from(buf.len()).expect("length fits i32");
         let mut r = unsafe { ffi::RSMPI_REQUEST_NULL };
-        ok(unsafe { ffi::MPI_Isend(buf.as_ptr() as *const c_void, n, ffi::RSMPI_UINT8_T, dest, tag, self.0, &mut r) }, "Isend");
+        ok(
+            unsafe { ffi::MPI_Isend(buf.as_ptr() as *const c_void, n, ffi::RSMPI_UINT8_T, dest, tag, self.0, &mut r) },
+            "Isend",
+        );
         Req(r)
     }
     fn irecv(self, src: i32, tag: i32, buf: &mut [u8]) -> Req {
         let n = i32::try_from(buf.len()).expect("length fits i32");
         let mut r = unsafe { ffi::RSMPI_REQUEST_NULL };
-        ok(unsafe { ffi::MPI_Irecv(buf.as_mut_ptr() as *mut c_void, n, ffi::RSMPI_UINT8_T, src, tag, self.0, &mut r) }, "Irecv");
+        ok(
+            unsafe { ffi::MPI_Irecv(buf.as_mut_ptr() as *mut c_void, n, ffi::RSMPI_UINT8_T, src, tag, self.0, &mut r) },
+            "Irecv",
+        );
         Req(r)
     }
     /// Block for one message from any rank, any tag. As backends/mpi/relay.rs `recv`: probe for the size
@@ -113,7 +127,15 @@ impl Comm {
         let n = n as usize;
         buf.resize(n, 0);
         let rc = unsafe {
-            ffi::MPI_Recv(buf.as_mut_ptr() as *mut c_void, n as i32, ffi::RSMPI_UINT8_T, st.MPI_SOURCE, st.MPI_TAG, self.0, &mut st)
+            ffi::MPI_Recv(
+                buf.as_mut_ptr() as *mut c_void,
+                n as i32,
+                ffi::RSMPI_UINT8_T,
+                st.MPI_SOURCE,
+                st.MPI_TAG,
+                self.0,
+                &mut st,
+            )
         };
         ok(rc, "Recv");
         n
@@ -209,7 +231,15 @@ impl Epoch {
                 self.sleepers.fetch_sub(1, SeqCst);
                 return;
             }
-            unsafe { libc::syscall(libc::SYS_futex, self.e.as_ptr(), libc::FUTEX_WAIT, seen, std::ptr::null::<libc::timespec>()) };
+            unsafe {
+                libc::syscall(
+                    libc::SYS_futex,
+                    self.e.as_ptr(),
+                    libc::FUTEX_WAIT,
+                    seen,
+                    std::ptr::null::<libc::timespec>(),
+                )
+            };
             self.sleepers.fetch_sub(1, SeqCst);
         }
     }
@@ -233,7 +263,12 @@ unsafe impl Sync for Slot {}
 
 impl Slot {
     fn new(cap: usize) -> Slot {
-        Slot { seq: AtomicU64::new(0), len: AtomicUsize::new(0), data: Vec::leak(vec![0u8; cap]).as_mut_ptr(), wake: Epoch::new() }
+        Slot {
+            seq: AtomicU64::new(0),
+            len: AtomicUsize::new(0),
+            data: Vec::leak(vec![0u8; cap]).as_mut_ptr(),
+            wake: Epoch::new(),
+        }
     }
     fn post(&self, src: &[u8]) {
         unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), self.data, src.len()) };
@@ -383,7 +418,10 @@ fn diff(a: Cpu, b: Cpu) -> Cpu {
 enum Local {
     None,
     /// A posted MPI_Irecv of one byte from this rank to itself, tested together with the frame's.
-    SelfMsg { req: Req, buf: Box<[u8; 1]> },
+    SelfMsg {
+        req: Req,
+        buf: Box<[u8; 1]>,
+    },
     /// An atomic flag loaded between tests.
     Flag(Arc<AtomicU64>),
 }
@@ -699,7 +737,16 @@ fn gather(world: Comm, rank: i32, o: &Opts, rows: Vec<Row>) {
     // Per row: has_stats, four stats, user, sys, cpu_iters.
     let pack = |r: &Row| {
         let s = r.stats.map_or([f64::NAN; 4], |s| s.0);
-        [r.stats.is_some() as u8 as f64, s[0], s[1], s[2], s[3], r.cpu.user as f64, r.cpu.sys as f64, r.cpu_iters as f64]
+        [
+            r.stats.is_some() as u8 as f64,
+            s[0],
+            s[1],
+            s[2],
+            s[3],
+            r.cpu.user as f64,
+            r.cpu.sys as f64,
+            r.cpu_iters as f64,
+        ]
     };
     let mine: Vec<[f64; 8]> = rows.iter().map(pack).collect();
     if rank == 1 {
