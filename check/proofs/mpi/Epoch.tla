@@ -9,8 +9,8 @@
 \* the flag loses a wake-up at N >= 2 (counterexamples/epoch-flag-k2.txt).
 \* LOCKED models XPORT (roles/worker.rs 39): an agent takes it before sleep_on and holds it until sleep_on returns, so
 \* at most one agent of a rank is inside sleep_on. LOCKED = FALSE is the word's protocol alone, which is what
-\* epoch.rs claims and what the leader's and relay's words see; LOCKED = TRUE is the worker rank as it runs.
-\* Not modelled: timeouts (until = None), the relay and leader words (same protocol), weaker
+\* epoch.rs claims and what the leader's word sees; LOCKED = TRUE is the worker rank as it runs.
+\* Not modelled: timeouts (until = None), the leader's word (same protocol), weaker
 \* orderings (see check/proofs/README.md), spurious futex returns.
 EXTENDS Naturals, FiniteSets
 

@@ -62,7 +62,7 @@ VARIABLES
   runit,    \* the leader's `run_it`
   fruns,    \* number of times f ran, per edit
   nret,     \* edits that returned
-  pcn,      \* the frame sender's program counter (the environment: other workers, the relay)
+  pcn,      \* the frame sender's program counter (the environment: other workers)
   pcz       \* the worker's `finish` program counter
 
 vars == <<EW, SW, EL, SL, edit, held, res, xp, slk, editing, remote, acked, run, ans, pq, sent, pcw, seen, have, rq,

@@ -2,8 +2,8 @@
 // that can change an agent's wait conditions moves its word (`bump`). An agent that must wait sleeps
 // on its own word, and a bumper wakes it only when it is sleeping. Nobody polls.
 //
-// No lost wake-up. SLEEP counts the sleepers of a word: a rank's k agents, and the leader or relay
-// for theirs. The waiter reads EPOCH (its `seen`), checks its conditions, adds 1 to SLEEP, then reads
+// No lost wake-up. SLEEP counts the sleepers of a word: a rank's k agents, and the leader
+// for its own. The waiter reads EPOCH (its `seen`), checks its conditions, adds 1 to SLEEP, then reads
 // EPOCH again; the bumper adds 1 to EPOCH, then loads SLEEP. All four accesses are SeqCst, so they
 // have one total order S. If the bumper reads SLEEP = 0, its load comes before every waiter's add in
 // S, so its add comes before each waiter's second read, and the waiter sees the new EPOCH and does
