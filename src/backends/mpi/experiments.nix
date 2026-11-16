@@ -6,7 +6,7 @@ let
   # The runners of this directory and the columns they record (lab/columns.json), in one directory.
   runner = pkgs.runCommand "mpi-bench-runners" { } ''
     mkdir $out
-    cp ${./bench/baselines.py} ${./bench/mpirun.py} ${./tests/transport.py} ${../../../lab/columns.json} $out/
+    cp ${./bench/baselines.py} ${./bench/mpirun.py} ${./bench/xhost.py} ${./tests/transport.py} ${../../../lab/columns.json} $out/
   '';
   # The OSU micro-benchmarks (osu_latency, osu_bw) of nixpkgs, built against the same Open MPI.
   osu = "${pkgs.osu-micro-benchmarks}/libexec/osu-micro-benchmarks/mpi/pt2pt";
@@ -26,6 +26,58 @@ let
       closures.${system} = closure { name = "transport-mpi"; inherit b; dir = runner; script = "transport.py"; };
       resources = { provider = "local"; hosts = 1; };
       data.check = transportData;
+      data.mpi_config = data.dataset "mpi_config";
+    };
+  };
+
+  # The cross-machine transport microbenchmark (bench/xhost/): a crate of its own, outside the root workspace, so that
+  # building it changes neither the root crate's source nor the closures built from it. Two ranks on two hosts
+  # (span = 2), one job per mode; one experiment per kind of network, so that runs on different clusters are never
+  # replicates of one another. Parameters and columns: bench/xhost.py. `mca` is set after what the probe rows show.
+  xhostBin = pkgs.rustPlatform.buildRustPackage {
+    pname = "mpi-cross-host";
+    version = "0.1.0";
+    src = lib.fileset.toSource {
+      root = ./bench/xhost;
+      fileset = lib.fileset.difference ./bench/xhost (lib.fileset.maybeMissing ./bench/xhost/target);
+    };
+    cargoLock.lockFile = ./bench/xhost/Cargo.lock;
+    nativeBuildInputs = b.d.packages ++ [ pkgs.openmpi.dev ];
+    env = b.d.env // { MPICC = "${pkgs.openmpi.dev}/bin/mpicc"; };
+    doCheck = false;
+  };
+  xhostData = {
+    columns = {
+      mode = "str"; phase = "str"; size = "int"; iters = "int";
+      median_ns = "float"; p99_ns = "float"; min_ns = "float"; mean_ns = "float";
+      cpu0_ns = "float"; cpu1_ns = "float"; sys0_ns = "float"; sys1_ns = "float";
+    };
+    key = [ "mode" "phase" "size" ];
+    noisy = lib.genAttrs [ "median_ns" "p99_ns" "min_ns" "mean_ns" "cpu0_ns" "cpu1_ns" "sys0_ns" "sys1_ns" ] (_: 1.0);
+  };
+  xhost = { name, provider }: {
+    inherit name;
+    kind = "xhost";
+    backend = "mpi";
+    span = 2;
+    exp = labLib.experiment {
+      inherit name;
+      span = 2;
+      closures.${system} = closure {
+        inherit name b;
+        dir = runner;
+        script = "xhost.py";
+        env = {
+          BIN = "${xhostBin}/bin";
+          RUSTC_VERSION = pkgs.rustc.version;
+          OPENMPI_VERSION = pkgs.openmpi.version;
+        };
+      };
+      params = { iters = 100000; warmup = 10000; sizes = "8,64,1024,65536"; mca = ""; };
+      sweep.mode = [ "direct" "direct_single" "relay" "mixed_self" "mixed_flag" "wake_futex" ];
+      replicates = 3;
+      resources = { inherit provider; hosts = 2; walltime = 120; opts.stage = "fanout"; };
+      data.latency = xhostData;
       data.mpi_config = data.dataset "mpi_config";
     };
   };
@@ -93,5 +145,9 @@ let
     };
 in
 [ transport ]
+++ lib.optionals (machines >= 2) [
+  (xhost { name = "mpi-cross-host"; provider = "cluster"; })
+  (xhost { name = "mpi-cross-host-opa"; provider = "cluster-opa"; })
+]
 ++ lib.concatLists (lib.mapAttrsToList (kind: f:
   map (baseline kind f) (lib.filter (s: s <= machines && s <= b.d.maxMachines) f.spans)) families)
