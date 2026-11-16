@@ -8,7 +8,7 @@
 // of four sums over the leaders: the leaders whose snapshot is unstable, the messages sent between
 // hosts, the messages arrived, and the leaders that have not ended. A snapshot is this host's words:
 // per worker OUTCOME, RUN, ACTS, IDLE and EPOCH, the leader's epoch, the count words of every route
-// between hosts (cross.rs, Counts), and the peer messages sent and received (hosts.rs). It is stable
+// between hosts (transport/cross/, Counts), and the peer messages sent and received (hosts.rs). It is stable
 // when every worker is stuck or has a result and the snapshot equals the one this leader gave the
 // round before.
 //

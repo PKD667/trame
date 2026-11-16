@@ -1,6 +1,6 @@
 // The nodes of a launch: which shared-memory node each world rank is on. A node is a set of ranks that
 // share memory (`MPI_Comm_split_type(SHARED)`), optionally cut into groups of TRAME_MPI_NODE_RANKS
-// consecutive ranks for tests on one machine (HOSTS.md, Testing on one machine). Every rank runs
+// consecutive ranks for tests on one machine (transport/README.md, Testing on one machine). Every rank runs
 // `discover`, which is collective over the world communicator, so every rank gets the same table.
 
 extern crate std;

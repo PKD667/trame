@@ -5,16 +5,16 @@ Produced by: nix-pinned tlc (tlaplus 1.7.4, TLC2 Version 2.19 of 08 August 2024)
 Model: Epoch.tla. Bounds: W = 2, K = 2. The run is deterministic in content; state order may differ.
 
 Map of the model's steps to the code (file:line in src/backends/mpi):
-  W1  Epoch.tla 41-44  epoch.rs:40     the caller reads the epoch word: seen := E
-  W2  Epoch.tla 46-48  caller          the caller's condition: no frame yet, so it must wait
-  W2b Epoch.tla 50-52  epoch.rs:103    sleep_on's first test: E = seen, so it does not return
-  W3  Epoch.tla 54-57  epoch.rs:110    SLEEP := 1
-  W4  Epoch.tla 59-63  epoch.rs:112    the Dekker re-read: E = seen, so it does not return
-  B1  Epoch.tla 79-82  bump's caller   the act: the frame is stored (cond := TRUE)
-  B2  Epoch.tla 84-88  epoch.rs:51     fetch_add(1): E moves to 1, then (second bump) back to 0
-  B3  Epoch.tla 90-93  epoch.rs:52-53  the bumper loads SLEEP = 1 and calls wake; the waiter is not
-                                       in the kernel, so the wake finds no sleeper and does nothing
-  Kern Epoch.tla 66-70 futex.rs:24-25  FUTEX_WAIT compares the word with seen: 0 = 0, so it sleeps
+  W1   Epoch.tla 41-44      waiting/epoch.rs:40       the caller reads the epoch word: seen := E
+  W2   Epoch.tla 46-48      caller                    the caller's condition: no frame yet, so it must wait
+  W2b  Epoch.tla 50-52      waiting/epoch.rs:103      sleep_on's first test: E = seen, so it does not return
+  W3   Epoch.tla 54-57      waiting/epoch.rs:110      SLEEP := 1
+  W4   Epoch.tla 59-63      waiting/epoch.rs:112      the Dekker re-read: E = seen, so it does not return
+  B1   Epoch.tla 79-82      bump's caller            the act: the frame is stored (cond := TRUE)
+  B2   Epoch.tla 84-88      waiting/epoch.rs:51       fetch_add(1): E moves to 1, then (second bump) back to 0
+  B3   Epoch.tla 90-93      waiting/epoch.rs:52-53    the bumper loads SLEEP = 1 and calls wake; the waiter is not
+                                                      in the kernel, so the wake finds no sleeper and does nothing
+  Kern Epoch.tla 66-70      waiting/futex.rs:24-25    FUTEX_WAIT compares the word with seen: 0 = 0, so it sleeps
 
 Result: at the last state the waiter is in the kernel (pcw = fw), its condition is true (cond = TRUE),
 and the bumper is done (pcb = done). No later bump exists to wake it, so the waiter sleeps for ever.

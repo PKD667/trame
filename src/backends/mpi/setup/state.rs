@@ -1,7 +1,7 @@
 // The state of this process in the launch, and the MPI world it uses. The backend operations take no
 // sender and no run handle for workers, so a worker's endpoint lives here.
 //
-// Only the rank's main thread touches this. The worker function runs there (imp.rs), and so do the
+// Only the rank's main thread touches this. The worker function runs there (roles/runner.rs), and so do the
 // leader's calls. A host that spawns threads and calls the backend from them is outside this
 // backend's contract: the global is not synchronised, and nothing here is `Sync`.
 
@@ -70,7 +70,7 @@ pub(crate) fn world() -> &'static SimpleCommunicator {
 }
 
 /// Call MPI_Finalize once, if MPI is up and not yet finalized. Finalize waits for every rank, so it
-/// is called only after this rank's result is final (see the README, Finalization).
+/// is called only after this rank's result is final (setup/README.md, Finalization).
 pub fn finalize() {
     let (mut up, mut done): (i32, i32) = (0, 0);
     // SAFETY: each query takes one out-pointer. The check is on MPI itself, not on `world()`: a test
@@ -82,7 +82,7 @@ pub fn finalize() {
     if up == 0 || done != 0 {
         return;
     }
-    // Every rank that made the hosts takes part in the lanes' end (cross.rs `quiesce`), with or
+    // Every rank that made the hosts takes part in the lanes' end (transport/cross/ `quiesce`), with or
     // without lanes of its own: the leader's endpoint has none.
     let l = local();
     if l.host.is_some() {

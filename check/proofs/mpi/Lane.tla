@@ -1,5 +1,5 @@
 ---- MODULE Lane ----
-\* One lossless route between hosts, capacity C, N frames: src/backends/mpi/cross.rs, Out and In.
+\* One lossless route between hosts, capacity C, N frames: src/backends/mpi/transport/cross/, Out and In.
 \* Sender: p frames sent, c the largest credit received (Out::poll). It sends frame p only when
 \* p - c < C (Out::send), and its buffer is free again once frame p - C's send completed (Out::put).
 \* Receiver: q frames taken (In::c); a receive is posted for each frame q .. q + C - 1 (In::post);
@@ -64,7 +64,7 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Send) /\ WF_vars(Match) /\ WF_vars(Cred
 \* The chain: c <= q <= got <= p <= c + C.
 Chain == c <= q /\ q <= got /\ got <= p /\ p <= c + C
 
-\* Every frame in flight has its receive posted: its index is below q + C (cross.rs, Receiver).
+\* Every frame in flight has its receive posted: its index is below q + C (transport/cross/, Receiver).
 Posted == \A k \in 1..Len(wire) : wire[k] < q + C
 
 \* Frames on the wire are the next ones in order (T1).

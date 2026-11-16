@@ -25,7 +25,7 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
     let mut at = header;
     let mut routes = Vec::with_capacity(topo.routes.len());
     for (rank, r) in topo.routes.iter().enumerate() {
-        // The end on this host must be a worker of the launch; on another host, a worker there (cross.rs).
+        // The end on this host must be a worker of the launch; on another host, a worker there (transport/cross/).
         let here = match r.remote {
             None => r.from <= topo.workers && r.to <= topo.workers,
             Some(x) => (if x.outgoing { r.from } else { r.to }) < topo.workers,
@@ -45,7 +45,7 @@ pub(crate) fn plan(topo: &Topology) -> Result<Layout, Refusal> {
             .checked_mul(8)
             .and_then(|b| b.checked_add(SLOT_HEAD))
             .ok_or_else(|| refuse("slot size overflows"))?;
-        // A route to another host has no ring here: its frames land in the receiver's buffers (cross.rs).
+        // A route to another host has no ring here: its frames land in the receiver's buffers (transport/cross/).
         let slots = if r.remote.is_some() { 0 } else { r.cap as usize };
         let body = slots.checked_mul(stride).ok_or_else(|| refuse("route size overflows"))?;
         let base = at;

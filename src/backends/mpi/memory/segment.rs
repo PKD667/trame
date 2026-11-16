@@ -2,7 +2,7 @@
 // object per node of a launch, mapped at the same address, ADDR, in every rank of the node, so a
 // pointer the builder wrote is the same pointer in the worker's process. The leader builds the states
 // of the workers on its node, and the pool, there; the host rank of another node builds that node's
-// (imp.rs). A state is then used in place: nothing is encoded, and `take`, `error` and `edit` read and
+// (setup/adopt.rs). A state is then used in place: nothing is encoded, and `take`, `error` and `edit` read and
 // write the same bytes the worker's steps do.
 //
 // Linux only, as the backend is: MAP_FIXED_NOREPLACE (Linux 4.17) maps at ADDR or fails, never over

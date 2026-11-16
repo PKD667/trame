@@ -68,7 +68,7 @@ impl Transport {
         Ok(answer)
     }
 
-    /// Send on a lane (cross.rs). The trace records the credit the answer read as `read`.
+    /// Send on a lane (transport/cross/). The trace records the credit the answer read as `read`.
     fn send_far(&mut self, id: RouteId, msg: &[u8]) -> Answer {
         let me = self.me();
         let before = if self.trace.is_some() { clock() } else { 0 };

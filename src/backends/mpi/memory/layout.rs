@@ -33,7 +33,7 @@
 //                            +0    P: frames ever sent on the route (written by the sender only)
 //                            +64   C: frames ever consumed (written by the receiver only; lossless)
 //                          A route between hosts has no ring: P counts the messages this end of its
-//                          lane sent, C those it saw arrive, frames and credits alike (cross.rs).
+//                          lane sent, C those it saw arrive, frames and credits alike (transport/cross/).
 //                            +128  cap slots, each: seq (8), payload (8 * words)
 
 extern crate std;
@@ -79,7 +79,7 @@ pub(crate) const OUT_FAILED: u64 = 5;
 /// A route as the host declares it: sender, receiver, tag, message size in bytes, capacity in
 /// frames, and whether it is lossy. A worker is named by its rank; the leader is `workers`. A route
 /// to or from a worker of another host has `remote`: then the end on that host is its worker number
-/// there, and the route has no ring in the window (cross.rs).
+/// there, and the route has no ring in the window (transport/cross/).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Route {
     pub from: u32,
@@ -91,7 +91,7 @@ pub struct Route {
     pub remote: Option<Remote>,
 }
 
-/// The end of a route on another host (cross.rs).
+/// The end of a route on another host (transport/cross/).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Remote {
     /// That end's host.
@@ -100,7 +100,7 @@ pub struct Remote {
     pub outgoing: bool,
     /// That end's rank in the world.
     pub world: i32,
-    /// The route's frames travel with MPI tag `2 lane`, its credits with `2 lane + 1` (cross.rs).
+    /// The route's frames travel with MPI tag `2 lane`, its credits with `2 lane + 1` (transport/cross/).
     pub lane: i32,
 }
 

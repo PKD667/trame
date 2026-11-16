@@ -1,8 +1,8 @@
 ---- MODULE Detect ----
-\* The leaders' deadlock detector: backends/mpi/detect.rs. One worker per host, H hosts. A worker is
+\* The leaders' deadlock detector: backends/mpi/roles/detect.rs. One worker per host, H hosts. A worker is
 \* active (a step may run), quiet (no step runs, its agents idle with no deadline: RUN = 0 and
 \* IDLE = EPOCH + 1) or done (it has a result). An active worker may send a message to another host
-\* (a frame or a credit, cross.rs), go quiet, or end. A message in flight arrives at its receiver: the
+\* (a frame or a credit, transport/cross/), go quiet, or end. A message in flight arrives at its receiver: the
 \* receiver's `got` count and epoch grow, and the worker is active again (poll_lanes bumps the epoch;
 \* the agent re-checks). The leader of a host may act on its worker between its rounds (a send, an
 \* edit, a stop): the worker's epoch grows and it is active.

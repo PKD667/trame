@@ -4,7 +4,7 @@ backend as H trame hosts, H = machines x S, and write what each host printed (sr
 
 Machines are the job's (NIX_DEPLOY_HOSTFILE, through nixsci.lab.mpi), or this machine alone. Each host is one
 shared-memory node, or S groups of one node's ranks (TRAME_MPI_NODE_RANKS). The ranks a host needs are asked of the
-program first: TRAME_PROBE=ranks on one rank, as host 0 of H (imp.rs). Every rank runs under GNU time.
+program first: TRAME_PROBE=ranks on one rank, as host 0 of H (backend.rs). Every rank runs under GNU time.
 
 DIR/host<h>.out   host h's stdout: its ranks' lines in rank order, consecutive duplicates collapsed (a refusal
                   prints once per rank)
@@ -43,7 +43,7 @@ class NoTopology(Exception):
 
 
 def ranks_of(program: list[str], hosts: int) -> int:
-    # The count is written to a file (TRAME_PROBE_OUT, imp.rs), not to stdout, which a test harness captures.
+    # The count is written to a file (TRAME_PROBE_OUT, backend.rs), not to stdout, which a test harness captures.
     with tempfile.TemporaryDirectory() as d:
         probe = Path(d) / "ranks"
         env = {**os.environ, "TRAME_PROBE": "ranks", "TRAME_PROBE_HOSTS": str(hosts), "TRAME_PROBE_OUT": str(probe)}

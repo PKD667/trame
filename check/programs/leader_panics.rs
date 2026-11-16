@@ -1,7 +1,7 @@
 //! leader_panics: the leader panics before `join`, while a worker waits for a frame the leader will never
 //! send. Spec.md 5, Abort: a panic ends the run, so the worker unwinds and the launch ends with the leader's
 //! panic (leader_panics.panics). On several hosts, before the fix in the backend's leader, the process hung
-//! at exit instead, because the relays waited for END.
+//! at exit instead, because a relay thread waited for END (the tree has none now).
 
 use trame::{Leader, Status, Topology};
 

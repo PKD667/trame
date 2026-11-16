@@ -3,11 +3,11 @@
 // one machine (nodes.rs). Hosts are numbered 0..count in order of their lowest world rank (F1). Each
 // host launches on its own communicator, as a one-node backend: its own window, segment, leader (its
 // last rank) and workers. A route between workers of two hosts goes rank to rank on `cross`, a
-// duplicate of the world (cross.rs). The leaders of the hosts form a communicator of their own, the
+// duplicate of the world (transport/cross/). The leaders of the hosts form a communicator of their own, the
 // peer channel (F6), ranked by host.
 //
 // The table is made at the first call, collectively over the world: every rank of the world calls
-// `host` before its launch (imp.rs `agree`), so every rank reaches the splits.
+// `host` before its launch (backend.rs `agree`), so every rank reaches the splits.
 
 extern crate std;
 
@@ -38,7 +38,7 @@ pub(crate) struct Host {
     pub watch: Option<crate::backends::mpi::roles::detect::Watch>,
     /// Per host, its world ranks: worker k of host h is `members[h][k]`, its leader the last.
     pub members: Vec<Vec<i32>>,
-    /// The world, duplicated for the frames and credits of routes between hosts (cross.rs).
+    /// The world, duplicated for the frames and credits of routes between hosts (transport/cross/).
     pub cross: SimpleCommunicator,
 }
 

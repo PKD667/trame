@@ -7,7 +7,7 @@
 // The abort record (`record_abort`). The first panic of a node is an object `<window>-abort-0`, created
 // exclusively, so one panic is recorded per node. The worker's rank and the length are stored before
 // ABORT_BIT, so a reader that sees the bit sees the whole message. A node that learns of an abort from the
-// network records it the same way (relay_in.rs).
+// network records it the same way.
 //
 // Abort reaches a worker at its next effect (worker.rs), not while it computes.
 //

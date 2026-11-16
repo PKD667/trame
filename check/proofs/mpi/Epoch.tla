@@ -1,13 +1,13 @@
 ---- MODULE Epoch ----
-\* The wait protocol of one worker rank or the leader: src/backends/mpi/epoch.rs (sleep_on, bump_word, epoch) and the
-\* futex calls of src/backends/mpi/futex.rs (wait_for compares and sleeps atomically; wake wakes every sleeper).
+\* The wait protocol of one worker rank or the leader: src/backends/mpi/waiting/epoch.rs (sleep_on, bump_word, epoch) and the
+\* futex calls of src/backends/mpi/waiting/futex.rs (wait_for compares and sleeps atomically; wake wakes every sleeper).
 \* Interleaving semantics: every access is SeqCst (epoch.rs lines 1-16), so one total order.
 \* N sleepers (the agents of one rank; worker.rs runs k of them) on one epoch word, one bumper that acts K times.
 \* W is the modulus of the 32-bit epoch word.
 \* SLEEP is a count of the agents between their fetch_add and their fetch_sub (COUNTED = TRUE, the code now), or
 \* the flag of the earlier code (COUNTED = FALSE: store 1 before the sleep, store 0 after it), kept to show that
 \* the flag loses a wake-up at N >= 2 (counterexamples/epoch-flag-k2.txt).
-\* LOCKED models XPORT (worker.rs 32): an agent takes it before sleep_on and holds it until sleep_on returns, so
+\* LOCKED models XPORT (roles/worker.rs 39): an agent takes it before sleep_on and holds it until sleep_on returns, so
 \* at most one agent of a rank is inside sleep_on. LOCKED = FALSE is the word's protocol alone, which is what
 \* epoch.rs claims and what the leader's and relay's words see; LOCKED = TRUE is the worker rank as it runs.
 \* Not modelled: timeouts (until = None), the relay and leader words (same protocol), weaker
@@ -47,7 +47,7 @@ vars == <<E, sleep, cond, seen, pcw, pcb, bumps, ld, lock>>
 \*  b2     E := E + 1 mod W; bumps += 1  (epoch.rs 52, fetch_add)
 \*  b3     ld := SLEEP # 0               (epoch.rs 53)
 \*  b4     if ld then FUTEX_WAKE         (epoch.rs 54: wakes every sleeper in fw at that time)
-\* Line numbers are those of src/backends/mpi/epoch.rs at the commit that adds this model.
+\* Line numbers are those of src/backends/mpi/waiting/epoch.rs at the commit that adds this model.
 
 Inc == IF COUNTED THEN sleep + 1 ELSE 1
 Dec == IF COUNTED THEN sleep - 1 ELSE 0

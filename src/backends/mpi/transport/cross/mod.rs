@@ -1,7 +1,7 @@
 // Routes between workers of two hosts (CONTRACT.md, F3, F5). Frames go rank to rank by two-sided MPI
 // on `Host::cross`, a duplicate of the world, with no thread between: the experiment mpi_cross_host
 // measured a relay thread at 49 to 50 us one way for 8 bytes against 30 us rank to rank, on two
-// machines (HOSTS.md, Routes between hosts).
+// machines (transport/README.md, Routes between hosts).
 //
 // A route is a lane. Its frames travel with MPI tag 2 lane, its credits with 2 lane + 1. The lane of
 // a route is its position, by F4 tag, among the routes with the same sender and receiver, so the two
@@ -24,7 +24,7 @@
 // frames' latency. Every arrival of a frame or of a credit that a test observes moves the worker's
 // epoch, whoever observed it, so a waiter that read the epoch before cannot miss it.
 //
-// Counts (detect.rs). Each end counts in the window, in its route's P and C words, the messages it
+// Counts (roles/detect.rs). Each end counts in the window, in its route's P and C words, the messages it
 // sent and those it saw arrive, frames and credits alike. A credit counts as sent when it falls due,
 // since it is sent at a later poll however long the end idles; a frame counts as arrived when a test
 // observes it, at any slot, not only the head's, so a frame that waits behind an untaken head is
@@ -122,7 +122,7 @@ pub(crate) fn quiesce(lanes: &mut [Option<Lane>]) {
     // in `finalize` (F5; Foreign calls).
     ok(unsafe { ffi::MPI_Ibarrier(host().cross.as_raw(), &mut bar) }, "Ibarrier");
     let mut answers = Vec::new();
-    // A leader takes part in the detector's rounds until every leader has ended (detect.rs).
+    // A leader takes part in the detector's rounds until every leader has ended (roles/detect.rs).
     if host().peers.is_some() {
         while crate::backends::mpi::roles::detect::round(true) != crate::backends::mpi::roles::detect::Verdict::Over {
             answer_connects(&mut answers);

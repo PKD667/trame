@@ -21,7 +21,7 @@ is close to 1. Equivalently, its weak-scaling curve `T_trame(N) / T_trame(1)` tr
 `T_mpi(N) / T_mpi(1)`. A program written for trame then scales exactly as well as the same program
 written against MPI by hand, and no better: the network is not trame's to fix.
 
-The structural condition behind that bound:
+The structural condition behind that bound (Locality):
 
 > **Locality.** Every operation on a path executed per frame or per wake touches O(d)
 > words, where d is the degree of the agent or node that runs it (its own routes and its own workers).
@@ -29,30 +29,23 @@ The structural condition behind that bound:
 
 A loop over W or R that runs once per run (launch, `join`, finalize) is allowed.
 
-## Locality in the relay
+## Locality in the tree
 
-The relay's `out` thread keeps its cost per wake to the routes and workers of its own node.
+The condition is not met by every path today, and nothing measures how much it costs.
 
-| path | file | runs | cost |
-|---|---|---|---|
-| `out` route scan | `relay_routes.rs` | every relay wake | the node's outbound routes and inbound lossless routes, listed once at start |
-| `out` frame buffer | `relay_routes.rs` | every outbound route, every wake | one scratch buffer per thread, reused |
-| `out` control scan | `relay_control.rs` | every relay wake | the node's local workers; each new result is queued for N - 1 nodes |
-
-The Locality claim below tests the consequence: the relay's CPU time per frame does not grow with N.
+- `Transport::poll_lanes` and `has_lanes` (`mod.rs`) walk `lanes`, which holds one slot per route of the host
+  (`cross/mod.rs`, `lanes`), not one per lane of this endpoint. A worker with a lane polls it in `idle`
+  (`roles/worker.rs`), so each poll costs O(R of the host), not O(d).
+- `Lane::poll` itself tests only the requests of its own lane: O(cap).
+- The earlier text of this file described a relay thread's scans (`relay_routes.rs`, `relay_control.rs`) and the
+  cost of its `in` core and its single sender. The tree has no relay, so none of that holds, and the claim built
+  on it (Locality, below) has no subject until it is restated for lane polling.
 
 ## What does not change
 
-- **Futex waits.** A worker waiting for a remote frame sleeps, and the relay's `in` thread wakes it.
-  A sleep and a wake cost a few microseconds that a polling MPI program does not pay. This is a choice
-  (no spinning workers), and its price is part of the overhead constant. The proxy benchmark below
-  measures it.
-- **The relay core.** `in` blocks in `MPI_Recv`, which spins: one core per node, measured by the
-  `cpu` dataset.
-- **One sender per node.** All cross-node frames of a node leave through one thread. This is a cost
-  (serialisation) and a gain (frames to the same node share one MPI message: at most N - 1 messages
-  per wake, whatever the number of workers). Which one dominates depends on message size and degree.
-  The proxy benchmark sweeps both.
+- A worker with a lane does not sleep, so its cores spin while it waits for a remote frame. A worker without one
+  sleeps on its futex, and a sleep and a wake cost a few microseconds that a polling MPI program does not pay.
+  That price is part of the overhead constant, and the proxy benchmark measures it.
 
 ## The proxy benchmark
 
@@ -67,7 +60,7 @@ its D out-neighbours, receives one from each of its D in-neighbours, and starts 
   implementations and does not depend on a clock. Each worker records its compute time separately.
 - **Weak scaling.** ITERS and the workers per node are fixed, and N grows.
 - **Strong scaling.** ITERS x W is fixed. N grows, and the compute per worker shrinks.
-- **Baseline.** `baseline/graph.c` does the same with `MPI_Irecv`, `MPI_Isend`, `MPI_Waitall`.
+- **Baseline.** `bench/graph.c` does the same with `MPI_Irecv`, `MPI_Isend`, `MPI_Waitall`.
 - **Result.** Each worker times STEPS steps after a warm-up on its own clock, and the runner records every
   worker's time. A step's cost is set by the slowest worker, so claims use the maximum and the median.
 
@@ -78,7 +71,7 @@ Stated before measuring, judged at 0.99 by the `scale` analysis (lab/README.md):
 - **Overhead.** In `graph`, weak scaling, D = 8, SIZE in {64, 1024}, ITERS set so compute is about
   100 µs per step: trame's maximum time per step is at most 1.10 x the baseline's, at every N.
 - **Tracking.** Same jobs: `T_trame(N) / T_trame(1)` is at most 1.05 x `T_mpi(N) / T_mpi(1)`, at every N.
-- **Locality.** The relay rank's CPU time per frame relayed does not grow with N (slope test).
+- **Locality.** Withdrawn with the relay (see Locality in the tree). No experiment tests it.
 - **Strong scaling.** trame's speedup `T(1) / T(N)` is at least 0.9 x the baseline's, for every N at
   which the baseline's parallel efficiency is at least 0.5.
 

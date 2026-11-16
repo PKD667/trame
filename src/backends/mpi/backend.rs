@@ -30,7 +30,7 @@ impl Backend for Selected {
     type Run = Leader;
 
     /// The ranks of the host agree on the plan, then the hosts on the routes between them (F3,
-    /// cross.rs `connect`). The launch checks run here too, so that a host refused by them still
+    /// cross/connect.rs `connect`). The launch checks run here too, so that a host refused by them still
     /// takes part in the connect, and the hosts it shares routes with are refused with it.
     fn agree(plan: &Plan) -> Result<(), Refused> {
         let ranks = plan.workers.len() as u32 + 1;

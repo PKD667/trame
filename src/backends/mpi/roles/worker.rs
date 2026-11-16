@@ -1,19 +1,19 @@
 // The worker's side: every operation acts for this process's worker endpoint (state.rs). Each one
 // first checks for an abort. An aborted run ends this worker at its next effect (INTERFACE.md 5, Abort):
-// the check unwinds with `Aborted`, which the worker's catch_unwind (imp.rs) records as its own result.
+// the check unwinds with `Aborted`, which the worker's catch_unwind (roles/runner.rs) records as its own result.
 //
 // A worker rank runs several agents (threads), and the endpoint is one per rank and not `Sync`
 // (state.rs). So every operation holds `XPORT`, the rank's transport lock, for its whole duration; steps
 // still compute in parallel, only their effects are serialised. `idle` holds it through the futex
 // sleep: an agent idles only when no step of its worker runs and none can start, so another agent that
 // needs the lock meanwhile has nothing to do that the same epoch change would not also wake. A worker
-// with a lane (cross.rs) cannot sleep: a frame from another host moves no futex. Its idle agents poll
+// with a lane (transport/cross/) cannot sleep: a frame from another host moves no futex. Its idle agents poll
 // the lanes instead, taking the lock for each poll only, until the epoch moves or the deadline passes.
 //
 // Deadlock (INTERFACE.md 5). The scheduler tells its turns (`mark_*`, under its own lock) into the
 // worker's RUN, ACTS and IDLE words, which the leader's detector reads (detect.rs). When the detector
 // shows every worker of the host stuck, the leader sets DEADLOCK and wakes every agent; each unwinds at
-// its next round with `Deadlocked`, and the worker's result is OUT_DEADLOCK (imp.rs).
+// its next round with `Deadlocked`, and the worker's result is OUT_DEADLOCK (roles/runner.rs).
 
 extern crate std;
 
@@ -149,7 +149,7 @@ struct Fast {
     idle: usize,
 }
 
-/// Record this worker's round words (imp.rs, before the agents start).
+/// Record this worker's round words (roles/runner.rs, before the agents start).
 pub(crate) fn fast_init() {
     let _x = xport();
     let (t, _) = parts();
@@ -259,7 +259,7 @@ pub(crate) fn idle(until: Option<u64>, epoch: u64) {
     }
 }
 
-/// Run `f` on this rank's endpoint under the transport lock (imp.rs: results and aborts).
+/// Run `f` on this rank's endpoint under the transport lock (roles/runner.rs: results and aborts).
 pub(crate) fn with_endpoint<R>(f: impl FnOnce(&Transport) -> R) -> R {
     let _x = xport();
     let l = local();

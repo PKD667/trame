@@ -82,7 +82,7 @@ pub(crate) fn encode_plan(plan: &Plan) -> Vec<u8> {
 
 /// The transport's topology for a checked plan. Each distinct message type is a tag, numbered in the
 /// order the plan first uses it, so every rank numbers them the same. A route to or from another
-/// host's worker gets its `Remote`: that worker's world rank, and the route's lane (cross.rs).
+/// host's worker gets its `Remote`: that worker's world rank, and the route's lane (transport/cross/).
 pub(crate) fn topology(plan: &Plan) -> Result<Topology, Refused> {
     let workers =
         u32::try_from(plan.workers.len()).map_err(|_| Refused::Backend { reason: "too many workers".into() })?;
