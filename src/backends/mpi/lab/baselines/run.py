@@ -6,7 +6,7 @@ per (ranks per machine), size, cap, steps, samples, pattern, rounds, graph_*, bi
 Environment: COLUMNS, BIN (mpi_barrier, mpi_flow, mpi_graph), OSU (the directory of osu_latency and osu_bw), NIX_LAB_DIR.
 
 The rows have the columns of the trame families of lab/lib/bench.py (lab/columns.json, in the environment as COLUMNS), so an analysis sets a baseline beside the backend it was written for; `backend` is "mpi" and `impl` is plain or osu.
-Datasets: the bench's own (flow, round, graph), `osu` (size, value, unit, min, max), `cpu`, and `mpi_config` (mpirun.py)."""
+Datasets: the bench's own (flow, round, graph), `osu` (size, value, unit, min, max), `cpu`, and `launch_config` (mpirun.py)."""
 
 from __future__ import annotations
 

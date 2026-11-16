@@ -5,7 +5,7 @@
 #   q.<deployment>.<placement>.<size> = { p50 = ns | null; p99 = ns | null; }
 #
 # A deployment is named for the hardware and network the bounds are set on:
-#   grvingt: Nancy (Grid'5000), grvingt nodes, Omni-Path, Open MPI ob1 over tcp on ib0.
+#   grvingt: Nancy (Grid'5000), grvingt nodes, Omni-Path.
 # placement: "same-host" (both workers on one trame host) or "cross-host" (the two on hosts of different machines).
 # A bound that is null is not set: the round trips are measured and no clause is claimed for it (the report says
 # "no bound"). No number has been measured on a reference deployment yet, so none is set here. To set one, measure

@@ -25,4 +25,4 @@ def argv(ranks: int, params: dict) -> list[str]:
 
 def record_argv(cmd: list[str]) -> None:
     """The full command line of one job (mpirun, its options, the program and its arguments), one row."""
-    lab.record("mpi_config", {"source": "argv", "text": shlex.join(cmd)})
+    lab.record("launch_config", {"source": "argv", "text": shlex.join(cmd)})

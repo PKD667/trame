@@ -62,7 +62,7 @@ let
         data = {
           ${if f.impl == "osu" then "osu" else f.bench} = data.dataset (if f.impl == "osu" then "osu" else f.bench);
           cpu = data.dataset "cpu";
-          mpi_config = data.dataset "mpi_config";
+          launch_config = data.dataset "launch_config";
         };
       };
     };

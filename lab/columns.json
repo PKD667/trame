@@ -87,9 +87,5 @@
   "unit": "str",
   "min": "float?",
   "max": "float?"
- },
- "mpi_config": {
-  "source": "str",
-  "text": "str"
  }
 }

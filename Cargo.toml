@@ -75,7 +75,7 @@ path = "check/programs/cells.rs"
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trame_checked)'] }
 
-# The spec aborts on overflow in every build, and the MPI transport was measured with it on.
+# The spec aborts on overflow in every build, and the backends were measured with it on.
 [profile.release]
 overflow-checks = true
 

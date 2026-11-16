@@ -15,7 +15,7 @@ of mixed_self, mixed_flag and wake_futex. `cpu0_ns` and `cpu1_ns` are the CPU ti
 and rank 1 per iteration; `sys0_ns` and `sys1_ns` the system part (the split is the kernel's estimate).
 For wake rows the CPU is per wake over the warm-up and measured wakes together, pauses included.
 
-Each job also writes `mpi_config` rows: lib/mpirun.py's, and the host of each rank, the CPU model, the network
+Each job also writes `launch_config` rows: lib/mpirun.py's, and the host of each rank, the CPU model, the network
 interfaces with their speed, the InfiniBand/Omni-Path devices, the compiler and Open MPI the closure was built
 with, the MCA settings of this job, the MPI library string that rank 0 printed, and `transport` rows: the selection
 lines of a short probe run of the same placement with Open MPI's pml, btl and mtl selection verbose.
@@ -93,7 +93,7 @@ def probe_transport(base: list[str], binary: str) -> None:
                  "--mca", "mtl_base_verbose", "10", binary, "direct", "--iters", "200", "--warmup", "50", "--sizes", "8"]
     res = proc.run(cmd, 300.0)
     if res.timed_out or res.rc != 0:
-        lab.record("mpi_config", {"source": "transport", "text": f"probe failed: rc={res.rc}"})
+        lab.record("launch_config", {"source": "transport", "text": f"probe failed: rc={res.rc}"})
         return
     seen: list[str] = []
     for line in (res.stdout + res.stderr).splitlines():
@@ -102,7 +102,7 @@ def probe_transport(base: list[str], binary: str) -> None:
         if re.search(r"select|selected|component|initializ|using|transport|provider", body, re.I) and body not in seen:
             seen.append(body)
     for body in seen[:40]:
-        lab.record("mpi_config", {"source": "transport", "text": body[:200]})
+        lab.record("launch_config", {"source": "transport", "text": body[:200]})
 
 
 def main() -> None:
@@ -115,12 +115,12 @@ def main() -> None:
         raise SystemExit("xhost measures a network: it needs a job on two hosts (span = 2)")
     mpirun.record_config()
     for source, text in machine():
-        lab.record("mpi_config", {"source": source, "text": text})
+        lab.record("launch_config", {"source": source, "text": text})
     for name in ("RUSTC_VERSION", "OPENMPI_VERSION"):
-        lab.record("mpi_config", {"source": name.lower(), "text": os.environ.get(name, "")})
+        lab.record("launch_config", {"source": name.lower(), "text": os.environ.get(name, "")})
     mca = str(p.get("mca", "")).split()
     for setting in mca:
-        lab.record("mpi_config", {"source": "mca", "text": setting})
+        lab.record("launch_config", {"source": "mca", "text": setting})
     cmd = mpirun.argv(2, {"per_node": 1, "leader": False, "bind": p.get("bind", "none")})
     for setting in mca:
         name, _, value = setting.partition("=")
@@ -144,11 +144,11 @@ def main() -> None:
             f = m.group(3).split()
             placed[int(f[2])] = f[4]
             if int(f[2]) == 0:
-                lab.record("mpi_config", {"source": "library", "text": " ".join(f[9:])})
+                lab.record("launch_config", {"source": "library", "text": " ".join(f[9:])})
     if len(placed) != 2:
         raise SystemExit(f"{mode}: {len(placed)} ranks reported a host")
     for rank in sorted(placed):
-        lab.record("mpi_config", {"source": f"rank{rank}-host", "text": placed[rank]})
+        lab.record("launch_config", {"source": f"rank{rank}-host", "text": placed[rank]})
     if placed[0] == placed[1] and not p.get("same_host", False):
         raise SystemExit(f"{mode}: both ranks ran on {placed[0]}")
     for row in parse(res.stdout):

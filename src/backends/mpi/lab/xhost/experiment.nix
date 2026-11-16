@@ -45,7 +45,7 @@ let
       replicates = 3;
       resources = { inherit provider; hosts = 2; walltime = 120; opts.stage = "fanout"; };
       data.latency = latencyData;
-      data.mpi_config = data.dataset "mpi_config";
+      data.launch_config = data.dataset "launch_config";
     };
   };
 in

@@ -19,7 +19,7 @@ This directory has no analysis and no figure of its own. Its runs name the exper
 
 Parameters are those of the trame run of the same family. The C ring has no route capacity, so no `cap`, and it does one
 barrier before its timed steps, which the trame ring does not: the clocks start differently. Datasets: the bench's own, `osu`
-(`size`, `value`, `unit`, `min`, `max`), `cpu`, `mpi_config`.
+(`size`, `value`, `unit`, `min`, `max`), `cpu`, `launch_config`.
 
 ## Claims
 

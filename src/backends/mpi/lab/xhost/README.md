@@ -10,7 +10,7 @@ Parameters: `mode` (direct, direct_single, relay, mixed_self, mixed_flag, wake_f
 
 Dataset `latency`, key `mode`, `phase`, `size`: times in ns: `median_ns`, `p99_ns`, `min_ns`, `mean_ns`, `cpu0_ns`, `cpu1_ns`
 (user plus system per iteration, rank 0 and 1), `sys0_ns`, `sys1_ns`. Phase `rtt`: half the round trip; phase `wake`: a local
-wake (size 1; the rows of mixed_self, mixed_flag, wake_futex). Also `mpi_config` (the network interfaces, devices, compiler and
+wake (size 1; the rows of mixed_self, mixed_flag, wake_futex). Also `launch_config` (the network interfaces, devices, compiler and
 Open MPI, the MCA settings, the MPI library string) and `transport` rows (the selection lines of a verbose probe run).
 
 ## Claims

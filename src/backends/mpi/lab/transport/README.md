@@ -8,7 +8,7 @@ Parameters: `repeats` (1), `timeout` (120 s), and the `mpirun` parameters of `..
 
 Dataset `check`, key `check`, `workers`, `case_seed`, `repeat`: `check` str, `workers` int (the fifo checks start workers+1
 ranks, the leader last), `case_seed` int (0 for a check with no `--seed`), `repeat` int, `ran` bool, `ok` bool, `seconds`
-float (noisy). Also `mpi_config`. Logs go to `$NIX_LAB_DIR/logs`.
+float (noisy). Also `launch_config`. Logs go to `$NIX_LAB_DIR/logs`.
 
 ## Claims
 

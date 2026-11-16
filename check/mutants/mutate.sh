@@ -21,12 +21,13 @@ fi
 out="$(mktemp -d)"
 scratch="${TRAME_MUTATE_DIR:-/tmp/trame-mutate}"
 
-# Restore the copy from the working tree, without its target directory or the mpi-rma submodule.
+# Restore the copy from the working tree, without its target directory or any submodule (.gitmodules).
 sync_copy() {
-  local work="$1"
+  local work="$1" ex=() path
+  while read -r path; do ex+=("--exclude=/$path/"); done < <(git -C "$root" config -f .gitmodules --get-regexp '\.path$' | cut -d' ' -f2)
   mkdir -p "$work"
   rsync -rlD --delete --no-times --checksum \
-    --exclude=/target/ --exclude=/.git --exclude=/src/backends/*/mpi-rma/ \
+    --exclude=/target/ --exclude=/.git "${ex[@]}" \
     "$root/" "$work/"
 }
 

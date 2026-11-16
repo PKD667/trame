@@ -6,7 +6,7 @@ place in the repository that describes the backends one by one. Everything outsi
 written so that it holds for any backend.
 
 A build selects one backend by a cargo feature. The features are exclusive, and a build with none of
-them refuses every launch. The default feature is the reference backend, `seq`.
+them refuses every launch. There is no default feature: every cargo command names one.
 
 ## The backends
 
@@ -127,10 +127,10 @@ environment.
 
 ## Build and run
 
-Build with the reference backend, the default:
+Build with the reference backend, `seq`:
 
-    nix develop
-    RUSTFLAGS='--cfg trame_checked' cargo run --example ring
+    nix develop .#seq
+    RUSTFLAGS='--cfg trame_checked' cargo run --no-default-features --features seq --example ring
 
 Build with `mpi`:
 

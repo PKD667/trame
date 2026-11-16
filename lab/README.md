@@ -56,5 +56,4 @@ A check that depends only on the code, not on concurrency, the network or hardwa
 - [round](round/README.md), [fanin](fanin/README.md), [graph](graph/README.md): scaling of the leader and of the proxy benchmark.
 - [simd](simd/README.md): `parallel!` lowered to explicit SIMD.
 - [lib](lib/README.md): the runners' shared modules. [bench](bench/README.md): the benchmark programs.
-- Multi-process backend: [transport](../src/backends/mpi/lab/transport/README.md), [xhost](../src/backends/mpi/lab/xhost/README.md),
-  [baselines](../src/backends/mpi/lab/baselines/README.md).
+- A backend's own experiments are in `src/backends/<backend>/lab/<experiment>/`, with the same files (`src/backends/README.md`).

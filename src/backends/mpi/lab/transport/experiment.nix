@@ -20,7 +20,7 @@
         key = [ "check" "workers" "case_seed" "repeat" ];
         noisy.seconds = 1.0;
       };
-      data.mpi_config = data.dataset "mpi_config";
+      data.launch_config = data.dataset "launch_config";
     };
   }];
   analysis = ./analysis.py;
