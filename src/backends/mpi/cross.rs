@@ -53,8 +53,8 @@ use crate::launch::{Plan, Refused};
 use crate::topology::{End, HERE};
 
 use crate::backends::mpi::hosts::host;
-use crate::backends::mpi::layout::{Layout, RouteLayout};
-use crate::backends::mpi::shm::Window;
+use crate::backends::mpi::memory::layout::{Layout, RouteLayout};
+use crate::backends::mpi::memory::shm::Window;
 use crate::backends::mpi::types::Answer;
 
 fn ok(rc: i32, what: &str) {
@@ -178,8 +178,8 @@ pub(super) fn lanes(lay: &Layout, me: u32, win: &Window) -> Vec<Option<Lane>> {
     out
 }
 
-fn lane(r: &RouteLayout, x: crate::backends::mpi::layout::Remote, win: &Window) -> Lane {
-    let (sent, got) = (Count::at(win, r.base), Count::at(win, r.base + crate::backends::mpi::layout::LINE));
+fn lane(r: &RouteLayout, x: crate::backends::mpi::memory::layout::Remote, win: &Window) -> Lane {
+    let (sent, got) = (Count::at(win, r.base), Count::at(win, r.base + crate::backends::mpi::memory::layout::LINE));
     let comm = host().cross.as_raw();
     let n = r.size;
     let cap = r.cap as usize;

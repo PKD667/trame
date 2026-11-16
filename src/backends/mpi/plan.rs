@@ -13,7 +13,7 @@ use std::vec::Vec;
 use crate::launch::{Plan, Refused};
 use crate::topology::{End, HERE};
 
-use crate::backends::mpi::layout::Remote;
+use crate::backends::mpi::memory::layout::Remote;
 use crate::backends::mpi::{Route, RouteId, Topology};
 
 /// A hasher that keeps every byte it is given. A `TypeId` hashes its own bytes, so this encodes the

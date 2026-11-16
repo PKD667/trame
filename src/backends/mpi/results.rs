@@ -24,10 +24,10 @@ use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 use std::vec::Vec;
 
 use crate::backends::mpi::Transport;
-use crate::backends::mpi::layout::{
+use crate::backends::mpi::memory::layout::{
     ABORT_BIT, ABORT_LEN, ABORT_WORKER, DONE, K_OUTCOME, OUT_ABORT, RESULT, START, STOP,
 };
-use crate::backends::mpi::object;
+use crate::backends::mpi::memory::object;
 use crate::backends::mpi::state::finalize;
 
 impl Transport {

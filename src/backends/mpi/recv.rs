@@ -14,7 +14,7 @@ use std::sync::atomic::{
 };
 
 use crate::backends::mpi::Transport;
-use crate::backends::mpi::layout::{LINE, RouteLayout};
+use crate::backends::mpi::memory::layout::{LINE, RouteLayout};
 use crate::backends::mpi::types::{Error, Event, Received, RouteId, clock};
 
 impl Transport {

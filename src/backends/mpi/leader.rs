@@ -14,7 +14,9 @@ use crate::run::Outcome;
 use crate::topology::{End, WorkerId};
 
 use crate::backend::Target;
-use crate::backends::mpi::layout::{K_EDIT, K_HELD, K_OUTCOME, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
+use crate::backends::mpi::memory::layout::{
+    K_EDIT, K_HELD, K_OUTCOME, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED,
+};
 use crate::backends::mpi::plan::{self, Entry, rank_of};
 use crate::backends::mpi::state::{finalize, local};
 use crate::backends::mpi::types::{Answer, Received};

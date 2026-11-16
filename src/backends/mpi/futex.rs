@@ -4,7 +4,7 @@
 
 extern crate std;
 
-use crate::backends::mpi::shm::Window;
+use crate::backends::mpi::memory::shm::Window;
 
 impl Window {
     /// Sleep while the 32-bit word at `off` equals `seen`, and give up after `timeout` (relative) if

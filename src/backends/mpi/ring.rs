@@ -19,7 +19,7 @@ use std::sync::atomic::{
 };
 
 use crate::backends::mpi::Transport;
-use crate::backends::mpi::layout::{LINE, RouteLayout, SLOT_HEAD};
+use crate::backends::mpi::memory::layout::{LINE, RouteLayout, SLOT_HEAD};
 use crate::backends::mpi::types::{Answer, Error, Event, RouteId, clock};
 
 pub(super) fn checked_seq(index: u64) -> Result<u64, Error> {

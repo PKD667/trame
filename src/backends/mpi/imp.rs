@@ -24,13 +24,15 @@ use crate::time::ClockId;
 use crate::topology::{End, WorkerId};
 use crate::worker::{Erased, Slot, agent};
 
-use crate::backends::mpi::layout::{OUT_ABORT, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
 use crate::backends::mpi::leader::{self, Leader};
+use crate::backends::mpi::memory::layout::{OUT_ABORT, OUT_DEADLOCK, OUT_FAILED, OUT_RETURNED, OUT_STOPPED};
+use crate::backends::mpi::memory::segment;
 use crate::backends::mpi::open::{agree, open};
 use crate::backends::mpi::plan::{encode_plan, entries, inbox, topology};
 use crate::backends::mpi::state::{finalize, local, refused};
 use crate::backends::mpi::types::Role;
-use crate::backends::mpi::{Selected, Transport, segment, worker};
+use crate::backends::mpi::worker;
+use crate::backends::mpi::{Selected, Transport};
 use crate::run::panic_message;
 
 /// Run this worker: `agents` agents of the reference scheduler (worker.rs), the main thread one of

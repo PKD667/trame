@@ -1,7 +1,8 @@
 // What the test harnesses call at the end of a run. They stand in for the runner (imp.rs) and the
 // leader (leader.rs), which do the same things on the real path.
 
-use crate::backends::mpi::{Transport, layout};
+use crate::backends::mpi::Transport;
+use crate::backends::mpi::memory::layout;
 
 /// For the test harnesses, which stand in for the runner (imp.rs) and the leader (leader.rs): a
 /// worker that returns records its result, as the runner does.

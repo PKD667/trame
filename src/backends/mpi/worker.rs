@@ -28,7 +28,7 @@ use std::sync::atomic::Ordering::{Acquire, SeqCst};
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
-use crate::backends::mpi::layout::{ABORT_BIT, DEADLOCK, DONE, K_ACTS, K_EDIT, K_HELD, K_IDLE, K_RUN, STOP};
+use crate::backends::mpi::memory::layout::{ABORT_BIT, DEADLOCK, DONE, K_ACTS, K_EDIT, K_HELD, K_IDLE, K_RUN, STOP};
 
 use crate::backends::mpi::plan::{self, Entry, rank_of};
 use crate::backends::mpi::state::local;

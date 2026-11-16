@@ -25,10 +25,9 @@ mod futex;
 mod harness;
 mod hosts;
 mod imp;
-mod layout;
 mod leader;
+mod memory;
 mod nodes;
-mod object;
 mod open;
 mod plan;
 mod poll;
@@ -36,9 +35,7 @@ mod recv;
 mod refusal;
 mod results;
 mod ring;
-mod segment;
 mod shape;
-mod shm;
 mod state;
 mod types;
 mod worker;
@@ -51,7 +48,7 @@ extern crate std;
 use std::vec;
 use std::vec::Vec;
 
-pub use layout::{Route, Topology};
+pub use memory::layout::{Route, Topology};
 pub use open::{agree, launch, open};
 pub use refusal::Refusal;
 pub use shape::encode;
@@ -60,8 +57,8 @@ pub use state::finalize;
 pub use harness::{leader_join, returned};
 pub use types::{Answer, Error, Event, Received, Role, RouteId, clock};
 
-use layout::{Layout, RouteLayout};
-use shm::Window;
+use memory::layout::{Layout, RouteLayout};
+use memory::shm::Window;
 
 /// One endpoint's transport: a worker's, or the leader's. Not `Send`: it holds a pointer into the
 /// window, and it belongs to the rank's thread.

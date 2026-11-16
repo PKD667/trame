@@ -26,7 +26,7 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
 use crate::backends::mpi::Transport;
-use crate::backends::mpi::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADER_SLEEP, START};
+use crate::backends::mpi::memory::layout::{K_EPOCH, K_SLEEP, LEADER_EPOCH, LEADER_SLEEP, START};
 
 impl Transport {
     /// The epoch word and the sleep flag of agent `w`: a worker's, or the leader's when `w` is the

@@ -9,7 +9,7 @@ extern crate std;
 
 use std::sync::atomic::Ordering::{Acquire, Relaxed};
 
-use crate::backends::mpi::layout::LINE;
+use crate::backends::mpi::memory::layout::LINE;
 use crate::backends::mpi::{Error, RouteId, Transport};
 
 impl Transport {
