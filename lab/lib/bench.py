@@ -85,6 +85,7 @@ def main(argv_of, augment=None) -> None:
     argv = argv_of(p, hosts)
     if argv is None:
         return print(f"{p['bench']} on {hosts} hosts: no such job, nothing measured", file=sys.stderr)
+    argv = [str(a) for a in argv]  # the runners write numbers; a process argument is text
     argv[0] = str(Path(os.environ["BENCH"]) / argv[0])
     timeout = float(p.get("timeout", 600))
     res = launch.run(argv, p, timeout)
