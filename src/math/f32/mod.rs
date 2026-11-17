@@ -2,7 +2,12 @@
 
 /// `e^x`, defined by this code on every backend: there is no backend-specific version, so every
 /// backend returns the same bits. Inputs in `[-30, 0]`, relative error below 2e-6 against `f64::exp`.
+/// Below `-87.0` the result is `0.0`, where `e^x` is under the smallest normal `f32` (1.2e-38) and the
+/// exponent field below would wrap.
 pub fn exp(x: f32) -> f32 {
+    if x < -87.0_f32 {
+        return 0.0_f32;
+    }
     let n = (x / core::f32::consts::LN_2) as i32;
     let r = x - (n as f32) * core::f32::consts::LN_2;
     let p = 1.0_f32
