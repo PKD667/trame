@@ -144,6 +144,12 @@ the step keeps how much of it is in use in another plain field. A queue is an ar
 length; a table that grows is built by an edit between steps. A step that needs room it was not given
 returns `Status::wait()` or fails, because it cannot ask for more.
 
+An item is stricter than a step. $A_I$ lists nothing of `alloc`: an item cannot call `Vec::len`,
+index a `Vec`, or dereference one. It works on numbers, arrays, and slices, so a value an item reads
+or writes must hold its data as an array (`[T; N]`) or be passed as a slice. `f64::max` and `f64::min`
+are in neither list, at any level, because the sign of a zero result differs between platforms; use a
+comparison, or `clamp`.
+
 A function a step calls is judged at the step's level, whatever crate it is in, so a helper that
 allocates or loops with `while` is refused where the step calls it. A function reached from several
 levels is judged at the strictest. The checker does not yet judge builders and edits, which the
