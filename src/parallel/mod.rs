@@ -17,6 +17,10 @@ pub use crate::worker::{State, StepInfo};
 /// tests read it to decide how a trace is replayed.
 pub const EXACT: bool = <crate::backend::Selected as crate::backend::Backend>::EXACT;
 
+/// How many topologies one process can launch (`Backend::RUNS_PER_PROCESS`). A test that loops over seeds
+/// takes at most this many.
+pub const RUNS_PER_PROCESS: usize = <crate::backend::Selected as crate::backend::Backend>::RUNS_PER_PROCESS;
+
 /// Whether a frame of type `ty` is available to this worker. `#[trame::state]` calls it.
 pub fn offered(ty: core::any::TypeId) -> bool {
     use crate::backend::Backend;

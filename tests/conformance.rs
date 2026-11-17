@@ -119,8 +119,9 @@ const SEEDS: u64 = if cfg!(miri) { 2 } else { 300 };
 /// Seeds that once failed: a failure prints its seed; add it here so it is tried on every run.
 const REGRESSIONS: &[u64] = &[];
 
+/// A backend that launches once per process (`__rt::RUNS_PER_PROCESS`) gets one seed per test run.
 fn seeds() -> impl Iterator<Item = u64> {
-    (0..SEEDS).chain(REGRESSIONS.iter().copied())
+    (0..SEEDS).chain(REGRESSIONS.iter().copied()).take(trame::__rt::RUNS_PER_PROCESS)
 }
 
 /// Totals over every workload: (events replayed, returned, deadlocked).
@@ -147,21 +148,34 @@ fn one<S: trame::__rt::State>(name: &str, seed: u64, state: S, exact: bool) {
     if out[0] == Outcome::Returned { &RETURNED } else { &DEADLOCKED }.fetch_add(1, Relaxed);
 }
 
-#[test]
-fn traces_follow_the_model() {
+/// One shape, every seed, each replayed against the model.
+fn traces<S: trame::__rt::State>(name: &str, make: fn(u64) -> S) {
     let exact = trame::__rt::EXACT;
     for seed in seeds() {
-        one("Chain", seed, Chain::seeded(seed), exact);
-        one("Hot", seed, Hot::seeded(seed), exact);
-        one("Readers", seed, Readers::seeded(seed), exact);
+        one(name, seed, make(seed), exact);
     }
     use std::sync::atomic::Ordering::Relaxed;
     eprintln!(
-        "conformance: exact={exact} events={} returned={} deadlocked={}",
+        "conformance {name}: exact={exact} events={} returned={} deadlocked={}",
         EVENTS.load(Relaxed),
         RETURNED.load(Relaxed),
         DEADLOCKED.load(Relaxed)
     );
+}
+
+#[test]
+fn chain_traces_follow_the_model() {
+    traces("Chain", Chain::seeded);
+}
+
+#[test]
+fn hot_traces_follow_the_model() {
+    traces("Hot", Hot::seeded);
+}
+
+#[test]
+fn readers_traces_follow_the_model() {
+    traces("Readers", Readers::seeded);
 }
 
 /// The pool of `Pooled`: the leader keeps `all.len() == n`, so a step that sees otherwise read a
@@ -346,6 +360,17 @@ fn leave() {
     RUNNING.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// Checked by a step, in the process that runs the steps (a worker may be a process of its own, so
+/// the counters are not the leader's): by the time one step is done, every step has started.
+fn overlapped() {
+    let most = MOST.load(std::sync::atomic::Ordering::SeqCst);
+    if trame::__rt::EXACT {
+        assert_eq!(most, 1, "an exact backend runs one step at a time");
+    } else if std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) >= 8 {
+        assert!(most >= 4, "eight disjoint steps on eight or more cores ran at most {most} at once");
+    }
+}
+
 /// Eight steps on eight disjoint fields: on a backend with several agents they must overlap.
 #[trame::state(steps(d0, d1, d2, d3, d4, d5, d6, d7))]
 struct Disjoint {
@@ -366,7 +391,12 @@ macro_rules! disjoint_step {
             enter();
             *$x += 1 + spin(if cfg!(miri) { 200 } else { 200_000 });
             leave();
-            if *$x >= if cfg!(miri) { 5 } else { 50 } { Status::Done } else { Status::Progress }
+            if *$x >= if cfg!(miri) { 5 } else { 50 } {
+                overlapped();
+                Status::Done
+            } else {
+                Status::Progress
+            }
         }
     )*};
 }
@@ -384,18 +414,12 @@ fn disjoint_steps_overlap() {
     let took = start.elapsed();
     assert_eq!(out, [Outcome::Returned]);
     checked.expect("the trace follows the model");
-    let most = MOST.load(std::sync::atomic::Ordering::SeqCst);
     let s = w.take();
     eprintln!(
-        "overlap: steps={} most_at_once={most} wall_ms={:.1}",
+        "overlap: steps={} wall_ms={:.1}",
         s.x0 + s.x1 + s.x2 + s.x3 + s.x4 + s.x5 + s.x6 + s.x7,
         took.as_secs_f64() * 1e3
     );
-    if trame::__rt::EXACT {
-        assert_eq!(most, 1, "an exact backend runs one step at a time");
-    } else if std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) >= 8 {
-        assert!(most >= 4, "eight disjoint steps on eight or more cores ran at most {most} at once");
-    }
 }
 
 /// Every trame program installs trame's allocator wrapper (domain.rs): a launch refuses otherwise.

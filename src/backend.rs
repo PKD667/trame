@@ -39,6 +39,10 @@ pub(crate) trait Backend {
     /// clauses (CONTRACT.md, S1-S6, S9) and not the choices.
     const EXACT: bool = false;
 
+    /// How many topologies one process can launch and join. A backend whose workers are processes of
+    /// their own ends them with the run, and what ends the run for the leader ends it for good.
+    const RUNS_PER_PROCESS: usize = usize::MAX;
+
     /// S4 for a leader in another process (the handshake): the fields it asks this worker to hold,
     /// 0 when it asks none. The agent loop holds them (`Event::Hold`), answers
     /// `worker_edit_held(true)` once no step touching them runs, and, once the request is 0 again,

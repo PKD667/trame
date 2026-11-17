@@ -29,6 +29,9 @@ use crate::backends::mpi::types::Role;
 impl Backend for Selected {
     type Run = Leader;
 
+    /// MPI_Init and MPI_Finalize are once per process, and a worker rank exits with its run.
+    const RUNS_PER_PROCESS: usize = 1;
+
     /// The ranks of the host agree on the plan, then the hosts on the routes between them (F3,
     /// cross/connect.rs `connect`). The launch checks run here too, so that a host refused by them still
     /// takes part in the connect, and the hosts it shares routes with are refused with it.
