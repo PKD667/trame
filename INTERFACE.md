@@ -147,8 +147,8 @@ returns `Status::wait()` or fails, because it cannot ask for more.
 An item is stricter than a step. $A_I$ lists nothing of `alloc`: an item cannot call `Vec::len`,
 index a `Vec`, or dereference one. It works on numbers, arrays, and slices, so a value an item reads
 or writes must hold its data as an array (`[T; N]`) or be passed as a slice. `f64::max` and `f64::min`
-are in neither list, at any level, because the sign of a zero result differs between platforms; use a
-comparison, or `clamp`.
+are in neither list, at any level, because the sign of a zero result differs between platforms; call
+`trame::math::f64::max` and `min` (or `math::f32`) instead.
 
 A function a step calls is judged at the step's level, whatever crate it is in, so a helper that
 allocates or loops with `while` is refused where the step calls it. A function reached from several
@@ -199,7 +199,10 @@ only on its inputs, so items stay deterministic.
 > which Rust leaves unspecified. An operation is allowed at every level when Rust specifies its result
 > bit for bit: the arithmetic operators, negation, comparisons, `abs`, `copysign`, `signum`, `clamp`,
 > `total_cmp`, the classification predicates, `to_bits` and `from_bits`. `max` and `min` are not: the
-> sign of a zero result is unspecified. Every other numeric function comes from `trame::math`.
+> sign of a zero result is unspecified. `trame::math::f64::max` and `min`, and the same for `f32`, are
+> allowed: they return the same bits on every platform. For a zero result, `max` gives +0.0 if either argument
+> is +0.0, and `min` gives -0.0 if either argument is -0.0.
+> Every other numeric function comes from `trame::math`.
 
 > **Requirement (Checked builds).** A checked build compiles with `--cfg trame_checked`. Without it,
 > `#[trame::state]` and `parallel!` expand to `compile_error!`.
@@ -753,6 +756,8 @@ root, except the functions of `trame::math`.
 | `math::f64::{exp, ln, exp_m1, powf}` | fn | ports of fdlibm (`e_exp.c`, `e_log.c`, `s_expm1.c`, `e_pow.c`) in plain IEEE arithmetic. The tests assert at most 2 ulp from glibc on 200,000 samples each; the largest measured was 1 ulp (`src/math/f64/tests/sweep.rs`). A sample, not a proof. `powf(1, NaN)` and `powf(-1, ±inf)` are NaN, as in fdlibm |
 | `math::f64::{sqrt, round}` | fn | correctly rounded square root and round-half-away-from-zero, in integer arithmetic: exact |
 | `math::f64::powi` | fn | integer power by squaring in a fixed order, not correctly rounded |
+| `math::f64::{max, min}` | fn | comparisons, with the sign of a zero result fixed: `max` gives the zero with its sign bit clear, `min` the one with it set. A NaN argument gives the other. Tested in `src/math/f64/tests/special.rs` |
+| `math::f32::{max, min}` | fn | the same as `math::f64::{max, min}`, for `f32`. Tested in `src/math/f32/tests.rs` |
 
 `trame::math` holds pure numeric functions: item-level code, not effects, each giving the same bits on
 every backend. A function is added there when a program needs it. Every program installs `trame::Alloc`

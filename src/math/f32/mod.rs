@@ -22,5 +22,45 @@ pub fn exp(x: f32) -> f32 {
     p * f32::from_bits(((n + 127) as u32) << 23)
 }
 
+/// The larger of `a` and `b`, as `math::f64::max`: a NaN argument yields the other, and equal zeros
+/// give the one with its sign bit clear. Bit-exact on every platform.
+pub fn max(a: f32, b: f32) -> f32 {
+    if a.is_nan() {
+        return b;
+    }
+    if b.is_nan() {
+        return a;
+    }
+    if a > b {
+        a
+    } else if b > a {
+        b
+    } else if b.is_sign_negative() {
+        a
+    } else {
+        b
+    }
+}
+
+/// The smaller of `a` and `b`, as `math::f64::min`: a NaN argument yields the other, and equal zeros
+/// give the one with its sign bit set. Bit-exact on every platform.
+pub fn min(a: f32, b: f32) -> f32 {
+    if a.is_nan() {
+        return b;
+    }
+    if b.is_nan() {
+        return a;
+    }
+    if a < b {
+        a
+    } else if b < a {
+        b
+    } else if a.is_sign_negative() {
+        a
+    } else {
+        b
+    }
+}
+
 #[cfg(test)]
 mod tests;

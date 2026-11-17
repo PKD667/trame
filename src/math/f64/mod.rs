@@ -6,6 +6,7 @@
 //! - `exp`, `ln`, `expm1`, `pow`: fdlibm algorithms, error below 1 ulp as fdlibm claims. The
 //!   measured errors are in `tests/sweep.rs`.
 //! - `powi`: repeated squaring in a fixed order.
+//! - `max`, `min`: comparisons, with the sign of a zero result fixed (`minmax.rs`).
 
 // The constants are fdlibm's decimal text, longer than f64 holds and close to std's constants by
 // design; src/math/f64/tests/consts.rs pins each one to its hex word. So the lints are off here.
@@ -15,6 +16,7 @@ mod bits;
 mod exp;
 mod expm1;
 mod ln;
+mod minmax;
 mod pow;
 mod powi;
 mod round;
@@ -24,6 +26,7 @@ mod sqrt;
 pub use exp::exp;
 pub use expm1::exp_m1;
 pub use ln::ln;
+pub use minmax::{max, min};
 pub use pow::powf;
 pub use powi::powi;
 pub use round::round;

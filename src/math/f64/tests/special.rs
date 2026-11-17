@@ -85,3 +85,96 @@ fn round_and_powi_exact_cases() {
     assert_eq!(powi(f64::NAN, 0), 1.0);
     assert_eq!(powi(0.0, -1), f64::INFINITY);
 }
+
+#[test]
+fn max_min_ordinary_values_and_argument_order() {
+    use super::super::{max, min};
+    assert_eq!(max(1.0, 2.0), 2.0);
+    assert_eq!(max(2.0, 1.0), 2.0);
+    assert_eq!(min(1.0, 2.0), 1.0);
+    assert_eq!(min(2.0, 1.0), 1.0);
+    assert_eq!(max(-3.0, -2.0), -2.0);
+    assert_eq!(min(-3.0, -2.0), -3.0);
+    assert_eq!(max(-2.0, 3.0), 3.0);
+    assert_eq!(min(-2.0, 3.0), -2.0);
+    assert_eq!(max(5.5, 5.5), 5.5);
+    assert_eq!(min(5.5, 5.5), 5.5);
+}
+
+#[test]
+fn max_min_zero_signs_are_fixed() {
+    use super::super::{max, min};
+    let pos = 0.0_f64.to_bits();
+    let neg = (-0.0_f64).to_bits();
+    // max: +0 if either argument is +0, else -0. min: -0 if either argument is -0, else +0.
+    for (a, b) in [(0.0_f64, 0.0_f64), (0.0, -0.0), (-0.0, 0.0), (-0.0, -0.0)] {
+        let want_max = if a.is_sign_positive() || b.is_sign_positive() { pos } else { neg };
+        let want_min = if a.is_sign_negative() || b.is_sign_negative() { neg } else { pos };
+        assert_eq!(max(a, b).to_bits(), want_max, "max({a:?}, {b:?})");
+        assert_eq!(max(b, a).to_bits(), want_max, "max({b:?}, {a:?})");
+        assert_eq!(min(a, b).to_bits(), want_min, "min({a:?}, {b:?})");
+        assert_eq!(min(b, a).to_bits(), want_min, "min({b:?}, {a:?})");
+    }
+    // A zero against a non-zero value: the larger (for max) or smaller (for min) wins, zero's own sign kept.
+    assert_eq!(max(-0.0, -1.0).to_bits(), neg);
+    assert_eq!(max(-1.0, -0.0).to_bits(), neg);
+    assert_eq!(max(0.0, -1.0).to_bits(), pos);
+    assert_eq!(min(-0.0, 1.0).to_bits(), neg);
+    assert_eq!(min(1.0, -0.0).to_bits(), neg);
+    assert_eq!(min(0.0, 1.0).to_bits(), pos);
+}
+
+#[test]
+fn max_min_nan_in_either_position() {
+    use super::super::{max, min};
+    for nan in [f64::NAN, -f64::NAN] {
+        assert_eq!(max(nan, 1.0), 1.0);
+        assert_eq!(max(1.0, nan), 1.0);
+        assert_eq!(min(nan, -1.0), -1.0);
+        assert_eq!(min(-1.0, nan), -1.0);
+        assert_eq!(max(nan, -0.0).to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(min(0.0, nan).to_bits(), 0.0_f64.to_bits());
+        assert!(max(nan, f64::NAN).is_nan());
+        assert!(min(nan, f64::NAN).is_nan());
+        assert!(max(f64::NAN, nan).is_nan());
+        assert!(min(f64::NAN, nan).is_nan());
+    }
+}
+
+#[test]
+fn max_min_infinities() {
+    use super::super::{max, min};
+    assert_eq!(max(f64::INFINITY, 1.0), f64::INFINITY);
+    assert_eq!(max(1.0, f64::INFINITY), f64::INFINITY);
+    assert_eq!(max(f64::NEG_INFINITY, 1.0), 1.0);
+    assert_eq!(max(f64::INFINITY, f64::NEG_INFINITY), f64::INFINITY);
+    assert_eq!(max(f64::NEG_INFINITY, f64::NEG_INFINITY), f64::NEG_INFINITY);
+    assert_eq!(min(f64::NEG_INFINITY, 1.0), f64::NEG_INFINITY);
+    assert_eq!(min(1.0, f64::NEG_INFINITY), f64::NEG_INFINITY);
+    assert_eq!(min(f64::INFINITY, 1.0), 1.0);
+    assert_eq!(min(f64::INFINITY, f64::NEG_INFINITY), f64::NEG_INFINITY);
+    assert_eq!(min(f64::INFINITY, f64::INFINITY), f64::INFINITY);
+}
+
+#[test]
+fn max_min_agree_with_core_off_zero() {
+    // Core's max and min are unspecified only for a zero result, so off zero they must match bit for bit.
+    // Pairs with a NaN are excluded here: core's NaN payload is unspecified too (the checked cases above cover them).
+    use super::super::{max, min};
+    let mut rng = super::Rng(0x5eed_0002);
+    let mut checked = 0_u32;
+    for _ in 0..200_000 {
+        let a = f64::from_bits(rng.next());
+        let b = f64::from_bits(rng.next());
+        if a.is_nan() || b.is_nan() {
+            continue;
+        }
+        if a == 0.0 && b == 0.0 {
+            continue;
+        }
+        assert_eq!(max(a, b).to_bits(), a.max(b).to_bits(), "max({a:e}, {b:e})");
+        assert_eq!(min(a, b).to_bits(), a.min(b).to_bits(), "min({a:e}, {b:e})");
+        checked += 1;
+    }
+    assert!(checked > 190_000, "only {checked} pairs checked");
+}
