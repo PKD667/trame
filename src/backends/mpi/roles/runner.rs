@@ -64,9 +64,10 @@ pub(crate) fn run_worker(obj: Arc<dyn Erased>, agents: usize, pool: Option<PoolR
         None => OUT_ABORT,
     };
     // The trace goes to the segment before the result, so the leader finds it once it sees the result
-    // (CONTRACT.md, S9).
-    if let Some(tr) = slot.trace() {
-        let at = crate::domain::arena(|| std::boxed::Box::into_raw(std::boxed::Box::new(tr)));
+    // (CONTRACT.md, S9). The events are copied inside the domain: the leader, another process, frees
+    // them, and a buffer on this process's heap is not an address it can free.
+    if let Some((sched, events)) = slot.trace() {
+        let at = crate::domain::arena(|| std::boxed::Box::into_raw(std::boxed::Box::new((sched, events.clone()))));
         segment::trace_slot(with_endpoint(|t| t.me())).store(at as u64, std::sync::atomic::Ordering::Release);
     }
     with_endpoint(|t| t.finish(word));
