@@ -1,4 +1,463 @@
 {
   "format": "2.0",
-  "runs": {}
+  "runs": {
+    "latency-mpi-s1": [
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "190e724a2bc9e76d1a40164069dd6afa38a50fddd0db076327483989ac53fb7e",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-mpi-s1-190e724a2bc9-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-190e724a2bc9-r1",
+        "path": "/nix/store/js92bbdi23n2vlafkm1cd8zhgkjhjzv4-latency-mpi-s1-190e724a2bc9-r1",
+        "sha256": "sha256-1/6vqyUQYczTRm5LRWvelLweXWvyri7R4Oqdj8bXW8Q="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "190e724a2bc9e76d1a40164069dd6afa38a50fddd0db076327483989ac53fb7e",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-mpi-s1-190e724a2bc9-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-190e724a2bc9-r2",
+        "path": "/nix/store/5vvmcm9sfbc0pjvf2xxxs5lrac9wa4a1-latency-mpi-s1-190e724a2bc9-r2",
+        "sha256": "sha256-yOwN6vkmesRVQPR0zmUnKkK7wSzRhmDaZmUMM/sWlQM="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "190e724a2bc9e76d1a40164069dd6afa38a50fddd0db076327483989ac53fb7e",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-mpi-s1-190e724a2bc9-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-190e724a2bc9-r3",
+        "path": "/nix/store/9x58bz9jzmvl81g67ws8bxfb19fzlvla-latency-mpi-s1-190e724a2bc9-r3",
+        "sha256": "sha256-sN3wiOryDxZwH/lyCQoD2HQrCj16I3uqAZjpE7/Mkdk="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "190e724a2bc9e76d1a40164069dd6afa38a50fddd0db076327483989ac53fb7e",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-mpi-s1-190e724a2bc9-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-190e724a2bc9-r4",
+        "path": "/nix/store/pavrvq4b2q5g1w9bbyyqjak19afj7ylz-latency-mpi-s1-190e724a2bc9-r4",
+        "sha256": "sha256-4lByzqZEhOx1dALiqI6WiAKnqCsnnviuaHxuJ67FdeM="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "190e724a2bc9e76d1a40164069dd6afa38a50fddd0db076327483989ac53fb7e",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 5,
+          "run": "latency-mpi-s1-190e724a2bc9-r5",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-190e724a2bc9-r5",
+        "path": "/nix/store/9ir8awws92xrs555hmjpzlmwq59ls6h3-latency-mpi-s1-190e724a2bc9-r5",
+        "sha256": "sha256-+1E4LMvV+wszj9pWy7cPO2CUQgwz6pLfZSWGO1ihtWc="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "4bfb84872bff9372a9731d00a6bc109ea082d04aef1b04f0d62cf0ad3c0686bb",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-mpi-s1-4bfb84872bff-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-4bfb84872bff-r1",
+        "path": "/nix/store/hhxwx2fnz9070mg4f641ha2ii11sxbqm-latency-mpi-s1-4bfb84872bff-r1",
+        "sha256": "sha256-kRRyvTdBN4hH3QFX3Qcnwi7DTLSx5XoKaUicVkC40xk="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "4bfb84872bff9372a9731d00a6bc109ea082d04aef1b04f0d62cf0ad3c0686bb",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-mpi-s1-4bfb84872bff-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-4bfb84872bff-r2",
+        "path": "/nix/store/slz983wxavg85xj685dgx0m7x18fa7ss-latency-mpi-s1-4bfb84872bff-r2",
+        "sha256": "sha256-MB65qPCfc7TbUVN0wCK3vltScrwtOKoenZpr+JbHMXw="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "4bfb84872bff9372a9731d00a6bc109ea082d04aef1b04f0d62cf0ad3c0686bb",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-mpi-s1-4bfb84872bff-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-4bfb84872bff-r3",
+        "path": "/nix/store/8rpzv5briqa0wykkg7si5698d7mab5vj-latency-mpi-s1-4bfb84872bff-r3",
+        "sha256": "sha256-vXKsmKvv7i/t9MHlzRsVDCS6yrcWU4h0f/YCybJ7R3M="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "4bfb84872bff9372a9731d00a6bc109ea082d04aef1b04f0d62cf0ad3c0686bb",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-mpi-s1-4bfb84872bff-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-4bfb84872bff-r4",
+        "path": "/nix/store/0z26spa7k93k85p2jm9h8mp776m6m48q-latency-mpi-s1-4bfb84872bff-r4",
+        "sha256": "sha256-nKhdvoriEylKbWgAXW7dskyogaF1FJu1tPcqMD6farI="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "4bfb84872bff9372a9731d00a6bc109ea082d04aef1b04f0d62cf0ad3c0686bb",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 5,
+          "run": "latency-mpi-s1-4bfb84872bff-r5",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-4bfb84872bff-r5",
+        "path": "/nix/store/zzpf5i0522z0kix93q694mcz9fs3164g-latency-mpi-s1-4bfb84872bff-r5",
+        "sha256": "sha256-kG8amjsGt5jNUoszNppJKjpTp+vGW2+n1VQ6u0+em34="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "5813cec428972be2dd7a213e3b8aa8b6f7627408db1737ccaa148318b31d4394",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-mpi-s1-5813cec42897-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-5813cec42897-r1",
+        "path": "/nix/store/18miq8x2d8b15gcjip64nfhid43kng6w-latency-mpi-s1-5813cec42897-r1",
+        "sha256": "sha256-Ybu96+YsNmHONEJ3QjTMITUCIzg9ov9fDcW2NnM+ZgQ="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "5813cec428972be2dd7a213e3b8aa8b6f7627408db1737ccaa148318b31d4394",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-mpi-s1-5813cec42897-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-5813cec42897-r2",
+        "path": "/nix/store/y3rcax2cl3j59c789l8jfpp16l67hqyr-latency-mpi-s1-5813cec42897-r2",
+        "sha256": "sha256-2GiwoY3v1tk9pW3luTxeukfIEx4wxCs0Vajiq8Yk7tA="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "5813cec428972be2dd7a213e3b8aa8b6f7627408db1737ccaa148318b31d4394",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-mpi-s1-5813cec42897-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-5813cec42897-r3",
+        "path": "/nix/store/z9yx19v36k9slpki465509vw7dvnqhbi-latency-mpi-s1-5813cec42897-r3",
+        "sha256": "sha256-40zcJsFs0CV7pl//ooOrOcOdYj9TlwSRKjtrzKL/kZs="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "5813cec428972be2dd7a213e3b8aa8b6f7627408db1737ccaa148318b31d4394",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-mpi-s1-5813cec42897-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-5813cec42897-r4",
+        "path": "/nix/store/9hj17jnvjr5j85y8r51rd2hxrn5924wx-latency-mpi-s1-5813cec42897-r4",
+        "sha256": "sha256-UUgubSIfTMJnHQ0ML31xKY8Z8oIG/f8VRk4AWaZn1nI="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "b528923d07baec23ae2880b26bd383a9c58dcf77b307c82d34ae55b281297510",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-mpi-s1-b528923d07ba-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-b528923d07ba-r1",
+        "path": "/nix/store/m6n5mzqg21p5ah6ca2vqhgzixq0bbrc9-latency-mpi-s1-b528923d07ba-r1",
+        "sha256": "sha256-0zuIvovo4MToRdXbBS0o3QiaojkZxLbv8b5mBbxqBXU="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "b528923d07baec23ae2880b26bd383a9c58dcf77b307c82d34ae55b281297510",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-mpi-s1-b528923d07ba-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-b528923d07ba-r2",
+        "path": "/nix/store/iywsq99s946wjlnq7sklmn2y2b76h6v2-latency-mpi-s1-b528923d07ba-r2",
+        "sha256": "sha256-1BQnkeQdtWvlMeAAsFplVYew+AyTr7WUdFL+hzGvUL0="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "b528923d07baec23ae2880b26bd383a9c58dcf77b307c82d34ae55b281297510",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-mpi-s1-b528923d07ba-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-b528923d07ba-r3",
+        "path": "/nix/store/di7xb6ls5rap0wv439672awb4pspr7vs-latency-mpi-s1-b528923d07ba-r3",
+        "sha256": "sha256-Gio9ZDEoHpqGktS/LZzWBDARkBCLJmaW1aLojkKi1RA="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "b528923d07baec23ae2880b26bd383a9c58dcf77b307c82d34ae55b281297510",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-mpi-s1-b528923d07ba-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-b528923d07ba-r4",
+        "path": "/nix/store/28npv7hlffsr6rhwyc9ifxwszyl5sxkg-latency-mpi-s1-b528923d07ba-r4",
+        "sha256": "sha256-1IRVqiUcQ489BbwzSzA9ciTq/3ZoiBPdajsJ++ozZDk="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/114zmw0yg83w23ckf8ijkbzr358kfzvg-experiment-latency-mpi-s1",
+          "format": "2.0",
+          "input_id": "b528923d07baec23ae2880b26bd383a9c58dcf77b307c82d34ae55b281297510",
+          "params": {
+            "backend": "mpi",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 5,
+          "run": "latency-mpi-s1-b528923d07ba-r5",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-mpi-s1-b528923d07ba-r5",
+        "path": "/nix/store/gbx8vz8npm7dc2y48b7fkxjsih9m19iq-latency-mpi-s1-b528923d07ba-r5",
+        "sha256": "sha256-WJEPZqn3zkmltpEKo04HiF9PFW/Utfmga/I+ySanSoQ="
+      }
+    ]
+  }
 }
