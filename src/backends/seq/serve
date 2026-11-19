@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# serve -- PROGRAM [ARGS...]: run a long-lived program built for this backend, as its one host, in this process
+# (src/backends/README.md, Serve). The program's stdin, stdout and stderr are this command's. seq has one host: a job
+# of several machines is refused.
+set -u
+[[ ${1:-} == -- && $# -gt 1 ]] || { echo "serve: usage: serve -- PROGRAM [ARGS...]" >&2; exit 2; }
+shift
+if [[ -n ${NIX_DEPLOY_HOSTFILE:-} ]] && (( $(grep -c . "$NIX_DEPLOY_HOSTFILE") > 1 )); then
+  echo "serve: this backend runs one host; the job has several machines" >&2; exit 2
+fi
+exec "$@"

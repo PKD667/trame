@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""serve -- PROGRAM [ARGS...]: run a long-lived program built for this backend, one trame host per machine of the job
+(NIX_DEPLOY_HOSTFILE, through nixsci.lab.mpi) or this machine alone, and stay in the foreground (src/backends/README.md,
+Serve). Unlike `launch`, nothing is collected: the command is replaced by mpirun, which ends with the program.
+
+The ranks a host needs are asked of the program first (TRAME_PROBE=ranks, backend.rs), so every host has the ranks that
+host 0's topology declares. stdin reaches the leader of host 0, the last rank of that host, not rank 0, which is a
+worker (`mpirun --stdin`). Every rank's stdout and stderr reach this command's, unordered between ranks: a program that
+talks over its stdout writes it from the leader only."""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from nixsci.lab import mpi
+
+
+def usage(msg: str) -> None:
+    sys.exit(print(f"serve: {msg}\nusage: serve -- PROGRAM [ARGS...]", file=sys.stderr) or 2)
+
+
+def ranks_of(program: list[str], hosts: int) -> int:
+    with tempfile.TemporaryDirectory() as d:
+        probe = Path(d) / "ranks"
+        env = {**os.environ, "TRAME_PROBE": "ranks", "TRAME_PROBE_HOSTS": str(hosts), "TRAME_PROBE_OUT": str(probe)}
+        p = subprocess.run(["mpirun", "--oversubscribe", "-n", "1", "-x", "TRAME_PROBE", "-x", "TRAME_PROBE_HOSTS",
+                            "-x", "TRAME_PROBE_OUT", *program], capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL)
+        text = probe.read_text() if probe.exists() else ""
+    m = re.search(r"^trame-ranks (\d+)$", text, re.M)
+    if not m:
+        sys.stderr.write(p.stdout + p.stderr)
+        usage("the program did not report its rank count (is it built for this backend, and does it launch a topology?)")
+    return int(m.group(1))
+
+
+def main(argv: list[str]) -> None:
+    if len(argv) < 2 or argv[0] != "--":
+        usage("no program")
+    program = argv[1:]
+    hosts = max(1, len(mpi.hosts()))
+    ranks = ranks_of(program, hosts)
+    cmd = mpi.command(ranks * hosts, per_node=ranks, bind="none")
+    cmd += ["--stdin", str(ranks - 1)]
+    os.execvp(cmd[0], cmd + program)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

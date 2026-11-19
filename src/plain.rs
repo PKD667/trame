@@ -15,6 +15,7 @@ use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque};
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
+use core::cmp::Reverse;
 use core::num::{Saturating, Wrapping};
 
 /// A type whose values a trame state or pool may hold (see the module comment).
@@ -89,7 +90,7 @@ macro_rules! plain_of {
     )* };
 }
 
-plain_of!(Option, Vec, VecDeque, BTreeSet, BinaryHeap, Wrapping, Saturating);
+plain_of!(Option, Vec, VecDeque, BTreeSet, BinaryHeap, Wrapping, Saturating, Reverse);
 
 // SAFETY: owns its value in the domain, and the value is plain.
 unsafe impl<T: ?Sized + Plain> Plain for Box<T> {}

@@ -263,3 +263,26 @@ needs a `launch`, a `backend.nix` and, if it has programs it does not run, a `sk
 
 Its checks go in the lab and the validate verdicts in the same way as the existing backends. Its name goes in
 this file and nowhere else outside `src/backends/`.
+
+## Serve
+
+`launch` runs a program to its end and collects what each host printed: it is for experiments. A service is a program
+that stays up and talks over its stdin and stdout, and `serve` is its launcher: `serve -- PROGRAM [ARGS...]`, in
+`src/backends/<b>/serve`. It runs in the foreground with the program's stdio, and ends with the program. On `seq` it is
+`exec`. On `mpi` it asks the program for its rank count (`TRAME_PROBE=ranks`), takes the machines from
+`NIX_DEPLOY_HOSTFILE` and the remote agent from `NIX_DEPLOY_AGENT` (nixsci's `mpi.command`), and replaces itself with
+`mpirun --stdin <leader of host 0>`: mpirun's default is rank 0, which is a worker. Every host gets the ranks that
+host 0's topology declares, so hosts are uniform in workers. Stdout and stderr of every rank reach the caller,
+unordered between ranks, so a service speaks on its stdout from its leader only. Checked on `leader_io` (the sorted
+stdout equals its `.expected` on both backends); stdin reaching the leader was checked with plain `mpirun --stdin`, not
+with a trame program.
+
+## The export
+
+A program's flake takes a backend from `trame.lib.<system>.backend NAME { checked ? true }` (`nix/export.nix`), where
+NAME is the backend's own name. It answers `{ feature, buildFeatures, buildNoDefaultFeatures, nativeBuildInputs, env,
+runtime, launcher }`. `buildFeatures` is `["trame/<NAME>"]`, the feature of the dependency, so the program's
+`Cargo.toml` names no backend. `env` carries the descriptor's variables and, when `checked`, `RUSTFLAGS = "--cfg
+trame_checked"`, which a build outside `cargo trame` must set (INTERFACE.md 3.1). `launcher { name, binary }` is a
+derivation with `bin/NAME`, the backend's `serve` on `binary`. An unknown NAME is an evaluation error naming the
+backends.

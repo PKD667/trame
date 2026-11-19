@@ -88,13 +88,13 @@ Refused: `param_not_a_field` [error], `param_wrong_type` [error], `unsafe_fn_ste
 
 Accepted: `array_receives_ok`.
 
-## plain (24)
+## plain (25)
 
 What a state and its pool hold is the type `trame::Plain` (CONTRACT.md, M2, M3): rustc refuses, with E0277 "cannot be held by a trame state, pool or error", at the field.
 
 Refused: `arc`, `atomic`, `cell_in_pool`, `dyn_box`, `enum_variant`, `file`, `fn_pointer`, `instant`, `mutex`, `nested_cell`, `no_derive`, `oncelock`, `pool_not_a_struct`, `raw_pointer_wrapper`, `rc_wrapper`, `reference_in_vec`, `reference_static`, `rwlock`, `vec_of_nested`, `weak`.
 
-Accepted: `nested_ok`, `plain_ok`, `pool_ok`, `worker_id_ok`.
+Accepted: `nested_ok`, `plain_ok`, `pool_ok`, `std_wrappers_ok`, `worker_id_ok`.
 
 ## static (7)
 

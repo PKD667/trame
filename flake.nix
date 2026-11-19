@@ -28,6 +28,8 @@
       shells = import ./nix/shells.nix { inherit pkgs nixsci tree tc; };
       cli = import ./nix/cli.nix { inherit pkgs build; inherit (tc) driverToolchain trameDriver; };
     in {
+      # `lib.<system>.backend NAME { checked ? true }`: what a program's flake takes of a backend (nix/export.nix).
+      lib.${system}.backend = import ./nix/export.nix { inherit pkgs tree build; };
       validate.${system} = verdicts.suite;
       checks.${system} = verdicts.checks // {
         lab-contract = lab.contract;
