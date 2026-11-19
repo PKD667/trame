@@ -22,6 +22,11 @@ libc = { version = "=0.2.191", optional = true }
 [features]
 seq = []
 mpi = ["dep:mpi", "dep:libc"]
+# Keeps Cargo.lock whole for a program that names no backend: cargo locks only the dependencies some feature of the
+# workspace reaches, so a program's own `lock = ["trame/lock"]` pulls in every backend's optional dependencies without
+# selecting a backend. It is never built: with no backend a build is a compile error (src/backends/mod.rs). The union of
+# the optional dependencies of the backends above; add a backend's here with its feature.
+lock = ["dep:mpi", "dep:libc"]
 # Lane sub-backends for parallel! (src/parallel/): at most one; none is the scalar fold, the reference. Not yet
 # wired into parallel! (src/parallel/lane.rs). AVX2 (x86-64-v3) and AVX-512 (x86-64-v4: F, BW, DQ, VL).
 lanes-avx2 = []
