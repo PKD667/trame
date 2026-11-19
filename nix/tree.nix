@@ -32,8 +32,10 @@ let
       ../INTERFACE.md
       ../crates/macros
       ../src/math
+      ../src/bounded
       ../src/parallel
       ../check/programs
+      ../check/math
       ../tests
       (lib.fileset.fileFilter (f: f.hasExt "rs") ../lab/bench)
       ../examples

@@ -93,6 +93,9 @@ plain_of!(Option, Vec, VecDeque, BTreeSet, BinaryHeap, Wrapping, Saturating);
 
 // SAFETY: owns its value in the domain, and the value is plain.
 unsafe impl<T: ?Sized + Plain> Plain for Box<T> {}
+// SAFETY: a `Bounded` is a `Vec` and a length bound: plain data, owned, with no handle to this process.
+unsafe impl<T: Plain> Plain for crate::bounded::Bounded<T> {}
+unsafe impl<T: Plain + Ord> Plain for crate::bounded::BoundedHeap<T> {}
 // SAFETY: its elements are inline, and each is plain (behind a `Box`, as `Box<[T]>`).
 unsafe impl<T: Plain> Plain for [T] {}
 // SAFETY: its bytes are its value (behind a `Box`, as `Box<str>`).

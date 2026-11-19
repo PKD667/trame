@@ -107,8 +107,10 @@ of its effects. The driver cannot read the bodies of non-generic `core` items, s
 trusted.
 
 > **Requirement (All levels).** No `unsafe`, FFI, `std`, threads, globals or indirect calls. Drop
-> glue counts as a call. No `UnsafeCell`, so no interior mutability: a step changes a state only
-> through the fields of its write set.
+> glue counts as a call, except a drop of a `core` or `alloc` type on the unwind path of a panic: it
+> runs only once the run has ended unobserved (Definition (Abort)), so a function that owns a buffer
+> and may panic is judged by its normal path. No `UnsafeCell`, so no interior mutability: a step
+> changes a state only through the fields of its write set.
 
 > **Requirement (Step).** A step calls only items of $A_C$ and effects of $\Sigma_C$. Every loop is
 > counted, and it does not recurse. It neither allocates nor frees: it rewrites in place the buffers
@@ -131,13 +133,42 @@ them and nothing else. What they mean for a program:
 
 | In a step | Allowed | Refused |
 | --- | --- | --- |
-| Control flow | `for` over a range, slice or array; `if`, `match`, `?` | `while`, `loop`, recursion |
+| Control flow | `for` over a range, slice or array; `if`, `match`, `?`; `drain` and `fuel` (below) | `while`, `loop`, recursion |
+| `Bounded<T>`, `BoundedHeap<T>` | everything: `push`, `pop`, `clear`, `truncate`, `swap_remove`, `extend_from_slice`, `peek`, indexing, iteration (below) | |
 | `Vec`, `String`, `Box` | read and rewrite in place: `len`, `is_empty`, `capacity`, indexing, `as_slice`, `as_mut_slice`, borrowing iteration, `==`, `cmp` | anything that grows, shrinks, copies or frees: `push`, `pop`, `insert`, `remove`, `clear`, `truncate`, `extend`, `resize`, `clone`, `collect`, dropping a value that owns a buffer |
 | Slices, arrays | every `core::slice` method, `core::mem::{swap, replace, take}` | |
 | Other collections | none | `VecDeque`, `BTreeMap` and the rest of `alloc::collections`; `HashMap` and `HashSet` in any level, because no hasher is listed |
 | Text | reading a `String` or `&str` | `format!`, building a `String` |
 | Numbers | `+ - * /` with overflow checks, comparisons, `Option` and `Result` combinators, the float operations listed under Floating point | `std` anything, so `f64::exp`, `ln`, `powf`, `sqrt`; use `trame::math::f64::exp` and the like (`math::f32` for `f32`). `f64::max` and `min`, for which `trame::math::f64::max` and `min` stand in |
 | Memory | the fields of the write set | `static`, `thread_local!`, `Cell`, atomics, `Rc`, `Arc`, raw pointers, `unsafe` |
+
+> **Definition (Bound in the call).** `drain::<M, N>(body)` takes at most $N$ messages of type `M` by `recv`
+> and gives each to `body`; `fuel::<N>(body)` runs `body` at most $N$ times, stopping when it answers
+> `Break`. $N$ is a constant of the program text, so the loop is counted by its type and not by the
+> shape of its code. `body` is a closure of the step and is judged at the step's level.
+
+> **Requirement (Drain).** `drain` never takes the $(N+1)$st message in one call, however fast senders refill the
+> route (a receive frees its slot only at Release, 5.2). It answers whether the bound or the route ended it, and
+> `Drained::status()` is `Progress` in the first case, so the step runs again, and `Status::wait().frame()` in the
+> second. A `while let Some(m) = recv()` is still refused, because its bound is not the receiver's to know.
+
+`recv` itself never blocks: it answers `None` when no frame is available (`io.rs`). What blocks a worker is a step that
+does not return, so the bound is on the work a step does, and waiting is a `Status`, which the scheduler acts on
+(5.3, Definition (Enabled and wanting)).
+
+> **Definition (Bounded).** `Bounded<T>` is a `Vec<T>` whose capacity is fixed by `Bounded::new(cap)`, which allocates
+> (a builder or an edit calls it), and never changes. Every method checks the length against the capacity before it
+> writes, and answers `Err(Full)` rather than grow. `BoundedHeap<T>` is a binary max-heap over one. They are
+> trame's code, trusted at every level (crates/driver/README.md), and their bodies are excused from the allocation
+> rule by `crates/driver/lists/certified.txt`, which says why for each entry. They are `Plain` when `T` is.
+
+> **Definition (Lend).** `lend(&mut s, |s| &mut s.slot, |s, v| ...)` takes the value out of an `Option` field, runs
+> the closure with the value and the rest of the state, and puts the value back without dropping the empty slot.
+> It is the one way a step moves a value that owns buffers out of its state and back, because
+> `s.slot = Some(v)` drops the old value first and drop glue names `Vec::drop` whatever the value is.
+
+A drop on the unwind path of a core or alloc type, or of a plain struct whose glue reaches only those, is not
+judged: a panic ends the run unobserved (Definition (Abort)). The same drop on the normal path is refused.
 
 A field is a buffer of fixed capacity. The builder or an edit allocates it at the size it will need, and
 the step keeps how much of it is in use in another plain field. A queue is an array, a head and a
@@ -738,7 +769,11 @@ root, except the functions of `trame::math`.
 | `hosts() -> u32` | fn | the number of hosts $H$ (6); 1 on a backend that runs one host |
 | `Reading` | type: `since`, `after` | a reading of one clock (5.1) |
 | `Status` | type: `Progress`, `Done`, `wait()` with `.frame()`, `.room::<M>(to)`, `.until(r)`, and `.weight(w)` | $\mathit{Status}$ (5.3) |
-| `Full` | type | the answer $\mathsf{full}$ (5.2) |
+| `Full` | type | the answer $\mathsf{full}$ (5.2); also the answer of a full `Bounded` |
+| `drain::<M, N>(body) -> Drained`, `Drained { taken, capped }` with `.status()` | fn, type | a bounded $\mathsf{recv}$ loop (3.1, Definition (Bound in the call)) |
+| `fuel::<N>(body) -> Result<usize, Spent>`, `Spent` | fn, type | a `while` with its bound written down (3.1) |
+| `lend(&mut s, slot, f) -> Option<R>` | fn | take a field's value out, use it with the rest of the state, put it back (3.1, Definition (Lend)) |
+| `Bounded<T>`, `BoundedHeap<T>` | types: `new(cap)`, `push`, `pop`, `clear`, `truncate`, `swap_remove`, `extend_from_slice`, `push_owned`, `peek`, `push_pop`, `cap`, `len`, `is_full`, slice access | fixed-capacity collections a step may use (3.1, Definition (Bounded)) |
 | `Message` | trait, implemented by every plain-data type: `zeroed` | plain data of a tag (Section 3) |
 | `Alloc` | type: `Alloc::new(inner)`, a global allocator | the domain allocation of builders and edits (4, Definition (Building)) |
 | `Topology` | type: `new`, `worker::<S>`, `pool::<P>`, `set`, `route::<M>`, `lossy::<M>`, `launch` | $G$, its declaration and its launch (4) |

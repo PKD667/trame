@@ -215,6 +215,37 @@ pub fn canon(tcx: TyCtxt<'_>, def: rustc_span::def_id::DefId) -> String {
     rustc_middle::ty::print::with_no_visible_paths!(tcx.def_path_str(def))
 }
 
+/// Whether dropping a value of `ty` runs a `Drop` impl that is not core's or alloc's: a user impl, or a std one. Reads
+/// the type's fields through ADTs, tuples, arrays and slices; a trait object or a closure answers yes (not known).
+/// A plain struct whose fields are numbers and `Vec`s answers no: its glue only reaches core and alloc drops.
+fn has_foreign_destructor<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> bool {
+    fn go<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, seen: &mut FxHashSet<Ty<'tcx>>) -> bool {
+        if !seen.insert(ty) {
+            return false;
+        }
+        match ty.kind() {
+            ty::Adt(adt, args) => {
+                if tcx.adt_destructor(adt.did()).is_some() {
+                    let krate = tcx.crate_name(adt.did().krate).to_string();
+                    if krate != "core" && krate != "alloc" {
+                        return true;
+                    }
+                }
+                adt.all_fields().any(|f| {
+                    let t = tcx.normalize_erasing_regions(TypingEnv::fully_monomorphized(), ty::Unnormalized::new_wip(f.ty(tcx, args)));
+                    go(tcx, t, seen)
+                }) || args.types().any(|t| go(tcx, t, seen))
+            }
+            ty::Tuple(ts) => ts.iter().any(|t| go(tcx, t, seen)),
+            ty::Array(t, _) | ty::Slice(t) | ty::Pat(t, _) => go(tcx, *t, seen),
+            ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) | ty::Float(_) | ty::Str | ty::Never => false,
+            ty::Ref(..) | ty::RawPtr(..) | ty::FnDef(..) | ty::FnPtr(..) => false,
+            _ => true,
+        }
+    }
+    go(tcx, ty, &mut FxHashSet::default())
+}
+
 /// Monomorphize `value` for `inst`'s body.
 pub fn mono<'tcx, T: TypeFoldable<TyCtxt<'tcx>>>(tcx: TyCtxt<'tcx>, inst: Instance<'tcx>, value: T) -> T {
     inst.instantiate_mir_and_normalize_erasing_regions(
@@ -468,7 +499,11 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
             return self.push(span, What::Ffi(path));
         }
         if tcx.def_kind(def) == rustc_hir::def::DefKind::Fn || tcx.def_kind(def) == rustc_hir::def::DefKind::AssocFn {
-            if tcx.fn_sig(def).skip_binder().safety().is_unsafe() {
+            // `Arguments::new*` and the `fmt::rt` argument constructors are unsafe, hidden and emitted only by the
+            // `format_args!` expansion: user code cannot name them, so a call to one is the formatting of a message
+            // (`panic!("{}", x)`), not an unsafe act of the program. The callee that runs it stays judged by its path.
+            let fmt_expansion = path.starts_with("core::fmt::Arguments::") || path.starts_with("core::fmt::rt::");
+            if tcx.fn_sig(def).skip_binder().safety().is_unsafe() && !fmt_expansion {
                 self.push(span, What::Unsafe(format!("call to unsafe function {path}")));
             }
         }
@@ -588,6 +623,33 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
         }
     }
 
+    /// Whether the call that ends `header` is followed by a switch on the discriminant of its answer whose None arm
+    /// (discriminant 0, the first variant of `Option`) leaves the loop.
+    fn leaves_on_none(&self, header: BasicBlock, in_loop: &FxHashSet<BasicBlock>) -> bool {
+        let blocks = &self.body.basic_blocks;
+        let TerminatorKind::Call { destination, target: Some(next), .. } = &blocks[header].terminator().kind else {
+            return false;
+        };
+        let data = &blocks[*next];
+        let read = data.statements.iter().find_map(|st| match &st.kind {
+            StatementKind::Assign(bx) => match &bx.1 {
+                Rvalue::Discriminant(p) if p.local == destination.local => Some(bx.0.local),
+                _ => None,
+            },
+            _ => None,
+        });
+        let Some(read) = read else { return false };
+        let TerminatorKind::SwitchInt { discr: Operand::Copy(d) | Operand::Move(d), targets } = &data.terminator().kind
+        else {
+            return false;
+        };
+        if d.local != read {
+            return false;
+        }
+        let none = targets.iter().find(|(v, _)| *v == 0).map_or(targets.otherwise(), |(_, bb)| bb);
+        !in_loop.contains(&none)
+    }
+
     fn counted(&self, header: BasicBlock, in_loop: &FxHashSet<BasicBlock>) -> (bool, String) {
         let tcx = self.tcx;
         let blocks = &self.body.basic_blocks;
@@ -614,6 +676,12 @@ impl<'a, 'tcx> Scanner<'a, 'tcx> {
                     "its back-edge is governed by Iterator::next on `{self_ty}`, not a Range, slice Iter or array IntoIter"
                 ),
             );
+        }
+        // The loop must leave when `next` answers None: the call is followed by a switch on the answer's discriminant,
+        // and the None arm (0) is outside the loop. Otherwise `loop { let _ = it.next(); }` is a call to `next` at the
+        // head of a loop that never ends (check/rejections/cases/counted-loop/next_ignored_item.rs).
+        if !self.leaves_on_none(header, in_loop) {
+            return (false, "the loop does not leave when Iterator::next answers None".into());
         }
         // The iterator local: `_tmp = &mut iter` feeds the call.
         let Some(Operand::Move(arg) | Operand::Copy(arg)) = args.first().map(|a| &a.node) else {
@@ -730,6 +798,17 @@ impl<'a, 'tcx> MirVisitor<'tcx> for Scanner<'a, 'tcx> {
                         }
                         _ => None,
                     };
+                    // A drop on the unwind path (a cleanup block) runs only after a panic, and a panic ends the
+                    // run unobserved (INTERFACE.md, Definition (Abort)): a listed core or alloc drop there frees
+                    // memory and changes no result, so it is not judged. A std drop and a user `Drop` impl still are.
+                    let unwind_only = self.body.basic_blocks[loc.block].is_cleanup;
+                    if unwind_only
+                        && (listed_drop.as_ref().is_some_and(|(krate, _)| krate != "std")
+                            || (listed_drop.is_none() && !has_foreign_destructor(tcx, ty)))
+                    {
+                        self.visit_place(place, PlaceContext::MutatingUse(MutatingUseContext::Drop), loc);
+                        return;
+                    }
                     if let Some((krate, shape)) = listed_drop {
                         let k = format!("{shape}::drop");
                         // The glue of the listed type's fields is inside its own drop: walk the type.

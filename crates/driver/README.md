@@ -46,6 +46,8 @@ Trust is a property of the call path, decided in `trust.rs`. Functions defined i
 
 A trusted body is read only for its effects, its edges, its allocations (in an item), and its user iterators. Its unsafe code, std use, loops and core calls are not judged, as trame's own never were.
 
+A trusted body is also read for allocation (`judge`, mod.rs). `lists/certified.txt` excuses named trame paths from that one fact, with the reason on the line: `Bounded` and `BoundedHeap` call `Vec::push` and `clear`, which never allocate there because their length is checked against a capacity fixed in `new`. A `-` line takes a path out again (`new` allocates). This is a claim about trame's code, tested in `src/bounded/tests.rs`, not something the driver proves.
+
 Trust stops at the program. A body is judged in full when a root reaches it, or when an `Own` edge reaches it (scan.rs): a closure or fn item passed in as a generic argument, a user type's impl of a core trait, an impl item whose self type is a user type, drop glue, and a shim. A dependency function called directly from a worker is judged in full too, since the worker is not trusted. Trust does not depend on the path's length: a body is judged if any path to it is untrusted.
 
 Why: the program can only reach trame and its dependencies through their public API, and the rules are about what the program does. Checking the runtime's body would fail on the runtime itself.

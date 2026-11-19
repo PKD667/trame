@@ -90,9 +90,12 @@ Each finding is a disagreement between the checks and the spec, with the verbati
   `[allocation] item calls alloc::vec::Vec::len: items neither allocate nor call alloc`. `Vec::new` and `len` do not
   allocate, but the letter of the rule refuses them. Whether this is over-refusal is a spec decision. The case expects the
   strict reading.
-- **D1, println! (corrected).** `println!` in a worker is refused under `[std]` only (`std/println_worker`). In an item or
-  a step it is also refused under `[unsafe]`, because the `format_args!` expansion calls core's `unsafe fn
-  fmt::Arguments::new` (`std/println_item`, `std/println_step`). The second rule is correct and is named.
+- **D1, println! (corrected twice).** `println!` in a worker, an item or a step is refused under `[std]` only
+  (`std/println_worker`, `std/println_item`, `std/println_step`). It was once also refused under `[unsafe]`, because the
+  `format_args!` expansion calls core's `unsafe fn fmt::Arguments::new` and the `fmt::rt` argument constructors. Those are
+  hidden and emitted only by the expansion, so the driver no longer judges them (`fn_use`, scan.rs). The visible effect:
+  `panic!("{}", x)` with a runtime `x` is accepted in a step, as `panic!("full")` was (`std/panic_fmt_*_step_ok`; nerve,
+  at trame 8c8a53d). A constant argument is folded by MIR inlining and never reached the rule.
 - **E1, the macro before the driver.** A step declared `unsafe fn` is refused by `#[trame::step]` itself (`state/unsafe_fn_step`).
   The driver's `unsafe` rule for the body is covered by `unsafe/block_step`.  What a state holds is not the driver's rule but the type
   `trame::Plain`, which rustc checks (`plain/`).

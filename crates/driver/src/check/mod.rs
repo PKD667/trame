@@ -160,7 +160,11 @@ pub fn run(tcx: TyCtxt<'_>) -> usize {
         let lv = level[n];
         let root = root_name(tcx, *n, &parent);
         let trusted = !judged.contains(n);
+        let certified = trusted && lists.certified(&canon(tcx, n.def_id()));
         for site in &scans[n].sites {
+            if certified && matches!(site.what, What::Core { alloc: true, .. }) {
+                continue;
+            }
             if let Some((rule, msg)) = judge(lists, lv, site, trusted) {
                 let mut d = tcx.dcx().struct_span_err(site.span, format!("[{rule}] {msg}"));
                 d.note(format!("reached from root {root}: {}", path_to(tcx, *n, &parent)));

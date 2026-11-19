@@ -14,6 +14,7 @@ const DENY: &str = include_str!("../../lists/deny.txt");
 const A_I: &str = include_str!("../../lists/A_I.txt");
 const A_C: &str = include_str!("../../lists/A_C.txt");
 const A_W: &str = include_str!("../../lists/A_W.txt");
+const CERTIFIED: &str = include_str!("../../lists/certified.txt");
 
 /// One effect of INTERFACE.md's Sigma sets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -56,6 +57,8 @@ pub enum Verdict {
 }
 
 pub struct Lists {
+    /// certified.txt: `(is_deny, path or prefix)`, for trusted bodies excused from the allocation fact.
+    certified: Vec<(bool, String)>,
     effects: BTreeMap<String, Effect>,
     /// The entries of deny.txt: denied at every level, cited as Requirement (All levels).
     global: BTreeSet<String>,
@@ -164,7 +167,28 @@ impl Lists {
                 return Err(format!("deny `{m}` of level {} is not denied at the stricter level {}", loose, strict));
             }
         }
-        Ok(Lists { effects, global: global_entries, allow, deny })
+        let certified = entries(CERTIFIED).map(|(d, e)| (d, e.to_string())).collect();
+        Ok(Lists { effects, certified, global: global_entries, allow, deny })
+    }
+
+    /// Whether certified.txt excuses the body at `path` from the allocation fact: the most specific entry that
+    /// matches decides (exact over prefix, longer prefix over shorter), a `-` entry wins a tie.
+    pub fn certified(&self, path: &str) -> bool {
+        let mut best: Option<(usize, bool, bool)> = None; // (specificity, exact, deny)
+        for (deny, entry) in &self.certified {
+            let (exact, hit, len) = match entry.strip_suffix("::*") {
+                Some(prefix) => (false, path.starts_with(prefix) && path[prefix.len()..].starts_with("::"), prefix.len()),
+                None => (true, path == entry, entry.len()),
+            };
+            if !hit {
+                continue;
+            }
+            let key = (len + usize::from(exact) * 1_000_000, exact, *deny);
+            if best.is_none_or(|b| (key.0, key.2) > (b.0, b.2)) {
+                best = Some(key);
+            }
+        }
+        best.is_some_and(|(_, _, deny)| !deny)
     }
 
     pub fn effect(&self, path: &str) -> Option<Effect> {

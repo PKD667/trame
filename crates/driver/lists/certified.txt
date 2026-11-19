@@ -1,0 +1,11 @@
+# Certified trame code: paths whose bodies call allocating `alloc` functions that, by the module's own invariant, never
+# allocate or free when a step calls them. A trusted body is still read for allocation (check/mod.rs, `judge`); a path
+# listed here is excused from that one fact, nothing else. Format as the allow-lists: a path or `P::*`, `# reason`;
+# a `-` line removes a path again (the constructors, which do allocate: a builder calls them, a step may not).
+#
+# The reason is the proof obligation, and names the test that checks it. It is a claim about trame's code, not about
+# the user's: a step reaches these functions only through the API the module exports.
+
+trame::bounded::*   # Bounded and BoundedHeap fix their capacity in `new` and every method checks len < cap before it pushes, so the Vec never reallocates: src/bounded/tests.rs asserts the buffer pointer and capacity unchanged over 100k random operations
+-trame::bounded::vec::Bounded::<T>::new        # allocates the buffer: a builder or an edit calls it, a step may not
+-trame::bounded::heap::BoundedHeap::<T>::new   # allocates the buffer, through Bounded::new

@@ -22,9 +22,9 @@ Refused: `parallel_no_cfg` [error], `state_no_cfg` [error].
 
 Accepted: `cfg_passed_ok`.
 
-## counted-loop (10)
+## counted-loop (11)
 
-Refused: `loop_step` [counted-loop], `vec_iter_mutated_step` [error], `while_item` [counted-loop], `while_step` [counted-loop].
+Refused: `loop_step` [counted-loop], `next_ignored_item` [counted-loop], `vec_iter_mutated_step` [error], `while_item` [counted-loop], `while_step` [counted-loop].
 
 Accepted: `array_rev_step_ok`, `for_range_step_ok`, `item_loop_ok`, `rev_range_step_ok`, `rev_slice_step_ok`, `vec_iter_ok`.
 
@@ -34,9 +34,11 @@ Refused: `atomic_worker` [deny], `cell_item` [deny], `cell_worker` [deny], `refc
 
 Accepted: `cell_worker_ok`, `unbounded_range_step_ok`.
 
-## drop (4)
+## drop (8)
 
-Refused: `box_drop_std_step` [allocation,std], `box_drop_unsafe_step` [allocation,unsafe], `box_u32_drop_step` [allocation], `user_drop_unsafe_in_vec_step` [allocation,unsafe].
+Refused: `box_drop_std_step` [allocation,std], `box_drop_unsafe_step` [allocation,unsafe], `box_u32_drop_step` [allocation], `take_assign_step` [allocation], `unwind_vec_normal_step` [allocation], `unwind_vec_step_ok` [allocation], `user_drop_unsafe_in_vec_step` [allocation,unsafe].
+
+Accepted: `take_put_back_step_ok`.
 
 ## effects (11)
 
@@ -50,9 +52,15 @@ Refused: `extern_item` [ffi,unsafe], `extern_step` [ffi,unsafe], `extern_worker`
 
 Accepted: `extern_item_ok`.
 
-## float (6)
+## flow (4)
 
-Refused: `f64_max_item` [allow-list], `f64_sqrt_item` [std].
+Refused: `drain_vec_push_step` [allocation].
+
+Accepted: `bounded_step_ok`, `drain_step_ok`, `fuel_step_ok`.
+
+## float (8)
+
+Refused: `f64_max_item` [allow-list], `f64_mul_add_item` [std], `f64_sin_item` [std], `f64_sqrt_item` [std].
 
 Accepted: `float_bits_item_ok`, `float_ieee_item_ok`, `float_signum_clamp_item_ok`, `math_sqrt_item_ok`.
 
@@ -94,15 +102,15 @@ Refused: `mut_step` [static,unsafe], `read_item` [static], `read_step` [static],
 
 Accepted: `read_step_ok`, `read_worker_ok`.
 
-## std (12)
+## std (18)
 
-Refused: `abort_item` [std], `drop_glue_item` [std], `foreach_step` [std], `foreach_worker` [std], `println_item` [std,unsafe], `println_step` [std,unsafe], `println_worker` [std], `thread_spawn_item` [allocation,std], `thread_spawn_step` [std], `thread_spawn_worker` [std].
+Refused: `abort_item` [std], `drop_glue_item` [std], `foreach_step` [std], `foreach_worker` [std], `println_item` [std], `println_step` [std], `println_worker` [std], `thread_spawn_item` [allocation,std], `thread_spawn_step` [std], `thread_spawn_worker` [std].
 
-Accepted: `foreach_worker_ok`, `option_expect_step_ok`.
+Accepted: `foreach_worker_ok`, `option_expect_step_ok`, `panic_const_step_ok`, `panic_fmt_a_generic_fn_step_ok`, `panic_fmt_b_method_step_ok`, `panic_fmt_c_u64_after_send_step_ok`, `panic_fmt_d_nerve_shape_step_ok`, `panic_fmt_step_ok`.
 
-## trusted (2)
+## trusted (4)
 
-Accepted: `math_exp_item_ok`, `math_f64_item_ok`.
+Accepted: `math_exp_item_ok`, `math_f64_every_item_ok`, `math_f64_item_ok`, `math_f64_step_ok`.
 
 ## unsafe (18)
 

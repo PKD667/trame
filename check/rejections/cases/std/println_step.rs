@@ -1,5 +1,5 @@
-// spec: Requirement (All levels): no std. A step prints, which calls std. The unsafe rule also fires on core's
-// `fmt::Arguments::new` (check/rejections/README.md, finding D1).
+// spec: Requirement (All levels): no std. A step prints, which calls std. The format_args! expansion's unsafe
+// `fmt::Arguments::new` is not judged (README.md, finding D1, as corrected again).
 #[trame::message]
 struct Job {
     id: u32,
@@ -18,8 +18,7 @@ struct S {
 #[trame::step(S, receives = Job)]
 fn step(q: &mut Queue) -> trame::Status {
     std::println!("n = {}", q.n);
-    //~^ ERROR: [unsafe] step
-    //~| ERROR: [std] step
+    //~^ ERROR: [std] step
     trame::Status::Done
 }
 
