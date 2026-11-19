@@ -65,9 +65,13 @@ pub mod __check;
 /// Numeric functions, grouped apart from the effects (INTERFACE.md 7).
 pub mod math;
 
+/// Bounded collections for steps: fixed capacity, never reallocated (src/bounded/mod.rs).
+mod bounded;
+
 // The modules are private: the surface is the root re-exports below (INTERFACE.md 7). Their definition
 // paths (`trame::io::send`, `trame::time::now`, ...) are what the driver's effects.txt names.
 mod domain;
+mod flow;
 mod io;
 mod launch;
 mod plain;
@@ -75,8 +79,10 @@ mod run;
 mod time;
 mod topology;
 
+pub use bounded::{Bounded, BoundedHeap};
 pub use domain::Alloc;
 /// The surface of INTERFACE.md 7: every public name of the crate, at the root and nowhere else.
+pub use flow::{Drained, Spent, drain, fuel, lend};
 pub use io::{Full, Message, host, hosts, me, recv, send};
 pub use launch::Refused;
 pub use plain::Plain;

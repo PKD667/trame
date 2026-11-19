@@ -4,9 +4,16 @@
 extern crate std;
 
 mod consts;
+mod edges;
+mod floor;
+mod fma;
 mod hash;
+mod inv;
+mod misc;
 mod special;
 mod sweep;
+mod trig;
+mod vectors;
 
 /// Deterministic generator (64-bit LCG, wrapping): the same sequence on every machine.
 pub(super) struct Rng(pub u64);

@@ -15,22 +15,32 @@
 mod bits;
 mod exp;
 mod expm1;
+mod floor;
+mod fma;
+mod inv;
 mod ln;
 mod minmax;
+mod misc;
 mod pow;
 mod powi;
 mod round;
 mod scalbn;
 mod sqrt;
+mod trig;
 
 pub use exp::exp;
 pub use expm1::exp_m1;
+pub use floor::{ceil, floor, fract, round_ties_even, trunc};
+pub use fma::mul_add;
+pub use inv::{acos, acosh, asin, asinh, atan, atan2, atanh, cosh, ln_1p, sinh, tanh};
 pub use ln::ln;
 pub use minmax::{max, min};
+pub use misc::{cbrt, exp2, hypot, log2, log10};
 pub use pow::powf;
 pub use powi::powi;
 pub use round::round;
 pub use sqrt::sqrt;
+pub use trig::{cos, sin, sin_cos, tan};
 
 #[cfg(test)]
 mod tests;

@@ -14,6 +14,9 @@ in
   devShells = {
     # No backend: the toolchain only. A cargo build names its backend (--no-default-features --features <name>).
     default = pkgs.mkShell { packages = base; };
+    # The checks of the numeric library (src/math, check/math/README.md): cargo-mutants for the mutation run, and
+    # python with mpmath, the arbitrary-precision oracle that writes the test vectors. Both pinned by flake.lock.
+    math = pkgs.mkShell { packages = base ++ [ pkgs.cargo-mutants (pkgs.python3.withPackages (p: [ p.mpmath ])) ]; };
     # The pinned nightly, for building crates/driver/ with `cargo` (see crates/driver/README.md). The shell does not
     # depend on the package, so entering it does not build the driver.
     driver = tc.driverPkgs.mkShell { packages = [ tc.driverToolchain ]; };

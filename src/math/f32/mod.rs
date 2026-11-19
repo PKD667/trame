@@ -1,5 +1,8 @@
 //! The f32 numeric functions of `trame::math` (INTERFACE.md 7).
 
+mod fma;
+pub use fma::mul_add;
+
 /// `e^x`, defined by this code on every backend: there is no backend-specific version, so every
 /// backend returns the same bits. Inputs in `[-30, 0]`, relative error below 2e-6 against `f64::exp`.
 /// Below `-87.0` the result is `0.0`, where `e^x` is under the smallest normal `f32` (1.2e-38) and the
@@ -64,3 +67,6 @@ pub fn min(a: f32, b: f32) -> f32 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod fma_tests;
