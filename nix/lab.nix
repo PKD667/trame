@@ -36,7 +36,7 @@ let
   # The machines of the suite: the most a job of the suite spans.
   machines = 4;
   data = import ./lab/data.nix { inherit lib; };
-  args = { inherit pkgs lib labLib system closure backends machines data nixsci labPy trameFiles; bench = import ./lab/bench.nix { inherit lib labLib system closure backends machines data; }; };
+  args = { inherit pkgs lib labLib system closure backends machines data nixsci labPy trameFiles backendNames; bench = import ./lab/bench.nix { inherit lib labLib system closure backends machines data; }; };
 
   # The directories under `base` that hold an experiment.nix.
   experimentDirs = base:

@@ -17,5 +17,5 @@ How an agent sleeps and is woken. No agent polls on a route inside a host.
   measures how near a run gets. `Epoch.tla` shows it on a word of 2 values (`counterexamples/epoch-wrap.txt`).
 - A worker with a lane does not sleep: a frame from another host moves no futex, so its idle agents poll
   (`roles/worker.rs`, `idle`).
-- Model: `check/proofs/mpi/Epoch.tla`, which cites `epoch.rs` and `futex.rs` by line. A change to either
+- Model: `src/backends/mpi/proofs/Epoch.tla`, which cites `epoch.rs` and `futex.rs` by line. A change to either
   needs the model's comments re-read. The models assume SeqCst and leave out timeouts.

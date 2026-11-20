@@ -26,6 +26,15 @@ in
   '';
   # mpi-rma/: a crate of its own (a submodule: typed one-sided communication over rsmpi), not part of any build here.
   exclude = [ "mpi-rma" ];
+  # What Cargo.toml needs of this backend (nix/manifest.nix): the dependencies only it uses, optional and enabled by its
+  # feature, and the binaries built from its own sources.
+  cargo = {
+    dependencies = {
+      mpi = { version = "=0.8.2"; optional = true; };
+      libc = { version = "=0.2.191"; optional = true; };
+    };
+    bins = [ { name = "check"; path = "src/backends/mpi/tests/check.rs"; } ];
+  };
   # The wait protocols, model-checked (validate.nix).
   validate = args: import ./validate.nix args;
 }

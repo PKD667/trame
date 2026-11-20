@@ -10,13 +10,13 @@
 // not sleep. If the bumper reads SLEEP > 0, it wakes the futex's sleepers. The kernel sleeps only
 // while EPOCH still equals `seen`, so a bump between the check and the sleep makes the sleep return at
 // once. A waiter subtracts 1 from SLEEP when it stops waiting. SLEEP was a flag (store 1, store 0)
-// before k agents per rank: one sleeper's store 0 then hid another sleeper (check/proofs/mpi, MCEpochFlag).
+// before k agents per rank: one sleeper's store 0 then hid another sleeper (src/backends/mpi/proofs, MCEpochFlag).
 //
 // Width. EPOCH is a u32, because the futex compares 32 bits. A bump between the waiter's SLEEP store
 // and the kernel's compare wakes nobody, since nobody sleeps yet; the compare covers it, because EPOCH
 // no longer equals `seen`. That fails only when EPOCH has wrapped back to `seen`: a multiple of 2^32
 // bumps between the waiter's read and the compare, so at least 2^32. The bound is a count, not a rate,
-// and nothing here measures how close a run gets. check/proofs/mpi/Epoch.tla checks both statements on a
+// and nothing here measures how close a run gets. src/backends/mpi/proofs/Epoch.tla checks both statements on a
 // small word: no lost wake-up with 16 values, 3 bumps and 1 to 3 sleepers; a lost wake-up when the
 // word wraps (MCEpochWrap, 2 values).
 
@@ -106,7 +106,7 @@ impl Transport {
             // wake must not hide the others from `bump` (CONTRACT.md, S3).
             self.win().word(s).fetch_add(1, SeqCst);
             // The Dekker check: an act between the test above and the store is seen here, without a
-            // syscall. The model (check/proofs/mpi/Epoch.tla) needs it for no property, because it puts the
+            // syscall. The model (src/backends/mpi/proofs/Epoch.tla) needs it for no property, because it puts the
             // kernel's compare in the SeqCst order; the hardware argument for that read is not modelled.
             if self.win().word32(e).load(SeqCst) != seen {
                 self.win().word(s).fetch_sub(1, SeqCst);

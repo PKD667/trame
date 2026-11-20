@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs TLC on every model of check/proofs/mpi, and writes OUTDIR/outcome.json (the nixsci verdict format),
+# Runs TLC on every model of src/backends/mpi/proofs, and writes OUTDIR/outcome.json (the nixsci verdict format),
 # OUTDIR/results.txt (one line per model), OUTDIR/logs/ (TLC's output) and OUTDIR/counterexamples/.
 # Usage: TLC=<tlc binary> sh run.sh OUTDIR. A model passes when TLC's output contains its expected line:
 # "No error has been found" for a property that holds, "is violated" for a counterexample that must exist.

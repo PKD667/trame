@@ -8,8 +8,8 @@
 //! wrong result is therefore not printed. Bit equality is stricter than "NaN equals NaN".
 //!
 //! Run (from the repository root; see the header printed by the program):
-//!   nix develop "path:$PWD#default" -c cargo run --offline --release --no-default-features --features seq --example math_bench
-//!   nix develop "path:$PWD#default" -c cargo run --offline --release --no-default-features --features seq,lanes-avx2 --example math_bench
+//!   nix develop "path:$PWD#<backend>" -c cargo run --offline --release --no-default-features --features <backend> --example math_bench
+//!   nix develop "path:$PWD#<backend>" -c cargo run --offline --release --no-default-features --features <backend>,lanes-avx2 --example math_bench
 
 use std::hint::black_box;
 use std::process::Command;
@@ -249,11 +249,10 @@ fn main() {
     println!("# rustc: {rustc}");
     println!("# cpu: {}", cpu_model());
     println!(
-        "# features: seq={} lanes-avx2={} lanes-avx512={} mpi={}",
-        cfg!(feature = "seq"),
+        "# features: backend={} lanes-avx2={} lanes-avx512={}",
+        trame::__backend::NAME,
         cfg!(feature = "lanes-avx2"),
         cfg!(feature = "lanes-avx512"),
-        cfg!(feature = "mpi"),
     );
     println!("# target: arch={} os={}", std::env::consts::ARCH, std::env::consts::OS);
     #[cfg(feature = "lanes-avx2")]
@@ -262,11 +261,12 @@ fn main() {
         "# n: {N} inputs, min of {REPS} reps after {WARMUPS} warmups, ns per element, lane output checked bit-equal to scalar first"
     );
     println!("# commands:");
+    let b = trame::__backend::NAME;
     println!(
-        "#   nix develop \"path:$PWD#default\" -c cargo run --offline --release --no-default-features --features seq --example math_bench"
+        "#   nix develop \"path:$PWD#{b}\" -c cargo run --offline --release --no-default-features --features {b} --example math_bench"
     );
     println!(
-        "#   nix develop \"path:$PWD#default\" -c cargo run --offline --release --no-default-features --features seq,lanes-avx2 --example math_bench"
+        "#   nix develop \"path:$PWD#{b}\" -c cargo run --offline --release --no-default-features --features {b},lanes-avx2 --example math_bench"
     );
     println!("# RUSTFLAGS: {}", std::env::var("RUSTFLAGS").unwrap_or_else(|_| "(unset)".into()));
 

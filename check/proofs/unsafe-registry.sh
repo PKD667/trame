@@ -2,7 +2,7 @@
 # The unsafe registry check (check/proofs/README.md). Reads source only; runs nothing.
 #   sh check/proofs/unsafe-registry.sh ROOT
 # Every `unsafe` keyword in the Rust code under ROOT, outside directories named driver, rejections, tests,
-# experiments, proofs, target and mpi-rma (at any depth), must have a comment block directly above its line
+# experiments, proofs, target and the git submodules listed in ROOT/.gitmodules (at any depth), must have a comment block directly above its line
 # (attributes may sit between) or a trailing comment on its line that holds `SAFETY:` or `# Safety`, and cites
 # at least one name that ROOT/CONTRACT.md defines (a clause, `**S1 Exclusion.**`) or ROOT/PROOFS.md defines as
 # an obligation (`**O-seg-1 Mapped.**`, if any). A cited name that is not defined fails. A defined obligation that
@@ -17,8 +17,16 @@ grep -oE '^\*\*[A-Z][0-9]+ ' "$root/CONTRACT.md" | tr -d '* ' | sort -u > "$tmp/
 grep -oE '^\*\*O-[a-z]+-[0-9]+ ' "$root/PROOFS.md" | tr -d '* ' | sort -u > "$tmp/obligations"
 cat "$tmp/clauses" "$tmp/obligations" > "$tmp/defined"
 
+# A submodule is another repository's code: its path is a line `path = ...` of .gitmodules.
+: > "$tmp/modules"
+[ -f "$root/.gitmodules" ] && sed -n 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*//p' "$root/.gitmodules" > "$tmp/modules"
 find "$root" \( -name driver -o -name rejections -o -name tests -o -name experiments -o -name proofs \
-  -o -name target -o -name mpi-rma -o -name .git \) -prune -o -name '*.rs' -print | sort > "$tmp/files"
+  -o -name target -o -name .git \) -prune -o -name '*.rs' -print | sort > "$tmp/all"
+while read -r f; do
+  skip=0
+  while read -r m; do case "$f" in "$root/$m"/*) skip=1 ;; esac; done < "$tmp/modules"
+  [ $skip = 0 ] && printf '%s\n' "$f"
+done < "$tmp/all" > "$tmp/files"
 
 : > "$tmp/cited"
 : > "$tmp/fail"

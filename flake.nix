@@ -25,6 +25,7 @@
       build = import ./nix/build.nix { inherit pkgs nixsci system tree; };
       lab = import ./nix/lab.nix { inherit pkgs nixsci system self tree build; };
       verdicts = import ./nix/checks.nix { inherit pkgs nixsci tree build tc; };
+      manifest = import ./nix/manifest.nix { inherit pkgs self tree; };
       shells = import ./nix/shells.nix { inherit pkgs nixsci tree tc; };
       cli = import ./nix/cli.nix { inherit pkgs build; inherit (tc) driverToolchain trameDriver; };
     in {
@@ -34,7 +35,12 @@
       checks.${system} = verdicts.checks // {
         lab-contract = lab.contract;
         lab-python = lab.python;
-        no-backend-names = import ./nix/names.nix { inherit pkgs self; inherit (tree) backendNames; };
+        # The backend part of Cargo.toml is what the descriptors say (nix/manifest.nix); `nix run .#manifest` rewrites it.
+        manifest = pkgs.runCommand "manifest" { } ''
+          diff -u ${./Cargo.toml} ${manifest.generated} || { echo "Cargo.toml is out of date: nix run .#manifest"; exit 1; }
+          touch $out
+        '';
+        no-backend-names = import ./nix/names.nix { inherit pkgs self; inherit (tree) backendNames descriptors; };
       };
       packages.${system} = {
         trame = cli;
@@ -55,6 +61,8 @@
       deployments.${system} = shells.deployments;
       apps.${system} = builtins.mapAttrs (_: e: e.run) lab.runs // {
         trame = { type = "app"; program = "${cli}/bin/trame"; };
+        # Rewrites the backend part of Cargo.toml from the descriptors, in the directory it is run from.
+        manifest = { type = "app"; program = "${pkgs.writeShellScript "manifest" "install -m644 ${manifest.generated} Cargo.toml"}"; };
         # Every experiment of the suite, for every backend (nix/lab/suite.nix), one after another.
         suite = lab.suite.app;
       };

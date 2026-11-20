@@ -112,12 +112,12 @@ The example does not handle a failed run. If a worker panics, the leader's next 
 
 ## Build and run
 
-The default build uses the reference backend:
+There is no default backend: a build names one, and a build with none is a compile error.
 
-    nix develop
-    RUSTFLAGS='--cfg trame_checked' cargo run --example ring
+    nix develop .#<backend>
+    RUSTFLAGS='--cfg trame_checked' cargo run --no-default-features --features <backend> --example ring
 
-The other backends, and the commands that run them, are in `src/backends/README.md` (Build and run).
+The backends, and the commands that run each, are in `src/backends/README.md` (Build and run).
 
 The cfg flag is needed because `#[trame::state]` and `parallel!` are compile errors without it. The driver
 sets it when it checks a build (INTERFACE.md, Section 3). Set by hand, it only lifts the error: it does not
@@ -125,6 +125,21 @@ stop a deliberate unchecked build.
 
 A backend that runs workers as processes needs a rank count that matches the topology. The count for each
 backend, and what it does with another one, is in `src/backends/README.md`.
+
+## Adding a backend
+
+A backend is a directory of `src/backends/` with a `mod.rs` and a `backend.nix`. Nothing else in the tree lists
+it: `build.rs` finds it, and the flake derives its shell, launcher and checks from the directory.
+
+One file does list it, because cargo insists. `Cargo.toml` declares a feature per backend, with the optional
+dependencies and binaries that backend alone uses, and a manifest cannot be computed. So `nix/manifest.nix`
+writes those lines from the `cargo` field of each `backend.nix`, between the `# >>> backends` markers.
+
+    nix run .#manifest
+
+Run it after you add or change a backend, and edit the descriptor, never the marked lines. If you forget,
+`nix flake check` fails on `manifest`, and `build.rs` stops the build naming the directory that has no feature.
+The step does not go away: cargo reads features before any script of ours runs.
 
 ## The levels
 
@@ -162,10 +177,10 @@ it needs, and the details are in `src/backends/README.md` (Build and run and Lau
 | rejection suite | cases the checks must refuse, and their matched accepted cases | `check/rejections/README.md` |
 | conformance by mutation | every rule has a program that fails on a backend which breaks it | `check/mutants/README.md` |
 | scheduler model | `sched.rs` unit and property tests; trace replay of random workloads | `PROOFS.md` |
-| crate tests | `cargo test` in the reference build | `tests/` |
+| crate tests | `cargo test` on each backend whose descriptor has `cargoTests` | `tests/` |
 | programs | every program in `check/programs/` on every backend, stdout compared with `.expected` | `check/programs/run.sh` |
 | backend checks | each backend's own checks, such as the transport of a multi-process backend | `src/backends/README.md`, Checks by backend |
-| TLA+ models | the wake-up, credit and abort protocols of some backends | `check/proofs/README.md` |
+| TLA+ models | the protocols of the backends that have models | `src/backends/<b>/proofs/README.md` |
 | `nix flake check` | builds the verdicts that must hold | `lab/README.md`, Verdicts |
 | lab experiments | `nix run .#<name>` runs real processes: the experiments of each backend, and the scale runs | `lab/README.md`, `src/backends/README.md` |
 
@@ -183,7 +198,7 @@ stops.
 - `crates/macros/`: the proc macros `message`, `state`, `step`, `item` and `parallel`.
 - `src/math/`: `trame::math::f32` and `trame::math::f64`, numeric functions with the same bits on every backend.
 - `check/programs/`: shared programs with their expected output, run by `check/programs/run.sh`.
-- `check/proofs/`: the TLA+ models of some backends' protocols.
+- `check/proofs/`: the unsafe registry and the Miri script. A backend's TLA+ models are in its own `proofs/`.
 - `check/rejections/`: cases the compile-time checks must refuse or accept.
 - `lab/`: the experiments, one directory each (`lab/README.md`); `lab/bench/`: the benchmark programs.
 - `tests/`: crate tests for allocation, `parallel!`, conformance, and this README's example.

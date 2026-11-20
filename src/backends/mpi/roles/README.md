@@ -27,4 +27,4 @@ What a rank does once launched: rank i < W is worker i, rank W is the leader.
   leader ends, since the ending leader answers every connect still waiting for it.
 - When one host aborts, a worker of another host that waits on a lane from it ends with `Deadlock` instead of
   hanging both hosts.
-- Models: `check/proofs/mpi/Detect.tla`, `Edit.tla` (the leader's edit handshake).
+- Models: `src/backends/mpi/proofs/Detect.tla`, `Edit.tla` (the leader's edit handshake).

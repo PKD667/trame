@@ -28,6 +28,7 @@ let
   trameFiles = lib.fileset.unions ([
       ../Cargo.toml
       ../Cargo.lock
+      ../build.rs
       ../README.md
       ../INTERFACE.md
       ../crates/macros

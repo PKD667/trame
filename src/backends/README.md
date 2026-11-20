@@ -8,6 +8,18 @@ written so that it holds for any backend. The flake check `no-backend-names` (`n
 A build selects one backend by a cargo feature. The features are exclusive, and a build with none of
 them refuses every launch. There is no default feature: every cargo command names one.
 
+**The choice is generated.** A backend is a directory of `src/backends/` with a `mod.rs` and a `backend.nix`. `build.rs` lists
+those directories, reads which feature `CARGO_FEATURE_<NAME>` is on, and writes `$OUT_DIR/backends.rs` declaring that one
+backend (`mod <name>`, `selected` and `NAME`). `src/backends/mod.rs` includes it and names no backend. Zero or several
+features on is a `compile_error!` from the same file. `trame::__backend::NAME` is the selected backend's name, for
+programs that report it.
+
+**Adding a backend** is adding the directory with its `mod.rs` and `backend.nix`, then running `nix run .#manifest` once.
+The flake, the shells, the lab, the checks and `build.rs` find it from the directory. The one thing cargo will not
+discover is the feature, which a manifest must declare: `nix/manifest.nix` writes it, with the backend's optional
+dependencies and binaries (the `cargo` field of the descriptor), between the `# >>> backends` markers of `Cargo.toml`.
+The flake check `manifest` fails when the committed file differs, and `build.rs` fails when a directory has no feature.
+
 ## The backends
 
 **seq** is the reference. It runs every worker of a host in one process, one thread per worker, and one
@@ -188,6 +200,8 @@ following fields.
 | `cargoTests` | whether the root crate's cargo tests run on it | true | false |
 | `bins` | extra binaries built from the backend's own sources | none | `check`, `latency` |
 | `postInstall` | shell run after the build | none | builds the plain-MPI baselines |
+| `cargo` | what `Cargo.toml` needs of it: `dependencies` (optional, enabled by its feature) and `bins` (`name`, `path`) | none | the MPI crates, the `check` binary |
+| `ordinaryWord` | the name is also an ordinary identifier, so `no-backend-names` looks for it only as a path, a feature or `<name> backend` | true | false |
 
 `deterministic = true` makes the backend's programs and mutants validate verdicts, which are derivations.
 Otherwise they are lab experiments, which run real processes.
@@ -221,7 +235,7 @@ past the segment's end (M6). `roles/leader.rs` holds the plan's references until
 their lowest world rank (`transport/hosts.rs`, F1), and a capacity that differs between hosts refuses both
 (`transport/cross/connect.rs`, F3). The tag of a cross-host message is by construction in `src/io.rs` (F4, `tag`).
 
-**mpi, end.** `roles/detect.rs` has the model `Detect` (`check/proofs/mpi/`). E2 for
+**mpi, end.** `roles/detect.rs` has the model `Detect` (`src/backends/mpi/proofs/`). E2 for
 the stuck detector also rests on its programs, `xhost_deadlock` and `leader_stuck`. Its round trips are measured by
 the lab's latency experiment, which judges them against the Q clauses of the backend contract, not by a
 recorder of its own.

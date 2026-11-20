@@ -3,6 +3,9 @@ pub struct Selected;
 
 mod edit;
 mod limit;
+/// The routes of this backend: workers share one address space (../local/ is not a backend, it holds the rings).
+#[path = "../local/routes.rs"]
+mod local_routes;
 mod ops;
 mod state;
 mod stuck;

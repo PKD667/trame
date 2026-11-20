@@ -1,7 +1,7 @@
 Counterexample: a lost wake-up at a 1-bit epoch word (W = 2, K = 2 bumps)
 
 Produced by: nix-pinned tlc (tlaplus 1.7.4, TLC2 Version 2.19 of 08 August 2024), command
-  tlc -workers 4 -deadlock MCEpochWrap.tla      (in check/proofs/mpi; exit code 12 = invariant violated)
+  tlc -workers 4 -deadlock MCEpochWrap.tla      (in src/backends/mpi/proofs; exit code 12 = invariant violated)
 Model: Epoch.tla. Bounds: W = 2, K = 2. The run is deterministic in content; state order may differ.
 
 Map of the model's steps to the code (file:line in src/backends/mpi):

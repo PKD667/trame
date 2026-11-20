@@ -19,7 +19,7 @@ giving that job to one worker would make that worker special. The leader runs no
 | `tests/` | the transport's own checks, run under `mpirun` | `tests/README.md` |
 | `mutants/` | patches against these files, run by the lab | `check/mutants/README.md` |
 | `lab/` | the backend's own experiments (transport, xhost, plain-MPI baselines), a directory each | `lab/*/README.md`; the contract is `lab/README.md` at the root |
-| `validate.nix` | the TLC check (`protocol-mpi`) | `check/proofs/README.md` |
+| `validate.nix` | the TLC check (`protocol-mpi`) | `proofs/README.md` |
 | `mpi-rma/` | a submodule: a crate of its own, not built here | its own README |
 | `launch` | the launcher every backend provides | `src/backends/README.md`, Launch |
 
@@ -28,5 +28,5 @@ uses. `types.rs` holds the types the transport hands to callers. `harness.rs` ho
 call at the end of a run.
 
 Build and run inside `nix develop .#mpi`, with `--no-default-features --features mpi`; the commands are in
-`src/backends/README.md`, Build and run. The protocols are model-checked in `check/proofs/mpi/`
-(`check/proofs/README.md`, which cites these files by path).
+`src/backends/README.md`, Build and run. The protocols are model-checked in `src/backends/mpi/proofs/`
+(`proofs/README.md`, which cites these files by path).

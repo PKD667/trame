@@ -6,9 +6,10 @@ description = "Prototype: parallel! (INTERFACE.md 5.4) lowered to explicit AVX2 
 publish = false
 
 [dependencies]
-# The root crate refuses a build with no backend (src/backends/mod.rs). The bench calls only trame::__rt::parallel, the
-# scalar reference, which does not depend on the backend; `seq` is named here for that compile alone (see the report).
-trame = { path = "../..", default-features = false, features = ["seq"] }
+# The root crate refuses a build with no backend (build.rs). The bench calls only trame::__rt::parallel, the scalar
+# reference, which does not depend on the backend; some backend is chosen for that compile alone, on the command line
+# (`--features trame/<backend>`, as experiment.nix does), so this manifest names none.
+trame = { path = "../..", default-features = false }
 
 # Its own workspace root: the experiment is not a member of trame's workspace.
 [workspace]

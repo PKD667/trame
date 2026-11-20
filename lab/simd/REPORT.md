@@ -138,7 +138,7 @@ kernel does not have two modes (580 to 780 M/s).
 
 ### 3.1 Where the lowering lives
 
-`parallel.rs` is shared by every backend (seq, threads, mpi). The lowering is its inner kernel:
+`parallel.rs` is shared by every backend. The lowering is its inner kernel:
 `parallel(key, f, cx, items, slots)` stays the semantics; a generated `LANES` companion of `f` is the
 fast path. Dispatch is per call: has AVX2 (cached by std, no allocation), `0 < slots.len() <= i32::MAX`,
 else the scalar loop. Pass 1 (every key below `slots.len()`) is vectorized and, on failure, calls the

@@ -10,7 +10,7 @@ use super::Selected;
 use super::limit;
 use super::state::{Abandoned, Phase, Shared, State};
 use crate::backend::{Backend, Target};
-use crate::backends::local_routes::Routes;
+use crate::backends::seq::local_routes::Routes;
 use crate::io::Full;
 use crate::launch::{Plan, Refused};
 use crate::run::{Outcome, panic_message};

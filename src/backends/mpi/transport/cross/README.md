@@ -21,6 +21,6 @@ ends as for a frame of its own host (`waiting/`).
 The choice rests on the experiment `mpi_cross_host` (no longer in `lab/`; `bench/xhost.py` is the cross-machine
 microbenchmark that remains). Between two machines of Lille, a one-way 8-byte frame took a median 30.6 us rank
 to rank and 49.6 us through a relay thread, and polling a shared flag between MPI tests cost nothing
-measurable (29.9 us). The model of one lane is `check/proofs/mpi/Lane.tla`.
+measurable (29.9 us). The model of one lane is `src/backends/mpi/proofs/Lane.tla`.
 
 Files: `mod.rs` (lanes, `quiesce`), `sender.rs`, `receiver.rs`, `connect.rs`, `calls.rs` (the MPI calls), `count.rs`.

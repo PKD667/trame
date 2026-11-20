@@ -27,7 +27,7 @@ impl Transport {
     /// The leader's endpoint is dropped by a panic before `join`. A panic ends the run (INTERFACE.md 5, Abort): the
     /// workers unwind, and `end_run` closes the run. The panic hook has printed the message. `end_run` runs
     /// even when an abort is already recorded: one may have arrived from a
-    /// worker before the leader's panic, and then nothing else ends the run (check/proofs/mpi, `MCAbortEarly`).
+    /// worker before the leader's panic, and then nothing else ends the run (src/backends/mpi/proofs, `MCAbortEarly`).
     /// `end_run` may run twice: an object already gone is not an error. After `MPI_Finalize`
     /// (`fail_if_aborted` ended the run) there is nothing left to do.
     pub(crate) fn leader_panicked(&self) {

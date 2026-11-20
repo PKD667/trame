@@ -3,7 +3,7 @@
 //! AVX-512 lane versions of the exact `trame::math::f64` functions: sqrt, floor, ceil, trunc,
 //! round_ties_even, max, min, mul_add. Eight f64 lanes per vector. Written for x86-64-v4 (F, BW, DQ, VL),
 //! the feature set `lanes-avx512` names. NOT RUN: the development CPU (AMD Ryzen 5 PRO 4650U, Zen 2) has no
-//! AVX-512, so this file is compiled (`--features seq,lanes-avx512`) and never executed. The exp/ln/trig
+//! AVX-512, so this file is compiled (`--features <backend>,lanes-avx512`) and never executed. The exp/ln/trig
 //! lanes are not written for AVX-512.
 //!
 //! The exactness argument is the one in `avx2.rs`: each function is the scalar's operations per lane,
