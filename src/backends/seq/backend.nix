@@ -3,6 +3,8 @@
 {
   # `seq` is also an ordinary identifier: the check no-backend-names looks for it only as a path, a feature or `seq backend`.
   ordinaryWord = true;
+  # The one the editor and benchmarks that need some backend take (nix/manifest.nix, lab/simd): the reference of this README.
+  reference = true;
   packages = [ ];
   env = { };
   launchRuntime = [ pkgs.bash pkgs.coreutils pkgs.time pkgs.gnugrep ];

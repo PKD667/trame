@@ -141,6 +141,12 @@ Run it after you add or change a backend, and edit the descriptor, never the mar
 `nix flake check` fails on `manifest`, and `build.rs` stops the build naming the directory that has no feature.
 The step does not go away: cargo reads features before any script of ours runs.
 
+The same command writes `rust-analyzer.toml`, which gives the editor one backend (the descriptor with
+`reference = true`) to analyse, since a build with none is a compile error. `.vscode/settings.json` sets
+`trame_checked` for it, so the programs do not show the error that refuses an unchecked build.
+`python3 check/editor/diagnostics.py .` starts rust-analyzer with those files and prints every error it finds; the tree
+has none.
+
 ## The levels
 
 A program has three levels, each inside the one above it (INTERFACE.md, Section 1). Each one may do less.

@@ -4,7 +4,7 @@
 # nix/tree.nix finds backends. It answers { name, figures, runs, claims, claimIds, analysis, packages }; lab/README.md is the
 # contract. `catalogue` is the list of the runs of every experiment: { name, kind, backend, span, suite, exp, experiment }.
 # Nothing here names a backend.
-{ pkgs, nixsci, system, self, tree, build }:
+{ pkgs, nixsci, system, self, tree, build, manifest }:
 let
   inherit (tree) lib backendNames backendDir trameFiles;
   inherit (build) backends labPy;
@@ -36,7 +36,7 @@ let
   # The machines of the suite: the most a job of the suite spans.
   machines = 4;
   data = import ./lab/data.nix { inherit lib; };
-  args = { inherit pkgs lib labLib system closure backends machines data nixsci labPy trameFiles backendNames; bench = import ./lab/bench.nix { inherit lib labLib system closure backends machines data; }; };
+  args = { inherit pkgs lib labLib system closure backends machines data nixsci labPy trameFiles manifest; bench = import ./lab/bench.nix { inherit lib labLib system closure backends machines data; }; };
 
   # The directories under `base` that hold an experiment.nix.
   experimentDirs = base:

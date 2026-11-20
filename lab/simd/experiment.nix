@@ -1,6 +1,6 @@
 # The SIMD benchmark: the lane kernels of this crate against the scalar reference trame::__rt::parallel. Each run is one host
 # of a CPU type, through its own provider (lab/README.md, Hosts). Not in the suite (`suite = false`).
-{ pkgs, lib, system, nixsci, labLib, labPy, trameFiles, backendNames, ... }:
+{ pkgs, lib, system, nixsci, labLib, labPy, trameFiles, manifest, ... }:
 let
   # The benchmark binary: this crate with trame as a path dependency, so the source is trame's files plus the crate's own
   # (Cargo files and src/: not the runner, the analysis or the README). Built from the subdirectory.
@@ -14,8 +14,8 @@ let
     sourceRoot = "source/lab/simd";
     cargoLock.lockFile = ./Cargo.lock;
     RUSTFLAGS = "-C overflow-checks=on";
-    # The benchmark uses no backend, but trame will not compile without one: the first by name, for that compile alone.
-    buildFeatures = [ "trame/${lib.head backendNames}" ];
+    # The benchmark uses no backend, but trame will not compile without one: the reference, for that compile alone.
+    buildFeatures = [ "trame/${manifest.reference}" ];
     cargoBuildFlags = [ "--bin" "bench" ];
     doCheck = false;
   };

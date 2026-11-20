@@ -23,7 +23,7 @@
       tc = import ./nix/toolchain.nix { inherit nixpkgs rust-overlay system; };
       tree = import ./nix/tree.nix { inherit pkgs; };
       build = import ./nix/build.nix { inherit pkgs nixsci system tree; };
-      lab = import ./nix/lab.nix { inherit pkgs nixsci system self tree build; };
+      lab = import ./nix/lab.nix { inherit pkgs nixsci system self tree build manifest; };
       verdicts = import ./nix/checks.nix { inherit pkgs nixsci tree build tc; };
       manifest = import ./nix/manifest.nix { inherit pkgs self tree; };
       shells = import ./nix/shells.nix { inherit pkgs nixsci tree tc; };
@@ -37,7 +37,8 @@
         lab-python = lab.python;
         # The backend part of Cargo.toml is what the descriptors say (nix/manifest.nix); `nix run .#manifest` rewrites it.
         manifest = pkgs.runCommand "manifest" { } ''
-          diff -u ${./Cargo.toml} ${manifest.generated} || { echo "Cargo.toml is out of date: nix run .#manifest"; exit 1; }
+          diff -u ${./Cargo.toml} ${manifest.generated} && diff -u ${./rust-analyzer.toml} ${manifest.analyzer} \
+            || { echo "Cargo.toml or rust-analyzer.toml is out of date: nix run .#manifest"; exit 1; }
           touch $out
         '';
         no-backend-names = import ./nix/names.nix { inherit pkgs self; inherit (tree) backendNames descriptors; };
@@ -61,8 +62,8 @@
       deployments.${system} = shells.deployments;
       apps.${system} = builtins.mapAttrs (_: e: e.run) lab.runs // {
         trame = { type = "app"; program = "${cli}/bin/trame"; };
-        # Rewrites the backend part of Cargo.toml from the descriptors, in the directory it is run from.
-        manifest = { type = "app"; program = "${pkgs.writeShellScript "manifest" "install -m644 ${manifest.generated} Cargo.toml"}"; };
+        # Rewrites the backend part of Cargo.toml and rust-analyzer.toml from the descriptors, in the directory it is run from.
+        manifest = { type = "app"; program = "${pkgs.writeShellScript "manifest" "install -m644 ${manifest.generated} Cargo.toml && install -m644 ${manifest.analyzer} rust-analyzer.toml"}"; };
         # Every experiment of the suite, for every backend (nix/lab/suite.nix), one after another.
         suite = lab.suite.app;
       };
