@@ -5,6 +5,7 @@
 //! 32-byte aligned) and with lengths that are not multiples of 4.
 //!
 //! The teeth test: `_mm256_max_pd` in place of the scalar's rule must be caught on signed zeros.
+//! sin and cos (the small-argument domain and the reduction through the scalar) are in `trig_inputs`.
 
 extern crate std;
 
@@ -414,4 +415,146 @@ fn detection_is_stable() {
     for _ in 0..3 {
         assert_eq!(has_avx2_fma(), first);
     }
+}
+
+/// The trig inputs: the small-argument domain `[-pi/4, pi/4]` (the fast path), random bit patterns and
+/// log-uniform magnitudes (mostly the scalar reduction), and the multiples of pi/2 with their ulp
+/// neighbours, the pi/4 boundary, subnormals, zeros, infinities and NaN.
+fn trig_inputs(seed: u64) -> Vec<f64> {
+    let pio4 = std::f64::consts::FRAC_PI_4;
+    let mut xs = unary_inputs(seed, -pio4, pio4, -1074, -1);
+    let mut rng = Rng(seed ^ 0x9e37_79b9);
+    // Multiples of pi/2 near the reduction's ranges, with the neighbours at 1 ulp and 2 ulps.
+    for _ in 0..N {
+        let k = (rng.next() % (1 << 20)) as f64 + rng.unit();
+        let base = k * std::f64::consts::FRAC_PI_2;
+        let sign = if rng.next() & 1 == 0 { 1.0 } else { -1.0 };
+        let v = sign * base;
+        xs.push(v);
+        xs.push(next_up(v));
+        xs.push(next_down(v));
+    }
+    for k in 0..=64_i32 {
+        let v = f64::from(k) * std::f64::consts::FRAC_PI_2;
+        for w in [v, -v] {
+            xs.push(w);
+            xs.push(next_up(w));
+            xs.push(next_down(w));
+        }
+    }
+    // The pi/4 boundary of the fast path, `hi(x) = 0x3fe921fb`, and its neighbours.
+    let edge = f64::from_bits(0x3fe9_21fb_5444_2d18);
+    let mut w = edge;
+    for _ in 0..8 {
+        xs.push(w);
+        xs.push(-w);
+        w = next_up(w);
+    }
+    let mut w = edge;
+    for _ in 0..8 {
+        w = next_down(w);
+        xs.push(w);
+        xs.push(-w);
+    }
+    // Subnormals and the tiny-|x| branch (|x| < 2^-27), in both signs.
+    for _ in 0..N / 8 {
+        let frac = rng.next() & ((1 << 52) - 1);
+        let v = f64::from_bits(frac); // subnormal (or 0)
+        xs.push(v);
+        xs.push(-v);
+    }
+    xs.extend(specials());
+    xs
+}
+
+/// The fast path of `sin` and `cos` is taken on `[-pi/4, pi/4]`: the guard passes for every group of four
+/// in the domain, and rejects one with `pi/2` in it.
+#[test]
+fn trig_fast_path_is_taken_on_domain() {
+    if !require_avx2() {
+        return;
+    }
+    let pio4 = std::f64::consts::FRAC_PI_4;
+    let mut rng = Rng(0x8888);
+    for _ in 0..N / 4 {
+        let mut v = [0.0_f64; 4];
+        for x in &mut v {
+            *x = -pio4 + 2.0 * pio4 * rng.unit();
+        }
+        // SAFETY: has_avx2_fma() held in require_avx2().
+        let ok = unsafe { trig_small_in_domain(_mm256_loadu_pd(v.as_ptr())) };
+        assert!(ok, "sin/cos guard rejected an in-domain group {v:?}");
+    }
+    // SAFETY: as above.
+    let out = unsafe { trig_small_in_domain(_mm256_set_pd(1.0, 1.0, std::f64::consts::FRAC_PI_2, 1.0)) };
+    assert!(!out, "sin/cos guard accepted pi/2, which the reduction must handle");
+}
+
+#[test]
+fn sin_matches_scalar_bitwise() {
+    if !require_avx2() {
+        return;
+    }
+    let xs = trig_inputs(0x1234);
+    check_unary("sin", sin_slice, s::sin, &xs);
+}
+
+#[test]
+fn cos_matches_scalar_bitwise() {
+    if !require_avx2() {
+        return;
+    }
+    let xs = trig_inputs(0x5678);
+    check_unary("cos", cos_slice, s::cos, &xs);
+}
+
+/// The teeth for sin: a lane sin that drops the last Horner term of the polynomial, the kind of edit a
+/// reordering could make, must disagree with the scalar on the domain. The real lane sin must agree.
+#[test]
+fn broken_sin_is_caught() {
+    if !require_avx2() {
+        return;
+    }
+    // SAFETY: AVX2 holds (require_avx2). Broken: S6 dropped from the polynomial.
+    #[target_feature(enable = "avx2")]
+    unsafe fn broken_sin(x: __m256d) -> __m256d {
+        {
+            let z = _mm256_mul_pd(x, x);
+            let v = _mm256_mul_pd(z, x);
+            let c = |k: f64| _mm256_set1_pd(k);
+            let r = _mm256_add_pd(
+                c(8.33333333332248946124e-03),
+                _mm256_mul_pd(
+                    z,
+                    _mm256_add_pd(c(-1.98412698298579493134e-04), _mm256_mul_pd(z, c(2.75573137070700676789e-06))),
+                ),
+            );
+            _mm256_add_pd(x, _mm256_mul_pd(v, _mm256_add_pd(c(-1.66666666666666324348e-01), _mm256_mul_pd(z, r))))
+        }
+    }
+    // SAFETY: AVX2 holds (require_avx2).
+    #[target_feature(enable = "avx2")]
+    unsafe fn lane_mismatches(f: unsafe fn(__m256d) -> __m256d, xs: &[f64]) -> usize {
+        let mut bad = 0;
+        for c in xs.chunks_exact(4) {
+            let mut r = [0.0_f64; 4];
+            // SAFETY: the chunk has four elements.
+            unsafe { _mm256_storeu_pd(r.as_mut_ptr(), f(_mm256_loadu_pd(c.as_ptr()))) };
+            for j in 0..4 {
+                if !same(r[j], s::sin(c[j])) {
+                    bad += 1;
+                }
+            }
+        }
+        bad
+    }
+    let pio4 = std::f64::consts::FRAC_PI_4;
+    let mut rng = Rng(0x9999);
+    let xs: Vec<f64> = (0..4 * 4096).map(|_| -pio4 + 2.0 * pio4 * rng.unit()).collect();
+    // SAFETY: as above.
+    let broken = unsafe { lane_mismatches(broken_sin, &xs) };
+    // SAFETY: as above.
+    let real = unsafe { lane_mismatches(sin_f64x4, &xs) };
+    assert!(broken > 0, "the broken lane sin was not caught: the check has no teeth");
+    assert_eq!(real, 0, "the real lane sin disagrees with the scalar");
 }

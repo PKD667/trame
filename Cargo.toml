@@ -226,3 +226,9 @@ path = "check/programs/xhost_abort.rs"
 [[example]]
 name = "xhost_deadlock"
 path = "check/programs/xhost_deadlock.rs"
+
+# The AVX2 lane slice functions against the scalar loop (check/math/bench.rs): timings, after a bit-equality check.
+[[example]]
+name = "math_bench"
+path = "check/math/bench.rs"
+required-features = ["seq"]

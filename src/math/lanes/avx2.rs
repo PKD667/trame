@@ -492,6 +492,135 @@ pub unsafe fn ln_f64x4(x: __m256d) -> __m256d {
 }
 
 // ---------------------------------------------------------------------------------------------
+// sin and cos on |x| <= pi/4 (src/math/f64/trig.rs: `sin`, `cos` and `sin_cos` call the kernels
+// directly when `ix <= 0x3fe921fb`, with y = 0). Larger arguments need the reduction
+// `ieee754_rem_pio2`, which stays in the scalar: a vector with such a lane goes to the scalar.
+
+const SIN_S1: f64 = -0.16666666666666632;
+const SIN_S2: f64 = 0.00833333333332249;
+const SIN_S3: f64 = -0.0001984126982985795;
+const SIN_S4: f64 = 2.7557313707070068e-06;
+const SIN_S5: f64 = -2.5050760253406863e-08;
+const SIN_S6: f64 = 1.58969099521155e-10;
+const COS_C1: f64 = 0.0416666666666666;
+const COS_C2: f64 = -0.001388888888887411;
+const COS_C3: f64 = 2.480158728947673e-05;
+const COS_C4: f64 = -2.7557314351390663e-07;
+const COS_C5: f64 = 2.087572321298175e-09;
+const COS_C6: f64 = -1.1359647557788195e-11;
+
+/// The scalar's small-argument test, `hi(x) & 0x7fff_ffff <= 0x3fe9_21fb` (|x| <= pi/4), in each lane.
+/// NaN and infinities fail it. The lane high word is `hx` (already masked), as in `exp_in_domain`.
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn trig_hx(x: __m256d) -> __m256i {
+    unsafe { _mm256_and_si256(_mm256_srli_epi64::<32>(bits(x)), ei(0x7fff_ffff)) }
+}
+
+/// Whether every lane is in the small-argument domain of `sin` and `cos`.
+///
+/// # Safety
+/// The CPU has AVX2.
+#[target_feature(enable = "avx2")]
+#[inline]
+pub unsafe fn trig_small_in_domain(x: __m256d) -> bool {
+    unsafe { _mm256_movemask_pd(fbits(_mm256_cmpgt_epi64(ei(0x3fe9_21fc), trig_hx(x)))) == 0xf }
+}
+
+/// `kernel_sin(x, 0, 0)` (k_sin.c) per lane: the scalar's `ix < 0x3e40_0000 && x as i32 == 0` return
+/// is a select (for `ix < 0x3e40_0000` the `as i32` test always holds, so the select is on `ix` alone).
+///
+/// # Safety
+/// The CPU has AVX2, and every lane has `|x| <= pi/4`.
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn sin_small(x: __m256d) -> __m256d {
+    unsafe {
+        let hx = trig_hx(x);
+        let tiny = fbits(_mm256_cmpgt_epi64(ei(0x3e40_0000), hx));
+        let z = _mm256_mul_pd(x, x);
+        let v = _mm256_mul_pd(z, x);
+        // r = S2 + z*(S3 + z*(S4 + z*(S5 + z*S6)))
+        let r = _mm256_add_pd(
+            pd(SIN_S2),
+            _mm256_mul_pd(
+                z,
+                _mm256_add_pd(
+                    pd(SIN_S3),
+                    _mm256_mul_pd(
+                        z,
+                        _mm256_add_pd(
+                            pd(SIN_S4),
+                            _mm256_mul_pd(z, _mm256_add_pd(pd(SIN_S5), _mm256_mul_pd(z, pd(SIN_S6)))),
+                        ),
+                    ),
+                ),
+            ),
+        );
+        // iy == 0: x + v*(S1 + z*r)
+        let res = _mm256_add_pd(x, _mm256_mul_pd(v, _mm256_add_pd(pd(SIN_S1), _mm256_mul_pd(z, r))));
+        sel(tiny, x, res)
+    }
+}
+
+/// `kernel_cos(x, 0)` (k_cos.c) per lane. The scalar's `x*y` is `x * 0.0` here, kept so that the sign of
+/// a zero result is the scalar's. Its three branches on `ix` are selects.
+///
+/// # Safety
+/// The CPU has AVX2, and every lane has `|x| <= pi/4`.
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn cos_small(x: __m256d) -> __m256d {
+    unsafe {
+        let hx = trig_hx(x);
+        let tiny = fbits(_mm256_cmpgt_epi64(ei(0x3e40_0000), hx));
+        let z = _mm256_mul_pd(x, x);
+        // r = z*(C1 + z*(C2 + z*(C3 + z*(C4 + z*(C5 + z*C6)))))
+        let p = _mm256_add_pd(pd(COS_C5), _mm256_mul_pd(z, pd(COS_C6)));
+        let p = _mm256_add_pd(pd(COS_C4), _mm256_mul_pd(z, p));
+        let p = _mm256_add_pd(pd(COS_C3), _mm256_mul_pd(z, p));
+        let p = _mm256_add_pd(pd(COS_C2), _mm256_mul_pd(z, p));
+        let p = _mm256_add_pd(pd(COS_C1), _mm256_mul_pd(z, p));
+        let r = _mm256_mul_pd(z, p);
+        let xy = _mm256_mul_pd(x, pd(0.0)); // y = ZERO
+        let zr_xy = _mm256_sub_pd(_mm256_mul_pd(z, r), xy);
+        // ix < 0x3FD33333: ONE - (HALF*z - (z*r - x*y))
+        let small = fbits(_mm256_cmpgt_epi64(ei(0x3fd3_3333), hx));
+        let v_small = _mm256_sub_pd(pd(1.0), _mm256_sub_pd(_mm256_mul_pd(pd(0.5), z), zr_xy));
+        // else: qx = 0.28125 if ix > 0x3fe90000, else the double with high word ix - 0x200000;
+        // a = ONE - qx; a - (hz - (z*r - x*y)) with hz = HALF*z - qx.
+        let qx_big = pd(0.28125);
+        let qx_mid = fbits(_mm256_slli_epi64::<32>(_mm256_sub_epi64(hx, ei(0x0020_0000))));
+        let qx = sel(fbits(_mm256_cmpgt_epi64(hx, ei(0x3fe9_0000))), qx_big, qx_mid);
+        let hz = _mm256_sub_pd(_mm256_mul_pd(pd(0.5), z), qx);
+        let a = _mm256_sub_pd(pd(1.0), qx);
+        let v_mid = _mm256_sub_pd(a, _mm256_sub_pd(hz, zr_xy));
+        let res = sel(small, v_small, v_mid);
+        sel(tiny, pd(1.0), res)
+    }
+}
+
+/// `sin` on four lanes for |x| <= pi/4; a vector with a lane outside goes to the scalar `sin`.
+///
+/// # Safety
+/// The CPU has AVX2.
+#[target_feature(enable = "avx2")]
+#[inline]
+pub unsafe fn sin_f64x4(x: __m256d) -> __m256d {
+    unsafe { if trig_small_in_domain(x) { sin_small(x) } else { scalar4(x, s::sin) } }
+}
+
+/// `cos` on four lanes for |x| <= pi/4; a vector with a lane outside goes to the scalar `cos`.
+///
+/// # Safety
+/// The CPU has AVX2.
+#[target_feature(enable = "avx2")]
+#[inline]
+pub unsafe fn cos_f64x4(x: __m256d) -> __m256d {
+    unsafe { if trig_small_in_domain(x) { cos_small(x) } else { scalar4(x, s::cos) } }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Slices. Same length asserted; the tail (fewer than four elements) is the scalar function.
 
 macro_rules! slice_fn {
@@ -535,6 +664,14 @@ slice_fn!(
 slice_fn!(
     /// `out[i] = ln(xs[i])`, bit-identical to `trame::math::f64::ln`.
     ln_slice, ln_slice_imp, ln_f64x4, s::ln
+);
+slice_fn!(
+    /// `out[i] = sin(xs[i])`, bit-identical to `trame::math::f64::sin`.
+    sin_slice, sin_slice_imp, sin_f64x4, s::sin
+);
+slice_fn!(
+    /// `out[i] = cos(xs[i])`, bit-identical to `trame::math::f64::cos`.
+    cos_slice, cos_slice_imp, cos_f64x4, s::cos
 );
 slice_fn!(
     /// `out[i] = sqrt(xs[i])`, bit-identical to `trame::math::f64::sqrt`.
