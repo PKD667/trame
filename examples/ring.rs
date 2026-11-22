@@ -60,7 +60,7 @@ fn main() {
     let run = topo.launch().expect("the ring launches");
     let mut totals = [None; W];
     while totals.iter().any(Option::is_none) {
-        match run.recv::<Report>() {
+        match run.recv::<Report>().map(|s| s.value) {
             Some(r) => totals[r.worker as usize] = Some(r.total),
             None => run.wait(),
         }

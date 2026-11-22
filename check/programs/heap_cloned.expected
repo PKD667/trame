@@ -1,0 +1,4 @@
+worker 0 sum 500500
+worker 1 sum 500500
+worker 2 sum 500500
+outcomes: [Returned, Returned, Returned]

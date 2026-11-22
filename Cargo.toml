@@ -90,6 +90,10 @@ path = "check/programs/heap_cloned.rs"
 name = "heap_in_state"
 path = "check/programs/heap_in_state.rs"
 
+[[example]]
+name = "stamped"
+path = "check/programs/stamped.rs"
+
 # `trame_checked` is set by the driver (INTERFACE.md, Checked builds); it is not a feature.
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trame_checked)'] }
@@ -100,14 +104,6 @@ overflow-checks = true
 
 [workspace]
 members = ["crates/macros"]
-
-[[example]]
-name = "wait_until"
-path = "check/programs/wait_until.rs"
-
-[[example]]
-name = "join_deadline"
-path = "check/programs/join_deadline.rs"
 
 [[example]]
 name = "wait_frame"
@@ -187,10 +183,6 @@ path = "check/programs/err_done.rs"
 [[example]]
 name = "frame_other"
 path = "check/programs/frame_other.rs"
-
-[[example]]
-name = "until_calls"
-path = "check/programs/until_calls.rs"
 
 [[example]]
 name = "room_spin"

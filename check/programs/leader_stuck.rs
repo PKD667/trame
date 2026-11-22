@@ -35,7 +35,7 @@ fn main() {
         }
     };
     loop {
-        if let Some(Never { n }) = run.recv::<Never>() {
+        if let Some(Never { n }) = run.recv::<Never>().map(|s| s.value) {
             println!("never {n}");
             return;
         }

@@ -59,12 +59,11 @@ impl Transport {
         }
     }
 
-    /// Sleep while this worker's epoch equals `seen`, until `until` (nanoseconds since the run
-    /// started) if given. Returns when the epoch differs or the deadline has passed; the caller
-    /// re-checks its conditions either way.
-    pub(crate) fn sleep(&self, seen: u32, until: Option<u64>) {
+    /// Sleep while this worker's epoch equals `seen`. Returns when the epoch differs; the caller
+    /// re-checks its conditions.
+    pub(crate) fn sleep(&self, seen: u32) {
         let (e, s) = self.words(self.me());
-        self.sleep_on(e, s, seen, until);
+        self.sleep_on(e, s, seen, None);
     }
 
     /// The leader's wait (INTERFACE.md 5): block until its epoch differs from `seen`, and answer the new

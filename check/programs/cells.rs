@@ -65,7 +65,7 @@ fn main() {
     let mut seen = 0;
     while seen < 4 {
         let mut got = false;
-        while let Some(l) = run.recv::<Log>() {
+        while let Some(l) = run.recv::<Log>().map(|s| s.value) {
             let who = if l.who == READER { "reader" } else { "writer" };
             println!("{who} {}", l.n);
             seen += 1;

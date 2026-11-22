@@ -1,5 +1,5 @@
 // The leaders' deadlock detector (INTERFACE.md 5, Deadlock; CONTRACT.md F5). A worker is stuck when no
-// step of it runs, its agents idle with no deadline, and nothing can move its epoch. Nothing can when
+// step of it runs, its agents idle, and nothing can move its epoch. Nothing can when
 // every worker of every host is stuck or has a result, every leader waits, joins or has ended, and no
 // message is in flight between hosts. The detector shows that state once it holds, and never before.
 //

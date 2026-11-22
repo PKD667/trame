@@ -6,9 +6,7 @@ extern crate std;
 use super::tests::{Ping, Quick, Stuck, panic_text, within_10s};
 use crate::io;
 use crate::status::Status;
-use crate::time::Reading;
 use crate::topology::{Leader, Topology};
-use core::time::Duration;
 
 const STUCK: &str = "trame: deadlock: the leader waits and nothing can arrive";
 
@@ -78,49 +76,7 @@ fn a_frame_from_a_worker_wakes_the_leader() {
         g.route::<Ping>(w.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         let got = loop {
-            if let Some(p) = run.recv::<Ping>() {
-                break p;
-            }
-            run.wait();
-        };
-        assert_eq!(got, Ping(7));
-    });
-}
-
-/// `Napper` waits 20 ms on its clock, then sends `Ping(7)` to the leader. While it waits, the leader's
-/// `wait` must not be reported stuck: the deadline moves the worker (stuck.rs, earliest_deadline).
-#[crate::state(steps(nap))]
-struct Napper {
-    start: Option<Reading>,
-}
-
-#[crate::step(Napper)]
-fn nap(start: &mut Option<Reading>) -> Status {
-    let now = crate::time::now();
-    match *start {
-        None => {
-            *start = Some(now);
-            Status::wait().until(now.after(Duration::from_millis(20)))
-        }
-        Some(_) => match io::send(Leader, Ping(7)) {
-            Ok(()) => Status::Done,
-            Err(_) => Status::wait().room::<Ping>(Leader),
-        },
-    }
-}
-
-/// A leader that waits while a worker has a pending deadline is not stuck: its wait returns once the
-/// worker's time has passed and the worker has sent.
-#[test]
-fn a_pending_deadline_keeps_the_leader_waiting_not_stuck() {
-    within_10s(|| {
-        let mut g = Topology::new();
-        let w = g.worker::<Napper>();
-        g.set(&w, || Napper { start: None });
-        g.route::<Ping>(w.id(), Leader, 1);
-        let run = g.launch().expect("accepted");
-        let got = loop {
-            if let Some(p) = run.recv::<Ping>() {
+            if let Some(p) = run.recv::<Ping>().map(|s| s.value) {
                 break p;
             }
             run.wait();

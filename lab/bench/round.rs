@@ -82,7 +82,7 @@ fn pace(
     }
     if *next == *rounds {
         let start = t0.expect("the warm-up round ended");
-        *ns = Some(common::ns(trame::now().since(start)));
+        *ns = Some(common::ns(trame::now().since(start).expect("one worker has one clock")));
     }
     *next += 1;
     Status::Progress

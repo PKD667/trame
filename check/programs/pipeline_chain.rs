@@ -125,7 +125,7 @@ fn main() {
     };
     let (mut n, mut xor, mut sum, mut first, mut last) = (0u64, 0u64, 0u64, 0u64, 0u64);
     while n < ITEMS {
-        match run.recv::<Item>() {
+        match run.recv::<Item>().map(|s| s.value) {
             Some(it) => {
                 assert_eq!(it.seq, n, "the leader took an item out of order");
                 if n == 0 {

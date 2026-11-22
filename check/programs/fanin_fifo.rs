@@ -56,7 +56,7 @@ fn main() {
     let mut sum = [0u64; WORKERS];
     let mut got = 0;
     while got < WORKERS as u32 * ITEMS {
-        match run.recv::<Item>() {
+        match run.recv::<Item>().map(|s| s.value) {
             Some(m) => {
                 let w = m.from as usize;
                 assert_eq!(m.seq, next[w], "worker {w}: an item out of order, lost or duplicated");

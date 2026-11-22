@@ -128,7 +128,7 @@ fn main() {
     let mut lines = vec![None; WORKERS as usize];
     let mut n = 0;
     while n < WORKERS {
-        match run.recv::<Report>() {
+        match run.recv::<Report>().map(|s| s.value) {
             Some(r) => {
                 lines[r.k as usize] =
                     Some(format!("host {me} worker {} from {} count {} sum {}", r.k, r.from, r.count, r.sum));

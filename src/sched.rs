@@ -71,7 +71,6 @@ pub enum St {
     Wait {
         frame: bool,
         room: bool,
-        until: bool,
     },
     Err,
 }
@@ -107,7 +106,6 @@ impl Proc {
 pub struct Now {
     pub frame: u64,
     pub room: u64,
-    pub until: u64,
 }
 
 /// The fields held by running steps: written ones, and a reader count per field.
@@ -230,9 +228,7 @@ impl Sched {
         match p.st {
             St::Fresh | St::Progress => true,
             St::Done | St::Err => false,
-            St::Wait { frame, room, until } => {
-                p.d || (frame && bit(now.frame)) || (room && bit(now.room)) || (until && bit(now.until))
-            }
+            St::Wait { frame, room } => p.d || (frame && bit(now.frame)) || (room && bit(now.room)),
         }
     }
 
@@ -456,7 +452,7 @@ mod tests {
     use super::*;
     use std::vec::Vec;
 
-    const NOW0: Now = Now { frame: 0, room: 0, until: 0 };
+    const NOW0: Now = Now { frame: 0, room: 0 };
     const W1: Weight = Weight::MAX;
     const PROGRESS: Ended = Ended { st: St::Progress, weight: None, service: 1 };
 
@@ -502,7 +498,7 @@ mod tests {
         // 0 waits bare on field 0 (reads it); 1 reads field 0; 2 writes field 0.
         let mut s = Sched::new(&[(1, 0, W1), (1, 0, W1), (0, 1, W1)], false);
         s.start(0);
-        s.end(0, ended(St::Wait { frame: false, room: false, until: false }));
+        s.end(0, ended(St::Wait { frame: false, room: false }));
         s.start(1);
         s.end(1, PROGRESS);
         assert!(!s.enabled(0, &NOW0), "a reader's end does not wake");
@@ -515,12 +511,12 @@ mod tests {
     fn a_condition_wakes_only_the_step_that_named_it() {
         let mut s = Sched::new(&[(0, 1, W1), (0, 2, W1)], false);
         s.start(0);
-        s.end(0, ended(St::Wait { frame: true, room: false, until: false }));
+        s.end(0, ended(St::Wait { frame: true, room: false }));
         s.start(1);
-        s.end(1, ended(St::Wait { frame: false, room: false, until: true }));
-        let both = Now { frame: 0b11, room: 0, until: 0 };
+        s.end(1, ended(St::Wait { frame: false, room: true }));
+        let both = Now { frame: 0b11, room: 0 };
         assert!(s.enabled(0, &both));
-        assert!(!s.enabled(1, &both), "step 1 waits on the clock, not a frame");
+        assert!(!s.enabled(1, &both), "step 1 waits on room, not a frame");
     }
 
     #[test]
@@ -599,7 +595,7 @@ mod tests {
         // Step 1 waits while step 0 runs 100 times, then is woken: it must not then run 100 times.
         let mut s = Sched::new(&[(0, 1, W1), (1, 2, W1)], false);
         s.start(1);
-        s.end(1, ended(St::Wait { frame: true, room: false, until: false }));
+        s.end(1, ended(St::Wait { frame: true, room: false }));
         for _ in 0..100 {
             let i = s.choose(&NOW0).unwrap();
             s.start(i);

@@ -23,7 +23,7 @@ use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread_local;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::vec;
 use std::vec::Vec;
 
@@ -213,12 +213,12 @@ impl Backend for Selected {
         current().0.lock().acts
     }
 
-    fn worker_idle(until: Option<u64>, seen: u64) {
+    fn worker_idle(seen: u64) {
         let (shared, me) = current();
         let mut st = shared.lock();
         assert_eq!(st.turn, Some(me), "trame: an idle worker ran without the baton");
-        // Idle: give the baton up. Nothing runs until a leader acts, or the deadline comes.
-        st.phase[me] = Phase::Idle(seen, until);
+        // Idle: give the baton up. Nothing runs until a leader acts.
+        st.phase[me] = Phase::Idle(seen);
         st.advance(me);
         shared.changed.notify_all();
         loop {
@@ -226,23 +226,24 @@ impl Backend for Selected {
                 drop(st);
                 resume_unwind(Box::new(Abandoned));
             }
-            let elapsed = u64::try_from(st.epoch.elapsed().as_nanos()).unwrap_or(u64::MAX);
-            let due = until.is_some_and(|t| elapsed >= t);
-            if (st.acts != seen || due) && st.turn.is_none() {
+            if st.acts != seen && st.turn.is_none() {
                 st.turn = Some(me);
                 st.phase[me] = Phase::Ready;
                 shared.changed.notify_all();
                 return;
             }
-            st = match until {
-                Some(t) if !due => shared.park_timeout(st, Duration::from_nanos(t - elapsed)),
-                _ => shared.park(st),
-            };
+            st = shared.park(st);
         }
     }
 
     fn worker_abandon() -> ! {
         resume_unwind(Box::new(Abandoned))
+    }
+
+    fn worker_stamp() -> (ClockId, u64) {
+        let (shared, _) = current();
+        let nanos = u64::try_from(shared.lock().epoch.elapsed().as_nanos()).unwrap_or(u64::MAX);
+        (ClockId::new(0), nanos)
     }
 
     fn worker_now() -> (ClockId, u64) {
@@ -335,21 +336,11 @@ impl Backend for Selected {
         let mut st = leader_check(shared.lock());
         // The leader sends nothing after join. A worker that is still able to move is waited for.
         // When none is, and no idle worker has seen a change since it went idle, the run is stuck
-        // (INTERFACE.md 5, Deadlock): every agent without a result gets deadlock. An idle worker with a
-        // deadline is not stuck: it moves when time passes, so join waits for the earliest one.
+        // (INTERFACE.md 5, Deadlock): every agent without a result gets deadlock.
         while st.phase.iter().any(|p| !matches!(p, Phase::Done(_))) {
             st = leader_check(st);
             if st.worker_moves_now() {
                 st = shared.park(st);
-                continue;
-            }
-            if let Some(t) = st.earliest_deadline() {
-                let elapsed = u64::try_from(st.epoch.elapsed().as_nanos()).unwrap_or(u64::MAX);
-                // Past the deadline, the worker wakes itself and notifies: a plain wait is enough.
-                st = match t.checked_sub(elapsed) {
-                    Some(left) if left > 0 => shared.park_timeout(st, Duration::from_nanos(left)),
-                    _ => shared.park(st),
-                };
                 continue;
             }
             for p in st.phase.iter_mut().filter(|p| matches!(p, Phase::Idle(..))) {

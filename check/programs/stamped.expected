@@ -1,0 +1,4 @@
+order [0, 1, 2]
+span 1 non-negative
+span 2 non-negative
+outcomes: true

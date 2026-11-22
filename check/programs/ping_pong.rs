@@ -119,7 +119,7 @@ fn main() {
         }
     };
     let count = loop {
-        if let Some(c) = run.recv::<Count>() {
+        if let Some(c) = run.recv::<Count>().map(|s| s.value) {
             break c;
         }
         run.wait();

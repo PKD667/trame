@@ -9,17 +9,16 @@ use crate::backends::seq::local_routes::Routes;
 use crate::run::Outcome;
 use std::string::String;
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::vec::Vec;
 
 /// Where a worker stands. Only the holder of the baton runs. `Done` has a result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Phase {
     Ready,
-    /// Idle: waiting for a change of `acts` (or the deadline, in nanoseconds since `epoch`) before it
-    /// can run again. The first value is `acts` when it went idle, so `join` can tell whether a
-    /// change happened since. A deadline means the worker moves when time passes, so it is not stuck.
-    Idle(u64, Option<u64>),
+    /// Idle: waiting for a change of `acts` before it can run again. The first value is `acts` when it went idle, so `join` can tell whether a
+    /// change happened since.
+    Idle(u64),
     Done(Outcome),
 }
 
@@ -63,12 +62,6 @@ impl Shared {
 
     pub fn park<'a>(&self, guard: MutexGuard<'a, State>) -> MutexGuard<'a, State> {
         self.changed.wait(guard).unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Park until a change, or for at most `dur`. A spurious or timed-out wake-up is harmless: the
-    /// caller checks its condition again.
-    pub fn park_timeout<'a>(&self, guard: MutexGuard<'a, State>, dur: Duration) -> MutexGuard<'a, State> {
-        self.changed.wait_timeout(guard, dur).unwrap_or_else(PoisonError::into_inner).0
     }
 }
 

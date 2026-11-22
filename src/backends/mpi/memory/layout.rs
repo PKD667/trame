@@ -26,7 +26,7 @@
 //                                         the worker; worker.rs `edit_held`)
 //                            k=5 RUN      steps of the worker running now
 //                            k=6 ACTS     steps it ever started
-//                            k=7 IDLE     EPOCH + 1 when an agent went quiet with no deadline, 0 otherwise
+//                            k=7 IDLE     EPOCH + 1 when an agent went quiet, 0 otherwise
 //                                         (5-7 written under the worker's lock by the worker_mark_* hooks,
 //                                         read by the leader's detector, detect.rs)
 //   ROUTES                 per route, in rank order:

@@ -40,7 +40,7 @@ fn main() {
     };
     for _ in 0..2 {
         let s = loop {
-            if let Some(s) = run.recv::<Started>() {
+            if let Some(s) = run.recv::<Started>().map(|s| s.value) {
                 break s;
             }
             run.wait();

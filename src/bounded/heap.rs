@@ -16,6 +16,13 @@ pub struct BoundedHeap<T> {
     pub(super) items: Bounded<T>,
 }
 
+impl<T> BoundedHeap<T> {
+    /// The buffer, for `Plain::blocks` (src/plain.rs).
+    pub(crate) fn vec(&self) -> &alloc::vec::Vec<T> {
+        self.items.vec()
+    }
+}
+
 impl<T: Ord + Copy> BoundedHeap<T> {
     /// An empty heap with room for `cap` values. Allocates; see `Bounded::new`.
     pub fn new(cap: usize) -> Self {

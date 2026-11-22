@@ -1,0 +1,1 @@
+trame: the state of a worker `heap_in_state::Adder` owns a block outside the domain

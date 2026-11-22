@@ -19,7 +19,7 @@ runs random workloads, edits included, and replays every trace. A replay shows t
 allowed. It cannot show that every run is.
 
 **Outcome check.** `Run::__join_checked` compares each worker's result with the model's final state.
-A `Deadlock` must be a state where no step can start, even after every deadline.
+A `Deadlock` must be a state where no step can start.
 
 **Witness.** In debug builds, `Core` records the fields that running steps actually hold, apart from
 any scheduler, and panics on a conflict.
@@ -63,7 +63,7 @@ model's assertion in `Sched::edited`.
 
 **S3 Wake.** Replay, and the outcome check: a run that ends in `Deadlock` must be one where nothing
 could start. A backend with a multi-process wake-up protocol has a TLA+ model of it
-(`src/backends/README.md`). A mutant that forgets deadlines is killed by the outcome check.
+(`src/backends/README.md`).
 
 **S4 Edit.** Model; replay of runs with racing edits (`edits_follow_the_model`), in which every step
 asserts the pool it reads is whole. A backend whose edits cross processes has its own handshake,

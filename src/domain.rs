@@ -143,3 +143,31 @@ pub(crate) fn installed() -> bool {
     arena(|| drop(core::hint::black_box(std::boxed::Box::new(0u8))));
     ARENA_ALLOCS.with(Cell::get) > before
 }
+
+/// A builder's value, after the builder: when the backend's domain is shared by processes, every block the value
+/// owns must be in the domain, or a process that adopts the value reads an address of the builder's heap. A `Vec`
+/// built before the builder and moved into the state is the usual cause; one clone inside the builder moves it.
+/// Panics naming the type. A backend whose heap is the domain accepts anything.
+pub(crate) fn in_domain<T: crate::Plain>(v: T, what: &str) -> T {
+    if !Selected::has_domain() {
+        return v;
+    }
+    let mut outside = 0usize;
+    let mut first = core::ptr::null::<u8>();
+    let mut each = |p: *const u8| {
+        if !Selected::domain_contains(p as *mut u8) {
+            if outside == 0 {
+                first = p;
+            }
+            outside += 1;
+        }
+        true
+    };
+    v.blocks(&mut each);
+    assert!(
+        outside == 0,
+        "trame: the {what} `{}` owns a block outside the domain\n{outside} block(s), the first at {first:p}: a Vec, Box or String made before its builder ran keeps the heap of the process that made it, which no other process of the host can read. Make it inside the builder (`.clone()` there), and drop the original",
+        core::any::type_name::<T>()
+    );
+    v
+}

@@ -34,7 +34,7 @@ fn work(hot: &mut u64, n: &mut [u64; 2], units: u64) -> Status {
     let t0 = trame::now();
     *hot += spin(units);
     n[0] += 1;
-    n[1] += trame::now().since(t0).as_nanos() as u64;
+    n[1] += trame::now().since(t0).expect("one worker has one clock").as_nanos() as u64;
     Status::Progress
 }
 
@@ -72,7 +72,7 @@ fn main() {
     std::thread::sleep(Duration::from_secs_f64(secs));
     run.stop();
     let totals = loop {
-        if let Some(x) = run.recv::<Totals>() {
+        if let Some(x) = run.recv::<Totals>().map(|s| s.value) {
             break x;
         }
         run.wait();

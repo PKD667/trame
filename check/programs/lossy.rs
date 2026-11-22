@@ -96,7 +96,7 @@ fn main() {
     };
     let mut kept = Vec::new();
     while kept.len() < 4 {
-        match run.recv::<Ev>() {
+        match run.recv::<Ev>().map(|s| s.value) {
             Some(e) => kept.push(e.v),
             None => run.wait(),
         }

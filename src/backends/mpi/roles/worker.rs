@@ -8,7 +8,7 @@
 // sleep: an agent idles only when no step of its worker runs and none can start, so another agent that
 // needs the lock meanwhile has nothing to do that the same epoch change would not also wake. A worker
 // with a lane (transport/cross/) cannot sleep: a frame from another host moves no futex. Its idle agents poll
-// the lanes instead, taking the lock for each poll only, until the epoch moves or the deadline passes.
+// the lanes instead, taking the lock for each poll only, until the epoch moves.
 //
 // Deadlock (INTERFACE.md 5). The scheduler tells its turns (`mark_*`, under its own lock) into the
 // worker's RUN, ACTS and IDLE words, which the leader's detector reads (detect.rs). When the detector
@@ -197,10 +197,10 @@ pub(crate) fn mark_end() {
     word64(f.idle).store(0, SeqCst);
 }
 
-/// An agent idles at `epoch`: IDLE says so when it has no deadline (layout.rs IDLE).
-pub(crate) fn mark_quiet(epoch: u64, deadline: bool) {
+/// An agent idles at `epoch`: IDLE says so (layout.rs IDLE).
+pub(crate) fn mark_quiet(epoch: u64) {
     let f = FAST.get().expect("trame: fast_init runs before the agents");
-    word64(f.idle).store(if deadline { 0 } else { epoch + 1 }, SeqCst);
+    word64(f.idle).store(epoch + 1, SeqCst);
 }
 
 /// The fields the leader asks this worker to hold, 0 if none (layout.rs EDIT). Without the lock.
@@ -237,11 +237,11 @@ pub(crate) fn epoch() -> u64 {
 }
 
 /// Sleep on the epoch `epoch` came from (see `epoch`). The narrowing is exact: the value was a u32.
-pub(crate) fn idle(until: Option<u64>, epoch: u64) {
+pub(crate) fn idle(epoch: u64) {
     let x = xport();
     let t = parts().0;
     if !t.has_lanes() {
-        t.sleep(epoch as u32, until);
+        t.sleep(epoch as u32);
         return;
     }
     drop(x);
@@ -250,9 +250,8 @@ pub(crate) fn idle(until: Option<u64>, epoch: u64) {
         let x = xport();
         let t = parts().0;
         t.poll_lanes();
-        let late = until.is_some_and(|u| t.elapsed() >= u);
         drop(x);
-        if late || e.load(SeqCst) != epoch as u32 {
+        if e.load(SeqCst) != epoch as u32 {
             return;
         }
         std::hint::spin_loop();
@@ -281,5 +280,5 @@ pub(crate) fn now() -> (ClockId, u64) {
     let _x = xport();
     let (t, _) = parts();
     // The clock is named by the host: each host has its own CLOCK_MONOTONIC start (hosts.rs).
-    (ClockId::new(crate::backends::mpi::transport::hosts::host().id + 1), t.elapsed())
+    (ClockId::new(u64::from(crate::backends::mpi::transport::hosts::host().id) + 1), t.elapsed())
 }

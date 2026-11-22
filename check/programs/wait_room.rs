@@ -59,13 +59,13 @@ fn main() {
             return;
         }
     };
-    while run.recv::<Blocked>().is_none() {
+    while run.recv::<Blocked>().map(|s| s.value).is_none() {
         run.wait();
     }
     println!("sender blocked on a full route");
     let mut got = 0;
     while got < ITEMS {
-        match run.recv::<Item>() {
+        match run.recv::<Item>().map(|s| s.value) {
             Some(item) => {
                 got += 1;
                 println!("item {}", item.id);

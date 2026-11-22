@@ -86,8 +86,8 @@ fn consumer(seen: &mut u32, pending: &mut Option<u32>, start: &mut Option<Readin
         };
     }
     if *seen == JOBS {
-        // `since` aborts when the readings come from different clocks, so this also checks the clock.
-        let _elapsed = trame::now().since(start);
+        // `since` answers `None` for readings of different clocks, so this also checks the clock.
+        let _elapsed = trame::now().since(start).expect("both readings are of this worker's clock");
         return Status::Done;
     }
     match trame::recv::<Job>() {
@@ -120,7 +120,7 @@ fn main() {
     assert!(run.send(a.id(), Go { token: 1 }).is_ok(), "go did not fit");
     let mut events = Vec::new();
     while events.len() < JOBS as usize {
-        match run.recv::<Ev>() {
+        match run.recv::<Ev>().map(|s| s.value) {
             Some(e) => events.push(e.v),
             None => run.wait(),
         }

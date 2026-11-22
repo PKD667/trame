@@ -104,23 +104,23 @@ fn main() {
             return;
         }
     };
-    while run.recv::<Blocked>().is_none() {
+    while run.recv::<Blocked>().map(|s| s.value).is_none() {
         run.wait();
     }
     println!("sender blocked on a full route");
     assert!(run.send(w, Go).is_ok(), "go did not fit");
-    while run.recv::<Ticked>().is_none() {
+    while run.recv::<Ticked>().map(|s| s.value).is_none() {
         run.wait();
     }
     let first = loop {
-        if let Some(item) = run.recv::<Item>() {
+        if let Some(item) = run.recv::<Item>().map(|s| s.value) {
             break item;
         }
         run.wait();
     };
     println!("item {}", first.id);
     let fin = loop {
-        if let Some(f) = run.recv::<Finished>() {
+        if let Some(f) = run.recv::<Finished>().map(|s| s.value) {
             break f;
         }
         run.wait();

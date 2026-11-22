@@ -1,0 +1,1 @@
+heap_in_state  a one-process backend has no domain shared by processes: its heap is the domain, so nothing is outside it

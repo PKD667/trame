@@ -218,7 +218,7 @@ The clauses of `CONTRACT.md` are checked by the methods of `PROOFS.md`, and some
 This section lists those.
 
 **seq.** The launch tests in `src/backends/seq/tests_launch.rs`, and `launch::build_all` for L3. The exact replay
-of S2. The mutant that forgets deadlines is killed by the outcome check (S3). The domain is the heap (M1), and
+of S2. The domain is the heap (M1), and
 the workers run only inside the leader's calls on the run (M7). The validate verdicts `programs-seq`,
 `tests-seq` and `mutants-seq` are listed in `nix/validate.nix`.
 

@@ -2,7 +2,9 @@
 //! its operations are not rules of T; the backend records what it does.
 
 use crate::backend::{Backend, Selected};
-use crate::io::{Full, Message, read};
+use crate::io::{Full, Message, Stamped, read};
+use crate::time::{ClockId, Reading};
+use core::time::Duration;
 use crate::topology::{Handle, HostId, WorkerId};
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
@@ -53,9 +55,11 @@ impl Run {
         )
     }
 
-    /// The next message of type `M` addressed to the leader, or `None`.
-    pub fn recv<M: Message>(&self) -> Option<M> {
-        read(|out| Selected::leader_recv(&self.inner, TypeId::of::<M>(), out))
+    /// The next message of type `M` addressed to the leader, with the reading of its sender's clock at the
+    /// send (`Stamped`), or `None`.
+    pub fn recv<M: Message>(&self) -> Option<Stamped<M>> {
+        read::<crate::io::Wire<M>>(|out| Selected::leader_recv(&self.inner, TypeId::of::<crate::io::Wire<M>>(), out))
+            .map(|w| Stamped { at: Reading::new(ClockId::new(w.clock), Duration::from_nanos(w.nanos)), value: w.value })
     }
 
     /// Send `msg` to the leader of host `to`, on the peer channel, not a route (CONTRACT.md F6).
@@ -123,14 +127,14 @@ impl Run {
                 Err(v) => return (out, Err((w, alloc::format!("{v:?}")))),
             };
             // The outcome must be the model's: a result it reached, or a deadlock in which no step
-            // could start even if every deadline passed (else a wake-up was lost, backend.rs S3).
+            // could start (else a wake-up was lost, backend.rs S3).
             let agrees = match out[w] {
                 Outcome::Returned => end.answer() == Some(crate::sched::Answer::Returned),
                 Outcome::Stopped => end.answer() == Some(crate::sched::Answer::Stopped),
                 Outcome::Failed => matches!(end.answer(), Some(crate::sched::Answer::Failed(_))),
                 Outcome::Deadlock => {
-                    let late = crate::sched::Now { until: u64::MAX, ..Default::default() };
-                    end.answer().is_none() && (0..crate::sched::MAX_STEPS).all(|i| !end.may_start(i, &late))
+                    let none = crate::sched::Now::default();
+                    end.answer().is_none() && (0..crate::sched::MAX_STEPS).all(|i| !end.may_start(i, &none))
                 }
             };
             if !agrees {

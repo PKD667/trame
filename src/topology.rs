@@ -184,16 +184,13 @@ impl Topology {
             "trame: a route of {} from the leader to itself; the leader keeps its own values, it does not send to itself",
             type_name::<M>()
         );
-        self.plan.routes.push(Route {
-            from,
-            to,
-            ty: TypeId::of::<M>(),
-            name: type_name::<M>(),
-            wire: crate::io::tag::<M>(),
-            size: size_of::<M>(),
-            cap,
-            lossy,
-        });
+        // A route to the leader carries the sender's clock with each message (io.rs, `Wire`).
+        let (ty, wire, size) = if to == End::Leader {
+            (TypeId::of::<crate::io::Wire<M>>(), crate::io::tag::<crate::io::Wire<M>>(), size_of::<crate::io::Wire<M>>())
+        } else {
+            (TypeId::of::<M>(), crate::io::tag::<M>(), size_of::<M>())
+        };
+        self.plan.routes.push(Route { from, to, ty, name: type_name::<M>(), wire, size, cap, lossy });
     }
 
     /// Test hook: run each worker with at most `n` agents; by default as many as the host has cores.
@@ -229,7 +226,7 @@ pub struct Pool<P> {
 /// (`Pool<P>`). Implemented by those two only.
 pub trait Handle: sealed::Sealed {}
 impl<S: State> Handle for Worker<S> {}
-impl<P: Send + Sync + 'static> Handle for Pool<P> {}
+impl<P: crate::Plain> Handle for Pool<P> {}
 
 // The methods take crate types on purpose: nothing outside the crate can name or implement Sealed.
 #[allow(private_interfaces)]
@@ -258,7 +255,9 @@ pub(crate) mod sealed {
                 "trame: Topology::set of a worker declared by another topology; set it on the topology whose `worker` made it"
             );
             let core = self.core.clone();
-            plan.builders[k] = Some(alloc::boxed::Box::new(move || core.fill(build())));
+            plan.builders[k] = Some(alloc::boxed::Box::new(move || {
+                core.fill(crate::domain::in_domain(build(), "state of a worker"))
+            }));
         }
         fn target(&self, run: &Run) -> Target {
             // A worker shares `joined` with its topology, and the run took that topology's (launch).
@@ -275,7 +274,7 @@ pub(crate) mod sealed {
         }
     }
 
-    impl<P: Send + Sync + 'static> Sealed for Pool<P> {
+    impl<P: crate::Plain> Sealed for Pool<P> {
         type Value = P;
         fn set(&self, plan: &mut Plan, build: alloc::boxed::Box<dyn FnOnce() -> P + Send>) {
             let ours = plan.pool.as_ref().is_some_and(|p| core::ptr::addr_eq(Arc::as_ptr(p), Arc::as_ptr(&self.core)));
@@ -284,7 +283,7 @@ pub(crate) mod sealed {
                 "trame: Topology::set of a pool declared by another topology; set it on the topology whose `pool` made it"
             );
             let core = self.core.clone();
-            plan.pool_builder = Some(alloc::boxed::Box::new(move || core.fill(build())));
+            plan.pool_builder = Some(alloc::boxed::Box::new(move || core.fill(crate::domain::in_domain(build(), "pool"))));
         }
         fn target(&self, run: &Run) -> Target {
             let ours = run.pool().is_some_and(|p| core::ptr::addr_eq(p, Arc::as_ptr(&self.core)));

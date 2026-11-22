@@ -1,13 +1,18 @@
-//! bench_idle W SECONDS: W workers, each waiting with `.frame().until(deadline)` for SECONDS
-//! on its own clock. Nothing is ever sent to a worker. Each worker reports the span it actually waited.
+//! bench_idle W SECONDS: W workers, each waiting with `.frame()`; the leader sleeps SECONDS, then sends each a
+//! `Go`. Each worker reports the span on its own clock between its first step and the `Go`.
 //! Its point is CPU time, which lab/bench.py measures per rank with GNU time. The leader prints one JSON
 //! line per worker, then the outcomes. Built with `--cfg trame_checked`.
 
 #[path = "common.rs"]
 mod common;
 
-use core::time::Duration;
 use trame::{Leader, Reading, Status, Topology, Worker};
+
+#[trame::message]
+#[derive(Debug, PartialEq, Eq)]
+struct Go {
+    pad: u64,
+}
 
 #[trame::message]
 #[derive(Debug, PartialEq, Eq)]
@@ -16,25 +21,27 @@ struct Report {
     ns: u64,
 }
 
-/// One worker: its index, how long it waits, and the span it measured and whether it reported.
+/// One worker: its index, when it started, the span it measured and whether it reported.
 #[trame::state(steps(idle))]
 struct Idle {
     me: u64,
-    span: Duration,
     start: Option<Reading>,
     ns: Option<u64>,
     reported: bool,
 }
 
-/// Waits for `span` from its first step, woken only by its deadline (no frame ever comes).
-#[trame::step(Idle)]
-fn idle(me: &u64, span: &Duration, start: &mut Option<Reading>, ns: &mut Option<u64>, reported: &mut bool) -> Status {
+/// Waits for a frame, woken by nothing else: `Go` comes after the leader's sleep.
+#[trame::step(Idle, receives = Go)]
+fn idle(me: &u64, start: &mut Option<Reading>, ns: &mut Option<u64>, reported: &mut bool) -> Status {
     let now = trame::now();
     let start = *start.get_or_insert(now);
-    if now.since(start) < *span {
-        return Status::wait().frame().until(start.after(*span));
+    if ns.is_none() {
+        if trame::recv::<Go>().is_none() {
+            return Status::wait().frame();
+        }
+        *ns = Some(common::ns(now.since(start).expect("one worker has one clock")));
     }
-    let ns = *ns.get_or_insert(common::ns(now.since(start)));
+    let ns = ns.expect("set above");
     if *reported {
         return Status::Done;
     }
@@ -50,14 +57,18 @@ fn idle(me: &u64, span: &Duration, start: &mut Option<Reading>, ns: &mut Option<
 fn main() {
     let w: usize = common::arg(1, "W");
     let seconds: u64 = common::arg(2, "SECONDS");
-    let span = Duration::from_secs(seconds);
     let mut t = Topology::new();
     let ws: Vec<Worker<Idle>> = (0..w).map(|_| t.worker()).collect();
     for (i, h) in ws.iter().enumerate() {
-        t.set(h, move || Idle { me: i as u64, span, start: None, ns: None, reported: false });
+        t.set(h, move || Idle { me: i as u64, start: None, ns: None, reported: false });
         t.route::<Report>(h.id(), Leader, 1);
+        t.route::<Go>(Leader, h.id(), 1);
     }
     let run = t.launch().unwrap_or_else(|e| common::refused(e));
+    std::thread::sleep(core::time::Duration::from_secs(seconds));
+    for h in &ws {
+        run.send(h.id(), Go { pad: 0 }).expect("room for one Go");
+    }
     common::collect::<Report>(&run, w, |r| {
         println!(
             "{{\"bench\":\"idle\",\"workers\":{w},\"worker\":{},\"seconds\":{seconds},\"ns\":{}}}",

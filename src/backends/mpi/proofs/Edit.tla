@@ -19,7 +19,7 @@
 \* does not wait for HELD = 0 before the next edit; the code waits (leader.rs 150).
 \* Not modelled: timeouts of the idle sleep, spurious futex returns, steps' own transport calls that need XPORT,
 \* several workers (a pool edit repeats the handshake per worker and waits for all), stop, failure, abort,
-\* the leader of another node, the memory the edit writes (M5), steps that wait on deadlines or room.
+\* the leader of another node, the memory the edit writes (M5), steps that wait on room.
 \* The worker's result: an agent that ends a step with no other running may find the worker answered (`ans`); every
 \* agent then returns, and after the last one `finish` stores the result and bumps the leader (roles/runner.rs 50-64).
 EXTENDS Naturals, Sequences, FiniteSets

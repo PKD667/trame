@@ -28,7 +28,8 @@ pub(super) struct Pong(pub u32);
 /// A panic of `f` is raised again here, with its own payload.
 pub(super) fn within_10s<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
     let (answer, answered) = mpsc::channel();
-    let body = thread::spawn(move || answer.send(f()));
+    // A big stack: a debug build copies a message on its way to the leader several times (`Run::recv`).
+    let body = thread::Builder::new().stack_size(32 << 20).spawn(move || answer.send(f())).expect("a test thread");
     match answered.recv_timeout(Duration::from_secs(if cfg!(miri) { 600 } else { 10 })) {
         Ok(out) => out,
         Err(RecvTimeoutError::Timeout) => panic!("hung: no answer within 10 s"),
@@ -49,7 +50,7 @@ pub(super) fn panic_text(f: impl FnOnce()) -> String {
 /// The leader's next frame of type `M`: `recv`, and `wait` while there is none (run.rs, `wait`).
 pub(super) fn await_frame<M: Message>(run: &Run) -> M {
     loop {
-        if let Some(m) = run.recv::<M>() {
+        if let Some(m) = run.recv::<M>().map(|s| s.value) {
             return m;
         }
         run.wait();
@@ -190,9 +191,9 @@ fn lossy_route_overwrites_the_oldest_frame() {
         g.route::<Pong>(w.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         let _done: Pong = await_frame(&run);
-        assert_eq!(run.recv::<Ping>(), Some(Ping(3)));
-        assert_eq!(run.recv::<Ping>(), Some(Ping(4)));
-        assert_eq!(run.recv::<Ping>(), None);
+        assert_eq!(run.recv::<Ping>().map(|s| s.value), Some(Ping(3)));
+        assert_eq!(run.recv::<Ping>().map(|s| s.value), Some(Ping(4)));
+        assert_eq!(run.recv::<Ping>().map(|s| s.value), None);
         assert_eq!(run.join(), [Outcome::Returned]);
     });
 }
@@ -220,9 +221,9 @@ fn full_only_at_capacity_on_a_non_lossy_route() {
         g.route::<Pong>(w.id(), Leader, 1);
         let run = g.launch().expect("accepted");
         assert_eq!(await_frame::<Pong>(&run), Pong(9));
-        assert_eq!(run.recv::<Ping>(), Some(Ping(1)));
-        assert_eq!(run.recv::<Ping>(), Some(Ping(2)));
-        assert_eq!(run.recv::<Ping>(), None);
+        assert_eq!(run.recv::<Ping>().map(|s| s.value), Some(Ping(1)));
+        assert_eq!(run.recv::<Ping>().map(|s| s.value), Some(Ping(2)));
+        assert_eq!(run.recv::<Ping>().map(|s| s.value), None);
         assert_eq!(run.join(), [Outcome::Returned]);
     });
 }

@@ -93,12 +93,18 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
     let pool = pool_ty.as_ref().map(|p| quote! { #p }).unwrap_or(quote! { () });
     let has_stop = args.stop.is_some();
     let plain = plain_check(fields.named.iter());
+    let blocks: Vec<_> = fields.named.iter().map(|f| f.ident.clone().expect("a state's fields are named")).collect();
     Ok(quote! {
         #s
         #[cfg(not(trame_checked))]
         compile_error!("build with cargo trame");
         // SAFETY: every field's type is plain, by the check below (CONTRACT.md M2, M3).
-        unsafe impl ::trame::Plain for #name {}
+        unsafe impl ::trame::Plain for #name {
+            fn blocks(&self, at: &mut dyn FnMut(*const u8) -> bool) -> bool {
+                use ::trame::__probe::{Field, No as _, Yes as _};
+                true #(&& (&Field(&self.#blocks)).blocks(at))*
+            }
+        }
         #plain
         #[allow(non_upper_case_globals)]
         impl #name {
@@ -326,9 +332,41 @@ pub fn derive_plain(item: TokenStream2) -> syn::Result<TokenStream2> {
     };
     let check = plain_check(fields.into_iter());
     let name = &d.ident;
+    // `blocks` visits every field, so a block a field owns is shown (src/plain.rs).
+    let body = match &d.data {
+        syn::Data::Struct(s) => {
+            let each = s.fields.members().map(|m| quote! { && (&Field(&self.#m)).blocks(at) });
+            quote! { use ::trame::__probe::{Field, No as _, Yes as _}; true #(#each)* }
+        }
+        syn::Data::Enum(e) => {
+            let arms = e.variants.iter().map(|v| {
+                let vn = &v.ident;
+                let binds: Vec<syn::Ident> = (0..v.fields.len()).map(|i| quote::format_ident!("f{}", i)).collect();
+                let each = binds.iter().map(|b| quote! { && (&Field(#b)).blocks(at) });
+                match &v.fields {
+                    syn::Fields::Unit => quote! { Self::#vn => true },
+                    syn::Fields::Unnamed(_) => quote! { Self::#vn(#(#binds),*) => true #(#each)* },
+                    syn::Fields::Named(n) => {
+                        let names = n.named.iter().map(|f| f.ident.clone().expect("named"));
+                        quote! { Self::#vn { #(#names: #binds),* } => true #(#each)* }
+                    }
+                }
+            });
+            if e.variants.is_empty() {
+                quote! { true }
+            } else {
+                quote! { use ::trame::__probe::{Field, No as _, Yes as _}; match self { #(#arms,)* } }
+            }
+        }
+        syn::Data::Union(_) => quote! { true },
+    };
     Ok(quote! {
         // SAFETY: every field's type is plain, by the check below (CONTRACT.md M2, M3).
-        unsafe impl ::trame::Plain for #name {}
+        unsafe impl ::trame::Plain for #name {
+            fn blocks(&self, at: &mut dyn FnMut(*const u8) -> bool) -> bool {
+                #body
+            }
+        }
         #check
     })
 }

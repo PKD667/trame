@@ -76,7 +76,7 @@ is. The header of each such mutant says what it changes beyond output.
 | m05 | `recv` ignores the message type, or takes the first inbox type as the leader's owned type | Ownership |
 | m06 | a frame arrival does not wake its receiver | Progress |
 | m07 | the frame condition holds for any queued frame | Enabled |
-| m08 | `until` holds at once | Status (until) |
+| m08 | retired with `Status::until` (INTERFACE.md 5.1): no mutant, the id is unused | - |
 | m09 | `room` always holds | Status (room) |
 | m10 | `End` does not set `D` for sharing processes | End |
 | m11 | the lowest-priority ready process starts first | Start |
@@ -85,7 +85,7 @@ is. The header of each such mutant says what it changes beyond output.
 | m14 | a publication is never installed | Publish |
 | m15 | a barrier answers the old publication to worker 0 | Barrier (one Pub for all) |
 | m16 | a returned worker does not release barrier waiters | Deadlock, Join |
-| m17 | `join` reports `Deadlock` for a worker waiting on a deadline (skipped where the backend reports no Deadlock for an idle worker) | Deadlock |
+| m17 | retired with `Status::until`: no mutant, the id is unused | - |
 | m18 | a panic does not end the run: the panicking worker counts as returned, the others go on, and the leader does not panic | Abort |
 | m19 | a duplicate route is accepted | Launch checks |
 | m20 | a route of capacity 0 is accepted | Launch checks |

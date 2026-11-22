@@ -56,7 +56,7 @@ macro_rules! graph {
             }
             if *cur == *total {
                 let start = t0.expect("the warm-up ended");
-                let ns = *ns.get_or_insert_with(|| common::ns(trame::now().since(start)));
+                let ns = *ns.get_or_insert_with(|| common::ns(trame::now().since(start).expect("one worker has one clock")));
                 if *reported {
                     return Status::Done;
                 }
@@ -73,7 +73,7 @@ macro_rules! graph {
                 let c0 = trame::now();
                 *x = graph_net::rounds(*x, *iters);
                 if *cur >= WARM {
-                    *compute += common::ns(trame::now().since(c0));
+                    *compute += common::ns(trame::now().since(c0).expect("one worker has one clock"));
                 }
                 *started = true;
             }

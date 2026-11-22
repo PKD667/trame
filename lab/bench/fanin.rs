@@ -53,7 +53,7 @@ fn feed(
         }
         *sent += 1;
     }
-    let ns = *ns.get_or_insert_with(|| common::ns(trame::now().since(start)));
+    let ns = *ns.get_or_insert_with(|| common::ns(trame::now().since(start).expect("one worker has one clock")));
     if *reported {
         return Status::Done;
     }
@@ -82,12 +82,12 @@ fn main() {
     let start = Instant::now();
     let mut leader_ns = None;
     while data < total || reports < w {
-        if run.recv::<Small>().is_some() {
+        if run.recv::<Small>().map(|s| s.value).is_some() {
             data += 1;
             if data == total {
                 leader_ns = Some(u64::try_from(start.elapsed().as_nanos()).expect("a span over 584 years"));
             }
-        } else if let Some(r) = run.recv::<Report>() {
+        } else if let Some(r) = run.recv::<Report>().map(|s| s.value) {
             println!("{{\"bench\":\"fanin\",\"workers\":{w},\"worker\":{},\"msgs\":{msgs},\"ns\":{}}}", r.worker, r.ns);
             reports += 1;
         } else {

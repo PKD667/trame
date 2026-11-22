@@ -7,11 +7,11 @@
 #   (xhost_deadlock.expected); patched it reaches TRAME_SEQ_STEP_LIMIT (exit 3). Run: mutate.sh seq '^m26$'.
 --- a/backends/seq/ops.rs
 +++ b/backends/seq/ops.rs
-@@ -191,9 +191,11 @@
+@@ -218,9 +218,11 @@
          let mut st = shared.lock();
          assert_eq!(st.turn, Some(me), "trame: an idle worker ran without the baton");
-         // Idle: give the baton up. Nothing runs until a leader acts, or the deadline comes.
--        st.phase[me] = Phase::Idle(seen, until);
+         // Idle: give the baton up. Nothing runs until a leader acts.
+-        st.phase[me] = Phase::Idle(seen);
 +        st.phase[me] = Phase::Ready;
          st.advance(me);
          shared.changed.notify_all();

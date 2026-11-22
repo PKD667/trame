@@ -135,7 +135,7 @@ fn main() {
     };
     let mut blocks: Vec<Option<u64>> = vec![None; WORKERS];
     while blocks.iter().any(Option::is_none) {
-        match run.recv::<Final>() {
+        match run.recv::<Final>().map(|s| s.value) {
             Some(f) => blocks[f.worker as usize] = Some(f.bits),
             None => run.wait(),
         }

@@ -64,13 +64,13 @@ fn main() {
             return;
         }
     };
-    while run.recv::<Ready>().is_none() {
+    while run.recv::<Ready>().map(|s| s.value).is_none() {
         run.wait();
     }
     assert!(run.send(w, Noise).is_ok(), "noise did not fit");
     assert!(run.send(w, Want).is_ok(), "want did not fit");
     let calls = loop {
-        if let Some(c) = run.recv::<Calls>() {
+        if let Some(c) = run.recv::<Calls>().map(|s| s.value) {
             break c;
         }
         run.wait();

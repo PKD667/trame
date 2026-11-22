@@ -64,6 +64,13 @@ pub(crate) trait Backend {
         None
     }
 
+    /// Whether a domain is a memory several processes of the host share, at the same addresses (the builder's
+    /// process builds a state that others adopt). Then a state may own only blocks of the domain (domain.rs
+    /// `in_domain`). A backend whose one process is the domain answers false.
+    fn has_domain() -> bool {
+        false
+    }
+
     /// Whether `p` lies in a domain of this process, so `domain_dealloc` frees it.
     fn domain_contains(_p: *mut u8) -> bool {
         false
@@ -136,12 +143,17 @@ pub(crate) trait Backend {
     /// conditions and passes it to `worker_idle`, so a change between the two is not missed (S3).
     fn worker_epoch() -> u64;
 
-    /// Block until the counter differs from `epoch`, or this worker's clock reaches `until`
-    /// (nanoseconds since the run started).
-    fn worker_idle(until: Option<u64>, epoch: u64);
+    /// Block until the counter differs from `epoch`.
+    fn worker_idle(epoch: u64);
 
     /// This worker's clock: its identity, and the nanoseconds since the run started.
     fn worker_now() -> (ClockId, u64);
+
+    /// The same reading, taken by `send` to stamp a message to the leader. A backend whose `worker_now` is a
+    /// scheduling point answers it without one, so a send passes the turn only once.
+    fn worker_stamp() -> (ClockId, u64) {
+        Self::worker_now()
+    }
 
     /// Whether the leader stopped the run, for a backend whose leader cannot reach the worker's
     /// scheduler directly (it runs in another process). The reference agent polls it at each round.
@@ -151,13 +163,13 @@ pub(crate) trait Backend {
 
     /// The agent's turns, told under the worker's lock, for a backend that shows a worker stuck from
     /// another process (INTERFACE.md 5, Deadlock): a step starts, a step ends, or an agent is about to
-    /// idle with no step running, at `epoch`, with or without a deadline. Under the lock, so a quiet
+    /// idle with no step running, at `epoch`. Under the lock, so a quiet
     /// mark is never told after a start that followed it. A backend whose workers share the leader's process decides stuckness itself.
     fn worker_mark_start() {}
 
     fn worker_mark_end() {}
 
-    fn worker_mark_quiet(_epoch: u64, _deadline: bool) {}
+    fn worker_mark_quiet(_epoch: u64) {}
 
     /// Leave the worker without a result of this agent's own: another agent's step unwound mid-way
     /// (the run aborts), so this agent must not run on. Unwinds with the backend's marker.

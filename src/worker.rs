@@ -14,7 +14,6 @@ use crate::backend::{Backend, Selected};
 use crate::cells::{Owning, Tags};
 use crate::sched::{Answer, Ended, Event, Now, Sched, St, Weight};
 use crate::status::{Kind, Status, Waits};
-use crate::time;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::any::{Any, TypeId};
@@ -40,7 +39,7 @@ pub struct StepInfo {
 /// # Safety
 /// `STEPS[i]` lists exactly the fields `run(_, _, i)` touches, as `&` (reads) or `&mut` (writes), and
 /// `run` touches no other part of the state (CONTRACT.md, S1).
-pub unsafe trait State: Send + Sync + Sized + 'static {
+pub unsafe trait State: crate::Plain + Sized {
     /// What a failing step returns. `Infallible` when no step can fail. Plain, because the leader
     /// reads it from the worker's domain, which for a worker in another process is that process's
     /// (CONTRACT.md M2).
@@ -522,41 +521,19 @@ fn conditions(obj: &dyn Erased, s: &Sched, waits: &[Waits]) -> Now {
         if w.room_mask() != 0 && room_holds(w.room_mask()) {
             out.room |= 1 << i;
         }
-        if let Some(at) = w.deadline()
-            && time::now().at() >= at.at()
-        {
-            out.until |= 1 << i;
-        }
     }
     out
 }
 
-/// The earliest deadline of a step that waits on the clock, in nanoseconds.
-fn next_deadline(s: &Sched, waits: &[Waits]) -> Option<u64> {
-    waits
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| matches!(s.ps[*i].st, St::Wait { until: true, .. }))
-        .filter_map(|(_, w)| w.deadline())
-        .map(|at| u64::try_from(at.at().as_nanos()).unwrap_or(u64::MAX))
-        .min()
-}
-
 /// The status a step returned, as the model's End takes it. `service` is the backend's measure.
-fn ended(r: Result<Status, ()>, clock: time::ClockId, service: u64) -> (Ended, Waits) {
+fn ended(r: Result<Status, ()>, service: u64) -> (Ended, Waits) {
     let (st, waits, weight) = match r {
         Err(()) => (St::Err, Waits::default(), None),
         Ok(s) => match s.kind() {
             Kind::Progress => (St::Progress, Waits::default(), s.new_weight()),
             Kind::Done => (St::Done, Waits::default(), None),
             Kind::Wait(w) => {
-                if let Some(at) = w.deadline() {
-                    assert!(
-                        at.clock() == clock,
-                        "trame: .until was given a reading of another clock; a worker waits only on its own clock"
-                    );
-                }
-                let st = St::Wait { frame: w.frame_wanted(), room: w.room_mask() != 0, until: w.deadline().is_some() };
+                let st = St::Wait { frame: w.frame_wanted(), room: w.room_mask() != 0 };
                 (st, w, s.new_weight())
             }
         },
@@ -568,7 +545,6 @@ fn ended(r: Result<Status, ()>, clock: time::ClockId, service: u64) -> (Ended, W
 /// agents may run one slot at once; each step runs on the agent that started it. `service` measures a
 /// step that ran from `t0`: the backend's measure of what it used (sched.rs, service).
 pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn Any + Send + Sync)>) -> Answer {
-    let clock = time::now().clock();
     let obj = &*slot.obj;
     loop {
         // Read before the conditions: a change after this read ends the idle below.
@@ -607,7 +583,7 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn A
                     unsafe { obj.run(i, pool) }
                 };
                 core::mem::forget(_unwinding);
-                let (e, w) = ended(r, clock, service().saturating_sub(start).max(1));
+                let (e, w) = ended(r, service().saturating_sub(start).max(1));
                 let mut g = slot.lock();
                 g.s.end(i, e);
                 Selected::worker_mark_end();
@@ -620,10 +596,9 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn A
                 drop(slot.changed.wait(g).unwrap_or_else(PoisonError::into_inner));
             }
             None => {
-                let deadline = next_deadline(&g.s, &g.waits);
-                Selected::worker_mark_quiet(epoch, deadline.is_some());
+                Selected::worker_mark_quiet(epoch);
                 drop(g);
-                Selected::worker_idle(deadline, epoch);
+                Selected::worker_idle(epoch);
             }
         }
     }

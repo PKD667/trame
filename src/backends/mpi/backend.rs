@@ -109,8 +109,8 @@ impl Backend for Selected {
         worker::epoch()
     }
 
-    fn worker_idle(until: Option<u64>, epoch: u64) {
-        worker::idle(until, epoch)
+    fn worker_idle(epoch: u64) {
+        worker::idle(epoch)
     }
 
     fn worker_mark_start() {
@@ -121,8 +121,8 @@ impl Backend for Selected {
         worker::mark_end()
     }
 
-    fn worker_mark_quiet(epoch: u64, deadline: bool) {
-        worker::mark_quiet(epoch, deadline)
+    fn worker_mark_quiet(epoch: u64) {
+        worker::mark_quiet(epoch)
     }
 
     fn worker_now() -> (ClockId, u64) {
@@ -183,6 +183,10 @@ impl Backend for Selected {
 
     fn domain_alloc(layout: core::alloc::Layout) -> Option<*mut u8> {
         segment::mapped().then(|| segment::alloc(layout))
+    }
+
+    fn has_domain() -> bool {
+        segment::mapped()
     }
 
     fn domain_contains(p: *mut u8) -> bool {

@@ -3,12 +3,12 @@
 # A step that waits for a frame starts when any frame is queued for its worker, not one of its own.
 --- a/sched.rs
 +++ b/sched.rs
-@@ -231,7 +231,7 @@
+@@ -228,7 +228,7 @@
+         match p.st {
              St::Fresh | St::Progress => true,
              St::Done | St::Err => false,
-             St::Wait { frame, room, until } => {
--                p.d || (frame && bit(now.frame)) || (room && bit(now.room)) || (until && bit(now.until))
-+                p.d || (frame && now.frame != 0) || (room && bit(now.room)) || (until && bit(now.until))
-             }
+-            St::Wait { frame, room } => p.d || (frame && bit(now.frame)) || (room && bit(now.room)),
++            St::Wait { frame, room } => p.d || (frame && now.frame != 0) || (room && bit(now.room)),
          }
      }
+ 

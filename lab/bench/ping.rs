@@ -37,7 +37,7 @@ macro_rules! ping {
                 pad: [u8; $pad],
             }
 
-            /// A: `out` is the reading at the send of the frame in flight, `next` the end of the gap, `rng` the
+            /// A: `out` is the reading at the send of the frame in flight, `next` the start of the gap, `rng` the
             /// gap's generator, `owed` a sample not yet given to the leader.
             #[trame::state(steps(trip))]
             pub struct A {
@@ -73,7 +73,7 @@ macro_rules! ping {
                 }
                 if let Some(t) = *out {
                     let Some(f) = trame::recv::<Frame>() else { return Status::wait().frame() };
-                    let ns = common::ns(trame::now().since(t));
+                    let ns = common::ns(trame::now().since(t).expect("one worker has one clock"));
                     assert!(f.seq == *seq, "an echo out of order");
                     *owed = Some(Sample { seq: *seq, ns, gap: *gap });
                     *seq += 1;
@@ -83,15 +83,17 @@ macro_rules! ping {
                     *rng ^= *rng << 25;
                     *rng ^= *rng >> 27;
                     *gap = if *gap_max == 0 { 0 } else { rng.wrapping_mul(0x2545_F491_4F6C_DD1D) % (*gap_max + 1) };
-                    *next = Some(trame::now().after(Duration::from_nanos(*gap)));
+                    *next = Some(trame::now());
                     return Status::Progress;
                 }
                 if *seq == *samples {
                     return Status::Done;
                 }
-                if let Some(at) = *next {
-                    if at.since(trame::now()) > Duration::ZERO {
-                        return Status::wait().until(at);
+                // The gap is spent by polling: a worker waits for events, never for a period.
+                if let Some(t0) = *next {
+                    let spent = trame::now().since(t0).expect("one worker has one clock");
+                    if spent < Duration::from_nanos(*gap) {
+                        return Status::Progress;
                     }
                 }
                 let t = trame::now();

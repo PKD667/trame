@@ -116,10 +116,10 @@ fn main() {
         assert!(run.send(rx_id, Item { id: 1 }).is_ok(), "stock did not fit");
     }
     loop {
-        if run.recv::<Got>().is_some() {
+        if run.recv::<Got>().map(|s| s.value).is_some() {
             break;
         }
-        if run.recv::<Took>().is_some() {
+        if run.recv::<Took>().map(|s| s.value).is_some() {
             send_when_room(&run, rx_id, Item { id: 1 });
             send_when_room(&run, rx_id, Ack);
             continue;

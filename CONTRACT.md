@@ -62,7 +62,7 @@ backend observed at that start.
 
 **S3 Wake.** A waiting step is woken by the end of a step that writes one of its fields, or by a
 condition it named. No wake is lost: an agent that finds nothing to start sleeps only until the next
-change to its worker, which is an end, a frame, room, its deadline or an act of the leader.
+change to its worker, which is an end, a frame, room or an act of the leader.
 
 **S4 Edit.** An edit holds a set of fields: all of a worker's fields, or the pool. From the hold on,
 no step touching a held field starts. The edit's function runs once none runs. Then the fields are

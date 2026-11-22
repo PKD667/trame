@@ -53,7 +53,7 @@ fn behave(c: &mut Ctl) -> Status {
         6 | 7 => Status::Progress.weight((c.next() % 5) as f64 / 4.0),
         8 if c.next() % 2 == 0 => Status::wait(),
         8 => Status::Progress,
-        _ => Status::wait().until(trame::now().after(Duration::from_micros(20 + c.next() % 200))),
+        _ => Status::Progress,
     }
 }
 

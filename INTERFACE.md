@@ -368,24 +368,25 @@ $\Gamma$ that its rules read and write, with their initial values.
 
 Stuckness is undecidable in general, so a backend reports $\mathsf{deadlock}$ only where it can show
 it. One case is cheap. Once the leader is in `join`, a worker is stuck when no step of any worker can
-start, now or after time passes. A worker waiting for a frame before then is never reported, since
-the leader may still send. A leader blocked in `wait` is stuck when no worker can move now or after
-time passes. Both backends show this case; on several hosts, only once every host's leader waits,
+start. A worker waiting for a frame before then is never reported, since the leader may still send. A
+leader blocked in `wait` is stuck when no worker can move. Both backends show this case; on several hosts, only once every host's leader waits,
 joins or has ended.
 
 ### 5.1 Time
 
 Programs never see real time directly. They read clocks, and each clock shows real time plus an
 unknown offset. Two readings compare only when they come from the same clock, so trame never needs
-to synchronize clocks.
+to synchronize clocks. A step reads its clock to date what it knows, never to wait: **a step never
+waits for a period.** It waits for an event (a frame, room, a write to a field), and a program that
+wants something every so often gets it as a message from whoever keeps the time, or polls with
+`Status::Progress`.
 
 > **Definition (Time).** $\Gamma$ contains the real time $\tau \in \mathbb{R}_{\geq 0}$, initially $0$.
 > Each device has one clock, and $\mathrm{clock}(x)$ is the clock of $\mathrm{dev}(w(x))$ for a step
 > $x$. $\Gamma_0$ fixes an arbitrary offset $\theta(c)$ for each clock $c$, and no rule changes it. The
-> effect $\mathsf{now}()$ answers a reading, which pairs a clock with a value. `since` between two
-> readings of the same clock answers the span between them, and between readings of different clocks
-> it aborts. `after` adds a span to a reading, giving a reading of the same clock. Spans are
-> `core::time::Duration`. In Rust the effect is `trame::now`.
+> effect $\mathsf{now}()$ answers a reading, which pairs a clock with a value. Spans are
+> `core::time::Duration`. In Rust the effect is `trame::now()`, called inside a step; a step may keep
+> the reading in its state.
 
 $$
 \frac{\tau' \geq \tau}{\Gamma \to \Gamma[\tau := \tau']}
@@ -394,6 +395,32 @@ $$
 \frac{c = \mathrm{clock}(x)}{\Gamma \xrightarrow{x\,:\,\mathsf{now}\,/\,(c,\ \tau + \theta(c))} \Gamma}
 \ \textbf{Now}
 $$
+
+> **Definition (Comparing readings).** `a.since(b)` answers `Some(span)` when $a$ and $b$ are readings of one
+> clock, and `None` when they are of two. The span is $a - b$ when that is not negative, and zero otherwise. So
+> `a.since(b)` and `b.since(a)` together give the order of two readings of one clock (both zero: equal; the
+> one that is not zero: the later) and their signed difference (the one that is not zero, with the sign of
+> which it is); no other function is needed. A reading of one clock never compares with a reading of another,
+> and trame never turns `None` into a number.
+
+The rule is not checked at compile time, and cannot be: the clock of a reading is the device of the worker
+that read it, the backend places workers at launch, and one state type can run on several devices. A type
+cannot name the device. Hence `since` answers `Option`, and a program handles `None`.
+
+A reading alone dates nothing: a number of nanoseconds on a clock the receiver cannot place. So a reading is
+not a message and cannot be sent by itself. What a worker tells the leader is **data and a reading**: every
+message from a worker to the leader is stamped (Section 5.2, Definition (Stamp)), and the receiver
+has the pair (clock, time) without any number sent out of band. Two stamps of one worker give, with `since`
+both ways, the time that passed on that worker between them. Stamps of two workers of one clock compare; of
+two clocks, `since` answers `None`. A worker that must report a time other than that of its send (when it
+computed the data) keeps the reading in its state and sends it as a field of its own message, with the data it dates.
+
+`ClockId` names a clock. `Reading::new(ClockId, Duration)` makes a reading from a clock and a span, **for
+readings that came from outside** (code of the leader, and tests, which have no worker to call `now()`);
+`ClockId::detached(n)` is a clock that no device has, for a test. A worker never needs them. `Reading::clock()`
+answers the clock. The leader and the threads it starts are not workers and have no trame clock:
+`trame::now()` panics there, and the leader's time is `std::time`. A reading the leader holds is one it
+received in a `Stamped` (Section 5.2).
 
 ### 5.2 Communication
 
@@ -483,6 +510,15 @@ $$
 \ \textbf{Drop}
 $$
 
+> **Definition (Stamp).** A frame on a route that ends at a leader carries, besides its message, the reading
+> $\rho = (c, \tau + \theta(c))$ of the sender's clock $c = \mathrm{clock}(x)$ at its **Send**. Trame adds $\rho$,
+> and a program neither writes nor omits it; the leader's receive answers the pair. In Rust,
+> `Run::recv::<M>()` answers `Option<Stamped<M>>`, whose fields are `at` (a `Reading`) and `value` (the
+> message), and a worker calls `trame::send(Leader, m)` as it calls it for any end. The stamp costs 16 bytes
+> in the frame and dates the send, not the computation: a worker that computed earlier and sent later
+> is dated by the send. A frame to a worker carries no stamp, since the receiving worker has a `now()` of its
+> own. On a lossy route to the leader, the frame that stays keeps its own stamp.
+
 $[\varphi]$ is $1$ when $\varphi$ holds and $0$ otherwise.
 
 These are the only answers. **Full** applies only to a route that is not lossy, and only when all its
@@ -533,7 +569,7 @@ stateDiagram-v2
   Err --> [*]
 ```
 
-A step waiting for a frame, for room on a route or for a deadline returns $\mathsf{wait}$ instead of
+A step waiting for a frame or for room on a route returns $\mathsf{wait}$ instead of
 polling. Each wait condition is a state the scheduler rechecks, not an event that could be missed.
 
 > **Definition (States and steps).** A worker $w$ has a set of fields $F_w$ and steps
@@ -555,12 +591,10 @@ polling. Each wait condition is a state the scheduler rechecks, not an event tha
 > $\omega' \in [0, 1]$ for the step's next start.
 > - $\mathsf{frame}$ holds when some frame is an offer to $p$.
 > - $\mathsf{room}(r)$ holds when $\mathrm{held}(r) < \mathrm{cap}(r)$ or $r$ is lossy.
-> - $\mathsf{until}(d)$, where $d$ is a reading of $\mathrm{clock}(p)$, holds when
->   $\tau + \theta(\mathrm{clock}(p)) \geq d$. Waiting on a reading of another clock aborts.
 >
 > $\Omega$ may be empty, and then only $D(p)$ wakes $p$. In Rust, `Status::Progress` and `Status::Done`
-> are constants, `Status::wait()` is $\mathsf{wait}(\varnothing)$, and `.frame()`, `.room::<M>(to)` and
-> `.until(reading)` each add one condition. `.room` names one of the worker's first 64 outgoing routes,
+> are constants, `Status::wait()` is $\mathsf{wait}(\varnothing)$, and `.frame()` and `.room::<M>(to)` each add
+> one condition. There is no condition on time (Section 5.1). `.room` names one of the worker's first 64 outgoing routes,
 > and aborts when the worker has no such route. `.weight(w)` sets $\omega'$, and panics on `Done` or
 > outside $[0, 1]$. A step of a state that names an error type $E$ returns `Result<Status, E>`, and
 > `Err(e)` is $\mathsf{err}(e)$.
@@ -648,6 +682,12 @@ s_0 = S[k], \qquad s_j = F(x_{i_j},\ s_{j-1},\ C), \qquad S'[k] = s_m
 $$
 
 ### 5.5 Leader acts
+
+Trame knows nothing of what a leader serves: its clients, sockets and threads are its own. A leader may start
+threads, but `Run` is neither `Send` nor `Sync`, so every call on it (`recv`, `wait`, `send`, `edit`, `join`)
+is made from the thread that launched. Another thread that must reach the run hands its request to that
+thread by a channel of its own. A leader has no trame clock; for time it uses `std::time`, and for the
+time of a worker it uses the stamp (Section 5.2).
 
 Besides sending and receiving, the leader waits, edits a state or the pool, stops the workers, and
 joins. These acts are part of the environment, so no step performs them. A worker that wants the pool
@@ -764,13 +804,16 @@ root, except the functions of `trame::math`.
 | `send(to, m) -> Result<(), Full>` | fn | $\mathsf{send}$ on the route from this worker to `to` with the tag of `m` (5.2) |
 | `recv::<M>() -> Option<M>` | fn | $\mathsf{recv}(t)$ for the tag of `M` (5.2) |
 | `me() -> WorkerId` | fn | $\mathsf{me}$ (5); panics outside a worker |
-| `now() -> Reading` | fn | $\mathsf{now}$ (5.1) |
+| `now() -> Reading` | fn | $\mathsf{now}$ (5.1); panics outside a worker |
 | `host() -> HostId` | fn | this host (6) |
 | `hosts() -> u32` | fn | the number of hosts $H$ (6); 1 on a backend that runs one host |
-| `Reading` | type: `since`, `after` | a reading of one clock (5.1) |
-| `Status` | type: `Progress`, `Done`, `wait()` with `.frame()`, `.room::<M>(to)`, `.until(r)`, and `.weight(w)` | $\mathit{Status}$ (5.3) |
+| `Reading` | type: `since`, `clock`, `new` | a reading of one clock; plain, not a message (5.1, Definition (Comparing readings)) |
+| `ClockId` | type: `detached` | the clock of a reading (5.1) |
+| `Stamped<M>` | type: fields `at: Reading`, `value: M` | what the leader's `recv` answers: a message and the sender's reading at its send (5.2, Definition (Stamp)) |
+| `Status` | type: `Progress`, `Done`, `wait()` with `.frame()`, `.room::<M>(to)` and `.weight(w)` | $\mathit{Status}$ (5.3) |
 | `Full` | type | the answer $\mathsf{full}$ (5.2); also the answer of a full `Bounded` |
-| `drain::<M, N>(body) -> Drained`, `Drained { taken, capped }` with `.status()` | fn, type | a bounded $\mathsf{recv}$ loop (3.1, Definition (Bound in the call)) |
+| `drain::<M, N>(body) -> Drained` | fn | a bounded $\mathsf{recv}$ loop (3.1, Definition (Bound in the call)) |
+| `Drained` | type: `{ taken, capped }`, `status()` | what `drain` answers (3.1) |
 | `fuel::<N>(body) -> Result<usize, Spent>`, `Spent` | fn, type | a `while` with its bound written down (3.1) |
 | `lend(&mut s, slot, f) -> Option<R>` | fn | take a field's value out, use it with the rest of the state, put it back (3.1, Definition (Lend)) |
 | `Bounded<T>`, `BoundedHeap<T>` | types: `new(cap)`, `push`, `pop`, `clear`, `truncate`, `swap_remove`, `extend_from_slice`, `push_owned`, `peek`, `push_pop`, `cap`, `len`, `is_full`, slice access | fixed-capacity collections a step may use (3.1, Definition (Bounded)) |
@@ -785,7 +828,7 @@ root, except the functions of `trame::math`.
 | `Leader` | type, unit | this host's leader as an end of a route; not a worker: no index, state or steps |
 | `End` | type, hidden | an end of a route, made from `WorkerId`, `(HostId, k)` or `Leader`; programs pass those, never an `End` |
 | `Refused` | enum: `UnknownWorker`, `Duplicate`, `ZeroCapacity`, `TwoOwners`, `PoolType`, `Alloc`, `PoolUnset`, `Unset`, `Backend`; `Display` | a refusal at launch (4) |
-| `Run` | type: `send`, `recv`, `wait`, `edit`, `stop`, `join`, `leader_send`, `leader_recv` | the leader's side of a run (5.2, 5.5, 6, Definition (Join)) |
+| `Run` | type: `send`, `recv` (answers `Option<Stamped<M>>`), `wait`, `edit`, `stop`, `join`, `leader_send`, `leader_recv` | the leader's side of a run (5.2, 5.5, 6, Definition (Join)) |
 | `Outcome` | enum: `Returned`, `Stopped`, `Failed`, `Deadlock` | a worker's result (5.3, Definition (Result)) |
 | `math::f32::exp` | fn | the portable f32 exponential. Its accuracy is claimed for inputs in $[-30, 0]$: relative error below 2e-6 against `f64::exp`, tested in `src/math/f32/tests.rs`. Outside that range, no accuracy claim |
 | `math::f64::{exp, ln, exp_m1, powf}` | fn | ports of fdlibm (`e_exp.c`, `e_log.c`, `s_expm1.c`, `e_pow.c`) in plain IEEE arithmetic. The tests assert at most 2 ulp from glibc on 200,000 samples each; the largest measured was 1 ulp (`src/math/f64/tests/sweep.rs`). A sample, not a proof. `powf(1, NaN)` and `powf(-1, ±inf)` are NaN, as in fdlibm |

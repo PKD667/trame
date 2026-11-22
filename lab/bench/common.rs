@@ -21,7 +21,7 @@ pub fn arg<T: FromStr>(i: usize, name: &str) -> T {
 pub fn collect<M: Message>(run: &Run, n: usize, mut each: impl FnMut(M)) {
     let mut got = 0;
     while got < n {
-        match run.recv::<M>() {
+        match run.recv::<M>().map(|s| s.value) {
             Some(m) => {
                 each(m);
                 got += 1;

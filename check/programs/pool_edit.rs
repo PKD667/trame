@@ -100,7 +100,7 @@ fn main() {
         let mut n = 0;
         while n < WORKERS {
             let mut got = false;
-            while let Some(rep) = run.recv::<Report>() {
+            while let Some(rep) = run.recv::<Report>().map(|s| s.value) {
                 assert_eq!(rep.round, r, "a report of another round");
                 seen[rep.worker as usize] = Some((rep.seen, rep.len, rep.sum));
                 n += 1;

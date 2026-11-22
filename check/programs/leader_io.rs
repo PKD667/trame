@@ -114,11 +114,11 @@ fn main() {
     let (mut r0, mut r1) = (Vec::new(), Vec::new());
     while r0.len() < N as usize || r1.len() < N as usize {
         let mut got = false;
-        if let Some(r) = run.recv::<Reply0>() {
+        if let Some(r) = run.recv::<Reply0>().map(|s| s.value) {
             r0.push(r.v);
             got = true;
         }
-        if let Some(r) = run.recv::<Reply1>() {
+        if let Some(r) = run.recv::<Reply1>().map(|s| s.value) {
             r1.push(r.v);
             got = true;
         }

@@ -77,7 +77,7 @@ flowchart TD
   en --> e
   ch -- "none, a step runs" --> wc["wait on the condvar"]
   wc --> e
-  ch -- "none, nothing runs" --> q["mark_quiet, worker_idle(deadline, epoch)"]
+  ch -- "none, nothing runs" --> q["mark_quiet, worker_idle(epoch)"]
   q --> e
 ```
 

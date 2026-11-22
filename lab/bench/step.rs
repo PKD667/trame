@@ -44,7 +44,7 @@ fn count(c: &mut Count, worker: u64, step: u64, n: u64) -> Status {
     let t0 = *c.t0.get_or_insert(now);
     c.n += 1;
     if c.n == n {
-        c.ns = Some(common::ns(now.since(t0)));
+        c.ns = Some(common::ns(now.since(t0).expect("one worker has one clock")));
     }
     Status::Progress
 }

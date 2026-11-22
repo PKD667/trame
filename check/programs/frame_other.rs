@@ -94,19 +94,19 @@ fn main() {
         }
     };
     // Both steps must be waiting before Noise is sent: `picky` says Ready, `taker` says Hello.
-    while run.recv::<Ready>().is_none() {
+    while run.recv::<Ready>().map(|s| s.value).is_none() {
         run.wait();
     }
-    while run.recv::<Hello>().is_none() {
+    while run.recv::<Hello>().map(|s| s.value).is_none() {
         run.wait();
     }
     assert!(run.send(w, Noise).is_ok(), "noise did not fit");
-    while run.recv::<Took>().is_none() {
+    while run.recv::<Took>().map(|s| s.value).is_none() {
         run.wait();
     }
     assert!(run.send(w, Want).is_ok(), "want did not fit");
     let calls = loop {
-        if let Some(c) = run.recv::<Calls>() {
+        if let Some(c) = run.recv::<Calls>().map(|s| s.value) {
             break c;
         }
         run.wait();

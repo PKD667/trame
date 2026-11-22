@@ -27,10 +27,54 @@ unsafe impl<T: crate::__bytemuck::Pod + 'static> Message for T {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Full;
 
+/// What a route from a worker to the leader carries: the message, and the sender's clock when it was sent
+/// (INTERFACE.md 5.2, Definition (Stamp)). Trame makes it and takes it apart; a program sees `Stamped`.
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+pub(crate) struct Wire<M> {
+    pub(crate) clock: u64,
+    pub(crate) nanos: u64,
+    pub(crate) value: M,
+}
+
+// SAFETY: `repr(C, packed)` has no padding, `M` is plain data, and a clock and a count of nanoseconds are
+// valid in every bit pattern: the struct is its bytes.
+unsafe impl<M: crate::__bytemuck::Zeroable> crate::__bytemuck::Zeroable for Wire<M> {}
+// SAFETY: as above; `Pod` also needs `Copy + 'static`, which the derive and `M: Pod` give.
+unsafe impl<M: crate::__bytemuck::Pod> crate::__bytemuck::Pod for Wire<M> {}
+
+/// A message from a worker, with the reading of the worker's clock at its send: what `Run::recv` answers.
+/// The data dates from `at`; two stamps of one worker give the time that passed on that worker between
+/// them, and stamps of two workers do not compare (INTERFACE.md 5.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stamped<M> {
+    pub at: crate::time::Reading,
+    pub value: M,
+}
+
 /// Send `msg` from this worker to `to`, on the route of type `M`. Answers `Full` only when that
-/// route is not lossy and at capacity. Panics when the topology has no such route.
+/// route is not lossy and at capacity. Panics when the topology has no such route. A message to the leader
+/// is stamped with this worker's clock (INTERFACE.md 5.2).
 pub fn send<M: Message>(to: impl Into<crate::topology::End>, msg: M) -> Result<(), Full> {
-    Selected::worker_send(to.into(), TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
+    let to = to.into();
+    if to == crate::topology::End::Leader {
+        let (clock, nanos) = Selected::worker_stamp();
+        // The bytes of a `Wire<M>`, written in place: a large message is not copied onto the stack a second time.
+        let body = crate::__bytemuck::bytes_of(&msg);
+        let mut small = [0u8; 4112];
+        let mut big;
+        let frame: &mut [u8] = if body.len() <= 4096 {
+            &mut small[..16 + body.len()]
+        } else {
+            big = alloc::vec![0u8; 16 + body.len()];
+            &mut big[..]
+        };
+        frame[..8].copy_from_slice(&clock.raw().to_le_bytes());
+        frame[8..16].copy_from_slice(&nanos.to_le_bytes());
+        frame[16..].copy_from_slice(body);
+        return Selected::worker_send(to, TypeId::of::<Wire<M>>(), type_name::<M>(), frame);
+    }
+    Selected::worker_send(to, TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
 }
 
 /// The next message of type `M` addressed to this worker, or `None` when none is available. A type

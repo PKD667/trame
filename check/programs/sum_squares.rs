@@ -57,7 +57,7 @@ fn main() {
     };
     let mut parts: Vec<Option<u64>> = vec![None; WORKERS as usize];
     while parts.iter().any(Option::is_none) {
-        match run.recv::<Partial>() {
+        match run.recv::<Partial>().map(|s| s.value) {
             Some(p) => parts[p.worker as usize] = Some(p.sum),
             None => run.wait(),
         }

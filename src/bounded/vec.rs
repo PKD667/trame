@@ -53,6 +53,11 @@ impl<T> Bounded<T> {
         &self.buf
     }
 
+    /// The buffer, for `Plain::blocks` (src/plain.rs).
+    pub(crate) fn vec(&self) -> &Vec<T> {
+        &self.buf
+    }
+
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         &mut self.buf
     }

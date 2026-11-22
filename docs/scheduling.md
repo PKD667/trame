@@ -22,7 +22,7 @@ flowchart TD
   S --> A
   C -- none --> Q{"another agent<br/>runs a step?"}
   Q -- yes --> W["wait for its End"]
-  Q -- no --> I["worker_idle<br/>sleep until epoch moves<br/>or a deadline"]
+  Q -- no --> I["worker_idle<br/>sleep until epoch moves"]
   W --> A
   I --> A
 ```
