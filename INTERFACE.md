@@ -761,6 +761,18 @@ numbered from 0, so a program that wants different work on each host branches on
 > answers this host's `HostId`, on its leader and in its workers, and `trame::hosts()` answers $H$. A
 > worker of another host is named `(HostId(h), k)`, as host $h$ declared it.
 
+> **Definition (Workers of a host).** `trame::workers(HostId(h))` answers the number of workers host $h$
+> runs, a `u32`, the leader not counted. It may be called on a leader and in a worker, before the program
+> declares anything, and every host gets the same answer for the same $h$. A host number of $H$ or more
+> panics. The count comes from outside the program: the launcher supplies it, from the machine's usable
+> cores by default, or from an option or a hostfile line that names a count for the host. Hosts may
+> differ. The program may declare more or fewer workers than `workers(h)` says; the number is what the
+> launcher supplies and the program is not refused for ignoring it. A launch that names a worker `(h, k)`
+> with `k` at or above `workers(h)` is refused.
+>
+> *Status: specified, not built.* Today every host gets the ranks that host 0's topology declares, so
+> hosts are uniform; nerve keeps its own table of host counts until this exists.
+
 > **Requirement (Routes between hosts).** A route between workers of two hosts is a route of $T$
 > (Section 5.2). Both hosts declare it, with the same ends, message type, kind and capacity. Hosts
 > whose declarations differ are both refused at launch, with a message naming the route. A route that
@@ -807,6 +819,7 @@ root, except the functions of `trame::math`.
 | `now() -> Reading` | fn | $\mathsf{now}$ (5.1); panics outside a worker |
 | `host() -> HostId` | fn | this host (6) |
 | `hosts() -> u32` | fn | the number of hosts $H$ (6); 1 on a backend that runs one host |
+| `workers(HostId) -> u32` | fn | the workers host $h$ runs, leader not counted (6); *not built* |
 | `Reading` | type: `since`, `clock`, `new` | a reading of one clock; plain, not a message (5.1, Definition (Comparing readings)) |
 | `ClockId` | type: `detached` | the clock of a reading (5.1) |
 | `Stamped<M>` | type: fields `at: Reading`, `value: M` | what the leader's `recv` answers: a message and the sender's reading at its send (5.2, Definition (Stamp)) |
