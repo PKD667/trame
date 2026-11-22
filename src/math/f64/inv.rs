@@ -66,7 +66,7 @@ pub fn atan(x: f64) -> f64 {
         (x, -1)
     } else {
         let x_abs = x.abs();
-        let (mut x, id) = if ix < 0x3ff30000 {
+        let (x, id) = if ix < 0x3ff30000 {
             // |x| < 1.1875
             if ix < 0x3fe60000 {
                 // 7/16 <= |x| < 11/16
