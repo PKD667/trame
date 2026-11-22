@@ -558,3 +558,177 @@ fn broken_sin_is_caught() {
     assert!(broken > 0, "the broken lane sin was not caught: the check has no teeth");
     assert_eq!(real, 0, "the real lane sin disagrees with the scalar");
 }
+
+/// The bench's exp input domain, `uniform[-700, 700]` (check/math/bench.rs): every group of four must
+/// pass exp's guard, so no vector goes to the scalar, and the bits must match the scalar. The denormal
+/// penalty of the discarded branch (see `exp_fast`) showed up here as a 5x slowdown, not as a bit change,
+/// so the timing is the check that catches it; this test keeps the guard claim and the bits.
+#[test]
+fn exp_bench_domain_takes_fast_path_and_matches() {
+    if !require_avx2() {
+        return;
+    }
+    let mut rng = Rng(0x5151);
+    let xs: Vec<f64> = (0..N).map(|_| -700.0 + 1400.0 * rng.unit()).collect();
+    for c in xs.chunks_exact(4) {
+        // SAFETY: has_avx2_fma() held in require_avx2().
+        assert!(unsafe { exp_in_domain(_mm256_loadu_pd(c.as_ptr())) }, "guard sent {c:?} to the scalar");
+    }
+    check_unary("exp", exp_slice, s::exp, &xs);
+}
+
+#[test]
+fn exp_m1_matches_scalar_bitwise() {
+    if !require_avx2() {
+        return;
+    }
+    // Exponents -60..6 cover 2^-54 (the tiny early return) and 38.8 (the large-|x| returns).
+    let xs = unary_inputs(0x3333, -45.0, 40.0, -60, 6);
+    check_unary("exp_m1", exp_m1_slice, s::exp_m1, &xs);
+}
+
+/// Every branch of exp_m1's reduction and of its k-dispatch is taken on the domain: the guard passes on
+/// all of these groups, and the lane output matches the scalar on each k class (k = 0, +-1, 2..19, 20..56,
+/// and the negative k <= -2), so no class is only exercised by the specials.
+#[test]
+fn exp_m1_fast_path_taken_and_all_k_classes_match() {
+    if !require_avx2() {
+        return;
+    }
+    let mut rng = Rng(0x4444);
+    let mut xs: Vec<f64> = Vec::with_capacity(4 * N);
+    for _ in 0..N {
+        xs.push(-38.0 + 76.0 * rng.unit());
+    }
+    for _ in 0..N {
+        xs.push(0.35 * rng.unit() * if rng.next() & 1 == 0 { 1.0 } else { -1.0 });
+    }
+    for _ in 0..N {
+        xs.push(1.0e-16 * (1.0 + rng.unit())); // above 2^-54, below 2^-53: the smallest in the domain
+    }
+    for _ in 0..N {
+        xs.push(1.0 + 37.0 * rng.unit());
+    }
+    for c in xs.chunks_exact(4) {
+        // SAFETY: has_avx2_fma() held in require_avx2().
+        assert!(unsafe { exp_m1_in_domain(_mm256_loadu_pd(c.as_ptr())) }, "guard rejected a domain group {c:?}");
+    }
+    check_unary("exp_m1", exp_m1_slice, s::exp_m1, &xs);
+}
+
+/// The teeth for exp_m1. The comparison must see a one-ulp difference in the k = 0 class and in the k = -1
+/// class: a lane that differs by the last bit of its result is caught by `lane_mismatches`. The real lane
+/// function must agree. (This tests the comparison on the exp_m1 domain; it does not test a broken
+/// reduction, which would need a second copy of exp_m1_fast.)
+#[test]
+fn one_ulp_exp_m1_is_caught() {
+    if !require_avx2() {
+        return;
+    }
+    // SAFETY: AVX2 holds (require_avx2). Broken: the lane result with its last bit flipped.
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn broken_exp_m1(x: __m256d) -> __m256d {
+        unsafe {
+            let r = exp_m1_f64x4(x);
+            _mm256_castsi256_pd(_mm256_xor_si256(_mm256_castpd_si256(r), _mm256_set1_epi64x(1)))
+        }
+    }
+    // SAFETY: as above.
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn lane_mismatches(f: unsafe fn(__m256d) -> __m256d, xs: &[f64]) -> usize {
+        let mut bad = 0;
+        for c in xs.chunks_exact(4) {
+            let mut r = [0.0_f64; 4];
+            // SAFETY: the chunk has four elements.
+            unsafe { _mm256_storeu_pd(r.as_mut_ptr(), f(_mm256_loadu_pd(c.as_ptr()))) };
+            for j in 0..4 {
+                if !same(r[j], s::exp_m1(c[j])) {
+                    bad += 1;
+                }
+            }
+        }
+        bad
+    }
+    let mut rng = Rng(0x5555);
+    let xs: Vec<f64> = (0..4 * 4096).map(|_| -38.0 + 76.0 * rng.unit()).collect();
+    // SAFETY: as above.
+    let broken = unsafe { lane_mismatches(broken_exp_m1, &xs) };
+    // SAFETY: as above.
+    let real = unsafe { lane_mismatches(exp_m1_f64x4, &xs) };
+    assert!(broken > 0, "the one-ulp change was not caught: the check has no teeth");
+    assert_eq!(real, 0, "the real lane exp_m1 disagrees with the scalar");
+}
+
+#[test]
+fn log2_matches_scalar_bitwise() {
+    if !require_avx2() {
+        return;
+    }
+    let xs = unary_inputs(0x6666, 1.0e-300, 1.0e300, -1000, 1000);
+    check_unary("log2", log2_slice, s::log2, &xs);
+}
+
+/// The guard passes on the positive normal numbers, including those next to 1.0, and fails on 1.0 itself
+/// (the scalar's early return), so the fast path covers the whole domain except that one value.
+#[test]
+fn log2_fast_path_taken_on_domain() {
+    if !require_avx2() {
+        return;
+    }
+    let mut rng = Rng(0x7070);
+    let mut xs: Vec<f64> = Vec::with_capacity(4 * N);
+    for _ in 0..N {
+        xs.push(1.0 + 1.0e-12 * (1.0 + rng.unit())); // strictly above 1.0 (1.0 + tiny can round to 1.0)
+    }
+    for _ in 0..N {
+        xs.push(f64::MIN_POSITIVE * (1.0 + rng.unit()) * 2.0_f64.powi(rng.next() as i32 & 0x3ff));
+    }
+    for c in xs.chunks_exact(4) {
+        // SAFETY: has_avx2_fma() held in require_avx2().
+        assert!(unsafe { log2_in_domain(_mm256_loadu_pd(c.as_ptr())) }, "guard rejected a domain group {c:?}");
+    }
+    check_unary("log2", log2_slice, s::log2, &xs);
+    // SAFETY: as above.
+    assert!(!unsafe { log2_in_domain(_mm256_set1_pd(1.0)) }, "1.0 must go to the scalar");
+}
+
+/// The teeth for log2: the last bit of the lane result flipped must be caught, and the real lane log2
+/// must agree. (As for exp_m1, this tests the comparison, not a broken reduction.)
+#[test]
+fn one_ulp_log2_is_caught() {
+    if !require_avx2() {
+        return;
+    }
+    // SAFETY: AVX2 holds (require_avx2). Broken: the lane result with its last bit flipped.
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn broken_log2(x: __m256d) -> __m256d {
+        unsafe {
+            let r = log2_f64x4(x);
+            _mm256_castsi256_pd(_mm256_xor_si256(_mm256_castpd_si256(r), _mm256_set1_epi64x(1)))
+        }
+    }
+    // SAFETY: as above.
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn lane_mismatches(f: unsafe fn(__m256d) -> __m256d, xs: &[f64]) -> usize {
+        let mut bad = 0;
+        for c in xs.chunks_exact(4) {
+            let mut r = [0.0_f64; 4];
+            // SAFETY: the chunk has four elements.
+            unsafe { _mm256_storeu_pd(r.as_mut_ptr(), f(_mm256_loadu_pd(c.as_ptr()))) };
+            for j in 0..4 {
+                if !same(r[j], s::log2(c[j])) {
+                    bad += 1;
+                }
+            }
+        }
+        bad
+    }
+    let mut rng = Rng(0x8080);
+    let xs: Vec<f64> = (0..4 * 4096).map(|_| 1.0e-3 + 1.0e6 * rng.unit()).collect();
+    // SAFETY: as above.
+    let broken = unsafe { lane_mismatches(broken_log2, &xs) };
+    // SAFETY: as above.
+    let real = unsafe { lane_mismatches(log2_f64x4, &xs) };
+    assert!(broken > 0, "the one-ulp change was not caught: the check has no teeth");
+    assert_eq!(real, 0, "the real lane log2 disagrees with the scalar");
+}

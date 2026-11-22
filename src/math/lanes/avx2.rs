@@ -14,7 +14,7 @@
 //!   scalar function, lane by lane. That is exact by construction.
 //! * every NaN the scalar returns is `f64::NAN`; `canon` makes the lanes return the same bits.
 //!
-//! The constants of exp and ln are copied from src/math/f64/{exp,ln}.rs, whose copies are private. The
+//! The constants of exp, expm1, ln and log2 are copied from src/math/f64/{exp,expm1,ln,misc}.rs, whose copies are private. The
 //! tests in `super::tests` compare bits with the scalar functions, which pins them.
 
 use crate::math::f64 as s;
@@ -352,11 +352,14 @@ unsafe fn exp_fast(x: __m256d) -> __m256d {
             _mm256_sub_pd(_mm256_sub_pd(l_r, _mm256_div_pd(xc, _mm256_sub_pd(pd(2.0), c))), h_r),
         );
         let k_ge = _mm256_cmpgt_epi64(k, ei(-1022)); // k >= -1021
-        let scaled_hi = add_to_hi(y, _mm256_slli_epi64::<20>(k));
-        let scaled_lo = _mm256_mul_pd(
-            add_to_hi(y, _mm256_slli_epi64::<20>(_mm256_add_epi64(k, ei(1000)))),
-            pd(EXP_TWOM1000),
-        );
+        // Both branches run on every lane, so the discarded one must stay in range: k_hi is 0 where the lo
+        // branch is taken, and k_lo is 0 where the hi branch is taken. Otherwise the discarded branch's
+        // exponent field wraps, it yields subnormals, and the lanes pay the denormal penalty (measured with
+        // probe/exp_probe.rs: uniform [-700, 700] went from 16.8 to 3.4 ns per element).
+        let k_hi = seli(k_ge, k, ei(0));
+        let k_lo = seli(k_ge, ei(0), _mm256_add_epi64(k, ei(1000)));
+        let scaled_hi = add_to_hi(y, _mm256_slli_epi64::<20>(k_hi));
+        let scaled_lo = _mm256_mul_pd(add_to_hi(y, _mm256_slli_epi64::<20>(k_lo)), pd(EXP_TWOM1000));
         let scaled = sel(fbits(k_ge), scaled_hi, scaled_lo);
         let k_zero = _mm256_cmpeq_epi64(k, ei(0));
         sel(fbits(k_zero), v0, scaled)
@@ -373,6 +376,131 @@ unsafe fn exp_fast(x: __m256d) -> __m256d {
 pub unsafe fn exp_f64x4(x: __m256d) -> __m256d {
     unsafe {
         if exp_in_domain(x) { exp_fast(x) } else { scalar4(x, s::exp) }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// expm1 (src/math/f64/expm1.rs, fdlibm s_expm1.c)
+
+const EM_LN2_HI: f64 = 6.93147180369123816490e-01;
+const EM_LN2_LO: f64 = 1.90821492927058770002e-10;
+const EM_INVLN2: f64 = 1.44269504088896338700e+00;
+const EM_Q1: f64 = -3.33333333333331316428e-02;
+const EM_Q2: f64 = 1.58730158725481460165e-03;
+const EM_Q3: f64 = -7.93650757867487942473e-05;
+const EM_Q4: f64 = 4.00821782732936239552e-06;
+const EM_Q5: f64 = -2.01099218183624371326e-07;
+
+/// The fast path of `exp_m1` holds for `2^-54 <= |x| < 38.8`: the high word of `|x|` lies in
+/// `[0x3c90_0000, 0x4043_687a)`. That excludes NaN, infinities, the tiny-|x| early return and the
+/// large-|x| returns (`exp_m1(+-inf)`, overflow, and `-1` below about -38.8).
+///
+/// # Safety
+/// The CPU has AVX2.
+#[target_feature(enable = "avx2")]
+#[inline]
+pub unsafe fn exp_m1_in_domain(x: __m256d) -> bool {
+    unsafe {
+        let hx = _mm256_and_si256(_mm256_srli_epi64::<32>(bits(x)), ei(0x7fff_ffff));
+        let ok = _mm256_and_si256(_mm256_cmpgt_epi64(hx, ei(0x3c8f_ffff)), _mm256_cmpgt_epi64(ei(0x4043_687a), hx));
+        _mm256_movemask_pd(fbits(ok)) == 0xf
+    }
+}
+
+/// The fast path of `exp_m1`, lane by lane. Every scalar branch is a select; both sides of each run on
+/// every lane, and a lane keeps the side its scalar branch takes. Within the domain `k` lies in
+/// `[-56, 56]`, so the shifts and exponent offsets below stay in range on every lane.
+///
+/// # Safety
+/// The CPU has AVX2 and FMA, and every lane is in the domain of `exp_m1_in_domain`.
+#[target_feature(enable = "avx2,fma")]
+#[inline]
+unsafe fn exp_m1_fast(x: __m256d) -> __m256d {
+    unsafe {
+        let b = bits(x);
+        let m32 = ei(0xffff_ffff);
+        let hx = _mm256_and_si256(_mm256_srli_epi64::<32>(b), ei(0x7fff_ffff));
+        let neg = fbits(_mm256_cmpgt_epi64(ei(0), b)); // sign mask: the scalar's `xsb != 0`
+
+        // Reduction, for `hx > 0x3fd6_2e42`. Near (`hx < 0x3ff0_a2b2`): k = +-1 by sign. Else k = trunc(INVLN2*x +- 0.5).
+        let big = _mm256_cmpgt_epi64(hx, ei(0x3fd6_2e42));
+        let near = _mm256_cmpgt_epi64(ei(0x3ff0_a2b2), hx);
+        let hi1 = sel(neg, _mm256_add_pd(x, pd(EM_LN2_HI)), _mm256_sub_pd(x, pd(EM_LN2_HI)));
+        let lo1 = sel(neg, pd(-EM_LN2_LO), pd(EM_LN2_LO));
+        let k1 = seli(_mm256_castpd_si256(neg), ei(-1), ei(1));
+        let half = sel(neg, pd(-0.5), pd(0.5));
+        let kf32 = _mm256_cvttpd_epi32(_mm256_add_pd(_mm256_mul_pd(pd(EM_INVLN2), x), half));
+        let kf = _mm256_cvtepi32_epi64(kf32);
+        let tf = _mm256_cvtepi32_pd(kf32);
+        let hi2 = _mm256_sub_pd(x, _mm256_mul_pd(tf, pd(EM_LN2_HI)));
+        let lo2 = _mm256_mul_pd(tf, pd(EM_LN2_LO));
+        let hi_r = sel(fbits(near), hi1, hi2);
+        let lo_r = sel(fbits(near), lo1, lo2);
+        let k_r = seli(near, k1, kf);
+        let x_big = _mm256_sub_pd(hi_r, lo_r);
+        let c_big = _mm256_sub_pd(_mm256_sub_pd(hi_r, x_big), lo_r);
+        let xr = sel(fbits(big), x_big, x); // scalar: x = hi - lo, only when big
+        let c = sel(fbits(big), c_big, pd(0.0));
+        let k = seli(big, k_r, ei(0));
+
+        // r1 = 1 + hxs * (Q1 + hxs * (Q2 + ...)), t = 3 - r1*hfx, e = hxs * ((r1 - t) / (6 - x*t)).
+        let hfx = _mm256_mul_pd(pd(0.5), xr);
+        let hxs = _mm256_mul_pd(xr, hfx);
+        let p5 = _mm256_add_pd(pd(EM_Q4), _mm256_mul_pd(hxs, pd(EM_Q5)));
+        let p4 = _mm256_add_pd(pd(EM_Q3), _mm256_mul_pd(hxs, p5));
+        let p3 = _mm256_add_pd(pd(EM_Q2), _mm256_mul_pd(hxs, p4));
+        let p2 = _mm256_add_pd(pd(EM_Q1), _mm256_mul_pd(hxs, p3));
+        let r1 = _mm256_add_pd(pd(1.0), _mm256_mul_pd(hxs, p2));
+        let t = _mm256_sub_pd(pd(3.0), _mm256_mul_pd(r1, hfx));
+        let e = _mm256_mul_pd(hxs, _mm256_div_pd(_mm256_sub_pd(r1, t), _mm256_sub_pd(pd(6.0), _mm256_mul_pd(xr, t))));
+
+        // k == 0: x - (x*e - hxs).
+        let v_k0 = _mm256_sub_pd(xr, _mm256_sub_pd(_mm256_mul_pd(xr, e), hxs));
+        // Otherwise e = x*(e - c) - c, then e -= hxs.
+        let e2 = _mm256_sub_pd(_mm256_sub_pd(_mm256_mul_pd(xr, _mm256_sub_pd(e, c)), c), hxs);
+        // k == -1: 0.5*(x - e) - 0.5.
+        let v_m1 = _mm256_sub_pd(_mm256_mul_pd(pd(0.5), _mm256_sub_pd(xr, e2)), pd(0.5));
+        // k == 1: x < -0.25 ? -2*(e - (x + 0.5)) : 1 + 2*(x - e). Never x < -0.25 here (k = 1 needs x > 0.35).
+        let x_lt = _mm256_cmp_pd::<_CMP_LT_OQ>(xr, pd(-0.25));
+        let v_p1 = sel(
+            x_lt,
+            _mm256_mul_pd(pd(-2.0), _mm256_sub_pd(e2, _mm256_add_pd(xr, pd(0.5)))),
+            _mm256_add_pd(pd(1.0), _mm256_mul_pd(pd(2.0), _mm256_sub_pd(xr, e2))),
+        );
+        // k <= -2 or k > 56: y = 1 - (e - x) with k added to its exponent, then y - 1.
+        let ya = add_to_hi(_mm256_sub_pd(pd(1.0), _mm256_sub_pd(e2, xr)), _mm256_slli_epi64::<20>(k));
+        let v_a = _mm256_sub_pd(ya, pd(1.0));
+        // 2 <= k < 20: t = 1 with hi word 0x3ff00000 - (0x200000 >> k); y = t - (e - x); y with k added.
+        let sh = _mm256_srlv_epi64(ei(0x20_0000), k);
+        let t_hi = _mm256_and_si256(_mm256_sub_epi64(ei(0x3ff0_0000), sh), m32);
+        let t_b = fbits(_mm256_slli_epi64::<32>(t_hi));
+        let yb = _mm256_sub_pd(t_b, _mm256_sub_pd(e2, xr));
+        let v_b = add_to_hi(yb, _mm256_slli_epi64::<20>(k));
+        // 20 <= k <= 56: t = 2^(k) style word (0x3ff - k) << 20; y = (x - (e + t)) + 1, with k added.
+        let tc_hi = _mm256_and_si256(_mm256_slli_epi64::<20>(_mm256_sub_epi64(ei(0x3ff), k)), m32);
+        let t_c = fbits(_mm256_slli_epi64::<32>(tc_hi));
+        let yc = _mm256_add_pd(_mm256_sub_pd(xr, _mm256_add_pd(e2, t_c)), pd(1.0));
+        let v_c = add_to_hi(yc, _mm256_slli_epi64::<20>(k));
+
+        let k_a = _mm256_or_si256(_mm256_cmpgt_epi64(ei(-1), k), _mm256_cmpgt_epi64(k, ei(56)));
+        let k_lt20 = _mm256_cmpgt_epi64(ei(20), k);
+        let res_nz = sel(fbits(k_a), v_a, sel(fbits(k_lt20), v_b, v_c));
+        let res_p1 = sel(fbits(_mm256_cmpeq_epi64(k, ei(1))), v_p1, res_nz);
+        let res_m1 = sel(fbits(_mm256_cmpeq_epi64(k, ei(-1))), v_m1, res_p1);
+        sel(fbits(_mm256_cmpeq_epi64(k, ei(0))), v_k0, res_m1)
+    }
+}
+
+/// `exp_m1` on four lanes. A vector with a lane outside the fast path's domain goes to the scalar
+/// `exp_m1`, lane by lane.
+///
+/// # Safety
+/// The CPU has AVX2 and FMA.
+#[target_feature(enable = "avx2,fma")]
+#[inline]
+pub unsafe fn exp_m1_f64x4(x: __m256d) -> __m256d {
+    unsafe {
+        if exp_m1_in_domain(x) { exp_m1_fast(x) } else { scalar4(x, s::exp_m1) }
     }
 }
 
@@ -623,6 +751,83 @@ pub unsafe fn cos_f64x4(x: __m256d) -> __m256d {
 // ---------------------------------------------------------------------------------------------
 // Slices. Same length asserted; the tail (fewer than four elements) is the scalar function.
 
+// ---------------------------------------------------------------------------------------------
+// log2 (src/math/f64/misc.rs): ln's reduction, then the FreeBSD k_log tail with no small-|f| branch.
+
+const L2_IVLN2HI: f64 = 1.44269504072144627571e+00;
+const L2_IVLN2LO: f64 = 1.67517131648865118353e-10;
+
+/// The fast path of `log2`: `ln_in_domain` (positive normal) and not `1.0`, which the scalar returns as
+/// `+0` by an early return. Zero, negatives, subnormals, infinities and NaN take the scalar.
+///
+/// # Safety
+/// The CPU has AVX2.
+#[target_feature(enable = "avx2")]
+#[inline]
+pub unsafe fn log2_in_domain(x: __m256d) -> bool {
+    unsafe {
+        let one = _mm256_cmpeq_epi64(bits(x), ei(0x3ff0_0000_0000_0000));
+        ln_in_domain(x) && _mm256_movemask_pd(fbits(one)) == 0
+    }
+}
+
+/// The fast path of `log2`, lane by lane. The scalar's operations in its order; no fma (the scalar has none).
+///
+/// # Safety
+/// The CPU has AVX2 and FMA, and every lane is in the domain of `log2_in_domain`.
+#[target_feature(enable = "avx2,fma")]
+#[inline]
+unsafe fn log2_fast(x0: __m256d) -> __m256d {
+    unsafe {
+        let b = bits(x0);
+        let lx = _mm256_and_si256(b, ei(0xffff_ffff));
+        let hx0 = _mm256_srli_epi64::<32>(b); // positive: the scalar's i32 `hx`
+        let mut k = _mm256_sub_epi64(_mm256_srli_epi64::<20>(hx0), ei(1023));
+        let hxm = _mm256_and_si256(hx0, ei(0x000f_ffff));
+        let i0 = _mm256_and_si256(_mm256_add_epi64(hxm, ei(0x95f64)), ei(0x0010_0000));
+        let xhi = _mm256_or_si256(hxm, _mm256_xor_si256(i0, ei(0x3ff0_0000)));
+        let x = fbits(_mm256_or_si256(_mm256_slli_epi64::<32>(xhi), lx));
+        k = _mm256_add_epi64(k, _mm256_srli_epi64::<20>(i0));
+        let y = i64_to_f64(k);
+        let f = _mm256_sub_pd(x, pd(1.0));
+        let hfsq = _mm256_mul_pd(_mm256_mul_pd(pd(0.5), f), f);
+
+        // k_log1p(f)
+        let s = _mm256_div_pd(f, _mm256_add_pd(pd(2.0), f));
+        let z = _mm256_mul_pd(s, s);
+        let w = _mm256_mul_pd(z, z);
+        let t1 = _mm256_mul_pd(w, _mm256_add_pd(pd(LN_LG2), _mm256_mul_pd(w, _mm256_add_pd(pd(LN_LG4), _mm256_mul_pd(w, pd(LN_LG6))))));
+        let inner = _mm256_add_pd(pd(LN_LG5), _mm256_mul_pd(w, pd(LN_LG7)));
+        let inner = _mm256_add_pd(pd(LN_LG3), _mm256_mul_pd(w, inner));
+        let t2 = _mm256_mul_pd(z, _mm256_add_pd(pd(LN_LG1), _mm256_mul_pd(w, inner)));
+        let r = _mm256_add_pd(t2, t1);
+        let r = _mm256_mul_pd(s, _mm256_add_pd(hfsq, r));
+
+        // h = f - hfsq with its low word cleared; l = (f - h) - hfsq + r.
+        let h = fbits(_mm256_and_si256(bits(_mm256_sub_pd(f, hfsq)), ei(0xffff_ffff_0000_0000_u64 as i64)));
+        let l = _mm256_add_pd(_mm256_sub_pd(_mm256_sub_pd(f, h), hfsq), r);
+        let val_hi = _mm256_mul_pd(h, pd(L2_IVLN2HI));
+        let val_lo = _mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(l, h), pd(L2_IVLN2LO)), _mm256_mul_pd(l, pd(L2_IVLN2HI)));
+
+        // spadd(val_hi, val_lo, y)
+        let w = _mm256_add_pd(y, val_hi);
+        let val_lo = _mm256_add_pd(val_lo, _mm256_add_pd(_mm256_sub_pd(y, w), val_hi));
+        _mm256_add_pd(val_lo, w)
+    }
+}
+
+/// `log2` on four lanes. A vector with a lane outside the fast path's domain goes to the scalar `log2`.
+///
+/// # Safety
+/// The CPU has AVX2 and FMA.
+#[target_feature(enable = "avx2,fma")]
+#[inline]
+pub unsafe fn log2_f64x4(x: __m256d) -> __m256d {
+    unsafe {
+        if log2_in_domain(x) { log2_fast(x) } else { scalar4(x, s::log2) }
+    }
+}
+
 macro_rules! slice_fn {
     ($(#[$m:meta])* $name:ident, $imp:ident, $vec:ident, $sc:path) => {
         $(#[$m])*
@@ -660,6 +865,14 @@ macro_rules! slice_fn {
 slice_fn!(
     /// `out[i] = exp(xs[i])`, bit-identical to `trame::math::f64::exp`.
     exp_slice, exp_slice_imp, exp_f64x4, s::exp
+);
+slice_fn!(
+    /// `out[i] = log2(xs[i])`, bit-identical to `trame::math::f64::log2`.
+    log2_slice, log2_slice_imp, log2_f64x4, s::log2
+);
+slice_fn!(
+    /// `out[i] = exp_m1(xs[i])`, bit-identical to `trame::math::f64::exp_m1`.
+    exp_m1_slice, exp_m1_slice_imp, exp_m1_f64x4, s::exp_m1
 );
 slice_fn!(
     /// `out[i] = ln(xs[i])`, bit-identical to `trame::math::f64::ln`.
