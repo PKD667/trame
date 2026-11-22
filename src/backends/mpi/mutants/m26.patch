@@ -1,7 +1,7 @@
 # violates: none that a program's output shows (a busy wait: CPU use only, see the expect line)
 # expect: equivalent: worker_idle returns at once, so the worker re-checks its conditions in a busy loop. A step
 #   still runs only when sched::start (concurrent.rs, shared) finds the process enabled, so the output of a run that
-#   ends does not change; only CPU use does. The mpi backend reports no Deadlock for an idle worker (m17.skip), so a
+#   ends does not change; only CPU use does. The mpi backend reports no Deadlock for an idle worker, so a
 #   stuck run hangs with or without this patch. Not run here; the seq argument (seq/m26.patch) is the same.
 --- a/backends/mpi/roles/worker.rs
 +++ b/backends/mpi/roles/worker.rs
@@ -9,8 +9,8 @@
      let x = xport();
      let t = parts().0;
      if !t.has_lanes() {
--        t.sleep(epoch as u32, until);
-+        let _ = (epoch, until);
+-        t.sleep(epoch as u32);
++        let _ = epoch;
          return;
      }
      drop(x);
