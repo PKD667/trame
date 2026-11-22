@@ -30,7 +30,11 @@ let
       };
       params = { backend = n; timeout = 120; };
       sweep.mutant = mutantIds b.mutants;
-      resources = { provider = "local"; hosts = 1; };
+      # A backend whose runs are timed (not deterministic) ends a killed run at its timeout, 120 s each, so its mutants
+      # take hours on one ordinary machine: they go to the cluster, one machine per mutant. The rest run here.
+      resources =
+        if b.d.deterministic then { provider = "local"; hosts = 1; }
+        else { provider = "cluster"; hosts = 1; walltime = 120; opts.stage = "fanout"; };
       data = { kill = killData; launch_config = data.dataset "launch_config"; };
     };
   };
