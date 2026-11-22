@@ -12,6 +12,12 @@ let
   rejectionCases = builtins.length (builtins.filter (lib.hasSuffix ".rs") (lib.filesystem.listFilesRecursive ../check/rejections/cases));
   inherit (import ./validate-cargo.nix { inherit pkgs; }) vendor vendorRejections cargoHomeWith;
   panicsDir = ../check/programs;
+  # The programs a backend cannot judge, one per line before the reason: src/backends/<name>/skip.txt, as check/programs/run.sh reads it.
+  skipped = name:
+    let f = ../src/backends + "/${name}/skip.txt";
+    in if builtins.pathExists f
+       then map (l: builtins.head (lib.splitString " " l)) (lib.filter (l: l != "") (lib.splitString "\n" (builtins.readFile f)))
+       else [ ];
 
   # Every program of check/programs/, run through the backend's launch, against its .expected output.
   programsCheck = name: b: v.check {
@@ -26,7 +32,7 @@ let
       mkdir -p $out/counterexamples
       holds=true
       items=""
-      for p in ${lib.concatStringsSep " " b.programs}; do
+      for p in ${lib.concatStringsSep " " (lib.subtractLists (skipped name) b.programs)}; do
         rc=0; panic=""; [ -f "${panicsDir}/$p.panics" ] && panic="$(cat "${panicsDir}/$p.panics")"
         d="$TMPDIR/$p"
         ${b.launch}/bin/launch --timeout 120 --out "$d" -- "$subject/programs/$p" > /dev/null 2> "$TMPDIR/$p.launch" || rc=$?
