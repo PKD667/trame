@@ -458,6 +458,46 @@
         "path": "/nix/store/gbx8vz8npm7dc2y48b7fkxjsih9m19iq-latency-mpi-s1-b528923d07ba-r5",
         "sha256": "sha256-WJEPZqn3zkmltpEKo04HiF9PFW/Utfmga/I+ySanSoQ="
       }
+    ],
+    "programs-mpi-s2": [
+      {
+        "facts": {
+          "closure": "/nix/store/j74w0z2m8h1d4x1887iy1pky0f68vc8x-experiment-programs-mpi-s2",
+          "format": "2.0",
+          "input_id": "502be62d231dd65999aaf0c45c9128e2feda43e6d6a1343d28216b8c1a7659ee",
+          "params": {
+            "backend": "mpi",
+            "repeats": 3,
+            "split": 2
+          },
+          "replicate": 1,
+          "run": "programs-mpi-s2-502be62d231d-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-mpi-s2-502be62d231d-r1",
+        "path": "/nix/store/flcp0bc9njr2zjv29nw0z1dbr0mvc683-programs-mpi-s2-502be62d231d-r1",
+        "sha256": "sha256-8vO1Get5F1TL/cgHJfRUCgE8CU73A1YpgEdE95HdFJs="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/j74w0z2m8h1d4x1887iy1pky0f68vc8x-experiment-programs-mpi-s2",
+          "format": "2.0",
+          "input_id": "7436b7513efbc857a77d541421ad0fb6db539d5ad0df4dfeb3555cfdaac72937",
+          "params": {
+            "backend": "mpi",
+            "repeats": 3,
+            "split": 1
+          },
+          "replicate": 1,
+          "run": "programs-mpi-s2-7436b7513efb-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-mpi-s2-7436b7513efb-r1",
+        "path": "/nix/store/x26s2gachkpa3wn7xdnjfn0rw5far1pm-programs-mpi-s2-7436b7513efb-r1",
+        "sha256": "sha256-SSgb6J0JGXXq8F6+krOVXxM3XuIHGkDZEyPfS1mKvLg="
+      }
     ]
   }
 }
