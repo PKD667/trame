@@ -40,6 +40,9 @@ let
   # A backend's launch with what it needs on its PATH and the nixsci library, so it runs from anywhere.
   launchFor = name: d: pkgs.runCommand "launch-${name}" { nativeBuildInputs = [ pkgs.makeWrapper pkgs.python3 pkgs.bash ]; } ''
     install -Dm755 ${backendDir + "/${name}/launch"} $out/bin/launch
+    ${lib.optionalString (builtins.pathExists (backendDir + "/${name}/placement.py")) ''
+      install -Dm644 ${backendDir + "/${name}/placement.py"} $out/bin/placement.py
+    ''}
     patchShebangs $out/bin/launch
     wrapProgram $out/bin/launch --prefix PATH : ${lib.makeBinPath d.launchRuntime} --prefix PYTHONPATH : ${labPy}
   '';

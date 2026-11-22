@@ -53,7 +53,10 @@ pub(crate) fn host() -> &'static mut Host {
         let shared = w.split_shared(w.rank());
         let comm = match setting {
             Ok(Some(k)) => {
-                let g = split_groups(w, &shared, k).expect("a rank's own colour is never undefined");
+                if let Some(n) = k.ranks() {
+                    assert_eq!(n, w.size(), "TRAME_MPI_NODE_RANKS names {n} ranks and the launch has {}", w.size());
+                }
+                let g = split_groups(w, &shared, &k).expect("a rank's own colour is never undefined");
                 std::mem::forget(shared);
                 g
             }

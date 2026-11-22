@@ -202,11 +202,17 @@ impl Backend for Selected {
     }
 
     fn host() -> u32 {
+        // The launcher asks the program its rank count once per host, as host TRAME_PROBE_HOST of TRAME_PROBE_HOSTS.
+        if std::env::var("TRAME_PROBE").as_deref() == Ok("ranks") {
+            if let Some(h) = std::env::var("TRAME_PROBE_HOST").ok().and_then(|v| v.parse().ok()) {
+                return h;
+            }
+        }
         crate::backends::mpi::transport::hosts::host().id
     }
 
     fn hosts() -> u32 {
-        // The launcher (launch) asks a program its rank count on one rank, as host 0 of TRAME_PROBE_HOSTS.
+        // The launcher (launch) asks a program its rank count on one rank, as a host of TRAME_PROBE_HOSTS (host()).
         if std::env::var("TRAME_PROBE").as_deref() == Ok("ranks") {
             if let Some(h) = std::env::var("TRAME_PROBE_HOSTS").ok().and_then(|v| v.parse().ok()) {
                 return h;

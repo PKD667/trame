@@ -21,7 +21,7 @@ pub enum Refusal {
     /// Shared memory the launch needs (the window) could not be made.
     /// `need` is the size asked for; `why` is the OS or MPI error, or that another rank failed.
     Memory { need: usize, why: String },
-    /// TRAME_MPI_NODE_RANKS is set to something other than a number of ranks per node, 1 or more.
+    /// TRAME_MPI_NODE_RANKS is set to something other than a number of ranks per host, 1 or more, or a list of them.
     NodeRanks(String),
     /// The MPI library does not promise the unified memory model that direct loads and stores
     /// on a shared window need.
@@ -40,7 +40,7 @@ impl fmt::Display for Refusal {
             }
             Refusal::Memory { need, why } => write!(f, "{need} bytes of shared memory refused: {why}"),
             Refusal::NodeRanks(value) => {
-                write!(f, "TRAME_MPI_NODE_RANKS must be 1 or more, got {value:?}")
+                write!(f, "TRAME_MPI_NODE_RANKS must be a number of ranks per host, 1 or more, or a comma-separated list of them, got {value:?}")
             }
             Refusal::NotUnified => write!(f, "MPI window is not in the unified memory model"),
             Refusal::Mpi(call) => write!(f, "MPI call {call} failed"),

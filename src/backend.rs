@@ -94,6 +94,11 @@ pub(crate) trait Backend {
         1
     }
 
+    /// The workers host `h` is supplied by the launcher (INTERFACE.md 6); panics when `h >= hosts()`.
+    fn workers(h: u32) -> u32 {
+        crate::backends::supply::workers(h, Self::hosts())
+    }
+
     /// Send `bytes`, a message of tag `tag` (F4), to the leader of host `to` on the peer channel
     /// (F6). A host is not its own peer. A backend whose deployment is one host has no peer.
     fn peer_send(_run: &Self::Run, to: u32, _tag: u64, _bytes: &[u8]) -> Result<(), Full> {

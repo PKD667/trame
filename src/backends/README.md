@@ -119,9 +119,12 @@ two-sided MPI. The leaders show a run stuck by rounds of a nonblocking allreduce
 README of its directory: `src/backends/mpi/README.md` is the index, and `transport/` holds the hosts and the
 measurements of the lanes.
 
-Several hosts on one machine come from `TRAME_MPI_NODE_RANKS=k`, which cuts a node into hosts of k ranks. It is
+Several hosts on one machine come from `TRAME_MPI_NODE_RANKS=k`, which cuts a node into hosts of k ranks, or
+`=k0,k1,...`, which gives host 0 k0 ranks, host 1 k1, and so on (the sizes add up to the launch's ranks). It is
 for testing and never a default. `TRAME_PROBE=ranks` makes a program print `trame-ranks N` and stop, and the
-launch uses it to ask for the rank count.
+launch uses it to ask for the rank count of each host, as host `TRAME_PROBE_HOST` of `TRAME_PROBE_HOSTS`.
+`TRAME_WORKERS=n0,n1,...` is what `trame::workers(h)` answers for each host (INTERFACE.md 6): the launch
+decides it and passes it to every rank (`src/backends/supply.rs`).
 
 Open MPI may print `osc_ucx_component` errors on stderr on some machines; they come from Open MPI, not from
 the program. A process that did not build a state adopts the leader's address (`build_or_adopt`,
@@ -165,7 +168,7 @@ agent come from `nixsci.lab.mpi`, and `crates/cli/check.sh` tests that path.
 
 Every backend provides `src/backends/<b>/launch`, with the same interface:
 
-    src/backends/<b>/launch [--split S] [--bind B] [--timeout T] --out DIR -- PROGRAM ARGS
+    src/backends/<b>/launch [--split S] [--workers N,N,...] [--bind B] [--timeout T] --out DIR -- PROGRAM ARGS
 
 The launcher runs the program as hosts of the backend, and it writes four files into DIR. `host<h>.out` and
 `host<h>.err` hold host h's stdout and stderr, with consecutive duplicate lines collapsed. `cpu.tsv` has the
@@ -180,6 +183,15 @@ count. It also exits 2 on a usage error. A launcher that must ask the program fo
 when that first run ends without launching a topology: the program ran once, exited 0, and that run is
 `host0.out` and `host0.err`. A test harness counts such a test as passed and never reruns it outside the
 launcher.
+
+`--workers` gives `trame::workers(h)` for every host: one count for all, or one per host. Without it the counts come
+from `TRAME_WORKERS` in the environment (the same form), then from a `slots=N` on the host's machine's line of the
+hostfile, then from the machine's usable cores, which is `nproc` run on the machine and so follows its cpuset,
+divided by `--split` (at least 1). `seq` has one host and takes one count. The counts are only what
+`trame::workers` answers. Each host is started with the workers it declares, which a program that wants its host's
+share takes from `trame::workers(trame::host())`; on `mpi` the launcher asks the program once per host
+(`TRAME_PROBE_HOST`), so hosts may differ, and it places the machine's slots as the sum of its hosts' ranks.
+`check/workers.sh BACKEND` runs `check/programs/workers.rs` on hosts of different sizes.
 
 The job's machines come from `NIX_DEPLOY_HOSTFILE` when it is set, and otherwise from this machine. `seq`
 refuses a job that names more than one machine.
@@ -285,8 +297,9 @@ that stays up and talks over its stdin and stdout, and `serve` is its launcher: 
 `src/backends/<b>/serve`. It runs in the foreground with the program's stdio, and ends with the program. On `seq` it is
 `exec`. On `mpi` it asks the program for its rank count (`TRAME_PROBE=ranks`), takes the machines from
 `NIX_DEPLOY_HOSTFILE` and the remote agent from `NIX_DEPLOY_AGENT` (nixsci's `mpi.command`), and replaces itself with
-`mpirun --stdin <leader of host 0>`: mpirun's default is rank 0, which is a worker. Every host gets the ranks that
-host 0's topology declares, so hosts are uniform in workers. Stdout and stderr of every rank reach the caller,
+`mpirun --stdin <leader of host 0>`: mpirun's default is rank 0, which is a worker. Each host gets the ranks its own
+topology declares, as `launch` places them (`placement.py`); `serve` reads the counts of `trame::workers` from
+`TRAME_WORKERS`, or `--workers` when run directly. Stdout and stderr of every rank reach the caller,
 unordered between ranks, so a service speaks on its stdout from its leader only. Checked on `leader_io` (the sorted
 stdout equals its `.expected` on both backends); stdin reaching the leader was checked with plain `mpirun --stdin`, not
 with a trame program.

@@ -10,7 +10,7 @@ DIR/host<h>.out   host h's stdout: its ranks' lines in rank order, consecutive d
                   prints once per rank)
 DIR/host<h>.err   host h's stderr, the same way, tags removed
 DIR/cpu.tsv       host, rank, machine, user_s, sys_s, wall_s: one row per rank
-DIR/config.txt    the MPI setup: MCA files, mpirun's version, MCA variables, the command line
+DIR/config.txt    the MPI setup: MCA files, mpirun's version, MCA variables, the worker counts, the command line
 Exit status: mpirun's, 124 when the timeout ended it, 2 for a usage error, 3 when
 the program launched no topology: it ran once, on one rank, exited 0, and that run is host0.out and host0.err."""
 
@@ -21,10 +21,9 @@ import re
 import shlex
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
-from nixsci.lab import mpi
+from placement import NoTopology, Usage, place
 
 TAG = re.compile(r"^\[\d+,(\d+)\]<(stdout|stderr)>: ?(.*)$")  # mpirun --output tag; 5 writes a space after the colon
 CPU = re.compile(r"trame-launch-cpu (\S+) (\S+) (\S+)$")
@@ -35,36 +34,12 @@ def usage(msg: str) -> None:
     sys.exit(print(f"launch: {msg}\n{__doc__.splitlines()[0]}", file=sys.stderr) or 2)
 
 
-class NoTopology(Exception):
-    """The probe run ended without asking for ranks: the program launches no topology, and that run was all of it."""
-
-    def __init__(self, p: subprocess.CompletedProcess):
-        self.p = p
-
-
-def ranks_of(program: list[str], hosts: int) -> int:
-    # The count is written to a file (TRAME_PROBE_OUT, backend.rs), not to stdout, which a test harness captures.
-    with tempfile.TemporaryDirectory() as d:
-        probe = Path(d) / "ranks"
-        env = {**os.environ, "TRAME_PROBE": "ranks", "TRAME_PROBE_HOSTS": str(hosts), "TRAME_PROBE_OUT": str(probe)}
-        p = subprocess.run(["mpirun", "--oversubscribe", "-n", "1", "-x", "TRAME_PROBE", "-x", "TRAME_PROBE_HOSTS",
-                            "-x", "TRAME_PROBE_OUT", *program], capture_output=True, text=True, env=env)
-        text = probe.read_text() if probe.exists() else ""
-    m = re.search(r"^trame-ranks (\d+)$", text, re.M)
-    if not m and p.returncode == 0:
-        raise NoTopology(p)
-    if not m:
-        sys.stderr.write(p.stdout + p.stderr)
-        usage("the program did not report its rank count (is it built for this backend?)")
-    return int(m.group(1))
-
-
 def collapse(lines: list[str]) -> str:
     return "".join(x + "\n" for i, x in enumerate(lines) if i == 0 or x != lines[i - 1])
 
 
 def main(argv: list[str]) -> int:
-    split, bind, timeout, out = 1, "none", None, None
+    split, bind, timeout, out, workers_opt = 1, "none", None, None, None
     if "--" not in argv:
         usage("no program")
     k = argv.index("--")
@@ -73,6 +48,8 @@ def main(argv: list[str]) -> int:
     for a in it:
         if a == "--split":
             split = int(next(it))
+        elif a == "--workers":
+            workers_opt = next(it)
         elif a == "--bind":
             bind = next(it)
         elif a == "--timeout":
@@ -84,26 +61,21 @@ def main(argv: list[str]) -> int:
     if out is None or not program or split < 1:
         usage("--out DIR and a program are required, and S >= 1")
     out.mkdir(parents=True, exist_ok=True)
-    machines = max(1, len(mpi.hosts()))
-    hosts = machines * split
     try:
-        ranks = ranks_of(program, hosts)
+        pl = place(program, split, workers_opt, bind)
     except NoTopology as e:
         (out / "host0.out").write_text(e.p.stdout)
         (out / "host0.err").write_text(e.p.stderr)
         return 3
-    env, export = dict(os.environ), []
-    env.pop("TRAME_MPI_NODE_RANKS", None)
-    if split > 1:
-        env["TRAME_MPI_NODE_RANKS"] = str(ranks)
-        export = ["TRAME_MPI_NODE_RANKS"]
-    cmd = mpi.command(ranks * hosts, per_node=ranks * split, bind=bind, export=export)
-    cmd += ["--output", "tag", "sh", "-c", WRAP, "sh", *program]
+    except Usage as e:
+        usage(str(e))
+    hosts, ranks, env = pl.hosts, pl.ranks, pl.env
+    cmd = pl.cmd + ["--output", "tag", "sh", "-c", WRAP, "sh", *program]
     home = Path(os.environ.get("HOME", "/nonexistent"))
     config = [f"# {p}\n{p.read_text() if p.is_file() else ''}" for p in (home / ".openmpi/mca-params.conf", home / ".prte/mca-params.conf")]
     config += [subprocess.run(["mpirun", "--version"], capture_output=True, text=True).stdout.splitlines()[0]]
     config += [f"{n}={v}" for n, v in sorted(os.environ.items()) if n.startswith(("OMPI_MCA_", "PRTE_MCA_"))]
-    config += [f"argv {shlex.join(cmd)}"]
+    config += [f"TRAME_WORKERS={env['TRAME_WORKERS']}", f"ranks per host {ranks}", f"argv {shlex.join(cmd)}"]
     (out / "config.txt").write_text("\n".join(config) + "\n")
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
@@ -131,9 +103,10 @@ def main(argv: list[str]) -> int:
             cpu.setdefault(rank, {}).update(user_s=t.group(1), sys_s=t.group(2), wall_s=t.group(3))
         else:
             per.setdefault((rank, stream), []).append(body)
+    first = [sum(ranks[:h]) for h in range(hosts + 1)]
     for h in range(hosts):
         for stream, ext in (("stdout", "out"), ("stderr", "err")):
-            lines = [x for r in range(h * ranks, (h + 1) * ranks) for x in per.get((r, stream), [])]
+            lines = [x for r in range(first[h], first[h + 1]) for x in per.get((r, stream), [])]
             text = collapse(lines)
             if stream == "stderr" and h == 0 and untagged:
                 text = "".join(x + "\n" for x in untagged) + text
@@ -141,7 +114,7 @@ def main(argv: list[str]) -> int:
     rows = ["host\trank\tmachine\tuser_s\tsys_s\twall_s"]
     for r in sorted(cpu):
         c = cpu[r]
-        rows.append(f"{r // ranks}\t{r}\t{c.get('machine', '')}\t{c.get('user_s', '')}\t{c.get('sys_s', '')}\t{c.get('wall_s', '')}")
+        rows.append(f"{next(h for h in range(hosts) if r < first[h + 1])}\t{r}\t{c.get('machine', '')}\t{c.get('user_s', '')}\t{c.get('sys_s', '')}\t{c.get('wall_s', '')}")
     (out / "cpu.tsv").write_text("\n".join(rows) + "\n")
     return rc
 

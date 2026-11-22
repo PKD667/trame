@@ -24,26 +24,71 @@ pub(crate) struct Nodes {
     pub members: Vec<Vec<i32>>,
 }
 
-/// The value of TRAME_MPI_NODE_RANKS: `Ok(None)` when unset, `Ok(Some(k))` for k >= 1. Each rank reads
-/// its own environment, and `open` checks that all ranks agree (a refusal, on every rank).
-pub(crate) fn node_ranks_setting() -> Result<Option<i32>, String> {
-    let Ok(text) = env::var("TRAME_MPI_NODE_RANKS") else {
-        return Ok(None);
-    };
-    match text.parse::<i32>() {
-        Ok(k) if k >= 1 => Ok(Some(k)),
-        _ => Err(text),
+/// The value of TRAME_MPI_NODE_RANKS: how a node's consecutive world ranks are cut into hosts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum NodeRanks {
+    /// `k`: every host has k ranks.
+    Each(i32),
+    /// `k0,k1,...`: host 0 has k0 ranks, host 1 has k1, and so on; the sizes add up to the world's.
+    Sizes(Vec<i32>),
+}
+
+impl NodeRanks {
+    /// The host of world rank `rank`.
+    pub(crate) fn host_of(&self, rank: i32) -> i32 {
+        match self {
+            NodeRanks::Each(k) => rank / k,
+            NodeRanks::Sizes(sizes) => {
+                let mut end = 0;
+                for (h, k) in sizes.iter().enumerate() {
+                    end += k;
+                    if rank < end {
+                        return h as i32;
+                    }
+                }
+                sizes.len() as i32 - 1
+            }
+        }
+    }
+
+    /// The number of ranks the setting needs, when it fixes one.
+    pub(crate) fn ranks(&self) -> Option<i32> {
+        match self {
+            NodeRanks::Each(_) => None,
+            NodeRanks::Sizes(sizes) => Some(sizes.iter().sum()),
+        }
     }
 }
 
-/// Cut the shared-memory communicator `shared` into groups of `k` consecutive world ranks. Collective
-/// over `shared`. The result is the node communicator, for the window and the segment.
+/// The value of `text`: one number of 1 or more, or several separated by commas.
+pub(crate) fn parse_node_ranks(text: &str) -> Option<NodeRanks> {
+    let mut sizes = Vec::new();
+    for part in text.split(',') {
+        match part.trim().parse::<i32>() {
+            Ok(k) if k >= 1 => sizes.push(k),
+            _ => return None,
+        }
+    }
+    if sizes.len() == 1 { Some(NodeRanks::Each(sizes[0])) } else { Some(NodeRanks::Sizes(sizes)) }
+}
+
+/// The value of TRAME_MPI_NODE_RANKS: `Ok(None)` when unset. Each rank reads its own environment, and
+/// `open` checks that all ranks agree (a refusal, on every rank).
+pub(crate) fn node_ranks_setting() -> Result<Option<NodeRanks>, String> {
+    let Ok(text) = env::var("TRAME_MPI_NODE_RANKS") else {
+        return Ok(None);
+    };
+    parse_node_ranks(&text).map(Some).ok_or(text)
+}
+
+/// Cut the shared-memory communicator `shared` into hosts by `setting`. Collective over `shared`. The
+/// result is the node communicator, for the window and the segment.
 pub(crate) fn split_groups(
     world: &SimpleCommunicator,
     shared: &SimpleCommunicator,
-    k: i32,
+    setting: &NodeRanks,
 ) -> Option<SimpleCommunicator> {
-    shared.split_by_color(Color::with_value(world.rank() / k))
+    shared.split_by_color(Color::with_value(setting.host_of(world.rank())))
 }
 
 /// The node table. Collective over `world`: `node` is this rank's node communicator (split_groups or
@@ -64,4 +109,27 @@ pub(crate) fn discover(world: &SimpleCommunicator, node: &SimpleCommunicator) ->
         members[node_of(l)].push(r as i32);
     }
     Nodes { me: node_of(&low) as u32, count: firsts.len() as u32, members }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_one_size_or_a_list() {
+        assert_eq!(parse_node_ranks("3"), Some(NodeRanks::Each(3)));
+        assert_eq!(parse_node_ranks("3,1,2"), Some(NodeRanks::Sizes(std::vec![3, 1, 2])));
+        for bad in ["", "0", "1,0", "a", "1,,2", "-2"] {
+            assert_eq!(parse_node_ranks(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_list_cuts_consecutive_ranks() {
+        let s = parse_node_ranks("3,1,2").unwrap();
+        let hosts: Vec<i32> = (0..6).map(|r| s.host_of(r)).collect();
+        assert_eq!(hosts, std::vec![0, 0, 0, 1, 2, 2]);
+        assert_eq!(s.ranks(), Some(6));
+        assert_eq!(NodeRanks::Each(2).host_of(5), 2);
+    }
 }

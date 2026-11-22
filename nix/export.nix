@@ -9,6 +9,9 @@ let
   # A derivation with bin/NAME that serves `binary` on the backend: the backend's `serve`, with its runtime on PATH.
   launcherFor = backend: d: { name, binary }: pkgs.runCommand name { nativeBuildInputs = [ pkgs.makeWrapper pkgs.python3 pkgs.bash ]; } ''
     install -Dm755 ${backendDir + "/${backend}/serve"} $out/libexec/serve
+    ${lib.optionalString (builtins.pathExists (backendDir + "/${backend}/placement.py")) ''
+      install -Dm644 ${backendDir + "/${backend}/placement.py"} $out/libexec/placement.py
+    ''}
     patchShebangs $out/libexec/serve
     makeWrapper $out/libexec/serve $out/bin/${name} \
       --prefix PATH : ${lib.makeBinPath d.launchRuntime} --prefix PYTHONPATH : ${build.labPy} \

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# launch [--split S] [--bind B] [--timeout T] --out DIR -- PROGRAM [ARGS...]: run a program built for this backend
+# launch [--split S] [--workers N] [--bind B] [--timeout T] --out DIR -- PROGRAM [ARGS...]: run a program built for this backend
 # as one trame host, one process (src/backends/README.md, Launch). seq has one host: S must be 1, and a job of
-# several machines is refused. --bind is accepted and ignored.
+# several machines is refused. --workers N is what `trame::workers(HostId(0))` answers (TRAME_WORKERS), by default
+# the usable cores. --bind is accepted and ignored.
 set -u
-split=1 timeout="" out=""
+split=1 timeout="" out="" workers=""
 while [[ $# -gt 0 && $1 != -- ]]; do
   case $1 in
     --split) split=$2; shift 2 ;;
+    --workers) workers=$2; shift 2 ;;
     --bind) shift 2 ;;
     --timeout) timeout=$2; shift 2 ;;
     --out) out=$2; shift 2 ;;
@@ -19,6 +21,8 @@ shift
 if [[ -n ${NIX_DEPLOY_HOSTFILE:-} ]] && (( $(grep -c . "$NIX_DEPLOY_HOSTFILE") > 1 )); then
   echo "launch: this backend runs one host; the job has several machines" >&2; exit 2
 fi
+[[ -z $workers || $workers =~ ^[1-9][0-9]*$ ]] || { echo "launch: this backend runs one host; --workers $workers" >&2; exit 2; }
+[[ -z $workers ]] || export TRAME_WORKERS=$workers
 mkdir -p "$out"
 echo "argv $*" > "$out/config.txt"
 t=$(mktemp)

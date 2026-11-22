@@ -16,7 +16,8 @@ Several hosts in one launch (`CONTRACT.md`, Federation). `hosts.rs` and `nodes.r
   `leader_recv` probes for every waiting peer message and keeps them, in arrival order, until their tag is
   asked for. Nothing on the host wakes a sleeping leader for such a message, so on more than one host
   `Run::wait` spins until the leader's epoch or the count of peer arrivals moves.
-- **Testing on one machine.** `TRAME_MPI_NODE_RANKS=k` cuts each node into hosts of k consecutive ranks.
+- **Testing on one machine.** `TRAME_MPI_NODE_RANKS=k` cuts each node into hosts of k consecutive ranks; `=k0,k1,...` gives each host its own
+  count (`nodes.rs`).
   `check/programs/run.sh` runs every program on one host and on two hosts of `ranks.txt`'s rank count each. It
   is a test setting and never a default.
 

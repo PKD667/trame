@@ -6,6 +6,9 @@
 
 include!(concat!(env!("OUT_DIR"), "/backends.rs"));
 
+/// The workers each host is supplied (`trame::workers`).
+pub(crate) mod supply;
+
 /// The selected backend's own items, for the test binaries under a backend's tests/. Not API.
 #[doc(hidden)]
 pub mod __backend {

@@ -105,6 +105,12 @@ pub fn hosts() -> u32 {
     Selected::hosts()
 }
 
+/// The number of workers host `h` is given, the leader not counted (INTERFACE.md 6). The launcher supplies it, so
+/// it answers before the program declares anything and is the same on every host. Panics when `h` is not a host.
+pub fn workers(h: crate::topology::HostId) -> u32 {
+    Selected::workers(h.0)
+}
+
 /// The tag of a message type across hosts (CONTRACT.md F4): equal in two compilations of the same
 /// type, unlike `TypeId`. FNV-1a over the type's path and its size.
 pub(crate) fn tag<M: Message>() -> u64 {
