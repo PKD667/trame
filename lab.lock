@@ -459,6 +459,386 @@
         "sha256": "sha256-WJEPZqn3zkmltpEKo04HiF9PFW/Utfmga/I+ySanSoQ="
       }
     ],
+    "mpi-cross-host": [
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "0ce7a9694eea1efb78b843515f5100522640222ac64811334da8bb669985322f",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "direct",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 1,
+          "run": "mpi-cross-host-0ce7a9694eea-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-0ce7a9694eea-r1",
+        "path": "/nix/store/g2hl1ngpzjm88l9mx480c3fzc86ih7kd-mpi-cross-host-0ce7a9694eea-r1",
+        "sha256": "sha256-8MWRcR8zUT4JJ1EudyzrB3WxWTZFf06Glln3BTTca8Y="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "0ce7a9694eea1efb78b843515f5100522640222ac64811334da8bb669985322f",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "direct",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 2,
+          "run": "mpi-cross-host-0ce7a9694eea-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-0ce7a9694eea-r2",
+        "path": "/nix/store/i2sx31hr6grn1w0wwgqv6m3c99kpaj4j-mpi-cross-host-0ce7a9694eea-r2",
+        "sha256": "sha256-jKnPzcri6WwmXUMwUAzDu4TjxTZwAiMusCCPO9FbsAA="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "0ce7a9694eea1efb78b843515f5100522640222ac64811334da8bb669985322f",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "direct",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 3,
+          "run": "mpi-cross-host-0ce7a9694eea-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-0ce7a9694eea-r3",
+        "path": "/nix/store/xqy6vsfba5ncf2jqckxigxgr24c5jy75-mpi-cross-host-0ce7a9694eea-r3",
+        "sha256": "sha256-cI9DusqYE8OGL5QXcGU0a9PzwtPOfWzZNsC8A7a/vxY="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "1c0dcb8ae504e041cd83e86b2efe37e968a9c1f396250f7b3aee144a57e74bc1",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "wake_futex",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 1,
+          "run": "mpi-cross-host-1c0dcb8ae504-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-1c0dcb8ae504-r1",
+        "path": "/nix/store/dk744fr1c9k4v84cls1csxnq460h4y4v-mpi-cross-host-1c0dcb8ae504-r1",
+        "sha256": "sha256-fengP50Nf4swYxzzafQ2ENilUwKF19mCeDaSlMKIjE8="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "1c0dcb8ae504e041cd83e86b2efe37e968a9c1f396250f7b3aee144a57e74bc1",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "wake_futex",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 2,
+          "run": "mpi-cross-host-1c0dcb8ae504-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-1c0dcb8ae504-r2",
+        "path": "/nix/store/kdwagmvgnin77a9qkq8d6147srd9svwi-mpi-cross-host-1c0dcb8ae504-r2",
+        "sha256": "sha256-6Yzizr7BvuNaEFfMiecWho/I+yohI6s4BuePt2+4mVU="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "1c0dcb8ae504e041cd83e86b2efe37e968a9c1f396250f7b3aee144a57e74bc1",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "wake_futex",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 3,
+          "run": "mpi-cross-host-1c0dcb8ae504-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-1c0dcb8ae504-r3",
+        "path": "/nix/store/fa8y0hvr7lq5qy3ixblb40py5x9q547l-mpi-cross-host-1c0dcb8ae504-r3",
+        "sha256": "sha256-X5Q44ssCIwFoy+UP6VjVz0z5atv9iR2vFU2/SfLizoQ="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "48dfa2d3b4f8bdd445a5aa0e8ea481fb746210a14299fca2c6b8fc7a93ffb1df",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "direct_single",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 1,
+          "run": "mpi-cross-host-48dfa2d3b4f8-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-48dfa2d3b4f8-r1",
+        "path": "/nix/store/a29z5479dwpf2kifxgyaqscsy0aanhwg-mpi-cross-host-48dfa2d3b4f8-r1",
+        "sha256": "sha256-Fghd/YiswllEVYiA0VR5s47b7XK6zI/lTTCiXt5QVGA="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "48dfa2d3b4f8bdd445a5aa0e8ea481fb746210a14299fca2c6b8fc7a93ffb1df",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "direct_single",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 2,
+          "run": "mpi-cross-host-48dfa2d3b4f8-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-48dfa2d3b4f8-r2",
+        "path": "/nix/store/d1qa963qnxg1frbm328cjpv7rhc39wqk-mpi-cross-host-48dfa2d3b4f8-r2",
+        "sha256": "sha256-ynKxQlm46yRgpdLUX2nHPBZn7gBKIRCJ9weI0MrmKVo="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "48dfa2d3b4f8bdd445a5aa0e8ea481fb746210a14299fca2c6b8fc7a93ffb1df",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "direct_single",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 3,
+          "run": "mpi-cross-host-48dfa2d3b4f8-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-48dfa2d3b4f8-r3",
+        "path": "/nix/store/c4w6xrxg451jk1yvaq2sc3mz0kwaih4q-mpi-cross-host-48dfa2d3b4f8-r3",
+        "sha256": "sha256-+6G1wTOmM38sgWGzjHkaABea5fj16ckGnC8fY68A3P0="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "9ec27abab8f2421a400cbc5e59dd09e9cb83573b53755ef88e92a65e4a1e34df",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "relay",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 1,
+          "run": "mpi-cross-host-9ec27abab8f2-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-9ec27abab8f2-r1",
+        "path": "/nix/store/ipjqi1cln7mbvb0335yxqy6mk8z4bjxb-mpi-cross-host-9ec27abab8f2-r1",
+        "sha256": "sha256-DvFXSKPIcTi6umm+F5eYo7Jh0er38nsNCHcZw2no1OA="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "9ec27abab8f2421a400cbc5e59dd09e9cb83573b53755ef88e92a65e4a1e34df",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "relay",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 2,
+          "run": "mpi-cross-host-9ec27abab8f2-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-9ec27abab8f2-r2",
+        "path": "/nix/store/rxhqrm9wz791zsilyscn9rlmaxd2kyff-mpi-cross-host-9ec27abab8f2-r2",
+        "sha256": "sha256-qWwLOI569iY4J3LOYs0jVYGN1LMOTzdeLEnViVytQcc="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "9ec27abab8f2421a400cbc5e59dd09e9cb83573b53755ef88e92a65e4a1e34df",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "relay",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 3,
+          "run": "mpi-cross-host-9ec27abab8f2-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-9ec27abab8f2-r3",
+        "path": "/nix/store/kpn4dvq04ff3l6czplv735ys6nlr5w1i-mpi-cross-host-9ec27abab8f2-r3",
+        "sha256": "sha256-3LPBEOdweJjeiKj5WpM7EBlZyk/RSl9UdQy2xtM8Bjc="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "d2a8d0857a71e3e6c396715cf081cffd93600d90de35965eea188c213c382609",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "mixed_self",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 1,
+          "run": "mpi-cross-host-d2a8d0857a71-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-d2a8d0857a71-r1",
+        "path": "/nix/store/l42vg33p97wkf4vdxca7lx8sqq67q56b-mpi-cross-host-d2a8d0857a71-r1",
+        "sha256": "sha256-1gG6lgxC4ABkpTcyCO4Z3XVATnmCoKLSE6EQftvg78g="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "d2a8d0857a71e3e6c396715cf081cffd93600d90de35965eea188c213c382609",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "mixed_self",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 2,
+          "run": "mpi-cross-host-d2a8d0857a71-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-d2a8d0857a71-r2",
+        "path": "/nix/store/9rwncgb5xjcbjf2i5kpg48qsy595z5fk-mpi-cross-host-d2a8d0857a71-r2",
+        "sha256": "sha256-3Fm5PIyJTa9yJ9N5IbmqDveoU1AIiSQOXMilHLmIqNc="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "d2a8d0857a71e3e6c396715cf081cffd93600d90de35965eea188c213c382609",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "mixed_self",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 3,
+          "run": "mpi-cross-host-d2a8d0857a71-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-d2a8d0857a71-r3",
+        "path": "/nix/store/kk51lz0wmb3dfv6h8ln9pfphajj78idm-mpi-cross-host-d2a8d0857a71-r3",
+        "sha256": "sha256-yOv95HhTKE5V+gt8ljm5HBk862DJvbaexNVGg8fRY1E="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "de42c204aad295e83c0d9c9f6663a4ba1c00cda6ce8e9070579970d48aa1cc8e",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "mixed_flag",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 1,
+          "run": "mpi-cross-host-de42c204aad2-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-de42c204aad2-r1",
+        "path": "/nix/store/6rs8sm9fz41k2kpkvhg2950xk6aka8zk-mpi-cross-host-de42c204aad2-r1",
+        "sha256": "sha256-eJ/OjK/556cu2JoaJzKdgOwys6QPIvHv9G+vUXCLcss="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "de42c204aad295e83c0d9c9f6663a4ba1c00cda6ce8e9070579970d48aa1cc8e",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "mixed_flag",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 2,
+          "run": "mpi-cross-host-de42c204aad2-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-de42c204aad2-r2",
+        "path": "/nix/store/kb4swnih4cix9ny24gg5fiff0r3rgmbp-mpi-cross-host-de42c204aad2-r2",
+        "sha256": "sha256-F0jB5zYnKSj7FRBoQw5DNFml5LUl41Mb3bgGqU6l9fE="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/vyl0vnvraxd0l0p1rd44vpnmacpndz67-experiment-mpi-cross-host",
+          "format": "2.0",
+          "input_id": "de42c204aad295e83c0d9c9f6663a4ba1c00cda6ce8e9070579970d48aa1cc8e",
+          "params": {
+            "iters": 100000,
+            "mca": "",
+            "mode": "mixed_flag",
+            "sizes": "8,64,1024,65536",
+            "warmup": 10000
+          },
+          "replicate": 3,
+          "run": "mpi-cross-host-de42c204aad2-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "mpi-cross-host-de42c204aad2-r3",
+        "path": "/nix/store/vwx7m113j2rs4km6lw3w3brdns076ca5-mpi-cross-host-de42c204aad2-r3",
+        "sha256": "sha256-JYWs1pvoNr/yYGwhIzonaud0zEcHq/h4eSEFxNq6NHc="
+      }
+    ],
     "programs-mpi-s2": [
       {
         "facts": {
