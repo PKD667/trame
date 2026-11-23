@@ -1317,6 +1317,68 @@
         "path": "/nix/store/x26s2gachkpa3wn7xdnjfn0rw5far1pm-programs-mpi-s2-7436b7513efb-r1",
         "sha256": "sha256-SSgb6J0JGXXq8F6+krOVXxM3XuIHGkDZEyPfS1mKvLg="
       }
+    ],
+    "programs-mpi-sized": [
+      {
+        "facts": {
+          "closure": "/nix/store/js7q198hdp467m1ahyz4a8fllryb48dk-experiment-programs-mpi-sized",
+          "format": "2.0",
+          "input_id": "786f41a3a4b5b7fbd78935d533753d6e9b0fec820b0db8b3f643551b90e0313b",
+          "params": {
+            "backend": "mpi",
+            "only": "workers,agree",
+            "repeats": 2,
+            "workers": "3,3"
+          },
+          "replicate": 1,
+          "run": "programs-mpi-sized-786f41a3a4b5-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-mpi-sized-786f41a3a4b5-r1",
+        "path": "/nix/store/m0hq9zaaych45rvdnwhzhriva7bhzw59-programs-mpi-sized-786f41a3a4b5-r1",
+        "sha256": "sha256-5k+Xb3kDuIRfOZkstgxvPp6+IoEQ90jGvexiEWWCcCQ="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/js7q198hdp467m1ahyz4a8fllryb48dk-experiment-programs-mpi-sized",
+          "format": "2.0",
+          "input_id": "b1feeda0c1a0eb8302bf6a367a9997336eb9e4a0cda53a3debe43858f5299813",
+          "params": {
+            "backend": "mpi",
+            "only": "workers,agree",
+            "repeats": 2,
+            "workers": "1,4"
+          },
+          "replicate": 1,
+          "run": "programs-mpi-sized-b1feeda0c1a0-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-mpi-sized-b1feeda0c1a0-r1",
+        "path": "/nix/store/9g1v1006ygq1b9y8y9nbygcnjhlzrk3c-programs-mpi-sized-b1feeda0c1a0-r1",
+        "sha256": "sha256-S6i0tNmKJtWih2DMissUaz+2WUDZJKRQyj9hRv4VL0I="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/js7q198hdp467m1ahyz4a8fllryb48dk-experiment-programs-mpi-sized",
+          "format": "2.0",
+          "input_id": "ea1037a11cc7fe77e3899999c9ff7c1ed20e11e2a0be1a1032b59d70f9ea740b",
+          "params": {
+            "backend": "mpi",
+            "only": "workers,agree",
+            "repeats": 2,
+            "workers": "5,2"
+          },
+          "replicate": 1,
+          "run": "programs-mpi-sized-ea1037a11cc7-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-mpi-sized-ea1037a11cc7-r1",
+        "path": "/nix/store/g7r344fwmvjqlpijg4z7i8dn1r427635-programs-mpi-sized-ea1037a11cc7-r1",
+        "sha256": "sha256-+dX1YQI8NfQKKLppnvQMjmwnAp5utWv0Yrq7ut32hpE="
+      }
     ]
   }
 }
