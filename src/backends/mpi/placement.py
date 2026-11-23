@@ -26,6 +26,10 @@ def fail(msg: str) -> None:
     raise Usage(msg)
 
 
+# The words of the probe's refusal of a message to a peer (backend.rs `no_probe`).
+PEERS_BEFORE_LAUNCH = "before a launch needs the workers given"
+
+
 class NoTopology(Exception):
     """The probe run ended without asking for ranks: the program launches no topology, and that run was all of it."""
 
@@ -44,6 +48,10 @@ def ranks_of(program: list[str], hosts: int, host: int, workers: list[int]) -> i
                            capture_output=True, text=True, env=env)
         text = probe.read_text() if probe.exists() else ""
     m = re.search(r"^trame-ranks (\d+)$", text, re.M)
+    if not m and PEERS_BEFORE_LAUNCH in p.stderr:
+        # The program talks to the other leaders before its launch, which one probing rank cannot: it is started
+        # on the workers the caller gave, or on the ones the launcher defaulted, and must declare as many.
+        return workers[host] + 1
     if not m and p.returncode == 0:
         raise NoTopology(p)
     if not m:

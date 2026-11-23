@@ -4,7 +4,6 @@
 use crate::backend::{Backend, Selected};
 use crate::io::{Full, Message, Stamped, read};
 use crate::time::{ClockId, Reading};
-use core::time::Duration;
 use crate::topology::{Handle, HostId, WorkerId};
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
@@ -12,6 +11,7 @@ use alloc::vec::Vec;
 use core::any::{Any, TypeId, type_name};
 use core::cell::Cell;
 use core::sync::atomic::{AtomicBool, Ordering};
+use core::time::Duration;
 
 /// A launched run, as the leader holds it. Dropping it does not stop the workers.
 pub struct Run {
@@ -65,14 +65,12 @@ impl Run {
     /// Send `msg` to the leader of host `to`, on the peer channel, not a route (CONTRACT.md F6).
     /// `Full` when that channel is at capacity. Panics when `to` is not a host of the federation.
     pub fn leader_send<M: Message>(&self, to: HostId, msg: M) -> Result<(), Full> {
-        Selected::peer_send(&self.inner, to.0, crate::io::tag::<M>(), crate::__bytemuck::bytes_of(&msg))
+        crate::io::peer_send(to, msg)
     }
 
     /// The next message of type `M` from a peer leader, with the host it came from, or `None`.
     pub fn leader_recv<M: Message>(&self) -> Option<(HostId, M)> {
-        let mut from = 0;
-        read(|out| Selected::peer_recv(&self.inner, crate::io::tag::<M>(), out).map(|h| from = h).is_some())
-            .map(|m| (HostId(from), m))
+        crate::io::peer_recv::<M>()
     }
 
     /// Edit `h`, a worker's state or the pool: `f` runs once no step that uses it runs, and no such

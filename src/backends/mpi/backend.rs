@@ -235,16 +235,50 @@ impl Backend for Selected {
         if local.launched { held() } else { crate::backends::supply::supplied(h).or_else(held) }
     }
 
-    fn peer_send(_run: &Leader, to: u32, tag: u64, bytes: &[u8]) -> Result<(), Full> {
+    fn is_leader() -> bool {
+        use mpi::topology::Communicator;
+        let comm = &crate::backends::mpi::transport::hosts::host().comm;
+        comm.rank() == comm.size() - 1
+    }
+
+    fn share(bytes: &[u8]) -> Vec<u8> {
+        use mpi::collective::Root;
+        use mpi::topology::Communicator;
+        let comm = &crate::backends::mpi::transport::hosts::host().comm;
+        let root = comm.process_at_rank(comm.size() - 1);
+        let mut len = bytes.len() as u64;
+        root.broadcast_into(&mut len);
+        let mut out = if comm.rank() == comm.size() - 1 { bytes.to_vec() } else { std::vec![0u8; len as usize] };
+        root.broadcast_into(&mut out[..]);
+        out
+    }
+
+    fn peer_send(to: u32, tag: u64, bytes: &[u8]) -> Result<(), Full> {
+        no_probe("peer_send");
         crate::backends::mpi::transport::hosts::send(to, tag, bytes);
         Ok(())
     }
 
-    fn peer_recv(_run: &Leader, tag: u64, out: &mut [u8]) -> Option<u32> {
+    fn peer_wait() {
+        no_probe("peer_wait");
+        crate::backends::mpi::transport::hosts::wait();
+    }
+
+    fn peer_recv(tag: u64, out: &mut [u8]) -> Option<u32> {
+        no_probe("peer_recv");
         crate::backends::mpi::transport::hosts::recv(tag, out)
     }
 
     fn leader_join(run: Leader) -> Vec<Outcome> {
         leader::join(run)
     }
+}
+
+/// The launcher's probe is one rank that stands for a host, so it has no peers: a program that exchanges messages
+/// before its launch is given its workers (`launch --workers`), and the launcher does not probe it.
+fn no_probe(what: &str) {
+    assert!(
+        std::env::var("TRAME_PROBE").as_deref() != Ok("ranks"),
+        "trame: {what} before a launch needs the workers given to the launcher (launch --workers N,N,...), not asked of the program"
+    );
 }

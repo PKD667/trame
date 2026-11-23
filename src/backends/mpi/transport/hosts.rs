@@ -101,15 +101,35 @@ pub(crate) fn drain() -> bool {
     let Some(peers) = h.peers.as_ref() else { return false };
     let mut any = false;
     while let Some((msg, status)) = peers.any_process().immediate_matched_probe_with_tag(PEER_TAG) {
-        let n = status.count(u8::equivalent_datatype()) as usize;
-        let mut bytes = std::vec![0u8; n];
-        msg.matched_receive_into(&mut bytes[..]);
-        let tag = u64::from_le_bytes(bytes[..8].try_into().expect("a peer message starts with its tag"));
-        h.pending.push((status.source_rank() as u32, tag, bytes[8..].to_vec()));
-        h.arrivals += 1;
+        keep(&mut h.pending, &mut h.arrivals, msg, status);
         any = true;
     }
     any
+}
+
+/// Block until a peer message is held in `pending`: it returns at once when one is, else after the next arrives.
+pub(crate) fn wait() {
+    let h = host();
+    if !h.pending.is_empty() {
+        return;
+    }
+    let peers = h.peers.as_ref().expect("trame: only a leader has peers");
+    let (msg, status) = peers.any_process().matched_probe_with_tag(PEER_TAG);
+    keep(&mut h.pending, &mut h.arrivals, msg, status);
+}
+
+fn keep(
+    pending: &mut Vec<(u32, u64, Vec<u8>)>,
+    arrivals: &mut u64,
+    msg: mpi::point_to_point::Message,
+    status: mpi::point_to_point::Status,
+) {
+    let n = status.count(u8::equivalent_datatype()) as usize;
+    let mut bytes = std::vec![0u8; n];
+    msg.matched_receive_into(&mut bytes[..]);
+    let tag = u64::from_le_bytes(bytes[..8].try_into().expect("a peer message starts with its tag"));
+    pending.push((status.source_rank() as u32, tag, bytes[8..].to_vec()));
+    *arrivals += 1;
 }
 
 /// Take the oldest pending peer message of tag `tag` into `out`; answers its host.

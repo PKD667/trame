@@ -100,14 +100,32 @@ pub(crate) trait Backend {
         crate::backends::supply::supplied(h)
     }
 
+    /// Whether this process is its host's leader (CONTRACT.md F1): only a leader has peers (F6). A backend whose
+    /// host is one process answers true. Needs the hosts to have discovered each other, not a launch.
+    fn is_leader() -> bool {
+        true
+    }
+
+    /// The leader of this host gives `bytes` to every other process of the host, which receive them; the
+    /// leader gets its own back. Collective over the host: every process of it calls this, in the same order.
+    /// A backend whose host is one process answers `bytes`.
+    fn share(bytes: &[u8]) -> Vec<u8> {
+        bytes.to_vec()
+    }
+
     /// Send `bytes`, a message of tag `tag` (F4), to the leader of host `to` on the peer channel
-    /// (F6). A host is not its own peer. A backend whose deployment is one host has no peer.
-    fn peer_send(_run: &Self::Run, to: u32, _tag: u64, _bytes: &[u8]) -> Result<(), Full> {
+    /// (F6), from the leader, before or after a launch. A host is not its own peer. A backend whose
+    /// deployment is one host has no peer.
+    fn peer_send(to: u32, _tag: u64, _bytes: &[u8]) -> Result<(), Full> {
         panic!("trame: host {to} is not a peer of this host")
     }
 
+    /// Block until a peer message may have arrived for this leader, so that a `peer_recv` before a launch waits for
+    /// an event instead of polling. Returns at once when one is already held.
+    fn peer_wait() {}
+
     /// Take the next peer message of tag `tag` into `out`; answers the host it came from.
-    fn peer_recv(_run: &Self::Run, _tag: u64, _out: &mut [u8]) -> Option<u32> {
+    fn peer_recv(_tag: u64, _out: &mut [u8]) -> Option<u32> {
         None
     }
 

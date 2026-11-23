@@ -83,7 +83,9 @@ pub use bounded::{Bounded, BoundedHeap};
 pub use domain::Alloc;
 /// The surface of INTERFACE.md 7: every public name of the crate, at the root and nowhere else.
 pub use flow::{Drained, Spent, drain, fuel, lend};
-pub use io::{Full, Message, Stamped, host, hosts, me, recv, send, workers};
+pub use io::{
+    Full, Message, Stamped, host, hosts, is_leader, me, peer_recv, peer_send, peer_wait, recv, send, share, workers,
+};
 pub use launch::Refused;
 pub use plain::Plain;
 #[doc(hidden)]

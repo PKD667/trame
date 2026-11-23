@@ -218,6 +218,10 @@ name = "workers"
 path = "check/programs/workers.rs"
 
 [[example]]
+name = "agree"
+path = "check/programs/agree.rs"
+
+[[example]]
 name = "xhost_ring"
 path = "check/programs/xhost_ring.rs"
 

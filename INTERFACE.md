@@ -795,6 +795,21 @@ path.
 > sent. A host is not its own peer, and a host number of $H$ or more names no host; a send to either
 > panics.
 
+> **Definition (Before a launch).** The hosts discover each other before any launch: `is_leader()`,
+> `host()` and `hosts()` are the first call that does it, and on `mpi` it is collective over the world, so
+> every process makes one of them before the first `peer_send`. From then on a leader may exchange peer
+> messages without a run: `peer_send(HostId(h), m)`, `peer_recv::<M>()` (the same semantics as `leader_send`
+> and `leader_recv`, which are these two on a run) and `peer_wait()`, which blocks until a peer message may
+> have arrived (a wait for an event, not a period). `is_leader()` answers whether this process is its host's
+> leader, the only process with peers. `share(bytes)` is collective over a host: its leader gives `bytes`, every
+> other process of the host returns them. So a plan the leaders agree on reaches every process that declares
+> the host's workers before any of them launches.
+> The launcher does not ask a program that exchanges peer messages before its launch for its ranks, since
+> that program cannot be run alone: it starts each host on the workers the launcher was given
+> (`--workers`, `TRAME_WORKERS`, the hostfile or the cores), and the program must declare that many.
+
+*Status: built* on both backends; `check/programs/agree.rs` runs it.
+
 A leader may rely on a peer having launched when its host shares a route with the peer's host,
 because those hosts wait for each other's launch. For any other peer, a program that must know the
 peer is running has to be told so by a message.
@@ -823,6 +838,8 @@ root, except the functions of `trame::math`.
 | `now() -> Reading` | fn | $\mathsf{now}$ (5.1); panics outside a worker |
 | `host() -> HostId` | fn | this host (6) |
 | `hosts() -> u32` | fn | the number of hosts $H$ (6); 1 on a backend that runs one host |
+| `is_leader() -> bool`, `share(&[u8]) -> Vec<u8>` | fn | whether this process leads its host; the leader's bytes to every process of the host (6, Definition (Before a launch)) |
+| `peer_send(HostId, m)`, `peer_recv::<M>()`, `peer_wait()` | fn | the peer channel before a launch; `Run::leader_send`/`leader_recv` are the same after (6, Definition (Peer channel)) |
 | `workers(HostId) -> Option<u32>` | fn | the workers of host $h$, leader not counted; `None` when not yet known (6) |
 | `Reading` | type: `since`, `clock`, `new` | a reading of one clock; plain, not a message (5.1, Definition (Comparing readings)) |
 | `ClockId` | type: `detached` | the clock of a reading (5.1) |

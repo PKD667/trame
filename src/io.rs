@@ -2,6 +2,7 @@
 //! tag of its routes, so one route family per type.
 
 use crate::backend::{Backend, Selected};
+use alloc::vec::Vec;
 use core::any::{TypeId, type_name};
 
 /// A message type: plain data, sent as its bytes. Every `Pod` type is one (bytemuck: no padding, no
@@ -111,6 +112,39 @@ pub fn hosts() -> u32 {
 /// known. `None` also for a number that is no host.
 pub fn workers(h: crate::topology::HostId) -> Option<u32> {
     Selected::workers(h.0)
+}
+
+/// Whether this process is its host's leader (CONTRACT.md F1, F6). Only a leader sends and receives peer messages.
+/// A backend whose host is one process is its own leader. Answers once the hosts have discovered each other.
+pub fn is_leader() -> bool {
+    Selected::is_leader()
+}
+
+/// The leader of this host gives `bytes` to every other process of the host: each returns what the leader gave,
+/// the leader its own `bytes`. Collective over the host, so every process calls it, in the same order, before
+/// its launch or after. This is how a plan the leaders agreed on (`peer_send`) reaches the processes that declare
+/// the host's workers. On a backend whose host is one process it answers `bytes`.
+pub fn share(bytes: &[u8]) -> Vec<u8> {
+    Selected::share(bytes)
+}
+
+/// Send `msg` to the leader of host `to` on the peer channel (CONTRACT.md F6), before a launch or after it. Only a
+/// leader calls this (`is_leader`). `Full` when that channel is at capacity. Panics when `to` is not a peer.
+pub fn peer_send<M: Message>(to: crate::topology::HostId, msg: M) -> Result<(), Full> {
+    Selected::peer_send(to.0, tag::<M>(), crate::__bytemuck::bytes_of(&msg))
+}
+
+/// Block until a peer message may have arrived for this leader (returns at once when one is held): the wait before a
+/// launch, where `Run::wait` does not exist yet. Only a leader calls this.
+pub fn peer_wait() {
+    Selected::peer_wait()
+}
+
+/// The next message of type `M` from a peer leader, with the host it came from, or `None`. Only a leader calls this.
+pub fn peer_recv<M: Message>() -> Option<(crate::topology::HostId, M)> {
+    let mut from = 0;
+    read(|out| Selected::peer_recv(tag::<M>(), out).map(|h| from = h).is_some())
+        .map(|m| (crate::topology::HostId(from), m))
 }
 
 /// The tag of a message type across hosts (CONTRACT.md F4): equal in two compilations of the same
