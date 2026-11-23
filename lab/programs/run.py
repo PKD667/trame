@@ -1,7 +1,8 @@
 """Every program of the table against its .expected output: as check/programs/run.sh checks them.
 
 Parameters: backend (a directory of src/backends/), repeats (default 1), timeout (seconds, default 120), split (hosts
-per machine, default 1) and bind. Environment (set by flake.nix): LAUNCH (the backend's launch), PROGRAMS (the
+per machine, default 1), bind, workers (the workers each host is given, lab/lib/launch.py) and only (comma-separated
+programs to run, default all). Environment (set by flake.nix): LAUNCH (the backend's launch), PROGRAMS (the
 program binaries), EXPECTED (<program>.expected files) and PANICS (optional: the directory of <program>.panics files,
 the programs that must panic, as check/programs/run.sh). The programs are the files of PROGRAMS.
 
@@ -46,7 +47,10 @@ def main() -> None:
     stderr_dir.mkdir(parents=True, exist_ok=True)
     hosts = launch.hosts_of_job(params)
     verdicts: dict[str, int] = {}
+    only = [n for n in str(params.get("only", "")).split(",") if n]
     for name in programs():
+        if only and name not in only:
+            continue
         panic = panic_line(name)
         how = expected_for(expected_dir, name, hosts, panic)
         if how is None:

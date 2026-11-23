@@ -5,7 +5,7 @@ that backend as H trame hosts, H = the job's machines x split, and writes what e
 host<h>.out, host<h>.err, cpu.tsv, config.txt. It exits 124 when its --timeout ended the run and 2 when it refuses
 the job (a split the backend does not have, or a usage error). Nothing here knows how a backend starts its hosts.
 
-Parameters read from lab.params(): split (hosts per machine, default 1), bind (default "none"), timeout (seconds)."""
+Parameters read from lab.params(): split (hosts per machine, default 1), bind (default "none"), workers (the launch's --workers: one count or one per host, default the launch's own), timeout (seconds)."""
 
 from __future__ import annotations
 
@@ -68,7 +68,8 @@ def run(argv: list[str], params: dict, timeout: float) -> Run:
     """Run `argv` (a program and its arguments) through the launch; read back what the hosts wrote."""
     launch = os.environ["LAUNCH"]
     out = Path(tempfile.mkdtemp(prefix="launch-"))
-    cmd = [launch, "--split", str(int(params.get("split", 1))), "--bind", str(params.get("bind", "none")),
+    workers = ["--workers", str(params["workers"])] if params.get("workers") else []
+    cmd = [launch, "--split", str(int(params.get("split", 1))), "--bind", str(params.get("bind", "none")), *workers,
            "--timeout", str(timeout), "--out", str(out), "--", *argv]
     res = proc.run(cmd, timeout + GUARD)
     rc = 124 if res.rc is None else res.rc

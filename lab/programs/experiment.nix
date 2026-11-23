@@ -25,8 +25,27 @@ let
         then { resources = { provider = "local"; hosts = 1; }; }
         else { inherit span; resources = { provider = "cluster"; hosts = span; walltime = 60; opts.stage = "fanout"; }; }));
     };
+  # Hosts of different sizes on real machines (INTERFACE.md 6): the programs that depend on the workers a host has, each
+  # host given its own count. Only a backend that runs several machines.
+  sized = n: b: {
+    name = "programs-${n}-sized";
+    span = 2;
+    kind = "programs-sized";
+    backend = n;
+    suite = false;
+    exp = labLib.experiment {
+      name = "programs-${n}-sized";
+      closures.${system} = closure { name = "programs-${n}-sized"; inherit b; script = ./run.py; };
+      params = { backend = n; repeats = 2; only = "workers,agree"; };
+      sweep.workers = [ "1,4" "5,2" "3,3" ];
+      span = 2;
+      data = { run = runData; launch_config = data.dataset "launch_config"; };
+      resources = { provider = "cluster"; hosts = 2; walltime = 60; opts.stage = "fanout"; };
+    };
+  };
   spans = b: lib.filter (s: s <= machines && s <= b.d.maxMachines) [ 1 2 4 ];
-  runs = lib.concatLists (lib.mapAttrsToList (n: b: [ (run n b 0) ] ++ map (run n b) (spans b)) backends);
+  runs = lib.concatLists (lib.mapAttrsToList (n: b: [ (run n b 0) ] ++ map (run n b) (spans b)
+    ++ lib.optional (b.d.maxMachines >= 2 && machines >= 2 && !b.d.deterministic) (sized n b)) backends);
 in
 {
   name = "programs";
@@ -36,6 +55,6 @@ in
   claims = builtins.listToAttrs (map (r: {
     name = "programs/${r.backend}/s${toString r.span}";
     value = { kind = "exact"; of = { use = r.name; dataset = "run"; column = "ok"; }; value = true; };
-  }) (lib.filter (r: r.span != 0) runs));
+  }) (lib.filter (r: r.span != 0 && r.kind == "programs") runs));
   analysis = ./analysis.py;
 }
