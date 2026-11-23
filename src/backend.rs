@@ -94,9 +94,10 @@ pub(crate) trait Backend {
         1
     }
 
-    /// The workers host `h` is supplied by the launcher (INTERFACE.md 6); panics when `h >= hosts()`.
-    fn workers(h: u32) -> u32 {
-        crate::backends::supply::workers(h, Self::hosts())
+    /// The workers of host `h`, the leader not counted (INTERFACE.md 6): what the hosts hold once they have
+    /// discovered each other, before that what the launcher supplied (TRAME_WORKERS), else `None`.
+    fn workers(h: u32) -> Option<u32> {
+        crate::backends::supply::supplied(h)
     }
 
     /// Send `bytes`, a message of tag `tag` (F4), to the leader of host `to` on the peer channel

@@ -1,7 +1,6 @@
-//! The workers each host is supplied (INTERFACE.md 6, `trame::workers`). The launcher decides them and
-//! passes TRAME_WORKERS, the counts of hosts 0, 1, ... separated by commas; a program only reads them.
-//! Read at every call, so a count answers before the program declares anything. A deployment of one host
-//! that was not given the variable answers its usable cores.
+//! The workers a launcher supplied to each host (INTERFACE.md 6, `trame::workers`). The launcher decides them and
+//! passes TRAME_WORKERS, the counts of hosts 0, 1, ... separated by commas. A backend answers from it only until
+//! its hosts have discovered each other; after that it answers what the hosts hold.
 
 extern crate std;
 
@@ -24,24 +23,12 @@ pub(crate) fn parse(text: &str) -> Result<Vec<u32>, String> {
     Ok(counts)
 }
 
-/// The workers host `h` of `hosts` is supplied. Panics when `h` is not a host, or when the counts
-/// are not those of this deployment's hosts.
-pub(crate) fn workers(h: u32, hosts: u32) -> u32 {
-    assert!(h < hosts, "trame: workers(HostId({h})): the deployment has {hosts} hosts");
-    let Ok(text) = std::env::var("TRAME_WORKERS") else {
-        assert!(
-            hosts == 1,
-            "trame: workers(HostId({h})): TRAME_WORKERS is not set; start the program through its backend's launch"
-        );
-        return std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
-    };
+/// The workers the launcher supplied for host `h`: `None` when TRAME_WORKERS is not set, or names no host `h`.
+/// Panics when the variable is set and is not a list of counts.
+pub(crate) fn supplied(h: u32) -> Option<u32> {
+    let text = std::env::var("TRAME_WORKERS").ok()?;
     let counts = parse(&text).unwrap_or_else(|e| panic!("trame: {e}"));
-    assert!(
-        counts.len() == hosts as usize,
-        "trame: TRAME_WORKERS names {} hosts and the deployment has {hosts}",
-        counts.len()
-    );
-    counts[h as usize]
+    counts.get(h as usize).copied()
 }
 
 #[cfg(test)]

@@ -762,18 +762,20 @@ numbered from 0, so a program that wants different work on each host branches on
 > worker of another host is named `(HostId(h), k)`, as host $h$ declared it.
 
 > **Definition (Workers of a host).** `trame::workers(HostId(h))` answers the number of workers host $h$
-> is given, a `u32`, the leader not counted. It may be called on a leader and in a worker, before the program
-> declares anything, and every host gets the same answer for the same $h$. A host number of $H$ or more
-> panics. The count comes from outside the program: the launcher supplies it, from the usable cores of
-> the machine by default (a machine cut into $S$ hosts gives each $\lfloor$cores$/S\rfloor$, at least 1), or
-> from a launcher option or a hostfile line that names a count for the host. Hosts may differ. Each host
-> declares its own workers, and the launcher starts as many as that host declares: a program that does not
-> follow `workers(h)` is not refused for it. What is refused, as before, is a route that names a worker
-> `(h, k)` that host $h$ does not declare (F3).
+> has, the leader not counted, as `Some(n)`, or `None` when this process does not know it. A host's count is
+> known to every process once the hosts have discovered each other: after a launch has begun, `workers(h)`
+> answers what host $h$ holds, the workers it declared, for every $h < H$. Before that it answers what the
+> launcher supplied, if it supplied any, else `None`, and `None` for a number that is no host. The launcher
+> supplies the counts to every process, from a launcher option (`--workers 3,1,2`), the environment
+> (`TRAME_WORKERS`), a hostfile line that names a count, or the usable cores of the machine (a machine cut
+> into $S$ hosts gives each $\lfloor$cores$/S\rfloor$, at least 1). Hosts may differ. Each host declares its own
+> workers and the launcher starts as many as that host declares, so a program is not refused for ignoring a
+> supplied count, and the count it declared replaces the supplied one at the launch. A route that names a
+> worker `(h, k)` that host $h$ does not declare is refused (F3).
 >
-> *Status: built* on both backends. The launcher decides the counts, passes them to every rank, and starts each
-> host with the ranks that host declares, so hosts may differ (`launch --workers 3,1,2`, `TRAME_WORKERS`;
-> `src/backends/README.md`, Launch). Not built: counts that change while the program runs.
+> *Status: built* on both backends. On `mpi` the hosts discover each other at the first `host()` or `hosts()` call
+> or at the launch, whichever is first; on `seq` there is one host. Hosts that start separately and learn each
+> other's counts in a handshake are not built.
 
 > **Requirement (Routes between hosts).** A route between workers of two hosts is a route of $T$
 > (Section 5.2). Both hosts declare it, with the same ends, message type, kind and capacity. Hosts
@@ -821,7 +823,7 @@ root, except the functions of `trame::math`.
 | `now() -> Reading` | fn | $\mathsf{now}$ (5.1); panics outside a worker |
 | `host() -> HostId` | fn | this host (6) |
 | `hosts() -> u32` | fn | the number of hosts $H$ (6); 1 on a backend that runs one host |
-| `workers(HostId) -> u32` | fn | the workers host $h$ is given, leader not counted (6); `TRAME_WORKERS` from the launcher |
+| `workers(HostId) -> Option<u32>` | fn | the workers of host $h$, leader not counted; `None` when not yet known (6) |
 | `Reading` | type: `since`, `clock`, `new` | a reading of one clock; plain, not a message (5.1, Definition (Comparing readings)) |
 | `ClockId` | type: `detached` | the clock of a reading (5.1) |
 | `Stamped<M>` | type: fields `at: Reading`, `value: M` | what the leader's `recv` answers: a message and the sender's reading at its send (5.2, Definition (Stamp)) |

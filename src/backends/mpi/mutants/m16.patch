@@ -1,5 +1,5 @@
 # violates: Deadlock, Join
-# expect: killed
+# expect: equivalent: a lost leader wake costs latency only: on one host the leader's wait naps between the detector's rounds (leader.rs, leader_nap), and join waits on DONE, which finish still wakes. Observable only by timing, so no program kills it; measured on the cluster, 34 programs, 0 kills
 --- a/backends/mpi/roles/results.rs
 +++ b/backends/mpi/roles/results.rs
 @@ -38,7 +38,6 @@

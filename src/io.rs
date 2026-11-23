@@ -105,9 +105,11 @@ pub fn hosts() -> u32 {
     Selected::hosts()
 }
 
-/// The number of workers host `h` is given, the leader not counted (INTERFACE.md 6). The launcher supplies it, so
-/// it answers before the program declares anything and is the same on every host. Panics when `h` is not a host.
-pub fn workers(h: crate::topology::HostId) -> u32 {
+/// The number of workers of host `h`, the leader not counted (INTERFACE.md 6), or `None` when this process does
+/// not know it. A launcher may supply the counts before the hosts have discovered each other; once they have
+/// (`launch` has returned, or the first `host()` or `hosts()` on a backend that discovers there), every host's count is
+/// known. `None` also for a number that is no host.
+pub fn workers(h: crate::topology::HostId) -> Option<u32> {
     Selected::workers(h.0)
 }
 

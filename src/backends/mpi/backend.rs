@@ -59,6 +59,7 @@ impl Backend for Selected {
     }
 
     fn launch(mut plan: Plan) -> Result<Leader, Refused> {
+        local().launched = true;
         let topo = topology(&plan)?;
         let role = open(&crate::backends::mpi::transport::hosts::host().comm, &topo).map_err(refused)?;
         let t = match &role {
@@ -219,6 +220,19 @@ impl Backend for Selected {
             }
         }
         crate::backends::mpi::transport::hosts::host().count
+    }
+
+    fn workers(h: u32) -> Option<u32> {
+        // The launcher's probe is one rank standing for a host of a larger launch: its counts are the supplied ones.
+        if std::env::var("TRAME_PROBE").as_deref() == Ok("ranks") {
+            return crate::backends::supply::supplied(h);
+        }
+        // A host's workers are its ranks but its leader, known once the hosts have discovered each other (hosts.rs
+        // `host`). Until the launch begins the supplied count answers first: it is what the launcher asked the
+        // program for its ranks on, so a program that derives its own count from it declares what the launch holds.
+        let local = crate::backends::mpi::setup::state::local();
+        let held = || local.host.as_ref()?.members.get(h as usize).map(|ranks| ranks.len() as u32 - 1);
+        if local.launched { held() } else { crate::backends::supply::supplied(h).or_else(held) }
     }
 
     fn peer_send(_run: &Leader, to: u32, tag: u64, bytes: &[u8]) -> Result<(), Full> {

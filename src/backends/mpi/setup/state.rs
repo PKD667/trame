@@ -28,6 +28,8 @@ pub(crate) struct Local {
     pub endpoint: Option<Transport>,
     /// This process's host (hosts.rs).
     pub host: Option<crate::backends::mpi::transport::hosts::Host>,
+    /// Whether this rank has begun its launch: from then on `workers(h)` answers what the hosts hold.
+    pub launched: bool,
 }
 
 struct Slot(UnsafeCell<Option<Local>>);
@@ -47,6 +49,7 @@ pub(crate) fn local() -> &'static mut Local {
         inbox: Vec::new(),
         endpoint: None,
         host: None,
+        launched: false,
     })
 }
 

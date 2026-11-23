@@ -2,7 +2,7 @@
 # launch [--split S] [--workers N] [--bind B] [--timeout T] --out DIR -- PROGRAM [ARGS...]: run a program built for this backend
 # as one trame host, one process (src/backends/README.md, Launch). seq has one host: S must be 1, and a job of
 # several machines is refused. --workers N is what `trame::workers(HostId(0))` answers (TRAME_WORKERS), by default
-# the usable cores. --bind is accepted and ignored.
+# the usable cores (nproc). --bind is accepted and ignored.
 set -u
 split=1 timeout="" out="" workers=""
 while [[ $# -gt 0 && $1 != -- ]]; do
@@ -22,7 +22,7 @@ if [[ -n ${NIX_DEPLOY_HOSTFILE:-} ]] && (( $(grep -c . "$NIX_DEPLOY_HOSTFILE") >
   echo "launch: this backend runs one host; the job has several machines" >&2; exit 2
 fi
 [[ -z $workers || $workers =~ ^[1-9][0-9]*$ ]] || { echo "launch: this backend runs one host; --workers $workers" >&2; exit 2; }
-[[ -z $workers ]] || export TRAME_WORKERS=$workers
+export TRAME_WORKERS=${workers:-$(nproc)}
 mkdir -p "$out"
 echo "argv $*" > "$out/config.txt"
 t=$(mktemp)

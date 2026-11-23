@@ -123,7 +123,7 @@ Several hosts on one machine come from `TRAME_MPI_NODE_RANKS=k`, which cuts a no
 `=k0,k1,...`, which gives host 0 k0 ranks, host 1 k1, and so on (the sizes add up to the launch's ranks). It is
 for testing and never a default. `TRAME_PROBE=ranks` makes a program print `trame-ranks N` and stop, and the
 launch uses it to ask for the rank count of each host, as host `TRAME_PROBE_HOST` of `TRAME_PROBE_HOSTS`.
-`TRAME_WORKERS=n0,n1,...` is what `trame::workers(h)` answers for each host (INTERFACE.md 6): the launch
+`TRAME_WORKERS=n0,n1,...` is what `trame::workers(h)` answers for each host until the hosts hold their own count (INTERFACE.md 6): the launch
 decides it and passes it to every rank (`src/backends/supply.rs`).
 
 Open MPI may print `osc_ucx_component` errors on stderr on some machines; they come from Open MPI, not from
@@ -188,7 +188,7 @@ launcher.
 from `TRAME_WORKERS` in the environment (the same form), then from a `slots=N` on the host's machine's line of the
 hostfile, then from the machine's usable cores, which is `nproc` run on the machine and so follows its cpuset,
 divided by `--split` (at least 1). `seq` has one host and takes one count. The counts are only what
-`trame::workers` answers. Each host is started with the workers it declares, which a program that wants its host's
+`trame::workers` answers before a launch begins; after it, `workers(h)` is what host h declared. Each host is started with the workers it declares, which a program that wants its host's
 share takes from `trame::workers(trame::host())`; on `mpi` the launcher asks the program once per host
 (`TRAME_PROBE_HOST`), so hosts may differ, and it places the machine's slots as the sum of its hosts' ranks.
 `check/workers.sh BACKEND` runs `check/programs/workers.rs` on hosts of different sizes.

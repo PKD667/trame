@@ -130,14 +130,27 @@ fn build_all(plan: &mut Plan) {
     }
 }
 
+/// The workers of the last launch of this process: 0 before one.
+static DECLARED: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
 impl Backend for Selected {
     type Run = Run;
 
     const EXACT: bool = true;
 
+    /// The one host's workers: those of the last launch of this process, before any launch what the launcher supplied.
+    fn workers(h: u32) -> Option<u32> {
+        match (h, DECLARED.load(core::sync::atomic::Ordering::SeqCst)) {
+            (0, 0) => crate::backends::supply::supplied(0),
+            (0, n) => Some(n),
+            _ => None,
+        }
+    }
+
     fn launch(mut plan: Plan) -> Result<Run, Refused> {
         build_all(&mut plan);
         let n = plan.workers.len();
+        DECLARED.store(n as u32, core::sync::atomic::Ordering::SeqCst);
         let routes = Routes::new(&plan.routes)?;
         let limit = limit::setting().map_err(|reason| Refused::Backend { reason: reason.into() })?;
         let state = State {
