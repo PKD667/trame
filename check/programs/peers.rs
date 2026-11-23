@@ -51,7 +51,7 @@ fn main() {
             println!("host {h}: {}", n.unwrap());
         }
     } else {
-        run.leader_send(trame::HostId(0), Count { host: me.0, n: mine as u32 }).expect("peer send");
+        run.leader_send(trame::HostId(0), &Count { host: me.0, n: mine as u32 }).expect("peer send");
     }
     run.join();
     assert_eq!(w.take().n, mine);

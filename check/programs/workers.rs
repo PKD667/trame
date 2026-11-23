@@ -98,7 +98,7 @@ fn main() {
             println!("host {h}: ok");
         }
     } else {
-        run.leader_send(HostId(0), Table { host: me.0, counts: mine }).expect("peer send");
+        run.leader_send(HostId(0), &Table { host: me.0, counts: mine }).expect("peer send");
     }
     run.join();
 }

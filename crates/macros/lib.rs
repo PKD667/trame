@@ -43,9 +43,12 @@ fn expand_message(attr: TokenStream2, item: TokenStream) -> syn::Result<TokenStr
     s.attrs.push(parse_quote!(#[derive(::core::clone::Clone, ::core::marker::Copy, ::trame::__bytemuck::Pod, ::trame::__bytemuck::Zeroable)]));
     s.attrs.push(parse_quote!(#[bytemuck(crate = "::trame::__bytemuck")]));
     let name = &s.ident;
+    // A message is an object too: it crosses between leaders (INTERFACE.md 6).
+    let object = object::derive_object(s.to_token_stream())?;
     // A message is its bytes (Pod), so it is plain too: a state may hold it.
     Ok(quote! {
         #s
+        #object
         // SAFETY: a Pod type is its bytes (CONTRACT.md M2, M3).
         unsafe impl ::trame::Plain for #name {}
     })
@@ -192,7 +195,15 @@ fn expand_parallel(input: TokenStream2) -> syn::Result<TokenStream2> {
     })
 }
 
+mod object;
 mod state;
+
+/// `#[derive(trame::Object)]` on a struct or enum: implements `trame::Object` (INTERFACE.md 6, Definition (Objects))
+/// when every field's type is an object; a field that is not is a compile error at that field.
+#[proc_macro_derive(Object)]
+pub fn derive_object(item: TokenStream) -> TokenStream {
+    object::derive_object(item.into()).unwrap_or_else(|e| e.to_compile_error()).into()
+}
 
 /// `#[derive(trame::Plain)]` on a struct or enum: implements `trame::Plain` (CONTRACT.md M2, M3)
 /// when every field's type is plain; a field that is not is a compile error at that field.

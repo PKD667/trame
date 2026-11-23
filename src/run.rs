@@ -62,15 +62,15 @@ impl Run {
             .map(|w| Stamped { at: Reading::new(ClockId::new(w.clock), Duration::from_nanos(w.nanos)), value: w.value })
     }
 
-    /// Send `msg` to the leader of host `to`, on the peer channel, not a route (CONTRACT.md F6).
-    /// `Full` when that channel is at capacity. Panics when `to` is not a host of the federation.
-    pub fn leader_send<M: Message>(&self, to: HostId, msg: M) -> Result<(), Full> {
-        crate::io::peer_send(to, msg)
+    /// Send `obj` to the leader of host `to`, on the peer channel, not a route (CONTRACT.md F6): `peer_send` on a
+    /// run. `Full` when the channel takes none of it. Panics when `to` is not a host of the federation.
+    pub fn leader_send<T: crate::Object>(&self, to: HostId, obj: &T) -> Result<(), Full> {
+        crate::object::peer_send(to, obj)
     }
 
-    /// The next message of type `M` from a peer leader, with the host it came from, or `None`.
-    pub fn leader_recv<M: Message>(&self) -> Option<(HostId, M)> {
-        crate::io::peer_recv::<M>()
+    /// The next object of type `T` from a peer leader, with the host it came from, or `None`: `peer_recv` on a run.
+    pub fn leader_recv<T: crate::Object>(&self) -> Option<(HostId, T)> {
+        crate::object::peer_recv::<T>()
     }
 
     /// Edit `h`, a worker's state or the pool: `f` runs once no step that uses it runs, and no such

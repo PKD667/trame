@@ -74,6 +74,7 @@ mod domain;
 mod flow;
 mod io;
 mod launch;
+mod object;
 mod plain;
 mod run;
 mod time;
@@ -84,9 +85,13 @@ pub use domain::Alloc;
 /// The surface of INTERFACE.md 7: every public name of the crate, at the root and nowhere else.
 pub use flow::{Drained, Spent, drain, fuel, lend};
 pub use io::{
-    Full, Message, Stamped, host, hosts, is_leader, me, peer_recv, peer_recv_bytes, peer_send, peer_send_bytes,
-    peer_wait, recv, send, share, workers,
+    Full, Message, Stamped, host, hosts, is_leader, me, peer_wait, recv, send, workers,
 };
+pub use object::{Malformed, Object, peer_recv, peer_send, share};
+#[doc(hidden)]
+pub mod __object {
+    pub use crate::object::{Reader, Shape, Writer};
+}
 pub use launch::Refused;
 pub use plain::Plain;
 #[doc(hidden)]
@@ -95,7 +100,7 @@ pub use run::{Outcome, Run};
 pub use status::Status;
 pub use time::{ClockId, Reading, now};
 pub use topology::{End, Handle, HostId, Leader, Pool, Topology, Worker, WorkerId};
-pub use trame_macros::Plain;
+pub use trame_macros::{Object, Plain};
 
 /// The backends and the choice among them (src/backends/mod.rs).
 #[path = "backends/mod.rs"]

@@ -2,7 +2,6 @@
 //! tag of its routes, so one route family per type.
 
 use crate::backend::{Backend, Selected};
-use alloc::vec::Vec;
 use core::any::{TypeId, type_name};
 
 /// A message type: plain data, sent as its bytes. Every `Pod` type is one (bytemuck: no padding, no
@@ -120,46 +119,10 @@ pub fn is_leader() -> bool {
     Selected::is_leader()
 }
 
-/// The leader of this host gives `bytes` to every other process of the host: each returns what the leader gave,
-/// the leader its own `bytes`. Collective over the host, so every process calls it, in the same order, before
-/// its launch or after. This is how a plan the leaders agreed on (`peer_send`) reaches the processes that declare
-/// the host's workers. On a backend whose host is one process it answers `bytes`.
-pub fn share(bytes: &[u8]) -> Vec<u8> {
-    Selected::share(bytes)
-}
-
-/// Send `msg` to the leader of host `to` on the peer channel (CONTRACT.md F6), before a launch or after it. Only a
-/// leader calls this (`is_leader`). `Full` when that channel is at capacity. Panics when `to` is not a peer.
-pub fn peer_send<M: Message>(to: crate::topology::HostId, msg: M) -> Result<(), Full> {
-    Selected::peer_send(to.0, tag::<M>(), crate::__bytemuck::bytes_of(&msg))
-}
-
 /// Block until a peer message may have arrived for this leader (returns at once when one is held): the wait before a
 /// launch, where `Run::wait` does not exist yet. Only a leader calls this.
 pub fn peer_wait() {
     Selected::peer_wait()
-}
-
-/// Send `bytes`, any length, tagged `tag`, to the leader of host `to` on the peer channel (CONTRACT.md F6), before a
-/// launch or after it. The tag is the caller's: a message of this call is taken by `peer_recv_bytes` with the same
-/// tag, and no typed `peer_recv` should be given a tag it also uses. The send does not wait for the receiver, so
-/// leaders that send each other messages of any size at once do not deadlock. Only a leader calls this. Panics when
-/// `to` is not a peer.
-pub fn peer_send_bytes(to: crate::topology::HostId, tag: u64, bytes: &[u8]) {
-    let _ = Selected::peer_send(to.0, tag, bytes);
-}
-
-/// The next message from a peer leader sent with `peer_send_bytes` under `tag`: its host and bytes, or `None`.
-/// Messages of one tag from one peer arrive in the order sent.
-pub fn peer_recv_bytes(tag: u64) -> Option<(crate::topology::HostId, Vec<u8>)> {
-    Selected::peer_recv_bytes(tag).map(|(h, bytes)| (crate::topology::HostId(h), bytes))
-}
-
-/// The next message of type `M` from a peer leader, with the host it came from, or `None`. Only a leader calls this.
-pub fn peer_recv<M: Message>() -> Option<(crate::topology::HostId, M)> {
-    let mut from = 0;
-    read(|out| Selected::peer_recv(tag::<M>(), out).map(|h| from = h).is_some())
-        .map(|m| (crate::topology::HostId(from), m))
 }
 
 /// The tag of a message type across hosts (CONTRACT.md F4): equal in two compilations of the same

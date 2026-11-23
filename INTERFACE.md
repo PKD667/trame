@@ -789,29 +789,40 @@ path.
 
 > **Definition (Peer channel).** A peer of a leader is the leader of any other host: with $H$ hosts,
 > every leader has the $H - 1$ others, whether or not their hosts share a route. Leaders exchange
-> messages over a channel that is not a route. `Run::leader_send(HostId(h), m)` sends to host $h$'s
-> leader, and `Run::leader_recv::<M>()` answers the next message of type `M` from a peer leader with
-> the host it came from, or `None`. Messages of one type from one peer arrive in the order they were
-> sent. A host is not its own peer, and a host number of $H$ or more names no host; a send to either
-> panics.
+> objects (Definition (Objects)) over a channel that is not a route. `Run::leader_send(HostId(h), &o)` sends
+> to host $h$'s leader, and `Run::leader_recv::<T>()` answers the next object of type `T` from a peer leader
+> with the host it came from, or `None`. Objects of one type from one peer arrive in the order they were
+> sent. A send does not wait for its receiver, so two leaders that send each other objects of any size at once
+> do not deadlock; the run ends after every object a leader sent has been taken. A host is not its own peer,
+> and a host number of $H$ or more names no host; a send to either panics.
+
+> **Definition (Objects).** An $\mathit{Object}$ is a value that crosses between leaders, and no program writes
+> or reads a byte of it. The numbers, `bool`, `()`, arrays, tuples, `Option` and `Bounded` are objects;
+> `#[derive(trame::Object)]` makes a struct or enum of objects one, and a `#[trame::message]` struct is one. There
+> is no impl for `Vec`, `String` or `Box`: the only collection is `Bounded`, whose capacity the program fixes
+> when it builds the value (3.1) and which crosses with its capacity, so every object has a finite size and a
+> receiver builds a `Bounded` of the sender's capacity. `o.size()` is the exact size of the object's encoding in
+> bytes, its sizing metadata. An object larger than a frame goes as several frames: trame cuts it, sends the
+> frames in order on the peer channel and puts it back together, and `peer_recv` answers an object only when
+> all of it has arrived. The encoding is little-endian, so hosts of different byte order agree. Decoding checks
+> every length, `bool`, `Option` and enum tag, and a violation panics naming the type; it is never undefined
+> behaviour. The tag of an object is a hash of its shape, the names and field types of its type, so two
+> programs that disagree on a type neither take each other's objects. A backend carries one frame of fixed
+> size between two leaders in order (`peer_send`, `peer_recv` of the backend trait) and one value to the other
+> processes of a host (`share`); objects are built on these in `src/object.rs` and a backend has no part in them.
 
 > **Definition (Before a launch).** The hosts discover each other before any launch: `is_leader()`,
 > `host()` and `hosts()` are the first call that does it, and on `mpi` it is collective over the world, so
-> every process makes one of them before the first `peer_send`. From then on a leader may exchange peer
-> messages without a run: `peer_send(HostId(h), m)`, `peer_recv::<M>()` (the same semantics as `leader_send`
+> every process makes one of them before the first `peer_send`. From then on a leader may exchange objects
+> without a run: `peer_send(HostId(h), &o)`, `peer_recv::<T>()` (the same semantics as `leader_send`
 > and `leader_recv`, which are these two on a run) and `peer_wait()`, which blocks until a peer message may
 > have arrived (a wait for an event, not a period). `is_leader()` answers whether this process is its host's
-> leader, the only process with peers. `share(bytes)` is collective over a host: its leader gives `bytes`, every
-> other process of the host returns them. So a plan the leaders agree on reaches every process that declares
-> the host's workers before any of them launches.
-> `peer_send_bytes(HostId(h), tag, &[u8])` and `peer_recv_bytes(tag)` carry a message of any length under a tag
-> the caller picks, for what is not a fixed-size message (a plan, a table): the receiver gets the host it came
-> from and the bytes, and messages of one tag from one peer arrive in the order sent. A send does not wait for
-> its receiver, so two leaders that send each other messages of any size at once do not deadlock; the run ends
-> after every message a leader sent has been taken. Waiting is for events and costs no core where the backend
-> can: on `mpi`, the other processes of a host sleep in `share` until their leader arrives; `peer_wait` and a
-> leader's `Run::wait` on more than one host are the MPI library's own waits, which may spin, so they belong
-> to the leader's core only.
+> leader, the only process with peers. `share(|| o)` is collective over a host: the leader runs the closure and
+> returns its object, every other process of the host returns that object, decoded (the closure does not run
+> there). So a plan the leaders agree on reaches every process that declares the host's workers before any
+> of them launches. Waiting is for events and costs no core where the backend can: on `mpi`, the other
+> processes of a host sleep in `share` until their leader arrives; `peer_wait` and a leader's `Run::wait` on
+> more than one host are the MPI library's own waits, which may spin, so they belong to the leader's core only.
 >
 > The launcher does not ask a program that exchanges peer messages before its launch for its ranks, since
 > that program cannot be run alone: it starts each host on the workers the launcher was given
@@ -847,9 +858,9 @@ root, except the functions of `trame::math`.
 | `now() -> Reading` | fn | $\mathsf{now}$ (5.1); panics outside a worker |
 | `host() -> HostId` | fn | this host (6) |
 | `hosts() -> u32` | fn | the number of hosts $H$ (6); 1 on a backend that runs one host |
-| `is_leader() -> bool`, `share(&[u8]) -> Vec<u8>` | fn | whether this process leads its host; the leader's bytes to every process of the host (6, Definition (Before a launch)) |
-| `peer_send_bytes(HostId, tag, &[u8])`, `peer_recv_bytes(tag)` | fn | the same, for a message of any length under a tag the caller picks (6, Definition (Before a launch)) |
-| `peer_send(HostId, m)`, `peer_recv::<M>()`, `peer_wait()` | fn | the peer channel before a launch; `Run::leader_send`/`leader_recv` are the same after (6, Definition (Peer channel)) |
+| `is_leader() -> bool`, `share(|| o) -> T` | fn | whether this process leads its host; the leader's object to every process of the host, collective (6, Definition (Before a launch)) |
+| `Object`, `Malformed` | trait, type: `size`; `#[derive(trame::Object)]` | a value that crosses between leaders: sized, finite, checked on decode (6, Definition (Objects)) |
+| `peer_send(HostId, &o)`, `peer_recv::<T>()`, `peer_wait()` | fn | the peer channel before a launch; `Run::leader_send`/`leader_recv` are the same after (6, Definition (Peer channel)) |
 | `workers(HostId) -> Option<u32>` | fn | the workers of host $h$, leader not counted; `None` when not yet known (6) |
 | `Reading` | type: `since`, `clock`, `new` | a reading of one clock; plain, not a message (5.1, Definition (Comparing readings)) |
 | `ClockId` | type: `detached` | the clock of a reading (5.1) |

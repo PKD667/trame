@@ -54,7 +54,7 @@ runs before anything process-specific.
 | `edit` | `leader_edit(inner, target, f)` |
 | `stop` | `leader_stop(inner)` |
 | `join` | `leader_join(inner)` |
-| `leader_send`, `leader_recv` | `peer_send`, `peer_recv` with the tag `io::tag::<M>()` |
+| `leader_send`, `leader_recv` | `object::peer_send`, `object::peer_recv`, which cut an object into frames of the backend's `peer_send`, `peer_recv` (INTERFACE.md 6) |
 
 `Run::edit` turns the handle into a target: a worker index with all of its field bits, or the pool
 with `POOL`. It checks the pool belongs to this run by its address. The closure runs in arena mode,

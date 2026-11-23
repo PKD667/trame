@@ -256,11 +256,6 @@ impl Backend for Selected {
         crate::backends::mpi::transport::hosts::wait();
     }
 
-    fn peer_recv_bytes(tag: u64) -> Option<(u32, Vec<u8>)> {
-        no_probe("peer_recv_bytes");
-        crate::backends::mpi::transport::hosts::recv_bytes(tag)
-    }
-
     fn peer_recv(tag: u64, out: &mut [u8]) -> Option<u32> {
         no_probe("peer_recv");
         crate::backends::mpi::transport::hosts::recv(tag, out)
