@@ -152,7 +152,7 @@ on such a route forever is stuck, and ends with `Deadlock` once every leader wai
 ended (E2).
 
 **F6 Peer channel.** A peer of a leader is the leader of any other host. Leaders exchange messages, before a launch or after it, over a
-peer channel that is not a route. A host is not its own peer, and a host number of H or more names no
+peer channel that is not a route. A send does not wait for its receiver. A host is not its own peer, and a host number of H or more names no
 host; a send to either panics.
 
 ## End

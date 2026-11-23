@@ -12,7 +12,7 @@ cd "$root"
 b="${1:?usage: $0 BACKEND [PROGRAM]}"
 program="${2:-workers}"
 # The most workers a host declares: workers caps them, agree declares what the plan says.
-cap=6; [[ $program == agree ]] && cap=99
+cap=6; [[ $program == agree || $program == relay ]] && cap=99
 launch="$root/src/backends/$b/launch"
 export RUSTFLAGS='--cfg trame_checked'
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$root/target/$b}"

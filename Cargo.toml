@@ -222,6 +222,10 @@ name = "agree"
 path = "check/programs/agree.rs"
 
 [[example]]
+name = "relay"
+path = "check/programs/relay.rs"
+
+[[example]]
 name = "xhost_ring"
 path = "check/programs/xhost_ring.rs"
 

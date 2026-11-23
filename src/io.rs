@@ -140,6 +140,21 @@ pub fn peer_wait() {
     Selected::peer_wait()
 }
 
+/// Send `bytes`, any length, tagged `tag`, to the leader of host `to` on the peer channel (CONTRACT.md F6), before a
+/// launch or after it. The tag is the caller's: a message of this call is taken by `peer_recv_bytes` with the same
+/// tag, and no typed `peer_recv` should be given a tag it also uses. The send does not wait for the receiver, so
+/// leaders that send each other messages of any size at once do not deadlock. Only a leader calls this. Panics when
+/// `to` is not a peer.
+pub fn peer_send_bytes(to: crate::topology::HostId, tag: u64, bytes: &[u8]) {
+    let _ = Selected::peer_send(to.0, tag, bytes);
+}
+
+/// The next message from a peer leader sent with `peer_send_bytes` under `tag`: its host and bytes, or `None`.
+/// Messages of one tag from one peer arrive in the order sent.
+pub fn peer_recv_bytes(tag: u64) -> Option<(crate::topology::HostId, Vec<u8>)> {
+    Selected::peer_recv_bytes(tag).map(|(h, bytes)| (crate::topology::HostId(h), bytes))
+}
+
 /// The next message of type `M` from a peer leader, with the host it came from, or `None`. Only a leader calls this.
 pub fn peer_recv<M: Message>() -> Option<(crate::topology::HostId, M)> {
     let mut from = 0;

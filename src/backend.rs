@@ -124,6 +124,11 @@ pub(crate) trait Backend {
     /// an event instead of polling. Returns at once when one is already held.
     fn peer_wait() {}
 
+    /// Take the next peer message of tag `tag`, of any length: the host it came from and its bytes.
+    fn peer_recv_bytes(_tag: u64) -> Option<(u32, Vec<u8>)> {
+        None
+    }
+
     /// Take the next peer message of tag `tag` into `out`; answers the host it came from.
     fn peer_recv(_tag: u64, _out: &mut [u8]) -> Option<u32> {
         None

@@ -11,12 +11,15 @@
 
 extern crate std;
 
+use std::boxed::Box;
 use std::vec::Vec;
 
-use mpi::point_to_point::{Destination, Source};
+use mpi::ffi;
+use mpi::point_to_point::Source;
 use mpi::topology::{Color, Communicator, SimpleCommunicator};
 use mpi::traits::*;
 
+use crate::backends::mpi::memory::shm::Window;
 use crate::backends::mpi::setup::state::{local, world};
 use crate::backends::mpi::transport::nodes::{discover, node_ranks_setting, split_groups};
 
@@ -40,6 +43,13 @@ pub(crate) struct Host {
     pub members: Vec<Vec<i32>>,
     /// The world, duplicated for the frames and credits of routes between hosts (transport/cross/).
     pub cross: SimpleCommunicator,
+    /// The host's gate: a window of one futex word that counts the `share`s the leader has reached, so the other
+    /// processes of the host sleep until the leader comes instead of spinning in a collective.
+    pub gate: Window,
+    /// The `share`s this process has made.
+    pub shares: u32,
+    /// Peer messages posted and not yet complete: the request and the buffer it reads (`send`).
+    pub outbox: Vec<(ffi::MPI_Request, Box<[u8]>)>,
 }
 
 /// One peer message tag for every peer message: the F4 tag travels in the first 8 bytes.
@@ -67,6 +77,8 @@ pub(crate) fn host() -> &'static mut Host {
         let colour = if leader { Color::with_value(0) } else { Color::undefined() };
         let peers = w.split_by_color_with_key(colour, nodes.me as i32);
         let cross = w.duplicate();
+        // One word on the host's shared memory, made now, collectively, with the host's table.
+        let gate = Window::allocate(&comm, 64, "gate".into()).expect("trame: the host's gate could not be allocated");
         local().host = Some(Host {
             comm,
             id: nodes.me,
@@ -78,12 +90,17 @@ pub(crate) fn host() -> &'static mut Host {
             watch: None,
             members: nodes.members,
             cross,
+            gate,
+            shares: 0,
+            outbox: Vec::new(),
         });
     }
     local().host.as_mut().expect("the host was just set")
 }
 
-/// Send a peer message (F6): blocking, so `Full` is never answered; MPI buffers small messages.
+/// Send a peer message (F6): posted without waiting for the receiver (MPI_Isend), so two leaders that send each
+/// other a message of any size at the same time do not deadlock, and `Full` is never answered. The message is kept
+/// until MPI completes it: `drain` and `flush` test the posted ones.
 pub(crate) fn send(to: u32, tag: u64, bytes: &[u8]) {
     let h = host();
     assert!(to != h.id && to < h.count, "trame: host {to} is not a peer of host {}", h.id);
@@ -91,13 +108,52 @@ pub(crate) fn send(to: u32, tag: u64, bytes: &[u8]) {
     let mut msg = Vec::with_capacity(8 + bytes.len());
     msg.extend_from_slice(&tag.to_le_bytes());
     msg.extend_from_slice(bytes);
-    peers.process_at_rank(to as i32).send_with_tag(&msg[..], PEER_TAG);
+    let msg = msg.into_boxed_slice();
+    let count = i32::try_from(msg.len()).expect("trame: a peer message is under 2 GiB");
+    let mut request = unsafe { ffi::RSMPI_REQUEST_NULL };
+    // SAFETY: `msg` is kept in `outbox` (a heap buffer that does not move) until the request completes; the
+    // communicator is the leaders' and the call does not wait for the receiver.
+    let rc = unsafe {
+        ffi::MPI_Isend(
+            msg.as_ptr() as *const _,
+            count,
+            ffi::RSMPI_UINT8_T,
+            to as i32,
+            PEER_TAG,
+            peers.as_raw(),
+            &mut request,
+        )
+    };
+    assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_Isend of a peer message failed");
+    h.outbox.push((request, msg));
     h.sent += 1;
+}
+
+/// Forget the posted messages MPI has completed. Answers whether any is still posted.
+fn settle(h: &mut Host) -> bool {
+    h.outbox.retain_mut(|(request, _)| {
+        let mut done = 0;
+        // SAFETY: `request` was posted by `send` and is not yet complete; MPI sets it null when it is.
+        let rc = unsafe { ffi::MPI_Test(request, &mut done, ffi::RSMPI_STATUS_IGNORE) };
+        assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_Test of a peer message failed");
+        done == 0
+    });
+    !h.outbox.is_empty()
+}
+
+/// Wait until every message this leader sent has gone, receiving what arrives meanwhile (two leaders that flush
+/// at once must not wait on each other). The end of a run calls it, so that no message is left posted.
+pub(crate) fn flush() {
+    while local().host.is_some() && settle(host()) {
+        drain();
+        core::hint::spin_loop();
+    }
 }
 
 /// Move every peer message MPI holds for this leader into `pending`. Answers whether one came.
 pub(crate) fn drain() -> bool {
     let h = host();
+    settle(h);
     let Some(peers) = h.peers.as_ref() else { return false };
     let mut any = false;
     while let Some((msg, status)) = peers.any_process().immediate_matched_probe_with_tag(PEER_TAG) {
@@ -108,6 +164,7 @@ pub(crate) fn drain() -> bool {
 }
 
 /// Block until a peer message is held in `pending`: it returns at once when one is, else after the next arrives.
+/// The wait is MPI's own (a blocking probe), which an MPI library may spin in.
 pub(crate) fn wait() {
     let h = host();
     if !h.pending.is_empty() {
@@ -132,13 +189,48 @@ fn keep(
     *arrivals += 1;
 }
 
-/// Take the oldest pending peer message of tag `tag` into `out`; answers its host.
-pub(crate) fn recv(tag: u64, out: &mut [u8]) -> Option<u32> {
+/// Take the oldest pending peer message of tag `tag`, whatever its length; answers its host and bytes.
+pub(crate) fn recv_bytes(tag: u64) -> Option<(u32, Vec<u8>)> {
     drain();
     let h = host();
     let i = h.pending.iter().position(|(_, t, _)| *t == tag)?;
     let (from, _, bytes) = h.pending.remove(i);
+    Some((from, bytes))
+}
+
+/// Take the oldest pending peer message of tag `tag` into `out`; answers its host.
+pub(crate) fn recv(tag: u64, out: &mut [u8]) -> Option<u32> {
+    let (from, bytes) = recv_bytes(tag)?;
     assert_eq!(bytes.len(), out.len(), "trame: a peer message of this tag has another size");
     out.copy_from_slice(&bytes);
     Some(from)
+}
+
+/// `share` (backend.rs): the leader's bytes to every other process of the host. The others sleep on the gate's
+/// futex until the leader reaches this call, then every process makes the broadcast, which is then short. Sleeping
+/// here is for an event, the leader's arrival; a collective alone would spin in the MPI library.
+pub(crate) fn share(bytes: &[u8]) -> Vec<u8> {
+    use mpi::collective::Root;
+    let h = host();
+    h.shares = h.shares.wrapping_add(1);
+    let n = h.shares;
+    let leader = h.comm.rank() == h.comm.size() - 1;
+    if leader {
+        h.gate.word32(0).store(n, std::sync::atomic::Ordering::SeqCst);
+        h.gate.wake(0);
+    } else {
+        loop {
+            let seen = h.gate.word32(0).load(std::sync::atomic::Ordering::SeqCst);
+            if seen == n || (seen.wrapping_sub(n) as i32) > 0 {
+                break;
+            }
+            h.gate.wait_for(0, seen, None);
+        }
+    }
+    let root = h.comm.process_at_rank(h.comm.size() - 1);
+    let mut len = bytes.len() as u64;
+    root.broadcast_into(&mut len);
+    let mut out = if leader { bytes.to_vec() } else { std::vec![0u8; len as usize] };
+    root.broadcast_into(&mut out[..]);
+    out
 }

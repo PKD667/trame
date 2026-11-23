@@ -242,15 +242,7 @@ impl Backend for Selected {
     }
 
     fn share(bytes: &[u8]) -> Vec<u8> {
-        use mpi::collective::Root;
-        use mpi::topology::Communicator;
-        let comm = &crate::backends::mpi::transport::hosts::host().comm;
-        let root = comm.process_at_rank(comm.size() - 1);
-        let mut len = bytes.len() as u64;
-        root.broadcast_into(&mut len);
-        let mut out = if comm.rank() == comm.size() - 1 { bytes.to_vec() } else { std::vec![0u8; len as usize] };
-        root.broadcast_into(&mut out[..]);
-        out
+        crate::backends::mpi::transport::hosts::share(bytes)
     }
 
     fn peer_send(to: u32, tag: u64, bytes: &[u8]) -> Result<(), Full> {
@@ -262,6 +254,11 @@ impl Backend for Selected {
     fn peer_wait() {
         no_probe("peer_wait");
         crate::backends::mpi::transport::hosts::wait();
+    }
+
+    fn peer_recv_bytes(tag: u64) -> Option<(u32, Vec<u8>)> {
+        no_probe("peer_recv_bytes");
+        crate::backends::mpi::transport::hosts::recv_bytes(tag)
     }
 
     fn peer_recv(tag: u64, out: &mut [u8]) -> Option<u32> {

@@ -194,6 +194,8 @@ pub(crate) fn wait(run: &Leader, seen: u64) -> u64 {
 pub(crate) fn join(run: Leader) -> Vec<Outcome> {
     let words = run.get().join();
     run.get().fail_if_aborted();
+    // Peer messages this leader sent are delivered before it ends (transport/hosts.rs `flush`).
+    crate::backends::mpi::transport::hosts::flush();
     let out = words
         .into_iter()
         .map(|w| match w {
