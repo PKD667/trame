@@ -129,6 +129,13 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for Alloc<A> {
 
 /// Run `f` in arena mode (the name `domain.rs`: `alloc` is the crate): what it allocates lands in the domain of the selected backend's launch.
 /// Nested calls are allowed. A panic in `f` leaves arena mode.
+/// The bytes this thread has allocated in arena mode since `arena_metered` last cleared the meter, or `None` outside
+/// arena mode (no builder, no edit). `trame::system::left` reads it, so what a builder asks and what the refusal
+/// counts are one number (INTERFACE.md 6, Definition (Memory of a host)).
+pub(crate) fn arena_taken() -> Option<u64> {
+    if arena_on() { Some(ARENA_BYTES.with(Cell::get)) } else { None }
+}
+
 /// Run `f` in arena mode and answer what it returned with the bytes it allocated. The launch uses it to hold each
 /// builder to its worker's share (INTERFACE.md 6, Definition (Memory of a host)).
 pub(crate) fn arena_metered<R>(f: impl FnOnce() -> R) -> (R, u64) {

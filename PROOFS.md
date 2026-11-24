@@ -118,8 +118,9 @@ keep the states live until the join (`src/backends/README.md`). Replay: `fanin_f
 after `set`; a leader that freed the blocks then would make its workers read the domain's free list as
 their state, and the run would hang. No test drops a run without its join on a multi-process backend.
 
-**M8 Share.** Programs `share` (the number a builder reads, the same in a step) and `share_refused` (a builder
-past its share refuses the launch), and the unit test of the rule in `src/system.rs`. The reading of the host's
+**M8 Share.** Programs `share` (the number a builder reads, the same in a step), `left` (a builder that spends
+`left()` exactly is not refused) and `share_refused` (a builder past its share and its grace refuses the launch),
+and the unit test of the rule in `src/system.rs`. The reading of the host's
 memory is the backend's own, by construction (`src/backends/README.md`); nothing checks the number against the
 machine's real memory, and the guarantee is for builders only, not for growth in edits.
 

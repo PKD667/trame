@@ -134,7 +134,7 @@ fn build_all(plan: &mut Plan) -> Result<(), Refused> {
     for (w, b) in plan.builders.iter_mut().enumerate() {
         let b = b.take().expect("trame: the launch checked that every worker was set");
         let (_, bytes) = crate::domain::arena_metered(b);
-        if let Some(share) = share.filter(|s| bytes > *s) {
+        if let Some(share) = share.filter(|s| bytes > s.saturating_add(crate::system::GRACE)) {
             return Err(Refused::Share { worker: crate::topology::WorkerId::here(w as u32), want: bytes, share });
         }
     }

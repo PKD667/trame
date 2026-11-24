@@ -52,7 +52,7 @@ pub(crate) fn build_or_adopt(plan: &mut Plan, t: &Transport) -> Result<(), Refus
         for &w in &mine {
             let b = plan.builders[w].take().expect("trame: the launch checked that every worker was set");
             let (_, bytes) = built_metered(b);
-            if share.is_some_and(|s| bytes > s) {
+            if share.is_some_and(|s| bytes > s.saturating_add(crate::system::GRACE)) {
                 segment::over_slot().store(bytes, Release);
             }
             segment::state_slot(w as u32).store(plan.workers[w].addr() as u64, Release);

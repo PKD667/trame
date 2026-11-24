@@ -838,7 +838,9 @@ path.
 > `TRAME_AVAILABLE`), less a sixteenth the launch keeps for its own use (routes, stamps, the peer channel, the
 > domain's tables) and less what the pool's builder took, divided equally among the host's workers. A builder that
 > takes more than its share refuses the launch (`Refused::Share`), and no step starts; a worker that stays within
-> it is never refused for memory. The reading is `None` before the launch, and on a host whose memory the backend
+> it is never refused for memory, and the refusal allows 64 KiB past the share for what trame itself allocates in a
+> builder, which a program cannot know. `system::left()` is the share less what the builder running now has taken,
+> by the same meter: a builder that sizes its last structure with it spends the share exactly, and is not refused. The reading is `None` before the launch, and on a host whose memory the backend
 > cannot read. A step or an edit may read the same number; growth in an edit is not held to it. What a host holds
 > besides its states, and what the number costs, is the backend's (`src/backends/README.md`, Limits). A run ends at
 > `Run::join`: after it, a process calls no `is_leader`, `peer_send`, `peer_recv` or `peer_wait`, and a backend may
@@ -877,6 +879,7 @@ root, except the functions of `trame::math`.
 | `peer_send(HostId, &o)`, `peer_recv::<T>()`, `peer_wait()` | fn | the peer channel before a launch; `Run::leader_send`/`leader_recv` are the same after (6, Definition (Peer channel)) |
 | `system::info() -> Info` | fn | one reading of what the launch is on (6, Definition (Memory of a host)) |
 | `system::Info` | type: field `worker_bytes: Option<u64>` | the share of each worker of this host; `None` before the launch (6) |
+| `system::left() -> Option<u64>` | fn | what is left of this worker's share in the builder running now (6); `None` outside a builder or an edit |
 | `workers(HostId) -> Option<u32>` | fn | the workers of host $h$, leader not counted; `None` when not yet known (6) |
 | `Reading` | type: `since`, `clock`, `new` | a reading of one clock; plain, not a message (5.1, Definition (Comparing readings)) |
 | `ClockId` | type: `detached` | the clock of a reading (5.1) |

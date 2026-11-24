@@ -136,9 +136,13 @@ host's memory: a lower bound trame keeps. It is the host's available memory at t
 sixteenth the launch keeps for itself and less the pool, divided equally among the host's workers; it
 is the same number for every worker of the host and does not depend on the order builders run in. A
 builder that takes more than its share refuses the launch (`Refused::Share`, on every process of the
-host), and no step starts. A worker that stays within its share is never refused for memory. The
-share is `None` before the launch and on a host whose memory the backend cannot read. Growth after
-the launch, in an edit, is not held to it.
+host), and no step starts. A worker that stays within its share is never refused for memory: the
+refusal allows 64 KiB past the share for what trame itself allocates inside a builder (a state's
+core, a slot), and `trame::system::left()` answers the share less what the builder running now has
+taken, by the same meter, so a builder that sizes its last structure with `left()` spends the share
+exactly. The share is `None` before the launch and on a host whose memory the backend cannot read,
+and `left()` is `None` outside a builder or an edit. Growth after the launch, in an edit, is not held
+to it.
 
 ## Federation
 

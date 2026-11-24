@@ -42,6 +42,23 @@ pub(crate) fn unfix() {
     FIXED.store(false, Ordering::Release);
 }
 
+/// What is left of this worker's share in the builder running now: `info().worker_bytes` less the bytes this builder
+/// has taken from the domain so far, by the same meter that refuses a launch past the share (`domain::arena_taken`).
+/// A program that sizes its last structure with `left()` spends the share exactly and is not refused: the meter counts
+/// the sizes asked for, so alignment and the domain's own headers never cost a program a byte of its share.
+/// `None` outside a builder or an edit (that is, for a step), before the launch, and where the host's memory could not
+/// be read.
+pub fn left() -> Option<u64> {
+    let taken = crate::domain::arena_taken()?;
+    Some(fixed()?.saturating_sub(taken))
+}
+
+/// The bytes of a builder's own bookkeeping that trame does not charge to the worker's share: what trame itself
+/// allocates inside a builder (a state's core, a slot), which a program cannot know and does not ask for. A builder
+/// reaches this far past its share before the launch is refused, so one that spends exactly `left()` is never refused
+/// (INTERFACE.md 6, Definition (Memory of a host)).
+pub(crate) const GRACE: u64 = 64 << 10;
+
 /// The share of one worker, from what the host has, what the pool took, and how many workers the host has.
 /// One rule for every backend: a sixteenth of what is available stays with the launch itself (routes, stamps, the
 /// peer channel, the segment's tables), the pool is taken out whole, and the rest is divided equally.
