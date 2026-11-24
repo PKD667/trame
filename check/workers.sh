@@ -3,7 +3,7 @@
 # backend's launch with --workers 3,1,2 on three hosts of this machine, 1,4 on two, and TRAME_WORKERS=2,5 on two,
 # and checks that the program agrees with itself (its output) and that each host got ranks = its workers + 1
 # (cpu.tsv). Run in the backend's shell, after check/programs/run.sh built the examples:
-#   nix develop .#mpi --command check/workers.sh mpi
+#   nix develop .#<backend> --command check/workers.sh <backend>   (its name is the directory under src/backends/)
 # PROGRAM is workers (the default) or agree (the leaders agree on a plan before the launch, check/programs/agree.rs).
 # A backend that runs one host refuses these shapes (launch exits 2): the script prints "skip" and exits 0.
 set -euo pipefail

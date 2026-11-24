@@ -773,9 +773,9 @@ numbered from 0, so a program that wants different work on each host branches on
 > supplied count, and the count it declared replaces the supplied one at the launch. A route that names a
 > worker `(h, k)` that host $h$ does not declare is refused (F3).
 >
-> *Status: built* on both backends. On `mpi` the hosts discover each other at the first `host()` or `hosts()` call
-> or at the launch, whichever is first; on `seq` there is one host. Hosts that start separately and learn each
-> other's counts in a handshake are not built.
+> *Status: built* on both backends. Where the host is several processes, the hosts discover each other at the
+> first `host()` or `hosts()` call or at the launch, whichever is first; where it is one process, there is one
+> host already. Hosts that start separately and learn each other's counts in a handshake are not built.
 
 > **Requirement (Routes between hosts).** A route between workers of two hosts is a route of $T$
 > (Section 5.2). Both hosts declare it, with the same ends, message type, kind and capacity. Hosts
@@ -812,17 +812,18 @@ path.
 > processes of a host (`share`); objects are built on these in `src/object.rs` and a backend has no part in them.
 
 > **Definition (Before a launch).** The hosts discover each other before any launch: `is_leader()`,
-> `host()` and `hosts()` are the first call that does it, and on `mpi` it is collective over the world, so
-> every process makes one of them before the first `peer_send`. From then on a leader may exchange objects
+> `host()` and `hosts()` are the first call that does it, and every process of a multi-process host joins
+> that discovery, so every process makes one of them before the first `peer_send`. From then on a leader may exchange objects
 > without a run: `peer_send(HostId(h), &o)`, `peer_recv::<T>()` (the same semantics as `leader_send`
 > and `leader_recv`, which are these two on a run) and `peer_wait()`, which blocks until a peer message may
 > have arrived (a wait for an event, not a period). `is_leader()` answers whether this process is its host's
 > leader, the only process with peers. `share(|| o)` is collective over a host: the leader runs the closure and
 > returns its object, every other process of the host returns that object, decoded (the closure does not run
 > there). So a plan the leaders agree on reaches every process that declares the host's workers before any
-> of them launches. Waiting is for events and costs no core where the backend can: on `mpi`, the other
-> processes of a host sleep in `share` until their leader arrives; `peer_wait` and a leader's `Run::wait` on
-> more than one host are the MPI library's own waits, which may spin, so they belong to the leader's core only.
+> of them launches. Waiting is for events and costs no core where the backend can. Where a backend cannot
+> hold a wait asleep (`peer_wait`, a leader's `Run::wait` on more than one host), the wait runs at full cost
+> on the leader's core only, and what still spins is the backend's own limit (`src/backends/README.md`,
+> Limits).
 >
 > The launcher does not ask a program that exchanges peer messages before its launch for its ranks, since
 > that program cannot be run alone: it starts each host on the workers the launcher was given

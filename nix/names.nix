@@ -10,7 +10,8 @@ let
   words = lib.filter (n: !lib.elem n ordinary) backendNames;
   alt = names: lib.concatStringsSep "|" names;
   structural = "backends/(${alt backendNames})|(${alt backendNames}) backend|--features[ =]\"?(${alt backendNames})|features = \\[\"(${alt backendNames})\"|feature = \"(${alt backendNames})\"";
-  allowed = [ "src/backends" "Cargo.toml" "rust-analyzer.toml" "Cargo.lock" "flake.lock" "lab.lock" ".gitmodules" ];
+  # `.git` is fine (commit messages name backends); the working tree's files are what the rule is about.
+  allowed = [ "src/backends" ".git" ".nixsci" "Cargo.toml" "rust-analyzer.toml" "Cargo.lock" "flake.lock" "lab.lock" ".gitmodules" ];
 in
 pkgs.runCommand "no-backend-names" { src = self; nativeBuildInputs = [ pkgs.gnugrep ]; } ''
   cd $src
