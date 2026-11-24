@@ -232,7 +232,11 @@ pub(crate) fn alloc(l: Layout) -> *mut u8 {
         let mut buf = [0u8; 160];
         let mut n = copy(&mut buf, 0, b"trame: the host's memory domain of ");
         n = copy(&mut buf, n, &gi_gib(len()));
-        n = copy(&mut buf, n, b" is full: the states, the pool and what their builders and edits allocate do not fit\n");
+        n = copy(
+            &mut buf,
+            n,
+            b" is full: the states, the pool and what their builders and edits allocate do not fit\n",
+        );
         // SAFETY: writes the message's bytes to stderr.
         let _ = unsafe { libc::write(2, buf.as_ptr().cast(), n) };
         return core::ptr::null_mut();

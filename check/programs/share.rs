@@ -30,7 +30,7 @@ fn report(share: &u64, taken: &u64) -> Status {
 
 fn main() {
     let before = trame::system::info().worker_bytes;
-    // Read before the run: `join` ends the run, and the MPI backend has finalized by the time it returns.
+    // Read before the run: `join` ends the run, and a multi-process backend has finalized by the time it returns.
     let leader = trame::is_leader();
     let mut t = Topology::new();
     let w = t.worker::<St>();
