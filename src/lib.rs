@@ -77,16 +77,16 @@ mod launch;
 mod object;
 mod plain;
 mod run;
+pub mod system;
 mod time;
 mod topology;
 
 pub use bounded::{Bounded, BoundedHeap};
 pub use domain::Alloc;
-/// The surface of INTERFACE.md 7: every public name of the crate, at the root and nowhere else.
+/// The surface of INTERFACE.md 7: every public name of the crate, at the root and nowhere else, but for two
+/// namespaces that gather a family of names: `math` (the numeric library) and `system` (what the launch is on).
 pub use flow::{Drained, Spent, drain, fuel, lend};
-pub use io::{
-    Full, Message, Stamped, host, hosts, is_leader, me, peer_wait, recv, send, workers,
-};
+pub use io::{Full, Message, Stamped, host, hosts, is_leader, me, peer_wait, recv, send, workers};
 pub use object::{Malformed, Object, peer_recv, peer_send, share};
 #[doc(hidden)]
 pub mod __object {

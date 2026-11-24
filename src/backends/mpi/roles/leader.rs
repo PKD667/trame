@@ -193,6 +193,8 @@ pub(crate) fn wait(run: &Leader, seen: u64) -> u64 {
 /// every outcome is read, so no result can depend on this rank's exit. An aborted run panics instead.
 pub(crate) fn join(run: Leader) -> Vec<Outcome> {
     let words = run.get().join();
+    // The launch's memory share is fixed for its run; a later launch fixes its own.
+    crate::system::unfix();
     run.get().fail_if_aborted();
     // Peer messages this leader sent are delivered before it ends (transport/hosts.rs `flush`).
     crate::backends::mpi::transport::hosts::flush();

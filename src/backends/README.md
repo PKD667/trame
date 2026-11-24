@@ -136,6 +136,11 @@ These are implementation limits, not part of T. A state has at most 63 fields an
 step included. A step receives at most 16 message types, and a `.room` wait names one of a worker's first 64
 routes. Exceeding one is refused or aborts with a message naming it.
 
+The memory share (M8) is a number trame reads from the host, not a limit it enforces on the kernel: a builder
+that stays within its share is never refused by trame, and the sum of the shares is below the host's available
+memory by a sixteenth and the pool. What a process may take outside a builder (the transport, the leader's own
+work, growth in an edit) is not counted against it.
+
 `seq` has the step limit above. `mpi` holds back the detection of a stuck run across hosts while a leader
 runs its own code, as described under mpi. Latency is not guaranteed by any backend, and T leaves it to the
 environment.
@@ -291,6 +296,7 @@ Generated from `src/backends/<backend>/guarantees.tsv` (which also names the pat
 | **M5** Visibility | as S3, as S4 | model at bounds |
 | **M6** Bound | by construction | never filled |
 | **M7** Lifetime | by construction, replay | drop without join untested |
+| **M8** Share | supply reading, programs, unit test | one rank's number by the node's builder; an edit is not held |
 | **F1** Identity | by construction, program | two hosts exercised |
 | **F3** Port agreement | program, connection check | two cases only |
 | **F4** Tag | by construction | one compilation only |
@@ -331,6 +337,7 @@ Generated from `src/backends/<backend>/guarantees.tsv` (which also names the pat
 | **M5** Visibility | as S4 | one process |
 | **M6** Bound | by construction | never filled |
 | **M7** Lifetime | by construction, replay | construction only |
+| **M8** Share | supply reading, programs, unit test | the reading is untested against the machine; an edit is not held |
 | **F1** Identity | by construction, program | single host |
 | **F3** Port agreement | program | two-host refusal unexercised |
 | **F4** Tag | by construction | one compilation only |
@@ -342,6 +349,13 @@ Generated from `src/backends/<backend>/guarantees.tsv` (which also names the pat
 | **Q2** Tail | measurement | measured, no bound set |
 
 <!-- guarantees:end -->
+
+**memory share.** Both backends read the host's memory the same way (`src/backends/supply.rs`, `available`):
+`TRAME_AVAILABLE` when the launcher declares one, else the smaller of the cgroup v2 headroom (`memory.max` less
+`memory.current`) and `MemAvailable` of `/proc/meminfo`. The pool is built before the workers on both: seq in
+`build_all`, the multi-process backend in `setup/adopt.rs`, where the share is written to the segment's table so
+every rank of the node fixes the same number. Each builder's bytes come from `domain::arena_metered`; one over its
+share refuses the launch (`Refused::Share`). Program `share_refused` runs the refusal on both.
 
 ## Lab experiments by backend
 

@@ -131,6 +131,15 @@ allocation failure, after the backend has said that the domain is full. A full d
 does with its `Worker` and `Pool` handles. A handle dropped after `set` frees nothing a step uses,
 and a run dropped without its join leaks its states rather than free them under running workers.
 
+**M8 Share.** `trame::system::info()` answers, in a builder, the bytes its worker may take of the
+host's memory: a lower bound trame keeps. It is the host's available memory at the launch, less a
+sixteenth the launch keeps for itself and less the pool, divided equally among the host's workers; it
+is the same number for every worker of the host and does not depend on the order builders run in. A
+builder that takes more than its share refuses the launch (`Refused::Share`, on every process of the
+host), and no step starts. A worker that stays within its share is never refused for memory. The
+share is `None` before the launch and on a host whose memory the backend cannot read. Growth after
+the launch, in an edit, is not held to it.
+
 ## Federation
 
 **F1 Identity.** Each host of a deployment has a `HostId`, distinct from every other host's and

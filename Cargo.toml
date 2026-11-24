@@ -226,6 +226,14 @@ name = "relay"
 path = "check/programs/relay.rs"
 
 [[example]]
+name = "share"
+path = "check/programs/share.rs"
+
+[[example]]
+name = "share_refused"
+path = "check/programs/share_refused.rs"
+
+[[example]]
 name = "xhost_ring"
 path = "check/programs/xhost_ring.rs"
 

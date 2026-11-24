@@ -65,7 +65,7 @@ impl Backend for Selected {
         let t = match &role {
             Role::Leader(t) | Role::Worker(t) => t,
         };
-        build_or_adopt(&mut plan, t);
+        build_or_adopt(&mut plan, t)?;
         let table = entries(&plan);
         let l = local();
         l.entries = table;
@@ -233,6 +233,10 @@ impl Backend for Selected {
         let local = crate::backends::mpi::setup::state::local();
         let held = || local.host.as_ref()?.members.get(h as usize).map(|ranks| ranks.len() as u32 - 1);
         if local.launched { held() } else { crate::backends::supply::supplied(h).or_else(held) }
+    }
+
+    fn host_available() -> Option<u64> {
+        crate::backends::supply::available()
     }
 
     fn is_leader() -> bool {

@@ -831,6 +831,19 @@ path.
 
 *Status: built* on both backends; `check/programs/agree.rs` runs it.
 
+> **Definition (Memory of a host).** `trame::system::info()` is one reading of what the launch is on, fixed at the
+> launch and the same for every process of a host. `worker_bytes` is the bytes each worker of the host may take
+> from its builder, a lower bound trame keeps (CONTRACT.md M8): the host's available memory at the launch (the
+> cgroup's headroom, or `MemAvailable`, whichever is smaller; a launcher may declare a number with
+> `TRAME_AVAILABLE`), less a sixteenth the launch keeps for its own use (routes, stamps, the peer channel, the
+> domain's tables) and less what the pool's builder took, divided equally among the host's workers. A builder that
+> takes more than its share refuses the launch (`Refused::Share`), and no step starts; a worker that stays within
+> it is never refused for memory. The reading is `None` before the launch, and on a host whose memory the backend
+> cannot read. A step or an edit may read the same number; growth in an edit is not held to it. What a host holds
+> besides its states, and what the number costs, is the backend's (`src/backends/README.md`, Limits). A run ends at
+> `Run::join`: after it, a process calls no `is_leader`, `peer_send`, `peer_recv` or `peer_wait`, and a backend may
+> already have finalized (`check/programs/share.rs` reads `is_leader` before its run for that reason).
+
 A leader may rely on a peer having launched when its host shares a route with the peer's host,
 because those hosts wait for each other's launch. For any other peer, a program that must know the
 peer is running has to be told so by a message.
@@ -862,6 +875,8 @@ root, except the functions of `trame::math`.
 | `is_leader() -> bool`, `share(|| o) -> T` | fn | whether this process leads its host; the leader's object to every process of the host, collective (6, Definition (Before a launch)) |
 | `Object`, `Malformed` | trait, type: `size`; `#[derive(trame::Object)]` | a value that crosses between leaders: sized, finite, checked on decode (6, Definition (Objects)) |
 | `peer_send(HostId, &o)`, `peer_recv::<T>()`, `peer_wait()` | fn | the peer channel before a launch; `Run::leader_send`/`leader_recv` are the same after (6, Definition (Peer channel)) |
+| `system::info() -> Info` | fn | one reading of what the launch is on (6, Definition (Memory of a host)) |
+| `system::Info` | type: field `worker_bytes: Option<u64>` | the share of each worker of this host; `None` before the launch (6) |
 | `workers(HostId) -> Option<u32>` | fn | the workers of host $h$, leader not counted; `None` when not yet known (6) |
 | `Reading` | type: `since`, `clock`, `new` | a reading of one clock; plain, not a message (5.1, Definition (Comparing readings)) |
 | `ClockId` | type: `detached` | the clock of a reading (5.1) |
@@ -883,7 +898,7 @@ root, except the functions of `trame::math`.
 | `HostId` | type, `HostId(pub u32)` | a host (6) |
 | `Leader` | type, unit | this host's leader as an end of a route; not a worker: no index, state or steps |
 | `End` | type, hidden | an end of a route, made from `WorkerId`, `(HostId, k)` or `Leader`; programs pass those, never an `End` |
-| `Refused` | enum: `UnknownWorker`, `Duplicate`, `ZeroCapacity`, `TwoOwners`, `PoolType`, `Alloc`, `PoolUnset`, `Unset`, `Backend`; `Display` | a refusal at launch (4) |
+| `Refused` | enum: `UnknownWorker`, `Duplicate`, `ZeroCapacity`, `TwoOwners`, `PoolType`, `Alloc`, `Share`, `PoolUnset`, `Unset`, `CpuFeature`, `Backend`; `Display` | a refusal at launch (4; `Share`: 6, Definition (Memory of a host)) |
 | `Run` | type: `send`, `recv` (answers `Option<Stamped<M>>`), `wait`, `edit`, `stop`, `join`, `leader_send`, `leader_recv` | the leader's side of a run (5.2, 5.5, 6, Definition (Join)) |
 | `Outcome` | enum: `Returned`, `Stopped`, `Failed`, `Deadlock` | a worker's result (5.3, Definition (Result)) |
 | `math::f32::exp` | fn | the portable f32 exponential. Its accuracy is claimed for inputs in $[-30, 0]$: relative error below 2e-6 against `f64::exp`, tested in `src/math/f32/tests.rs`. Outside that range, no accuracy claim |

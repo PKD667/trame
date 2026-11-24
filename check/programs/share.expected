@@ -1,0 +1,3 @@
+before: none
+builder: some
+step reads the launch's share: 1

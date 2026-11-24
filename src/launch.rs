@@ -23,6 +23,9 @@ pub enum Refused {
     PoolType { worker: WorkerId, want: &'static str, have: &'static str },
     /// `trame::Alloc` is not the program's global allocator (domain.rs).
     Alloc,
+    /// A worker's builder took more than the worker's share of the host's memory (INTERFACE.md 6, Definition
+    /// (Memory of a host)). The builder and the state it was building are dropped.
+    Share { worker: WorkerId, want: u64, share: u64 },
     /// The pool was declared but never set (`Topology::set`).
     PoolUnset,
     /// A worker was declared but its state was never set (`Topology::set`).
@@ -47,6 +50,12 @@ impl core::fmt::Display for Refused {
             Refused::PoolType { worker, want, have } => {
                 write!(f, "{worker:?}'s steps read a pool of {want}, and the pool is {have}")
             }
+            Refused::Share { worker, want, share } => write!(
+                f,
+                "{worker:?}'s builder takes {want} bytes of state, above its share of {share} bytes: this host's \
+                 memory, less a sixteenth for the launch and the pool, divided by the host's workers \
+                 (trame::system::info().worker_bytes; the launcher may declare the host's memory with TRAME_AVAILABLE)"
+            ),
             Refused::Alloc => write!(
                 f,
                 "trame::Alloc is not the global allocator; add `#[global_allocator] static A: trame::Alloc = trame::Alloc::new(std::alloc::System);`"

@@ -24,6 +24,7 @@ M4	allocation test, driver, rejections	tests/alloc.rs crates/driver/src/check/mo
 M5	as S4	src/sched.rs tests/conformance.rs	one process
 M6	by construction	src/domain.rs	never filled
 M7	by construction, replay	src/backends/seq/ops.rs check/programs/fanin_fifo.rs	construction only
+M8	supply reading, programs, unit test	check/programs/share.rs check/programs/share_refused.rs src/system.rs src/backends/supply.rs	the reading is untested against the machine; an edit is not held
 F1	by construction, program	check/programs/peers.rs	single host
 F3	program	check/programs/route_one_side.rs	two-host refusal unexercised
 F4	by construction	src/io.rs	one compilation only

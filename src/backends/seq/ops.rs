@@ -120,14 +120,28 @@ fn worker_main(shared: Arc<Shared>, me: usize, slot: Arc<Slot>) {
     shared.changed.notify_all();
 }
 
-/// Run every builder in the leader's own memory, at launch.
-fn build_all(plan: &mut Plan) {
-    if let Some(b) = plan.pool_builder.take() {
-        crate::domain::arena(b);
+/// Run every builder in the leader's own memory, at launch, and hold each worker to its share of the host's memory
+/// (INTERFACE.md 6, Definition (Memory of a host)). The pool is built first: its bytes come out of the host's memory
+/// before the workers' shares are fixed, so the share does not depend on which builder runs first.
+fn build_all(plan: &mut Plan) -> Result<(), Refused> {
+    let pool_bytes = match plan.pool_builder.take() {
+        Some(b) => crate::domain::arena_metered(b).1,
+        None => 0,
+    };
+    let workers = plan.workers.len() as u32;
+    let share = match <Selected as Backend>::host_available() {
+        Some(available) => crate::system::share(available, pool_bytes, workers),
+        None => u64::MAX,
+    };
+    crate::system::fix(share);
+    for (w, b) in plan.builders.iter_mut().enumerate() {
+        let b = b.take().expect("trame: the launch checked that every worker was set");
+        let (_, bytes) = crate::domain::arena_metered(b);
+        if bytes > share {
+            return Err(Refused::Share { worker: crate::topology::WorkerId::here(w as u32), want: bytes, share });
+        }
     }
-    for b in plan.builders.iter_mut() {
-        crate::domain::arena(b.take().expect("trame: the launch checked that every worker was set"));
-    }
+    Ok(())
 }
 
 /// The workers of the last launch of this process: 0 before one.
@@ -148,7 +162,7 @@ impl Backend for Selected {
     }
 
     fn launch(mut plan: Plan) -> Result<Run, Refused> {
-        build_all(&mut plan);
+        build_all(&mut plan)?;
         let n = plan.workers.len();
         DECLARED.store(n as u32, core::sync::atomic::Ordering::SeqCst);
         let routes = Routes::new(&plan.routes)?;
@@ -346,6 +360,8 @@ impl Backend for Selected {
 
     fn leader_join(run: Run) -> Vec<Outcome> {
         let shared = run.shared;
+        // The launch's memory share is fixed for its run; a later launch fixes its own.
+        crate::system::unfix();
         let mut st = leader_check(shared.lock());
         // The leader sends nothing after join. A worker that is still able to move is waited for.
         // When none is, and no idle worker has seen a change since it went idle, the run is stuck

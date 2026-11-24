@@ -31,6 +31,52 @@ pub(crate) fn supplied(h: u32) -> Option<u32> {
     counts.get(h as usize).copied()
 }
 
+/// The bytes of memory this host has free, as the launch reads them for its workers' share (INTERFACE.md 6,
+/// Definition (Memory of a host)): `TRAME_AVAILABLE` when the launcher declared a number, else the smaller of the
+/// cgroup's headroom (`memory.max` less `memory.current`, cgroup v2) and the machine's `MemAvailable`. `None` when
+/// neither can be read.
+pub(crate) fn available() -> Option<u64> {
+    if let Ok(text) = std::env::var("TRAME_AVAILABLE") {
+        return Some(
+            text.trim()
+                .parse::<u64>()
+                .unwrap_or_else(|_| panic!("trame: TRAME_AVAILABLE must be a number of bytes, got {text:?}")),
+        );
+    }
+    let cgroup = cgroup_v2().and_then(|dir| {
+        let max = std::fs::read_to_string(dir.join("memory.max")).ok()?;
+        let max: u64 = max.trim().parse().ok()?; // "max": no limit set
+        let used: u64 = std::fs::read_to_string(dir.join("memory.current")).ok()?.trim().parse().ok()?;
+        Some(max.saturating_sub(used))
+    });
+    let machine = mem_available();
+    match (cgroup, machine) {
+        (Some(c), Some(m)) => Some(c.min(m)),
+        (c, m) => c.or(m),
+    }
+}
+
+/// The cgroup v2 directory of this process: from `/proc/self/cgroup` (`0::/path`), under `/sys/fs/cgroup`.
+fn cgroup_v2() -> Option<std::path::PathBuf> {
+    let text = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    let path = text.lines().find_map(|l| l.strip_prefix("0::"))?.trim();
+    Some(std::path::Path::new("/sys/fs/cgroup").join(path.trim_start_matches('/')))
+}
+
+/// `MemAvailable` of `/proc/meminfo`, in bytes.
+fn mem_available() -> Option<u64> {
+    let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let kb: u64 = text
+        .lines()
+        .find_map(|l| l.strip_prefix("MemAvailable:"))?
+        .trim()
+        .trim_end_matches("kB")
+        .trim()
+        .parse()
+        .ok()?;
+    Some(kb * 1024)
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse;

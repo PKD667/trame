@@ -63,9 +63,10 @@ fn lock() -> &'static AtomicU32 {
     unsafe { &*((ADDR + LOCK) as *const AtomicU32) }
 }
 
-/// The table's end: where blocks start.
+/// The table's end: where blocks start. Slots: the pool, the workers' states, the workers' traces, then the launch's
+/// memory share and the bytes of a builder that took more than it (INTERFACE.md 6, Definition (Memory of a host)).
 fn blocks_start(workers: u64) -> usize {
-    (TABLE + 8 * (1 + 2 * workers as usize)).next_multiple_of(PAGE)
+    (TABLE + 8 * (3 + 2 * workers as usize)).next_multiple_of(PAGE)
 }
 
 /// Map this node's segment `name` at ADDR. The node's host rank creates it (`create`), every rank of
@@ -136,6 +137,16 @@ pub(crate) fn state_slot(w: u32) -> &'static AtomicU64 {
 
 pub(crate) fn trace_slot(w: u32) -> &'static AtomicU64 {
     word(TABLE + 8 * (1 + WORKERS.load(Acquire) as usize + w as usize))
+}
+
+/// The launch's memory share for a worker of this node, and the bytes of a builder that went past it (0: none): what
+/// the node's builder fixed, read by every other rank of the node after the build barrier.
+pub(crate) fn share_slot() -> &'static AtomicU64 {
+    word(TABLE + 8 * (1 + 2 * WORKERS.load(Acquire) as usize))
+}
+
+pub(crate) fn over_slot() -> &'static AtomicU64 {
+    word(TABLE + 8 * (2 + 2 * WORKERS.load(Acquire) as usize))
 }
 
 pub(crate) fn mapped() -> bool {

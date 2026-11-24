@@ -45,6 +45,8 @@ std::thread_local! {
     static ARENA: Cell<bool> = const { Cell::new(false) };
     /// Allocations this thread made in arena mode: the launch's probe reads it.
     static ARENA_ALLOCS: Cell<u64> = const { Cell::new(0) };
+    /// Bytes this thread allocated in arena mode since `ARENA_BYTES` was last cleared.
+    static ARENA_BYTES: Cell<u64> = const { Cell::new(0) };
 }
 
 /// Whether this thread is in arena mode. A thread whose locals are being destroyed is not: it runs
@@ -61,6 +63,7 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for Alloc<A> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if arena_on() {
             let _ = ARENA_ALLOCS.try_with(|c| c.set(c.get() + 1));
+            let _ = ARENA_BYTES.try_with(|c| c.set(c.get() + layout.size() as u64));
             if let Some(p) = Selected::domain_alloc(layout) {
                 return p;
             }
@@ -126,6 +129,14 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for Alloc<A> {
 
 /// Run `f` in arena mode (the name `domain.rs`: `alloc` is the crate): what it allocates lands in the domain of the selected backend's launch.
 /// Nested calls are allowed. A panic in `f` leaves arena mode.
+/// Run `f` in arena mode and answer what it returned with the bytes it allocated. The launch uses it to hold each
+/// builder to its worker's share (INTERFACE.md 6, Definition (Memory of a host)).
+pub(crate) fn arena_metered<R>(f: impl FnOnce() -> R) -> (R, u64) {
+    ARENA_BYTES.with(|c| c.set(0));
+    let out = arena(f);
+    (out, ARENA_BYTES.with(core::cell::Cell::get))
+}
+
 pub(crate) fn arena<R>(f: impl FnOnce() -> R) -> R {
     struct Leave(bool);
     impl Drop for Leave {

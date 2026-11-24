@@ -100,6 +100,13 @@ pub(crate) trait Backend {
         crate::backends::supply::supplied(h)
     }
 
+    /// The bytes of memory the host has free at this call, for the share a builder may take (INTERFACE.md 6,
+    /// Definition (Memory of a host)): the smaller of the cgroup's headroom and the machine's, and what a launcher
+    /// declared with `TRAME_AVAILABLE`. `None` where the backend cannot read one.
+    fn host_available() -> Option<u64> {
+        crate::backends::supply::available()
+    }
+
     /// Whether this process is its host's leader (CONTRACT.md F1): only a leader has peers (F6). A backend whose
     /// host is one process answers true. Needs the hosts to have discovered each other, not a launch.
     fn is_leader() -> bool {
