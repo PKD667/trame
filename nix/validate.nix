@@ -6,7 +6,7 @@
 # (`deterministic` in its descriptor) gets `programs-<name>`; a backend's own verdicts come from its descriptor
 # (`validate`, src/backends/<name>/validate.nix). `backends.<name>` has: d (the descriptor), bins (the build of its
 # examples), src (the source tree), programs (the names of the programs it runs), launch (its launch, wrapped).
-{ pkgs, v, backends, rejectionsSrc, driverToolchain, trameDriver }:
+{ pkgs, v, backends, rejectionsSrc, guaranteesSrc, driverToolchain, trameDriver }:
 let
   lib = pkgs.lib;
   rejectionCases = builtins.length (builtins.filter (lib.hasSuffix ".rs") (lib.filesystem.listFilesRecursive ../check/rejections/cases));
@@ -164,6 +164,29 @@ let
     '';
   };
 
+  # The guarantees map (src/backends/README.md, "Guarantees by backend"): every clause of CONTRACT.md has a row for
+  # every backend, the rows' cited paths are in the tree, and the committed section of the README is the one the rows
+  # generate. The rows are tags over prose sources: this verifies the inventory and its paths, not a row's truth.
+  guaranteesCheck = v.check {
+    name = "guarantees";
+    property = "every clause of CONTRACT.md has a row for every backend in src/backends/<backend>/guarantees.tsv, each row cites paths that exist, and src/backends/README.md's generated section is what the rows say";
+    model = "check/guarantees.py over the clause lines of CONTRACT.md and the tsv rows, one run, no execution of trame";
+    subject = guaranteesSrc;
+    checker = pkgs.python3;
+    scope = { backends = builtins.attrNames backends; rows = "clause, checked by, where, not checked"; };
+    command = ''
+      mkdir -p "$out/counterexamples"
+      rc=0
+      python3 "$subject/check/guarantees.py" check --root "$subject" > "$TMPDIR/log" 2>&1 || rc=$?
+      cp "$TMPDIR/log" "$out/counterexamples/log.txt"
+      if [ "$rc" -ne 0 ]; then
+        printf '{"holds":false,"gaps":[],"counterexamples":[{"id":"rows","artifact":"counterexamples/log.txt"}]}\n' > "$out/outcome.json"
+      else
+        printf '{"holds":true,"gaps":[],"counterexamples":[]}\n' > "$out/outcome.json"
+      fi
+    '';
+  };
+
   perBackend = name: b:
     lib.optionalAttrs b.d.deterministic { "programs-${name}" = programsCheck name b; }
     // (b.d.validate or (_: { })) {
@@ -173,6 +196,6 @@ let
       launch = b.launch;
     };
 in
-lib.foldl' (a: n: a // perBackend n backends.${n}) { } (builtins.attrNames backends)
+lib.foldl' (a: n: a // perBackend n backends.${n}) { guarantees = guaranteesCheck; } (builtins.attrNames backends)
 // lib.mapAttrs' (name: b: lib.nameValuePair "tests-${name}" (testsCheck name b)) backends
 // lib.mapAttrs' (name: b: lib.nameValuePair "rejections-${name}" (rejectionsCheck name)) backends

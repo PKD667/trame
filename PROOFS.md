@@ -5,7 +5,9 @@ of the backend, or some of its runs, never the backend whole. Each entry names t
 point where it stops. A clause that nothing checks says so.
 
 Where a check belongs to one backend, this file says so and names the place in `src/backends/README.md`
-(section Checks by backend) that lists it.
+(section Checks by backend) that lists it. The per-backend inventory of every clause — what checks it, where,
+and what it does not — is the guarantees map (`src/backends/README.md`, generated from
+`src/backends/<backend>/guarantees.tsv` by `check/guarantees.py`, checked by the verdict `guarantees`).
 
 ## Methods
 
@@ -27,9 +29,9 @@ any scheduler, and panics on a conflict.
 **Programs.** `check/programs/*.rs` print their observations, and `check/programs/run.sh` compares each backend's
 output with `check/programs/*.expected`.
 
-**Model checking.** The TLA+ models in `check/proofs/` check protocols of some backends with TLC, through
-the run script of the model's directory under `check/proofs/`. A model is checked, not the code. The model
-follows the code by reading.
+**Model checking.** The TLA+ models of a backend's protocols live in `src/backends/<backend>/proofs/` and run with
+TLC, through the run script of that directory (the verdict `protocol-<backend>`). A model is checked, not the code.
+The model follows the code by reading.
 
 **Measurement.** A statistical clause is measured: a run, a command, a machine and a tolerance.
 
@@ -66,8 +68,8 @@ could start. A backend with a multi-process wake-up protocol has a TLA+ model of
 (`src/backends/README.md`).
 
 **S4 Edit.** Model; replay of runs with racing edits (`edits_follow_the_model`), in which every step
-asserts the pool it reads is whole. A backend whose edits cross processes has its own handshake,
-which has no model (`src/backends/README.md`).
+asserts the pool it reads is whole. A backend whose edits cross processes has its own handshake, which the
+model `MCEdit` checks at small bounds (`src/backends/README.md`); its larger configurations did not finish.
 
 **S5 Stop.** Model.
 
@@ -139,7 +141,7 @@ no model.
 **E1 Abort.** Programs `abort`, `abort_join`, `leader_panics`.
 
 **E2 Join.** Programs; the outcome check. Where a backend detects stuck runs across hosts, the detector has
-no model in the tree: `check/proofs/` holds the epoch and lane models only. Programs `xhost_deadlock` and
+the model `Detect`, at its bounds (where it lives is in `src/backends/README.md`, Checks by backend). Programs `xhost_deadlock` and
 `leader_stuck` run the detector on two hosts. They test its verdicts; they do not prove them.
 
 ## Conformance

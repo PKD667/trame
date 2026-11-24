@@ -65,5 +65,27 @@ in
   };
   programNames = map (n: lib.removeSuffix ".rs" n)
     (builtins.filter (n: lib.hasSuffix ".rs" n) (builtins.attrNames (builtins.readDir ../check/programs)));
+  # The guarantees check (check/guarantees.py, src/backends/README.md "Guarantees by backend"): the contract, the
+  # per-backend rows, the README that carries the generated map, and every file a row may cite. Wider than the build
+  # sources on purpose: it reads what rows name, and only that check reads it.
+  guaranteesSrc = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../CONTRACT.md
+      ../PROOFS.md
+      ../src/backends/README.md
+      ../check/guarantees.py
+      ../src
+      ../tests
+      ../check/programs
+      ../check/proofs
+      ../check/rejections/cases
+      ../crates/driver
+      ../examples
+      ../lab/latency/README.md
+      ../lab/latency/q.nix
+      (lib.fileset.fileFilter (f: f.name == "guarantees.tsv") backendDir)
+    ];
+  };
   benchNames = map (e: e.name) (builtins.filter (e: lib.hasPrefix "lab/bench/" e.path) examples);
 }

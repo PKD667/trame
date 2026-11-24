@@ -119,6 +119,11 @@ There is no default backend: a build names one, and a build with none is a compi
 
 The backends, and the commands that run each, are in `src/backends/README.md` (Build and run).
 
+The map of what each backend checks of `CONTRACT.md`, and what each one lacks, is in `src/backends/README.md`
+(Guarantees by backend). It is generated from each backend's `guarantees.tsv` and the check `guarantees`
+(`nix build .#checks.$(system).guarantees`) fails when a clause has no row, a row cites a file that is not
+there, or the map and the rows drift apart.
+
 The cfg flag is needed because `#[trame::state]` and `parallel!` are compile errors without it. The driver
 sets it when it checks a build (INTERFACE.md, Section 3). Set by hand, it only lifts the error: it does not
 stop a deliberate unchecked build.
@@ -186,6 +191,7 @@ it needs, and the details are in `src/backends/README.md` (Build and run and Lau
 | crate tests | `cargo test` on each backend whose descriptor has `cargoTests` | `tests/` |
 | programs | every program in `check/programs/` on every backend, stdout compared with `.expected` | `check/programs/run.sh` |
 | backend checks | each backend's own checks, such as the transport of a multi-process backend | `src/backends/README.md`, Checks by backend |
+| guarantees map | every clause of CONTRACT.md, per backend: what checks it, what does not, paths verified | `src/backends/README.md`, Guarantees by backend |
 | TLA+ models | the protocols of the backends that have models | `src/backends/<b>/proofs/README.md` |
 | `nix flake check` | builds the verdicts that must hold | `lab/README.md`, Verdicts |
 | lab experiments | `nix run .#<name>` runs real processes: the experiments of each backend, and the scale runs | `lab/README.md`, `src/backends/README.md` |

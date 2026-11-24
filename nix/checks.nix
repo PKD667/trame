@@ -7,6 +7,7 @@ let
     inherit pkgs v;
     inherit (build) backends;
     inherit (tree) rejectionsSrc;
+    inherit (tree) guaranteesSrc;
     inherit (tc) driverToolchain trameDriver;
   });
 in

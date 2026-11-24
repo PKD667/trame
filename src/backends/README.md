@@ -255,6 +255,94 @@ recorder of its own.
 The shared-memory assumption is the mpi backend's own: its processes share memory through mappings of one
 object, and it assumes atomics in such a mapping order memory across processes as they do across threads.
 
+<!-- guarantees:start -->
+
+## Guarantees by backend
+
+Generated from `src/backends/<backend>/guarantees.tsv` (which also names the paths) by `check/guarantees.py`; the verdict `guarantees` (nix/validate.nix) fails on drift, a missing row or a cited path that is not in the tree.
+
+### mpi
+
+| Clause | Checked by | Not checked |
+| --- | --- | --- |
+| **R1** Safety | replay, programs, transport tests | finite traces only |
+| **R2** Progress | programs, model checking | models at bounds, not the code |
+| **L1** Refusal | collective refusal, programs | written cases only |
+| **L2** Agreement | agreement at open | no differing-plan test |
+| **L3** Building | plan built once | judged by program output |
+| **S1** Exclusion | model, replay, witness | runs taken, not every schedule |
+| **S2** Start | replay | choice not held exact |
+| **S3** Wake | replay, outcome check, model checking | model at bounds |
+| **S4** Edit | model, replay, model checking | larger configs unfinished |
+| **S5** Stop | model | small cases only |
+| **S6** Priority | model, replay | one shape tested |
+| **S7** Shares | model, measurement | no tolerance set |
+| **S8** Failure | model, programs | step failure only |
+| **S9** Trace | replay | completeness unchecked |
+| **T1** Order | programs, transport tests | written cases only |
+| **T2** Capacity | programs, transport tests | written cases only |
+| **T3** Delivery | programs, transport tests | written cases only |
+| **P1** Writer | driver | unsafe code outside steps unseen |
+| **P2** Edit | model, program | handshake bounds, as S4 |
+| **M1** Placement | by construction | no byte-level walk |
+| **M2** Meaning | driver, rejections | type-level, unsafe impls unseen |
+| **M3** Mutation | driver, rejections | type-level, unsafe impls unseen |
+| **M4** Allocation | allocation test, driver, rejections | trame's own allocations unseen |
+| **M5** Visibility | as S3, as S4 | model at bounds |
+| **M6** Bound | by construction | never filled |
+| **M7** Lifetime | by construction, replay | drop without join untested |
+| **F1** Identity | by construction, program | two hosts exercised |
+| **F3** Port agreement | program, connection check | two cases only |
+| **F4** Tag | by construction | one compilation only |
+| **F5** Routes between hosts | program, model checking | lossy lanes, end unmodelled |
+| **F6** Peer channel | programs | decode trusted, not authenticated |
+| **E1** Abort | programs | these cases only |
+| **E2** Join | model checking, programs | model at bounds, verdicts tested |
+| **Q1** Median | measurement | measured, no bound set |
+| **Q2** Tail | measurement | measured, no bound set |
+
+### seq
+
+| Clause | Checked by | Not checked |
+| --- | --- | --- |
+| **R1** Safety | replay, programs | finite traces only |
+| **R2** Progress | programs | these programs only |
+| **L1** Refusal | launch tests, programs | written cases only |
+| **L2** Agreement | by construction | nothing to check |
+| **L3** Building | by construction, no-alloc test | judged by program output |
+| **S1** Exclusion | model, replay, witness | runs taken, not every schedule |
+| **S2** Start | replay, exact | runs taken |
+| **S3** Wake | replay, outcome check | one process, no protocol |
+| **S4** Edit | model, replay | small cases, runs taken |
+| **S5** Stop | model | small cases only |
+| **S6** Priority | model, replay | one shape tested |
+| **S7** Shares | model, measurement | no tolerance set |
+| **S8** Failure | model, programs | step failure only |
+| **S9** Trace | replay | completeness unchecked |
+| **T1** Order | programs | no transport test of its own |
+| **T2** Capacity | programs | programs only |
+| **T3** Delivery | programs | programs only |
+| **P1** Writer | driver | unsafe code outside steps unseen |
+| **P2** Edit | model, program | as S4 |
+| **M1** Placement | by construction | no byte-level walk |
+| **M2** Meaning | driver, rejections | type-level, unsafe impls unseen |
+| **M3** Mutation | driver, rejections | type-level, unsafe impls unseen |
+| **M4** Allocation | allocation test, driver, rejections | trame's own allocations unseen |
+| **M5** Visibility | as S4 | one process |
+| **M6** Bound | by construction | never filled |
+| **M7** Lifetime | by construction, replay | construction only |
+| **F1** Identity | by construction, program | single host |
+| **F3** Port agreement | program | two-host refusal unexercised |
+| **F4** Tag | by construction | one compilation only |
+| **F5** Routes between hosts | vacuous, program | no lanes on one host |
+| **F6** Peer channel | program | no peers exist |
+| **E1** Abort | programs | these cases only |
+| **E2** Join | stuck handling, programs | no cross-host detector |
+| **Q1** Median | measurement | measured, no bound set |
+| **Q2** Tail | measurement | measured, no bound set |
+
+<!-- guarantees:end -->
+
 ## Lab experiments by backend
 
 An experiment is a directory (`lab/README.md`): `lab/<name>/` for every backend, `src/backends/<b>/lab/<name>/` for one
@@ -289,6 +377,9 @@ needs a `launch`, a `backend.nix` and, if it has programs it does not run, a `sk
 
 Its checks go in the lab and the validate verdicts in the same way as the existing backends. Its name goes in
 this file and nowhere else outside `src/backends/`.
+
+It also owes its inventory: `guarantees.tsv` (`check/guarantees.py`, Guarantees by backend), one row for every
+clause of `CONTRACT.md` — what checks it, where, what it does not — or the verdict `guarantees` fails.
 
 ## Serve
 
