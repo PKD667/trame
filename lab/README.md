@@ -38,6 +38,12 @@ Analyses are under `legacyPackages`, not `packages`, because a fresh clone may l
 `usi-design` document: `usi-latexmk figures/<figure>.tex` draws it. `lab.lock` is keyed by the closure's inputs: changing a
 runner or its binaries makes earlier runs "of older code", which the strict analysis refuses.
 
+A run's identity is the store path of its experiment closure. A git checkout and a `path:` checkout of the same
+commit put the source at different store paths, so their binaries differ and each refuses the other's runs:
+**run the campaign and its analyses in one checkout, and make it a git one** (`git clone` of the branch, checked
+out at the commit; `~/code/trame` evaluates as `path:` and cannot judge runs made from a clone). Committing
+`lab.lock` alone changes no closure, so the lock commit is where the analyses hold.
+
 ## Hosts
 
 A host comes from a provider name. The flake says `local` or `cluster`; what `cluster` means is set in
