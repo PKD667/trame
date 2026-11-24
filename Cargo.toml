@@ -234,6 +234,10 @@ name = "left"
 path = "check/programs/left.rs"
 
 [[example]]
+name = "share_big"
+path = "check/programs/share_big.rs"
+
+[[example]]
 name = "share_refused"
 path = "check/programs/share_refused.rs"
 

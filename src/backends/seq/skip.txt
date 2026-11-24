@@ -1,1 +1,2 @@
 heap_in_state  a one-process backend has no domain shared by processes: its heap is the domain, so nothing is outside it
+share_big left() above the old default domain is a domain fact: the heap-backed backend has no domain to size and would reserve 30 GiB of real address space per builder; check/programs/left.rs spends exactly the share here

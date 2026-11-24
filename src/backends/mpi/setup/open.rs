@@ -95,7 +95,7 @@ pub fn open(world: &SimpleCommunicator, topo: &Topology) -> Result<Role, Refusal
     }
     if all == 0 {
         let why = mapped.err().unwrap_or_else(|| "another rank could not map the segment".to_string());
-        return Err(Refusal::Memory { need: segment::LEN, why });
+        return Err(Refusal::Memory { need: segment::len(), why });
     }
     let mut t = Transport::new(me, win, lay);
     t.open_lanes();

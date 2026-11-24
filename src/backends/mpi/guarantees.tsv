@@ -24,7 +24,7 @@ M4	allocation test, driver, rejections	tests/alloc.rs crates/driver/src/check/mo
 M5	as S3, as S4	src/sched.rs src/backends/mpi/proofs/Epoch.tla	model at bounds
 M6	by construction	src/backends/mpi/memory/segment.rs	never filled
 M7	by construction, replay	src/backends/mpi/roles/leader.rs check/programs/fanin_fifo.rs	drop without join untested
-M8	supply reading, programs, unit test	check/programs/share.rs check/programs/left.rs check/programs/share_refused.rs src/system.rs src/backends/supply.rs src/backends/mpi/setup/adopt.rs	one rank's number by the node's builder; an edit is not held
+M8	supply reading, programs, unit test	check/programs/share.rs check/programs/left.rs check/programs/share_big.rs check/programs/share_refused.rs src/system.rs src/backends/supply.rs src/backends/mpi/setup/adopt.rs	one rank's number by the node's builder; an edit is not held
 F1	by construction, program	src/backends/mpi/transport/hosts.rs check/programs/peers.rs	two hosts exercised
 F3	program, connection check	src/backends/mpi/transport/cross/connect.rs check/programs/refuse_ports.rs check/programs/route_one_side.rs	two cases only
 F4	by construction	src/io.rs	one compilation only

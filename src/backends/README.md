@@ -350,7 +350,15 @@ Generated from `src/backends/<backend>/guarantees.tsv` (which also names the pat
 
 <!-- guarantees:end -->
 
-**memory share.** Both backends read the host's memory the same way (`src/backends/supply.rs`, `available`):
+**memory share and the domain.** The multi-process backend's domain (the shared segment, `memory/segment.rs`) is
+sized at its launch from the host's memory by the same reading the workers' share comes from: the creator rank sizes
+the object to the host's available memory less the launch's sixteenth plus room for each worker's grace, and every
+rank of the node maps the size it finds, so a builder that spends its whole share fits the domain by construction
+(`16 GiB` is only the fallback when the memory cannot be read). Program `share_big` spends exactly `left()` in every
+builder on a declared 64 GiB host, a share above that fallback; it is skipped on the one-process backend, whose
+domain is the heap and which would reserve real address space, and `left` covers the exact spend there.
+
+Both backends read the host's memory the same way (`src/backends/supply.rs`, `available`):
 `TRAME_AVAILABLE` when the launcher declares one, else the smaller of the cgroup v2 headroom (`memory.max` less
 `memory.current`) and `MemAvailable` of `/proc/meminfo`. The pool is built before the workers on both: seq in
 `build_all`, the multi-process backend in `setup/adopt.rs`, where the share is written to the segment's table so

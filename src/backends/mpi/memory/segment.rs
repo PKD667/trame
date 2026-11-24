@@ -29,7 +29,7 @@ extern crate std;
 
 use core::alloc::Layout;
 use core::sync::atomic::Ordering::{Acquire, Release};
-use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize};
 use std::ffi::CString;
 use std::format;
 use std::string::String;
@@ -37,9 +37,29 @@ use std::string::String;
 /// Where every rank of a node maps its segment. Far from where Linux places the heap, the binary
 /// (PIE, near 0x55..) and mmap's default range (below the stack, near 0x7f..).
 pub(crate) const ADDR: usize = 0x2000_0000_0000;
-/// The segment's size: address space, of which only touched pages take memory (M6: a builder or
-/// an edit that does not fit gets a null pointer, which the allocation reports).
-pub(crate) const LEN: usize = 16 << 30;
+/// The segment's default size, when the host's memory cannot be read: address space, of which only touched pages
+/// take memory (M6: a builder or an edit that does not fit gets a null pointer, which the allocation reports).
+const DEFAULT: usize = 16 << 30;
+/// The segment's size for this launch, fixed when it is mapped: the host's memory at the launch less the sixteenth
+/// the launch keeps and with room for every worker's grace, so that a builder that spends its whole share
+/// (`trame::system::left`, INTERFACE.md 6, Definition (Memory of a host)) fits the domain by construction. Address
+/// space, not memory: pages are taken when touched.
+static LEN: AtomicUsize = AtomicUsize::new(DEFAULT);
+
+/// The segment's size for this launch.
+pub(crate) fn len() -> usize {
+    LEN.load(Acquire)
+}
+
+/// The size the node's creating rank gives the segment: the host's available memory, less the sixteenth the launch
+/// keeps, plus trame's grace for every worker, page-rounded and at least 1 GiB. `DEFAULT` when the memory cannot be
+/// read. The same reading and the same rule as the workers' share (`system::share`), so the domain holds it.
+fn target(workers: u32) -> usize {
+    let Some(available) = crate::backends::supply::available() else { return DEFAULT };
+    let room = available - available / 16 + u64::from(workers) * crate::system::GRACE;
+    let room = room.clamp(1 << 30, 1 << 40);
+    usize::try_from(room).unwrap_or(DEFAULT).next_multiple_of(PAGE)
+}
 const PAGE: usize = 4096;
 const LOCK: usize = 0;
 const BUMP: usize = 8;
@@ -79,18 +99,31 @@ pub(crate) fn map(name: &str, create: bool, workers: u32) -> Result<(), String> 
     if fd < 0 {
         return Err(format!("shm_open {name}: {}", std::io::Error::last_os_error()));
     }
-    // SAFETY: fd is ours; ftruncate only sizes the object (its pages are allocated when touched).
-    if create && unsafe { libc::ftruncate(fd, LEN as libc::off_t) } != 0 {
-        let e = std::io::Error::last_os_error();
-        // SAFETY: closing our own descriptor.
-        unsafe { libc::close(fd) };
-        return Err(format!("ftruncate {name} to {LEN} bytes: {e}"));
+    // The creator sizes the object from the host's memory; every other rank maps the size it finds, so all of a
+    // node's ranks hold one object of one size whatever they read at their own moment.
+    let mut len = DEFAULT;
+    if create {
+        len = target(workers);
+        // SAFETY: fd is ours; ftruncate only sizes the object (its pages are allocated when touched).
+        if unsafe { libc::ftruncate(fd, len as libc::off_t) } != 0 {
+            let e = std::io::Error::last_os_error();
+            // SAFETY: closing our own descriptor.
+            unsafe { libc::close(fd) };
+            return Err(format!("ftruncate {name} to {len} bytes: {e}"));
+        }
+    } else {
+        // SAFETY: fd is ours; a zeroed stat is a valid argument.
+        let mut st: libc::stat = unsafe { core::mem::zeroed() };
+        // SAFETY: as above.
+        if unsafe { libc::fstat(fd, &mut st) } == 0 && st.st_size > 0 {
+            len = st.st_size as usize;
+        }
     }
     // SAFETY: a fresh shared mapping at ADDR; MAP_FIXED_NOREPLACE fails rather than replace anything.
     let p = unsafe {
         libc::mmap(
             ADDR as *mut libc::c_void,
-            LEN,
+            len,
             libc::PROT_READ | libc::PROT_WRITE,
             libc::MAP_SHARED | libc::MAP_FIXED_NOREPLACE,
             fd,
@@ -101,15 +134,16 @@ pub(crate) fn map(name: &str, create: bool, workers: u32) -> Result<(), String> 
     // SAFETY: the mapping keeps the object; the descriptor is no longer needed.
     unsafe { libc::close(fd) };
     if p == libc::MAP_FAILED {
-        return Err(format!("mmap of {LEN} bytes at {ADDR:#x}: {e}"));
+        return Err(format!("mmap of {len} bytes at {ADDR:#x}: {e}"));
     }
     if p as usize != ADDR {
         // A kernel before 4.17 ignores MAP_FIXED_NOREPLACE and may place the mapping elsewhere.
         // SAFETY: unmapping what this call mapped.
-        unsafe { libc::munmap(p, LEN) };
+        unsafe { libc::munmap(p, len) };
         return Err(format!("the kernel mapped the segment at {:#x}, not {ADDR:#x} (needs Linux 4.17)", p as usize));
     }
     WORKERS.store(u64::from(workers), Release);
+    LEN.store(len, Release);
     if create {
         // The object is new, so zero: LOCK free, the table empty.
         word(BUMP).store(blocks_start(u64::from(workers)) as u64, Release);
@@ -154,7 +188,7 @@ pub(crate) fn mapped() -> bool {
 }
 
 pub(crate) fn contains(p: *mut u8) -> bool {
-    mapped() && (ADDR..ADDR + LEN).contains(&(p as usize))
+    mapped() && (ADDR..ADDR + len()).contains(&(p as usize))
 }
 
 fn class(l: Layout) -> usize {
@@ -190,16 +224,52 @@ pub(crate) fn alloc(l: Layout) -> *mut u8 {
     }
     let align = (1usize << c).min(PAGE).max(l.align());
     let at = (word(BUMP).load(Acquire) as usize).next_multiple_of(align);
-    if at + (1 << c) > LEN {
+    if at + (1 << c) > len() {
         // M6: nothing lands outside the domain. The null makes Rust abort the process; the message
         // says why first, without allocating (this is the allocator).
-        const FULL: &[u8] = b"trame: the host's memory domain (16 GiB) is full: the states, the pool and what their builders and edits allocate do not fit\n";
-        // SAFETY: writes FULL's bytes to stderr.
-        let _ = unsafe { libc::write(2, FULL.as_ptr().cast(), FULL.len()) };
+        // The numbers without formatting (this is the allocator): "trame: the host's memory domain of N GiB is
+        // full: the states, the pool and what their builders and edits allocate do not fit\n".
+        let mut buf = [0u8; 160];
+        let mut n = copy(&mut buf, 0, b"trame: the host's memory domain of ");
+        n = copy(&mut buf, n, &gi_gib(len()));
+        n = copy(&mut buf, n, b" is full: the states, the pool and what their builders and edits allocate do not fit\n");
+        // SAFETY: writes the message's bytes to stderr.
+        let _ = unsafe { libc::write(2, buf.as_ptr().cast(), n) };
         return core::ptr::null_mut();
     }
     word(BUMP).store((at + (1 << c)) as u64, Release);
     (ADDR + at) as *mut u8
+}
+
+/// Copy `src` into `buf` at `at`; answers the new end.
+fn copy(buf: &mut [u8], at: usize, src: &[u8]) -> usize {
+    let end = (at + src.len()).min(buf.len());
+    buf[at..end].copy_from_slice(&src[..end - at]);
+    end
+}
+
+/// `n` as "N.N" GiB, in ASCII, without allocating.
+fn gi_gib(n: usize) -> [u8; 12] {
+    let tenths = (n as u64 * 10) >> 30;
+    let (whole, frac) = (tenths / 10, tenths % 10);
+    let mut digits = [0u8; 20];
+    let mut len = 0;
+    let mut w = whole;
+    loop {
+        digits[len] = b'0' + (w % 10) as u8;
+        len += 1;
+        w /= 10;
+        if w == 0 {
+            break;
+        }
+    }
+    let mut out = [b' '; 12];
+    for i in 0..len {
+        out[i] = digits[len - 1 - i];
+    }
+    out[len] = b'.';
+    out[len + 1] = b'0' + frac as u8;
+    out
 }
 
 /// Give back a block `alloc` answered for `l`.
