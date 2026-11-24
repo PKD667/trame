@@ -44,7 +44,9 @@ def job(p: dict, hosts: int) -> tuple[list[str], int] | None:
     elif impl == "osu":
         if hosts > 2:
             return None
-        common = ["-m", f"{size}:{size}", "-i", str(g(p, "samples", 20000)), "-x", "100", "-f"]
+        # No `-f`: the OSU build nixpkgs pins rejects it and aborts printing its usage. The parser reads the
+        # plain line (min and max stay null, and no analysis reads them).
+        common = ["-m", f"{size}:{size}", "-i", str(g(p, "samples", 20000)), "-x", "100"]
         table = {"ping": (["osu_latency", *common], 2 if hosts == 1 else 1),
                  "flow": (["osu_bw", *common, "-W", str(cap)], 2 if hosts == 1 else 1)}
     else:
