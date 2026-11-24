@@ -129,15 +129,12 @@ fn build_all(plan: &mut Plan) -> Result<(), Refused> {
         None => 0,
     };
     let workers = plan.workers.len() as u32;
-    let share = match <Selected as Backend>::host_available() {
-        Some(available) => crate::system::share(available, pool_bytes, workers),
-        None => u64::MAX,
-    };
+    let share = <Selected as Backend>::host_available().map(|a| crate::system::share(a, pool_bytes, workers));
     crate::system::fix(share);
     for (w, b) in plan.builders.iter_mut().enumerate() {
         let b = b.take().expect("trame: the launch checked that every worker was set");
         let (_, bytes) = crate::domain::arena_metered(b);
-        if bytes > share {
+        if let Some(share) = share.filter(|s| bytes > *s) {
             return Err(Refused::Share { worker: crate::topology::WorkerId::here(w as u32), want: bytes, share });
         }
     }

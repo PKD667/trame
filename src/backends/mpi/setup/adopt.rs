@@ -44,27 +44,28 @@ pub(crate) fn build_or_adopt(plan: &mut Plan, t: &Transport) -> Result<(), Refus
             segment::pool_slot().store(pool.addr() as u64, Release);
         }
         let workers = mine.len() as u32;
-        let share = match <Selected as Backend>::host_available() {
-            Some(available) => crate::system::share(available, pool_bytes, workers),
-            None => u64::MAX,
-        };
-        segment::share_slot().store(share, Release);
+        let share = <Selected as Backend>::host_available().map(|a| crate::system::share(a, pool_bytes, workers));
+        // No reading is no share; a slot holds 0 for it, and 0 means "not read" here, never a share of nothing.
+        segment::share_slot().store(share.map_or(0, |s| s), Release);
         // The builders that read it run here, before the barrier; the other ranks fix the same number after it.
         crate::system::fix(share);
         for &w in &mine {
             let b = plan.builders[w].take().expect("trame: the launch checked that every worker was set");
             let (_, bytes) = built_metered(b);
-            if bytes > share {
+            if share.is_some_and(|s| bytes > s) {
                 segment::over_slot().store(bytes, Release);
             }
             segment::state_slot(w as u32).store(plan.workers[w].addr() as u64, Release);
         }
     }
     mpi::traits::CommunicatorCollectives::barrier(&crate::backends::mpi::transport::hosts::host().comm);
-    let share = segment::share_slot().load(Acquire);
+    let share = match segment::share_slot().load(Acquire) {
+        0 => None,
+        s => Some(s),
+    };
     crate::system::fix(share);
     let over = segment::over_slot().load(Acquire);
-    if over != 0 {
+    if let Some(share) = share.filter(|_| over != 0) {
         // Every rank of this node answers the same refusal; the launch ends here, before any step.
         return Err(Refused::Share { worker: crate::topology::WorkerId::here(0), want: over, share });
     }

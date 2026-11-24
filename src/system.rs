@@ -28,10 +28,13 @@ pub(crate) fn fixed() -> Option<u64> {
     FIXED.load(Ordering::Acquire).then(|| SHARE.load(Ordering::Relaxed))
 }
 
-/// Fix this host's share for the launch that is setting it up.
-pub(crate) fn fix(share: u64) {
-    SHARE.store(share, Ordering::Relaxed);
-    FIXED.store(true, Ordering::Release);
+/// Fix this host's share for the launch that is setting it up: `None` when the backend cannot read the host's memory,
+/// which is no share to promise.
+pub(crate) fn fix(share: Option<u64>) {
+    if let Some(share) = share {
+        SHARE.store(share, Ordering::Relaxed);
+    }
+    FIXED.store(share.is_some(), Ordering::Release);
 }
 
 /// Forget the last launch's share when the run ends (`Run::join`), so a later launch reads its own.
