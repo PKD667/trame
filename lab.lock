@@ -1281,41 +1281,41 @@
     "programs-mpi-s2": [
       {
         "facts": {
-          "closure": "/nix/store/j74w0z2m8h1d4x1887iy1pky0f68vc8x-experiment-programs-mpi-s2",
+          "closure": "/nix/store/zlr04zl3dgkrp11hkd2sd4zqg593l2ha-experiment-programs-mpi-s2",
           "format": "2.0",
-          "input_id": "502be62d231dd65999aaf0c45c9128e2feda43e6d6a1343d28216b8c1a7659ee",
-          "params": {
-            "backend": "mpi",
-            "repeats": 3,
-            "split": 2
-          },
-          "replicate": 1,
-          "run": "programs-mpi-s2-502be62d231d-r1",
-          "seed": null,
-          "state": "ok"
-        },
-        "name": "programs-mpi-s2-502be62d231d-r1",
-        "path": "/nix/store/flcp0bc9njr2zjv29nw0z1dbr0mvc683-programs-mpi-s2-502be62d231d-r1",
-        "sha256": "sha256-8vO1Get5F1TL/cgHJfRUCgE8CU73A1YpgEdE95HdFJs="
-      },
-      {
-        "facts": {
-          "closure": "/nix/store/j74w0z2m8h1d4x1887iy1pky0f68vc8x-experiment-programs-mpi-s2",
-          "format": "2.0",
-          "input_id": "7436b7513efbc857a77d541421ad0fb6db539d5ad0df4dfeb3555cfdaac72937",
+          "input_id": "2ad58d70873b118085f7d2f64348b4d6f833a311875f4b95921ef8eae27c0da9",
           "params": {
             "backend": "mpi",
             "repeats": 3,
             "split": 1
           },
           "replicate": 1,
-          "run": "programs-mpi-s2-7436b7513efb-r1",
+          "run": "programs-mpi-s2-2ad58d70873b-r1",
           "seed": null,
           "state": "ok"
         },
-        "name": "programs-mpi-s2-7436b7513efb-r1",
-        "path": "/nix/store/x26s2gachkpa3wn7xdnjfn0rw5far1pm-programs-mpi-s2-7436b7513efb-r1",
-        "sha256": "sha256-SSgb6J0JGXXq8F6+krOVXxM3XuIHGkDZEyPfS1mKvLg="
+        "name": "programs-mpi-s2-2ad58d70873b-r1",
+        "path": "/nix/store/zy53r6s4s8lr75cn8b3y3sr9vqmga0jx-programs-mpi-s2-2ad58d70873b-r1",
+        "sha256": "sha256-2NXtg0qJUoQl774lt1qLJvS4S2RwANVx5VXQ6yeCyUw="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/zlr04zl3dgkrp11hkd2sd4zqg593l2ha-experiment-programs-mpi-s2",
+          "format": "2.0",
+          "input_id": "65bb19fa9402bcab0bbbb50ef1cffb0981b3943996b821b3b23fb0f154d91fa0",
+          "params": {
+            "backend": "mpi",
+            "repeats": 3,
+            "split": 2
+          },
+          "replicate": 1,
+          "run": "programs-mpi-s2-65bb19fa9402-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "programs-mpi-s2-65bb19fa9402-r1",
+        "path": "/nix/store/lcbsa11bxvim8pnmlwkp4xv442za6wqc-programs-mpi-s2-65bb19fa9402-r1",
+        "sha256": "sha256-iwRwDKcGKWh+cUGV3F/vu1YF89bOv6sYB0BFqnYdnbU="
       }
     ],
     "programs-mpi-sized": [
