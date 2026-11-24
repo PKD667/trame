@@ -232,7 +232,10 @@ fn has_foreign_destructor<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> bool {
                     }
                 }
                 adt.all_fields().any(|f| {
-                    let t = tcx.normalize_erasing_regions(TypingEnv::fully_monomorphized(), ty::Unnormalized::new_wip(f.ty(tcx, args)));
+                    let t = tcx.normalize_erasing_regions(
+                        TypingEnv::fully_monomorphized(),
+                        ty::Unnormalized::new_wip(f.ty(tcx, args)),
+                    );
                     go(tcx, t, seen)
                 }) || args.types().any(|t| go(tcx, t, seen))
             }

@@ -83,7 +83,9 @@ macro_rules! flow {
                     *t0 = Some(trame::now());
                 }
                 if *sent == *total && *got == *total {
-                    *ns = Some(common::ns(trame::now().since(t0.expect("the warm-up ended")).expect("one worker has one clock")));
+                    *ns = Some(common::ns(
+                        trame::now().since(t0.expect("the warm-up ended")).expect("one worker has one clock"),
+                    ));
                     return Status::Progress;
                 }
                 if moved {

@@ -40,7 +40,10 @@ impl fmt::Display for Refusal {
             }
             Refusal::Memory { need, why } => write!(f, "{need} bytes of shared memory refused: {why}"),
             Refusal::NodeRanks(value) => {
-                write!(f, "TRAME_MPI_NODE_RANKS must be a number of ranks per host, 1 or more, or a comma-separated list of them, got {value:?}")
+                write!(
+                    f,
+                    "TRAME_MPI_NODE_RANKS must be a number of ranks per host, 1 or more, or a comma-separated list of them, got {value:?}"
+                )
             }
             Refusal::NotUnified => write!(f, "MPI window is not in the unified memory model"),
             Refusal::Mpi(call) => write!(f, "MPI call {call} failed"),

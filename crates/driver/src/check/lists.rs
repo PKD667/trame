@@ -177,7 +177,9 @@ impl Lists {
         let mut best: Option<(usize, bool, bool)> = None; // (specificity, exact, deny)
         for (deny, entry) in &self.certified {
             let (exact, hit, len) = match entry.strip_suffix("::*") {
-                Some(prefix) => (false, path.starts_with(prefix) && path[prefix.len()..].starts_with("::"), prefix.len()),
+                Some(prefix) => {
+                    (false, path.starts_with(prefix) && path[prefix.len()..].starts_with("::"), prefix.len())
+                }
                 None => (true, path == entry, entry.len()),
             };
             if !hit {

@@ -22,8 +22,32 @@ macro_rules! unary {
 }
 
 unary!(
-    trunc, floor, ceil, fract, round, round_ties_even, sqrt, ln, exp_m1, ln_1p, exp2, log2, log10, cbrt, sin, cos, tan,
-    asin, acos, atan, sinh, cosh, tanh, asinh, acosh, atanh,
+    trunc,
+    floor,
+    ceil,
+    fract,
+    round,
+    round_ties_even,
+    sqrt,
+    ln,
+    exp_m1,
+    ln_1p,
+    exp2,
+    log2,
+    log10,
+    cbrt,
+    sin,
+    cos,
+    tan,
+    asin,
+    acos,
+    atan,
+    sinh,
+    cosh,
+    tanh,
+    asinh,
+    acosh,
+    atanh,
 );
 
 /// `x^y`: `math::f64::powf` of the widened arguments, rounded to f32.

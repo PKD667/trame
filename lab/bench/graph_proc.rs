@@ -56,7 +56,8 @@ macro_rules! graph {
             }
             if *cur == *total {
                 let start = t0.expect("the warm-up ended");
-                let ns = *ns.get_or_insert_with(|| common::ns(trame::now().since(start).expect("one worker has one clock")));
+                let ns =
+                    *ns.get_or_insert_with(|| common::ns(trame::now().since(start).expect("one worker has one clock")));
                 if *reported {
                     return Status::Done;
                 }
