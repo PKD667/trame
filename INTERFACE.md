@@ -820,10 +820,9 @@ path.
 > leader, the only process with peers. `share(|| o)` is collective over a host: the leader runs the closure and
 > returns its object, every other process of the host returns that object, decoded (the closure does not run
 > there). So a plan the leaders agree on reaches every process that declares the host's workers before any
-> of them launches. Waiting is for events and costs no core where the backend can. Where a backend cannot
-> hold a wait asleep (`peer_wait`, a leader's `Run::wait` on more than one host), the wait runs at full cost
-> on the leader's core only, and what still spins is the backend's own limit (`src/backends/README.md`,
-> Limits).
+> of them launches. Waiting is for events and costs no core: `peer_wait` polls a non-blocking probe with a
+> short sleep between polls, so a leader that waits for a peer sleeps rather than spins and its run loop keeps
+> moving. A backend for which that is not enough says so (`src/backends/README.md`, Limits).
 >
 > The launcher does not ask a program that exchanges peer messages before its launch for its ranks, since
 > that program cannot be run alone: it starts each host on the workers the launcher was given

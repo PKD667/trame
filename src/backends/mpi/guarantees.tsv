@@ -29,7 +29,7 @@ F1	by construction, program	src/backends/mpi/transport/hosts.rs check/programs/p
 F3	program, connection check	src/backends/mpi/transport/cross/connect.rs check/programs/refuse_ports.rs check/programs/route_one_side.rs	two cases only
 F4	by construction	src/io.rs	one compilation only
 F5	program, model checking	check/programs/xhost_ring.rs src/backends/mpi/proofs/Lane.tla	lossy lanes, end unmodelled
-F6	programs	check/programs/peers.rs check/programs/relay.rs check/programs/agree.rs	decode trusted, not authenticated
+F6	programs	check/programs/peers.rs check/programs/relay.rs check/programs/agree.rs check/programs/peer_idle.rs	decode trusted, not authenticated
 E1	programs	check/programs/abort.rs check/programs/abort_join.rs check/programs/leader_panics.rs check/programs/xhost_abort.rs	these cases only
 E2	model checking, programs	src/backends/mpi/proofs/Detect.tla check/programs/xhost_deadlock.rs check/programs/leader_stuck.rs	model at bounds, verdicts tested
 Q1	measurement	lab/latency/README.md lab/latency/q.nix	measured, no bound set

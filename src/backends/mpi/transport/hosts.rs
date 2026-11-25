@@ -163,16 +163,27 @@ pub(crate) fn drain() -> bool {
     any
 }
 
-/// Block until a peer message is held in `pending`: it returns at once when one is, else after the next arrives.
-/// The wait is MPI's own (a blocking probe), which an MPI library may spin in.
+/// Wait until a peer message is held in `pending`: it returns at once when one is, else after the next arrives.
+///
+/// The wait is a poll of a non-blocking probe with a short sleep between polls, not a blocking probe: an MPI library
+/// may spin in a blocking probe, and a leader that spins holds its core and, worse, does not return to its run loop,
+/// so the workers' routes to it fill and the workers starve (a launch over two hosts stalls). A sleeping wait costs
+/// the leader nothing and lets the run loop move. The fog of a sleep is 100 µs: far below any measurable round trip,
+/// far above the cost of a probe.
 pub(crate) fn wait() {
+    use std::time::Duration;
     let h = host();
     if !h.pending.is_empty() {
         return;
     }
     let peers = h.peers.as_ref().expect("trame: only a leader has peers");
-    let (msg, status) = peers.any_process().matched_probe_with_tag(PEER_TAG);
-    keep(&mut h.pending, &mut h.arrivals, msg, status);
+    loop {
+        while let Some((msg, status)) = peers.any_process().immediate_matched_probe_with_tag(PEER_TAG) {
+            keep(&mut h.pending, &mut h.arrivals, msg, status);
+            return;
+        }
+        std::thread::sleep(Duration::from_micros(100));
+    }
 }
 
 fn keep(

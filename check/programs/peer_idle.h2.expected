@@ -1,0 +1,4 @@
+host 0: woke on the peer's message, cpu idle
+launched host 0
+host 1: sent after 2 s
+launched host 1

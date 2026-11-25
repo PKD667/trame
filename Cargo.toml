@@ -238,6 +238,10 @@ name = "share_big"
 path = "check/programs/share_big.rs"
 
 [[example]]
+name = "peer_idle"
+path = "check/programs/peer_idle.rs"
+
+[[example]]
 name = "share_refused"
 path = "check/programs/share_refused.rs"
 
