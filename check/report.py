@@ -182,7 +182,15 @@ def main() -> None:
         lim = [f"`{r['clause']}` {r['not_checked']}" for r in per_backend[n] if r["not_checked"].strip()]
         md += [f"**{n}**", ""] + [f"- {l}" for l in lim] + [""]
 
-    md += ["## How it measures", ""]
+    md += [
+        "## How it measures",
+        "",
+        "A round trip is timed between one worker's send and the reply it takes. Where a host is one process it is a",
+        "handoff from thread to thread through the queue, which is trame's own machinery and not a wire; where a host",
+        "is several processes or several machines it includes the fabric. Compare like with like: the placement column",
+        "says which, and a single-process number is a floor, not a comparison with a network.",
+        "",
+    ]
     for n in names:
         mine = latency(dirs, n)
         md += [f"### {n}", ""]

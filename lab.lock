@@ -841,6 +841,728 @@
         "sha256": "sha256-WJEPZqn3zkmltpEKo04HiF9PFW/Utfmga/I+ySanSoQ="
       }
     ],
+    "latency-seq-s1": [
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "102e6a527ec285da5529caddea12ed34104886b607d66d7a1806823c15e6a0ca",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-seq-s1-102e6a527ec2-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-102e6a527ec2-r1",
+        "path": "/nix/store/cbrhrlb2x3ylvak02lk9ka092516ysfw-latency-seq-s1-102e6a527ec2-r1",
+        "sha256": "sha256-nuEdjm1tVKthTAE7F4FKzBqyTnGDtleJDfDYg3kC+mE="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "102e6a527ec285da5529caddea12ed34104886b607d66d7a1806823c15e6a0ca",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-seq-s1-102e6a527ec2-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-102e6a527ec2-r2",
+        "path": "/nix/store/2wrrn1845p39g3m0pjxqw74xhr97ca8m-latency-seq-s1-102e6a527ec2-r2",
+        "sha256": "sha256-QS2EksHQovjggD6sThw4ucQomhqTWqZX/zX9G7ElXJ0="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "102e6a527ec285da5529caddea12ed34104886b607d66d7a1806823c15e6a0ca",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-seq-s1-102e6a527ec2-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-102e6a527ec2-r3",
+        "path": "/nix/store/73bwg6dbgchdkzin9p7ijm66hnywrczf-latency-seq-s1-102e6a527ec2-r3",
+        "sha256": "sha256-gu+GmfoELo0tk1f3mlbuF3xHPy6SiBvCCPFJzBpIgAU="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "102e6a527ec285da5529caddea12ed34104886b607d66d7a1806823c15e6a0ca",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-seq-s1-102e6a527ec2-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-102e6a527ec2-r4",
+        "path": "/nix/store/nm6kxvv8gf9l5bvbnbb80mjqzssx7c9m-latency-seq-s1-102e6a527ec2-r4",
+        "sha256": "sha256-bIF/0yDWI8KxL30KDuBH4WwuEoDSWbto65ytCjZzVtY="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "102e6a527ec285da5529caddea12ed34104886b607d66d7a1806823c15e6a0ca",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 5,
+          "run": "latency-seq-s1-102e6a527ec2-r5",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-102e6a527ec2-r5",
+        "path": "/nix/store/25jkqhfgyvrmag7858c6vzw4rscixkj1-latency-seq-s1-102e6a527ec2-r5",
+        "sha256": "sha256-GuKFKRHfwxnvm81l62gdZ+BpjKX83seDLhWOKLh+6m4="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8a8c8bf9f5b43af763a96710bb36d6bd9aa8c0b6232d48c9b930ccb40fa1e2e9",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-seq-s1-8a8c8bf9f5b4-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8a8c8bf9f5b4-r1",
+        "path": "/nix/store/mvdxkvnihwzr4rg3drw9mvxxm9bmnbdw-latency-seq-s1-8a8c8bf9f5b4-r1",
+        "sha256": "sha256-SRL2tbGIZleOVdZaQ3CCZmMAu+GLfb8q2AoeEcDgJbY="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8a8c8bf9f5b43af763a96710bb36d6bd9aa8c0b6232d48c9b930ccb40fa1e2e9",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-seq-s1-8a8c8bf9f5b4-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8a8c8bf9f5b4-r2",
+        "path": "/nix/store/i0qgiwdx22zwki2y8kq87y1j3g765gpn-latency-seq-s1-8a8c8bf9f5b4-r2",
+        "sha256": "sha256-Q3vph9f8X6ai5zkGfyxexFAoM9tzOiE085YeiWDkV5U="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8a8c8bf9f5b43af763a96710bb36d6bd9aa8c0b6232d48c9b930ccb40fa1e2e9",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-seq-s1-8a8c8bf9f5b4-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8a8c8bf9f5b4-r3",
+        "path": "/nix/store/ipwbw1y7miay2mxkknvghzs1mhirf2sc-latency-seq-s1-8a8c8bf9f5b4-r3",
+        "sha256": "sha256-qxWgSfjO2qCr8OvbQhDU09oUpBCDU027RRLWMqX5k2Q="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8a8c8bf9f5b43af763a96710bb36d6bd9aa8c0b6232d48c9b930ccb40fa1e2e9",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-seq-s1-8a8c8bf9f5b4-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8a8c8bf9f5b4-r4",
+        "path": "/nix/store/mw3sk6ymv3whhxlr9m2s4n6j35lv6f2p-latency-seq-s1-8a8c8bf9f5b4-r4",
+        "sha256": "sha256-cG739ZylH2X5CBxa25zXiVySutRUIh307CvrUFe6sc4="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8a8c8bf9f5b43af763a96710bb36d6bd9aa8c0b6232d48c9b930ccb40fa1e2e9",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 5,
+          "run": "latency-seq-s1-8a8c8bf9f5b4-r5",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8a8c8bf9f5b4-r5",
+        "path": "/nix/store/xlbi2y35iqxqsz2gnlyhvi3g4wz27n8j-latency-seq-s1-8a8c8bf9f5b4-r5",
+        "sha256": "sha256-raCgetL1r6IVgahpK2OspUDu7ukby8iYyeD6+87zqa4="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8c4f2248cc03186ffe9be7379fa6748d68716aeb481ebebafd87635f479c65fd",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-seq-s1-8c4f2248cc03-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8c4f2248cc03-r1",
+        "path": "/nix/store/3lcx9p7zq1nm6n8g1zxdrnmcgwcj6id3-latency-seq-s1-8c4f2248cc03-r1",
+        "sha256": "sha256-Hh32goU8GbAdiMw+/8Sm/D7ihojDbd4Ts9tDDjaB0SQ="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8c4f2248cc03186ffe9be7379fa6748d68716aeb481ebebafd87635f479c65fd",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-seq-s1-8c4f2248cc03-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8c4f2248cc03-r2",
+        "path": "/nix/store/m888ng8hk9wvhdp5iak4nr1p1dps27rl-latency-seq-s1-8c4f2248cc03-r2",
+        "sha256": "sha256-yr+rmPYsGVOFSAqhBV0nJEXGHHmSsDWLGNb8LsI+rGI="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8c4f2248cc03186ffe9be7379fa6748d68716aeb481ebebafd87635f479c65fd",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-seq-s1-8c4f2248cc03-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8c4f2248cc03-r3",
+        "path": "/nix/store/f5rpwypx4rwj6m5d81pmdi870j55j6la-latency-seq-s1-8c4f2248cc03-r3",
+        "sha256": "sha256-fFYdmhy3/jRfvfaO7MN/Ooc07uBSRzYfPFwaZXfkYQM="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8c4f2248cc03186ffe9be7379fa6748d68716aeb481ebebafd87635f479c65fd",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-seq-s1-8c4f2248cc03-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8c4f2248cc03-r4",
+        "path": "/nix/store/3d6p0ls4wdhq5g7f5lynr47my510lf81-latency-seq-s1-8c4f2248cc03-r4",
+        "sha256": "sha256-ODsUdyaP/Acl/wbAdHmRWxHhne/7d/fVpxzdwZsUIrg="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "8c4f2248cc03186ffe9be7379fa6748d68716aeb481ebebafd87635f479c65fd",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 500000,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 5,
+          "run": "latency-seq-s1-8c4f2248cc03-r5",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-8c4f2248cc03-r5",
+        "path": "/nix/store/mpvjh9wdi8rj547c22b7gz1289anlpsi-latency-seq-s1-8c4f2248cc03-r5",
+        "sha256": "sha256-OgBY+VJ5l3OWm1e3tpj3T30+AZFyA9MnkcdOD3BHMKE="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "9ae7719473074a1f6c736fbca201a679383db47546b8c51d45a23b3c52962186",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-seq-s1-9ae771947307-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-9ae771947307-r1",
+        "path": "/nix/store/k3j8byqi6rgxfhm48i5y1lxd1g4iwp24-latency-seq-s1-9ae771947307-r1",
+        "sha256": "sha256-tpyvEFCrHKake95BhalsKDEL2NdvLPt2e0ab/h1r3lo="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "9ae7719473074a1f6c736fbca201a679383db47546b8c51d45a23b3c52962186",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-seq-s1-9ae771947307-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-9ae771947307-r2",
+        "path": "/nix/store/3dln2dalc3y0mm2ld3wcndnxcm4qxbl5-latency-seq-s1-9ae771947307-r2",
+        "sha256": "sha256-7lPIRxE0a3KAVH+3Y1fplAWX1HHiIsw8yTJpTzM/lsg="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "9ae7719473074a1f6c736fbca201a679383db47546b8c51d45a23b3c52962186",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-seq-s1-9ae771947307-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-9ae771947307-r3",
+        "path": "/nix/store/n92jszn348xlsxvir0yhjj6lqg26n93b-latency-seq-s1-9ae771947307-r3",
+        "sha256": "sha256-c8HjUDyB7yVi+IieeSRx1aNpescIOkTuU4uDkWg4kGs="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "9ae7719473074a1f6c736fbca201a679383db47546b8c51d45a23b3c52962186",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-seq-s1-9ae771947307-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-9ae771947307-r4",
+        "path": "/nix/store/cwjmsc9mdggyb186bqv4lj79cqlzcjv9-latency-seq-s1-9ae771947307-r4",
+        "sha256": "sha256-cMAmkazlOiMJmXfSDTFOelnqJncJkx3v4yrVbiT0qIE="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "9ae7719473074a1f6c736fbca201a679383db47546b8c51d45a23b3c52962186",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 16,
+            "timeout": 300
+          },
+          "replicate": 5,
+          "run": "latency-seq-s1-9ae771947307-r5",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-9ae771947307-r5",
+        "path": "/nix/store/njvi1v65d24ln2qf4v2xd2lj9a7g7lwa-latency-seq-s1-9ae771947307-r5",
+        "sha256": "sha256-DBGOkque25an0OnFb6QuDX82uMjBPbTRlCLWgkjIRs4="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "bd954f45405cc6b162197b87fe101aaf652802870f45afed2fdd282ccb5b9f36",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-seq-s1-bd954f45405c-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-bd954f45405c-r1",
+        "path": "/nix/store/wjs9bdibp8vk6vyyxlswsqav4jam4wg8-latency-seq-s1-bd954f45405c-r1",
+        "sha256": "sha256-y/+2iafKJwZNnrl7Jt2uoRewBekh6acU/bXL118AlcY="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "bd954f45405cc6b162197b87fe101aaf652802870f45afed2fdd282ccb5b9f36",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-seq-s1-bd954f45405c-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-bd954f45405c-r2",
+        "path": "/nix/store/yynz9hkmihqpvkgiqw7v4ikwb5vn18w8-latency-seq-s1-bd954f45405c-r2",
+        "sha256": "sha256-uvu4gaYibsHty4OofvHK40cRclzff//I5KqvXoUb8ik="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "bd954f45405cc6b162197b87fe101aaf652802870f45afed2fdd282ccb5b9f36",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-seq-s1-bd954f45405c-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-bd954f45405c-r3",
+        "path": "/nix/store/n5nxd4blk928cpmblpdn5avpk09jk9hn-latency-seq-s1-bd954f45405c-r3",
+        "sha256": "sha256-0Wv58V1JOT4IOEDrExQ2f5OhhvgcSbe5qtpdIufnUB8="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "bd954f45405cc6b162197b87fe101aaf652802870f45afed2fdd282ccb5b9f36",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-seq-s1-bd954f45405c-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-bd954f45405c-r4",
+        "path": "/nix/store/mx07d8q3adxdm36xf742ka3ziv1nir8k-latency-seq-s1-bd954f45405c-r4",
+        "sha256": "sha256-SbK4ZTuM08DjkGliDAnwFANUj0X/GokXYC32eEYz+tA="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "bd954f45405cc6b162197b87fe101aaf652802870f45afed2fdd282ccb5b9f36",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 1024,
+            "timeout": 300
+          },
+          "replicate": 5,
+          "run": "latency-seq-s1-bd954f45405c-r5",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-bd954f45405c-r5",
+        "path": "/nix/store/67yggv0nxlhgxqwy5c7kqqfak5n6ykyi-latency-seq-s1-bd954f45405c-r5",
+        "sha256": "sha256-oZlBEXl4ioNa2yQw5mfPaAD9TKqtAgrp8Wrkdlg3sug="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "d9c7829e93fa011e03cada6f81472ed218d0aebf9e88df1554516571453aae8e",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 1,
+          "run": "latency-seq-s1-d9c7829e93fa-r1",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-d9c7829e93fa-r1",
+        "path": "/nix/store/w28n4jrs10zzzqj045rk5qkz51qv07ic-latency-seq-s1-d9c7829e93fa-r1",
+        "sha256": "sha256-UZCch9snvt+r02300s8HBTk3jtgYsZpIZnjctwednBg="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "d9c7829e93fa011e03cada6f81472ed218d0aebf9e88df1554516571453aae8e",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 2,
+          "run": "latency-seq-s1-d9c7829e93fa-r2",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-d9c7829e93fa-r2",
+        "path": "/nix/store/nhym31h86nrcpdy6ak2h81bdc9glfq59-latency-seq-s1-d9c7829e93fa-r2",
+        "sha256": "sha256-jT+QGPOcQ+EmRaIz+Q/SITib2762xosdYDb8aFp2IoU="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "d9c7829e93fa011e03cada6f81472ed218d0aebf9e88df1554516571453aae8e",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 3,
+          "run": "latency-seq-s1-d9c7829e93fa-r3",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-d9c7829e93fa-r3",
+        "path": "/nix/store/qxdcnify2zvypp4883i8ffdwfbvwvhf9-latency-seq-s1-d9c7829e93fa-r3",
+        "sha256": "sha256-SMTO034lRF8kaEHL7D3nRg5WmgL+FK371eplXCNzCFg="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "d9c7829e93fa011e03cada6f81472ed218d0aebf9e88df1554516571453aae8e",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 4,
+          "run": "latency-seq-s1-d9c7829e93fa-r4",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-d9c7829e93fa-r4",
+        "path": "/nix/store/7phv2pgaxmz00v4snvcaxy3wib8gwx9l-latency-seq-s1-d9c7829e93fa-r4",
+        "sha256": "sha256-LnQRNmooSUN+82PPVaC+Ty5IKb/jBGZKFBDn+WsY/R8="
+      },
+      {
+        "facts": {
+          "closure": "/nix/store/clj0j27sz9434qb2dv6yq373s33a8qz6-experiment-latency-seq-s1",
+          "format": "2.0",
+          "input_id": "d9c7829e93fa011e03cada6f81472ed218d0aebf9e88df1554516571453aae8e",
+          "params": {
+            "backend": "seq",
+            "bench": "ping",
+            "cap": 1,
+            "deployment": "grvingt",
+            "gap_ns": 0,
+            "samples": 6636,
+            "size": 65536,
+            "timeout": 300
+          },
+          "replicate": 5,
+          "run": "latency-seq-s1-d9c7829e93fa-r5",
+          "seed": null,
+          "state": "ok"
+        },
+        "name": "latency-seq-s1-d9c7829e93fa-r5",
+        "path": "/nix/store/1zj85nwp3rhwd5s3j5fhvxbl9ci0d2p7-latency-seq-s1-d9c7829e93fa-r5",
+        "sha256": "sha256-s1Li8Ls5mFXUOL/RKfCvk/fQ6wm/SbYHv54Uo350LyY="
+      }
+    ],
     "mpi-cross-host": [
       {
         "facts": {
