@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The guarantees map: what each backend checks of CONTRACT.md, and what it does not.
+"""The guarantee rows: what each backend checks of CONTRACT.md, and what it does not.
 
 The rows are `src/backends/<backend>/guarantees.tsv`, one file per backend (clause, checked by, where, not
 checked), written by hand and kept honest by this script. The check `guarantees` (nix/validate.nix) fails when:
@@ -7,15 +7,14 @@ checked), written by hand and kept honest by this script. The check `guarantees`
   - a clause of CONTRACT.md has no row for a backend, or a row names a clause that is not in CONTRACT.md;
   - a cited path (`where`) does not exist in the tree the check reads;
   - a row's methods or lacks are empty (a clause with nothing lacking is a claim nobody audited);
-  - the generated section of src/backends/README.md differs from the committed one (edit the tsv, then
-    `check/guarantees.py map --root .` to regenerate and commit it).
+The report a reader sees is built by the CI from these rows and the locked runs (`check/report.py`); nothing
+generated is committed.
 
 A row is prose. The check cannot tell an honest "not checked" from a dishonest one; it keeps the inventory
 from rotting, and drift between the tree and the words.
 
 Usage:
   check/guarantees.py check --root DIR   verify; exit 1 and print why on any failure
-  check/guarantees.py map  --root DIR   write the generated section into src/backends/README.md
 """
 
 import argparse
@@ -92,40 +91,8 @@ def check_rows(root, name, rows_, clause_ids, errors):
         check_paths(root, name, r, errors)
 
 
-def section(root, data):
-    """The generated section of src/backends/README.md, from the rows of every backend."""
-    names, _ = backends(root)
-    titles = dict(clauses(root))
-    out = [
-        MARK_START,
-        "",
-        "## Guarantees by backend",
-        "",
-        f"Generated from `src/backends/<backend>/guarantees.tsv` (which also names the paths) by "
-        f"`check/guarantees.py`; the verdict `guarantees` (nix/validate.nix) fails on drift, a missing row or a "
-        f"cited path that is not in the tree.",
-        "",
-    ]
-    for name in names:
-        rows_ = data.get(name, [])
-        out += [f"### {name}", "", "| Clause | Checked by | Not checked |", "| --- | --- | --- |"]
-        for r in rows_:
-            title = titles.get(r["clause"], "?")
-            out.append(f"| **{r['clause']}** {title} | {r['checked_by']} | {r['not_checked']} |")
-        out.append("")
-    out.append(MARK_END)
-    return "\n".join(out)
-
-
-def read_readme(root):
-    path = os.path.join(backend_dir(root), "README.md")
-    text = open(path).read()
-    return path, text
-
-
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["check", "map"])
     ap.add_argument("--root", default=".", help="the tree the rows cite paths in")
     args = ap.parse_args()
     errors = []
@@ -141,28 +108,11 @@ def main():
         data[name] = rows(args.root, name, errors)
         check_rows(args.root, name, data[name], clause_ids, errors)
 
-    readme_path, text = read_readme(args.root)
-    if MARK_START not in text or MARK_END not in text:
-        errors.append(f"src/backends/README.md has no guarantees section between {MARK_START} and {MARK_END}")
-    else:
-        start = text.index(MARK_START)
-        end = text.index(MARK_END) + len(MARK_END)
-        committed = text[start:end]
-        generated = section(args.root, data)
-        if args.mode == "map":
-            open(readme_path, "w").write(text[:start] + generated + text[end:])
-            print(f"wrote the section into {readme_path}")
-        elif committed != generated:
-            errors.append(
-                "src/backends/README.md: the committed section differs from the one generated from the rows; "
-                "run check/guarantees.py map --root . and commit it"
-            )
     for e in errors:
         print(e)
     if errors:
         sys.exit(1)
-    if args.mode == "check":
-        print(f"ok: {len(clause_ids)} clauses x {len(names)} backends; rows and paths verified; map in sync")
+    print(f"ok: {len(clause_ids)} clauses x {len(names)} backends; rows and paths verified")
 
 
 if __name__ == "__main__":

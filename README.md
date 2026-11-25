@@ -119,10 +119,11 @@ There is no default backend: a build names one, and a build with none is a compi
 
 The backends, and the commands that run each, are in `src/backends/README.md` (Build and run).
 
-The map of what each backend checks of `CONTRACT.md`, and what each one lacks, is in `src/backends/README.md`
-(Guarantees by backend). It is generated from each backend's `guarantees.tsv` and the check `guarantees`
-(`nix build .#checks.$(system).guarantees`) fails when a clause has no row, a row cites a file that is not
-there, or the map and the rows drift apart.
+What each backend certifies of `CONTRACT.md`, and how it measures, is a page the CI builds and commits nowhere:
+`nix build .#checks.$(system).ci-report` writes `report.md` and its figures from `src/backends/<backend>/guarantees.tsv`
+and the nixsci analyses of the locked runs. A clause with no row, a backend with no runs, a figure with no data is
+printed as such; the verdict `guarantees` fails the build when a clause has no row or a row cites a file that is
+not there.
 
 The cfg flag is needed because `#[trame::state]` and `parallel!` are compile errors without it. The driver
 sets it when it checks a build (INTERFACE.md, Section 3). Set by hand, it only lifts the error: it does not

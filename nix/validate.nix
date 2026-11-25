@@ -177,7 +177,7 @@ let
     command = ''
       mkdir -p "$out/counterexamples"
       rc=0
-      python3 "$subject/check/guarantees.py" check --root "$subject" > "$TMPDIR/log" 2>&1 || rc=$?
+      python3 "$subject/check/guarantees.py" --root "$subject" > "$TMPDIR/log" 2>&1 || rc=$?
       cp "$TMPDIR/log" "$out/counterexamples/log.txt"
       if [ "$rc" -ne 0 ]; then
         printf '{"holds":false,"gaps":[],"counterexamples":[{"id":"rows","artifact":"counterexamples/log.txt"}]}\n' > "$out/outcome.json"
