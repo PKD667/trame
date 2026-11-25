@@ -176,7 +176,6 @@ pub(crate) fn drain() -> bool {
 /// the leader nothing and lets the run loop move. The cost of the sleep is 100 µs of delay on noticing a peer
 /// message, which is the smallest sleep that keeps the core idle.
 pub(crate) fn wait() {
-    use std::time::Duration;
     let h = host();
     if !h.pending.is_empty() {
         return;
@@ -187,7 +186,7 @@ pub(crate) fn wait() {
             keep(&mut h.pending, &mut h.arrivals, msg, status);
             return;
         }
-        std::thread::sleep(Duration::from_micros(100));
+        crate::leader::sleep();
     }
 }
 
