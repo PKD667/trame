@@ -1,15 +1,14 @@
 # Trame
 
-A scientific program already has a communication graph. Nobody writes it down in one place.
+Trame makes the communication graph of a distributed program a declared part of the program.
 
-Rank 3 sends halo cells to rank 4 and waits for a reply. Rank 4's buffer is full, so rank 3 blocks,
-or the message is lost, or the queue grows until the node runs out of memory. On 1000 ranks one
-rank is always late, and the run ends when the last one says so. Every one of these facts sits in a
-different call.
+Outside Trame the graph exists only across calls. Rank 3 sends halo cells to rank 4 and waits for a reply; a full
+buffer on rank 4 blocks rank 3, loses the message, or grows the queue until the node runs out of memory; on 1000
+ranks one rank is always late, and the run ends when the last one reports. No call states the graph.
 
-Trame writes the graph down. A program names its workers, its messages and the capacity of each
-route, and it cannot send outside them. The compiler checks the code, the launch fixes the graph, and
-the backend must not produce a behaviour the spec forbids (CONTRACT.md).
+Trame states the graph. A program declares its workers, its message types and the capacity of each route, and cannot
+send outside them. Compilation checks the code, the launch fixes the graph, and a backend produces no behaviour the
+contract forbids (CONTRACT.md).
 
 ## Example
 
@@ -95,8 +94,8 @@ fn main() {
 static ALLOC: trame::Alloc = trame::Alloc::new(std::alloc::System);
 ```
 
-The output is the same on every backend, and on one host and split across hosts (`src/backends/README.md`,
-Build and run). The four runs below are identical:
+The output is identical on every backend, on one host and split across hosts (`src/backends/README.md`, Build and
+run):
 
 ```
 worker 0 total 9
@@ -106,9 +105,9 @@ worker 3 total 6
 outcomes: [Returned, Returned, Returned, Returned]
 ```
 
-The example does not handle a failed run. If a worker panics, the leader's next call panics too, with
-`trame: worker <w> panicked: <message>` (INTERFACE.md 5, Abort). `check/programs/abort.rs` shows the leader in
-`Run::wait`, and `check/programs/abort_join.rs` the leader in `join`.
+The example handles no failed run. A worker panic makes the leader's next call panic with `trame: worker <w>
+panicked: <message>` (INTERFACE.md 5, Abort). `check/programs/abort.rs` shows the leader in `Run::wait`;
+`check/programs/abort_join.rs` shows it in `join`.
 
 ## Build and run
 
@@ -125,41 +124,40 @@ and the nixsci analyses of the locked runs. A clause with no row, a backend with
 printed as such; the verdict `guarantees` fails the build when a clause has no row or a row cites a file that is
 not there.
 
-The cfg flag is needed because `#[trame::state]` and `parallel!` are compile errors without it. The driver
-sets it when it checks a build (INTERFACE.md, Section 3). Set by hand, it only lifts the error: it does not
-stop a deliberate unchecked build.
+The flag is required: `#[trame::state]` and `parallel!` are compile errors without it. The driver sets it when it
+checks a build (INTERFACE.md, Section 3). Set by hand, it lifts the error only, so a deliberate unchecked build
+remains possible.
 
 A backend that runs workers as processes needs a rank count that matches the topology. The count for each
 backend, and what it does with another one, is in `src/backends/README.md`.
 
 ## Adding a backend
 
-A backend is a directory of `src/backends/` with a `mod.rs` and a `backend.nix`. Nothing else in the tree lists
-it: `build.rs` finds it, and the flake derives its shell, launcher and checks from the directory.
+A backend is a directory of `src/backends/` with a `mod.rs` and a `backend.nix`. The tree lists it nowhere else:
+`build.rs` finds it, and the flake derives its shell, launcher and checks from the directory.
 
-One file does list it, because cargo insists. `Cargo.toml` declares a feature per backend, with the optional
+`Cargo.toml` lists it because cargo requires a declared feature. It declares one feature per backend, with the optional
 dependencies and binaries that backend alone uses, and a manifest cannot be computed. So `nix/manifest.nix`
 writes those lines from the `cargo` field of each `backend.nix`, between the `# >>> backends` markers.
 
     nix run .#manifest
 
-Run it after you add or change a backend, and edit the descriptor, never the marked lines. If you forget,
-`nix flake check` fails on `manifest`, and `build.rs` stops the build naming the directory that has no feature.
-The step does not go away: cargo reads features before any script of ours runs.
+The command runs after a backend is added or changed. The descriptor is edited; the marked lines never are. A
+forgotten run fails `nix flake check` on `manifest`, and `build.rs` stops the build naming the directory without a
+feature. Cargo reads features before any script of the tree runs, so the step stays.
 
-The same command writes `rust-analyzer.toml`, which gives the editor one backend (the descriptor with
-`reference = true`) to analyse, since a build with none is a compile error. `.vscode/settings.json` sets
-`trame_checked` for it, so the programs do not show the error that refuses an unchecked build.
-`python3 check/editor/diagnostics.py .` starts rust-analyzer with those files and prints every error it finds; the tree
-has none.
+The same command writes `rust-analyzer.toml`, which gives the editor one backend to analyse: the descriptor with
+`reference = true`, because a build with no backend is a compile error. `.vscode/settings.json` sets
+`trame_checked` for it, so an unchecked build shows no error in the editor. `python3 check/editor/diagnostics.py .`
+starts rust-analyzer with those files and prints every error it finds; the tree has none.
 
 ## The levels
 
 A program has three levels, each inside the one above it (INTERFACE.md, Section 1). Each one may do less.
 
-**Host, leader.** Any Rust. It declares the topology, launches it, and drives the run through `Run`:
-`send`, `recv`, `wait`, `edit`, `stop` and `join`. Nothing is checked here; it is the environment
-(INTERFACE.md, Sections 4 and 5.5).
+**Host, leader.** Any Rust. It declares the topology, launches it and drives the run through `Run`: `send`,
+`recv`, `wait`, `edit`, `stop` and `join`. No check applies at this level; it is the environment (INTERFACE.md,
+Sections 4 and 5.5).
 
 **Step.** A function over the fields of a worker's state, marked `#[trame::step]`. It may `send`,
 `recv`, `me`, `now` and `parallel!`, and use counted loops. It may not allocate, recurse, use an
@@ -192,7 +190,8 @@ it needs, and the details are in `src/backends/README.md` (Build and run and Lau
 | crate tests | `cargo test` on each backend whose descriptor has `cargoTests` | `tests/` |
 | programs | every program in `check/programs/` on every backend, stdout compared with `.expected` | `check/programs/run.sh` |
 | backend checks | each backend's own checks, such as the transport of a multi-process backend | `src/backends/README.md`, Checks by backend |
-| guarantees map | every clause of CONTRACT.md, per backend: what checks it, what does not, paths verified | `src/backends/README.md`, Guarantees by backend |
+| guarantee rows | every clause of CONTRACT.md has a row for every backend, citing paths that exist | `check/guarantees.py` |
+| CI report | the page the CI builds at every run: the clause table per backend and the latency figures | `check/report.py` |
 | TLA+ models | the protocols of the backends that have models | `src/backends/<b>/proofs/README.md` |
 | `nix flake check` | builds the verdicts that must hold | `lab/README.md`, Verdicts |
 | lab experiments | `nix run .#<name>` runs real processes: the experiments of each backend, and the scale runs | `lab/README.md`, `src/backends/README.md` |
