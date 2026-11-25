@@ -154,6 +154,11 @@ pub(crate) fn edit(run: &Leader, target: Target, f: &mut dyn FnMut()) -> bool {
 
 /// Block until the leader's epoch differs from `seen`, and answer the new value (epoch.rs). Panics
 /// when the detector shows that nothing can arrive (detect.rs), as seq does (INTERFACE.md 5, Deadlock).
+/// The bound on a leader's nap between two polls of the peer channel: 100 µs. It is the largest delay a peer message
+/// can meet on this path, and it is the smallest bound that leaves the core idle. A worker's push does not wait for
+/// it: the nap is on the epoch futex, which the push wakes.
+const PEER_POLL: u64 = 100_000;
+
 pub(crate) fn wait(run: &Leader, seen: u64) -> u64 {
     run.get().fail_if_aborted();
     let stuck = || {
@@ -161,8 +166,11 @@ pub(crate) fn wait(run: &Leader, seen: u64) -> u64 {
             panic!("trame: deadlock: the leader waits and nothing can arrive");
         }
     };
-    // With peers, a peer message is a change too, and nothing on this host can wake the leader for
-    // it (it arrives through MPI, not the window): the leader spins on both.
+    // With peers, a peer message is a change too, and it arrives through MPI, not through the window: MPI offers no
+    // descriptor to wait on, so a leader that waits for one polls the peer channel (`hosts::drain`) between naps. The
+    // nap is on the leader's epoch futex with a bound (PEER_POLL), so a worker's push wakes the leader at once and a
+    // peer message is noticed within PEER_POLL. Workers never sleep: their own loop polls its incoming messages, and
+    // only a leader naps between polls (INTERFACE.md 6; src/backends/README.md, The traits' waits).
     let e = if crate::backends::mpi::transport::hosts::host().count > 1 {
         // The seen word is the epoch in the low half and the count of peer arrivals in the high half.
         loop {
@@ -173,7 +181,7 @@ pub(crate) fn wait(run: &Leader, seen: u64) -> u64 {
                 break e;
             }
             stuck();
-            core::hint::spin_loop();
+            run.get().leader_nap(e as u32, PEER_POLL);
         }
     } else {
         loop {

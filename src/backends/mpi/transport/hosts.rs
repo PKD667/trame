@@ -165,11 +165,16 @@ pub(crate) fn drain() -> bool {
 
 /// Wait until a peer message is held in `pending`: it returns at once when one is, else after the next arrives.
 ///
+/// LEADER TO LEADER ONLY. This wait serves the peer channel, and no other traffic waits here: a relayed route frame
+/// travels on this same channel (`transport/cross`, F5) but a relay moves frames through `drain` and `send` in its own
+/// loop and calls no wait, so the sleep below never sits on the path of a forwarded message. A change here that puts a
+/// sleep, or this function, on the relay path is a latency regression on every cross-host route.
+///
 /// The wait is a poll of a non-blocking probe with a short sleep between polls, not a blocking probe: an MPI library
 /// may spin in a blocking probe, and a leader that spins holds its core and, worse, does not return to its run loop,
 /// so the workers' routes to it fill and the workers starve (a launch over two hosts stalls). A sleeping wait costs
-/// the leader nothing and lets the run loop move. The fog of a sleep is 100 µs: far below any measurable round trip,
-/// far above the cost of a probe.
+/// the leader nothing and lets the run loop move. The cost of the sleep is 100 µs of delay on noticing a peer
+/// message, which is the smallest sleep that keeps the core idle.
 pub(crate) fn wait() {
     use std::time::Duration;
     let h = host();

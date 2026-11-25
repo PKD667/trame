@@ -822,7 +822,11 @@ path.
 > there). So a plan the leaders agree on reaches every process that declares the host's workers before any
 > of them launches. Waiting is for events and costs no core: `peer_wait` polls a non-blocking probe with a
 > short sleep between polls, so a leader that waits for a peer sleeps rather than spins and its run loop keeps
-> moving. A backend for which that is not enough says so (`src/backends/README.md`, Limits).
+> moving, and a leader's `Run::wait` with peers naps between polls of the peer channel for the same reason; workers
+> never sleep, their loop polls its incoming messages. That sleep belongs to the peer channel, one leader to another,
+> and to nothing else: a relayed frame
+> travels on the same channel but is moved by the relay's own loop, which never waits, so a forwarded message pays
+> no sleep. A backend for which a wait costs more says so (`src/backends/README.md`, Limits).
 >
 > The launcher does not ask a program that exchanges peer messages before its launch for its ranks, since
 > that program cannot be run alone: it starts each host on the workers the launcher was given

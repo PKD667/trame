@@ -144,8 +144,13 @@ work, growth in an edit) is not counted against it.
 The peer wait sleeps: a leader waiting for a peer message polls a non-blocking MPI probe every 100 µs, because a
 blocking probe lets the library spin on the leader's core and, worse, keeps the leader out of its run loop, so the
 workers' routes to it fill and the workers starve. Program `peer_idle` holds a leader in `peer_wait` for two seconds
-with no sender and reads its own CPU time: idle under 0.2 s sleeps, over it spins. The leader's own `Run::wait` on
-more than one host still polls its workers without a sleep, which is the backend's limit.
+with no sender and reads its own CPU time: idle under 0.2 s sleeps, over it spins. The sleep is the peer channel's
+alone, leader to leader; a relay moves route frames on that channel through its own loop and never waits, so a
+forwarded message pays no sleep. The leader's own `Run::wait` on more than one host polls the peer channel between
+naps of 100 µs on its epoch futex: a worker's push wakes it at once (the futex), a peer message is noticed within the
+nap, and the core stays idle. Workers never sleep: their loop polls its incoming messages. MPI offers no descriptor to
+wait on, so the poll is the mechanism; the nap is the leader's alone. Program `run_idle` times a leader's wait in a
+stuck two-host run (it discriminates on two machines, where the detector's rounds outlast the threshold).
 
 `seq` has the step limit above. `mpi` holds back the detection of a stuck run across hosts while a leader
 runs its own code, as described under mpi. Latency is not guaranteed by any backend, and T leaves it to the
