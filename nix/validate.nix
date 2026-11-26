@@ -164,12 +164,13 @@ let
     '';
   };
 
-  # The guarantees map (src/backends/README.md, "Guarantees by backend"): every clause of CONTRACT.md has a row for
-  # every backend, the rows' cited paths are in the tree, and the committed section of the README is the one the rows
-  # generate. The rows are tags over prose sources: this verifies the inventory and its paths, not a row's truth.
+  # The guarantee rows (src/backends/<b>/guarantees.tsv): every clause of CONTRACT.md has a row for every backend, and
+  # the paths a row cites are in the tree. Nothing generated is committed; the page a reader sees is the CI report
+  # (`check/report.py`, the verdict `ci-report`). The rows are tags over prose sources: this verifies the inventory and
+  # its paths, not a row's truth.
   guaranteesCheck = v.check {
     name = "guarantees";
-    property = "every clause of CONTRACT.md has a row for every backend in src/backends/<backend>/guarantees.tsv, each row cites paths that exist, and src/backends/README.md's generated section is what the rows say";
+    property = "every clause of CONTRACT.md has a row for every backend in src/backends/<backend>/guarantees.tsv, and each row cites paths that exist";
     model = "check/guarantees.py over the clause lines of CONTRACT.md and the tsv rows, one run, no execution of trame";
     subject = guaranteesSrc;
     checker = pkgs.python3;

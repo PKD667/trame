@@ -146,6 +146,8 @@ to it.
 
 ## Federation
 
+F2 is retired: the ids of these clauses are stable, so a retired one leaves its number unused.
+
 **F1 Identity.** Each host of a deployment has a `HostId`, distinct from every other host's and
 fixed by deployment; `host()` answers it. Workers are numbered from 0 on each host; a worker of
 another host is named by its host and its number there.

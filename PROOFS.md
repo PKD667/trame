@@ -6,8 +6,8 @@ point where it stops. A clause that nothing checks says so.
 
 Where a check belongs to one backend, this file says so and names the place in `src/backends/README.md`
 (section Checks by backend) that lists it. The per-backend inventory of every clause — what checks it, where,
-and what it does not — is the guarantees map (`src/backends/README.md`, generated from
-`src/backends/<backend>/guarantees.tsv` by `check/guarantees.py`, checked by the verdict `guarantees`).
+and what it does not — are the rows of `src/backends/<backend>/guarantees.tsv`, validated by the verdict
+`guarantees`; the page a reader sees is built by the CI (`check/report.py`, `nix build .#checks.<system>.ci-report`).
 
 ## Methods
 

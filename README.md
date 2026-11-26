@@ -187,13 +187,13 @@ it needs, and the details are in `src/backends/README.md` (Build and run and Lau
 | rejection suite | cases the checks must refuse, and their matched accepted cases | `check/rejections/README.md` |
 | conformance by mutation | every rule has a program that fails on a backend which breaks it | `check/mutants/README.md` |
 | scheduler model | `sched.rs` unit and property tests; trace replay of random workloads | `PROOFS.md` |
-| crate tests | `cargo test` on each backend whose descriptor has `cargoTests` | `tests/` |
+| crate tests | `cargo test` of the root crate, each test alone through the backend's launch (`tests-<backend>`) | `tests/` |
 | programs | every program in `check/programs/` on every backend, stdout compared with `.expected` | `check/programs/run.sh` |
 | backend checks | each backend's own checks, such as the transport of a multi-process backend | `src/backends/README.md`, Checks by backend |
 | guarantee rows | every clause of CONTRACT.md has a row for every backend, citing paths that exist | `check/guarantees.py` |
 | CI report | the page the CI builds at every run: the clause table per backend and the latency figures | `check/report.py` |
 | TLA+ models | the protocols of the backends that have models | `src/backends/<b>/proofs/README.md` |
-| `nix flake check` | builds the verdicts that must hold | `lab/README.md`, Verdicts |
+| `nix flake check` | builds the verdicts that must hold, and the three checks on the tree itself: `fmt`, `no-backend-names`, `manifest` | `lab/README.md`, Verdicts |
 | lab experiments | `nix run .#<name>` runs real processes: the experiments of each backend, and the scale runs | `lab/README.md`, `src/backends/README.md` |
 
 `PROOFS.md` says, for each clause of `CONTRACT.md`, which of these checks it and where the check

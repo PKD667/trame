@@ -225,7 +225,7 @@ following fields.
 | `maxMachines` | the largest job the flake accepts | 1 | 1024 |
 | `splits` | the values `--split` may take | `[ 1 ]` | `[ 1 2 ]` |
 | `deterministic` | whether a run is a function of the program | true | false |
-| `cargoTests` | whether the root crate's cargo tests run on it | true | false |
+| `cargoTests` | whether the root crate's own `cargo test` passes on it, as the descriptor records; the verdict `tests-<b>` runs each test through the backend's launch and does not read this field | true | false |
 | `bins` | extra binaries built from the backend's own sources | none | `check`, `latency` |
 | `postInstall` | shell run after the build | none | builds the plain-MPI baselines |
 | `cargo` | what `Cargo.toml` needs of it: `dependencies` (optional, enabled by its feature) and `bins` (`name`, `path`) | none | the MPI crates, the `check` binary |
@@ -238,7 +238,8 @@ Otherwise they are lab experiments, which run real processes.
 
 A backend may list programs it does not run in `src/backends/<b>/skip.txt`. The file has one program per line,
 the program's name, then a space and the reason. `check/programs/run.sh` skips a listed program for that
-backend, and the reason is for the reader. No backend has a `skip.txt` at the time of writing.
+backend, and the reason is for the reader. The programs verdict and `check/programs/run.sh` both subtract the
+listed programs; each line names the reason a reader needs.
 
 ## Checks by backend
 
