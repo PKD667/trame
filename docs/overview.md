@@ -57,7 +57,7 @@ flowchart TB
 | `src/math/` | portable numeric functions |
 
 Around the crate: `crates/driver/` is the compile-time checker, `check/rejections/` its case suite, `check/programs/`
-the shared conformance programs, `check/mutants/` the mutants, `check/proofs/` the TLA+ models, `lab/bench/`
+the shared conformance programs, `check/mutants/` the mutants, each backend's `proofs/` the TLA+ models (the unsafe registry and the Miri script are in `check/proofs/`), `lab/bench/`
 the scaling runs and `lab/` the nix experiments.
 
 ## A step's path

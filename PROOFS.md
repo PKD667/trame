@@ -68,8 +68,9 @@ could start. A backend with a multi-process wake-up protocol has a TLA+ model of
 (`src/backends/README.md`).
 
 **S4 Edit.** Model; replay of runs with racing edits (`edits_follow_the_model`), in which every step
-asserts the pool it reads is whole. A backend whose edits cross processes has its own handshake, which the
-model `MCEdit` checks at small bounds (`src/backends/README.md`); its larger configurations did not finish.
+asserts the pool it reads is whole. A backend whose edits cross processes has its own handshake, modelled by
+`Edit.tla`; only its no-wait variant is adjudicated (it must lose the hold), and the four larger configurations did
+not finish, so they check nothing (`src/backends/README.md`, and the proofs directory's own README).
 
 **S5 Stop.** Model.
 
