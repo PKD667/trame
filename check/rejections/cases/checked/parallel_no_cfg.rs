@@ -9,5 +9,5 @@ fn bump(x: &u32, slot: &mut u32, _cx: &()) {
 fn main() {
     let items = [1_u32];
     let mut slots = [0_u32];
-    trame::parallel!(bump, &(), &items, &mut slots); //~ ERROR: build with cargo trame
+    trame::parallel!(bump, &(), &items, &mut slots); //~ ERROR: this build needs a cfg
 }
