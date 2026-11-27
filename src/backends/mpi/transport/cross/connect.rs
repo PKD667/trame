@@ -11,7 +11,7 @@ use mpi::ffi;
 use mpi::traits::*;
 
 use crate::launch::{Plan, Refused};
-use crate::topology::{End, HERE};
+use crate::vocab::{End, HERE};
 
 use crate::backends::mpi::transport::cross::calls::{isend, null, wait};
 use crate::backends::mpi::transport::hosts::host;

@@ -16,7 +16,7 @@ use crate::launch::{Plan, Refused};
 use crate::run::{Outcome, panic_message};
 use crate::sched::{Answer, Event, Sched};
 use crate::time::ClockId;
-use crate::topology::{End, WorkerId};
+use crate::vocab::{End, WorkerId};
 use crate::worker::{Slot, agent};
 use std::boxed::Box;
 use std::cell::RefCell;
@@ -135,7 +135,7 @@ fn build_all(plan: &mut Plan) -> Result<(), Refused> {
         let b = b.take().expect("trame: the launch checked that every worker was set");
         let (_, bytes) = crate::domain::arena_metered(b);
         if let Some(share) = share.filter(|s| bytes > s.saturating_add(crate::system::GRACE)) {
-            return Err(Refused::Share { worker: crate::topology::WorkerId::here(w as u32), want: bytes, share });
+            return Err(Refused::Share { worker: crate::vocab::WorkerId::here(w as u32), want: bytes, share });
         }
     }
     Ok(())

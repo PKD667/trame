@@ -2,7 +2,7 @@
 //! worker. The checks are the trame part of acceptance; the backend adds its own refusals.
 
 use crate::backend::PoolRef;
-use crate::topology::{End, WorkerId};
+use crate::vocab::{End, WorkerId};
 use crate::worker::Erased;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -162,12 +162,12 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
         // deployment, and its host checks the rest (F3). A route names at least one end of this host.
         for end in [r.from, r.to] {
             if let End::Worker(w) = end
-                && (if w.1 == crate::topology::HERE { w.0 as usize >= n } else { w.1 >= crate::io::hosts() })
+                && (if w.1 == crate::vocab::HERE { w.0 as usize >= n } else { w.1 >= crate::io::hosts() })
             {
                 return Err(Refused::UnknownWorker(w));
             }
         }
-        let remote = |e: End| matches!(e, End::Worker(w) if w.1 != crate::topology::HERE);
+        let remote = |e: End| matches!(e, End::Worker(w) if w.1 != crate::vocab::HERE);
         if let (true, true, End::Worker(w)) = (remote(r.from), remote(r.to), r.from) {
             return Err(Refused::UnknownWorker(w));
         }

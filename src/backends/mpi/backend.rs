@@ -13,7 +13,7 @@ use crate::launch::{Plan, Refused};
 use crate::run::Outcome;
 use crate::sched::{Event, Sched};
 use crate::time::ClockId;
-use crate::topology::{End, WorkerId};
+use crate::vocab::{End, WorkerId};
 
 use crate::backends::mpi::Selected;
 use crate::backends::mpi::memory::segment;

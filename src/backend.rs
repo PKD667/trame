@@ -12,7 +12,7 @@ use crate::launch::{Plan, Refused};
 use crate::run::Outcome;
 use crate::sched::{Event, Sched};
 use crate::time::ClockId;
-use crate::topology::{End, WorkerId};
+use crate::vocab::{End, WorkerId};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::any::TypeId;

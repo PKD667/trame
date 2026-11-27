@@ -81,6 +81,9 @@ mod run;
 pub mod system;
 mod time;
 mod topology;
+/// The identifier vocabulary: hosts, workers and the ends of routes (INTERFACE.md 4). Private: the
+/// surface is the root re-exports.
+mod vocab;
 
 pub use bounded::{Bounded, BoundedHeap};
 pub use domain::Alloc;
@@ -100,8 +103,9 @@ pub use plain::probe as __probe;
 pub use run::{Outcome, Run};
 pub use status::Status;
 pub use time::{ClockId, Reading, now};
-pub use topology::{End, Handle, HostId, Leader, Pool, Topology, Worker, WorkerId};
+pub use topology::{Handle, Leader, Pool, Topology, Worker};
 pub use trame_macros::{Object, Plain};
+pub use vocab::{End, HostId, WorkerId};
 
 /// The backends and the choice among them (src/backends/mod.rs).
 #[path = "backends/mod.rs"]

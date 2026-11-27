@@ -4,7 +4,8 @@
 use crate::backend::{Backend, Selected};
 use crate::io::{Full, Message, Stamped, read};
 use crate::time::{ClockId, Reading};
-use crate::topology::{Handle, HostId, WorkerId};
+use crate::topology::Handle;
+use crate::vocab::{HostId, WorkerId};
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;

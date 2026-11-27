@@ -17,7 +17,7 @@
 use crate::backend::{Backend, Selected};
 use crate::bounded::Bounded;
 use crate::io::Full;
-use crate::topology::HostId;
+use crate::vocab::HostId;
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::fmt;

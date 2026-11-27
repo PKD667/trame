@@ -11,7 +11,7 @@ use std::vec;
 use std::vec::Vec;
 
 use crate::launch::{Plan, Refused};
-use crate::topology::{End, HERE};
+use crate::vocab::{End, HERE};
 
 use crate::backends::mpi::memory::layout::Remote;
 use crate::backends::mpi::{Route, RouteId, Topology};

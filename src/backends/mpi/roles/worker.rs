@@ -23,7 +23,7 @@ use std::panic::resume_unwind;
 
 use crate::io::Full;
 use crate::time::ClockId;
-use crate::topology::End;
+use crate::vocab::End;
 use std::sync::atomic::Ordering::{Acquire, SeqCst};
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};

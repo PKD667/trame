@@ -8,6 +8,11 @@
 # an obligation (`**O-seg-1 Mapped.**`, if any). A cited name that is not defined fails. A defined obligation that
 # no site cites fails. Exit 0 when all hold; every failure is printed as `file:line: reason`. The last line
 # counts the unsafe sites and the names cited.
+#
+# RATCHET. With UNSAFE_BASELINE=<file> (one number: the failure count the tree is allowed today), the count is what
+# decides: at or below the number the script prints the delta and exits 0, above it it prints the delta and exits 1.
+# A new unsafe block whose SAFETY comment is missing or names no clause then fails the build, while the backlog the
+# tree already has does not. The baseline is check/proofs/unsafe-baseline.txt.
 set -eu
 root=${1:?usage: unsafe-registry.sh ROOT}
 tmp=$(mktemp -d)
@@ -86,4 +91,12 @@ done < "$tmp/obligations"
 sites=$(wc -l < "$tmp/sites")
 safe=$(wc -l < "$tmp/ok")
 echo "unsafe sites: $sites; SAFETY names a defined name: $safe; not: $((sites - safe)); names cited: $(wc -l < "$tmp/cited.u") of $(wc -l < "$tmp/defined") defined"
+n=$(wc -l < "$tmp/fail")
+if [ -n "${UNSAFE_BASELINE:-}" ]; then
+  allowed=$(tr -dc '0-9' < "$UNSAFE_BASELINE")
+  delta=$((n - allowed))
+  echo "unsafe registry: $n failure(s), baseline $allowed, delta $delta"
+  if [ "$delta" -gt 0 ]; then cat "$tmp/fail"; exit 1; fi
+  exit 0
+fi
 if [ -s "$tmp/fail" ]; then cat "$tmp/fail"; exit 1; fi

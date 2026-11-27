@@ -11,7 +11,7 @@ use std::vec::Vec;
 
 use crate::io::Full;
 use crate::run::Outcome;
-use crate::topology::{End, WorkerId};
+use crate::vocab::{End, WorkerId};
 
 use crate::backend::Target;
 use crate::backends::mpi::memory::layout::{

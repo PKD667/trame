@@ -1,5 +1,5 @@
-//! Worker identities, the handles of declared workers, and the topology the host builds: INTERFACE.md
-//! section 4.
+//! The handles of declared workers and the topology the host builds: INTERFACE.md section 4. The
+//! identity vocabulary (hosts, workers, the ends of routes) is `vocab`.
 
 use crate::backend::Target;
 use crate::backend::{Backend, Selected};
@@ -12,84 +12,15 @@ use core::any::{TypeId, type_name};
 use core::mem::size_of;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-/// A host of the federation: one memory domain, one backend, one leader. Fixed by deployment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct HostId(pub u32);
-
-/// Identity of a worker: its index among its host's workers (0..n on every host), and its host. Made
-/// by `Topology::worker` for this host's, and from `(HostId, k)` for worker k of another host, as that
-/// host declared it. The leader is not a worker and has no `WorkerId` (`Leader`).
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct WorkerId(pub(crate) u32, pub(crate) u32);
-
-impl core::fmt::Debug for WorkerId {
-    /// `WorkerId(k)` for this host's worker k, `WorkerId(k, host h)` for another host's.
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.1 == HERE {
-            write!(f, "WorkerId({})", self.0)
-        } else {
-            write!(f, "WorkerId({}, host {})", self.0, self.1)
-        }
-    }
-}
-
-/// The host field of a worker of this host.
-pub(crate) const HERE: u32 = u32::MAX;
-
-impl WorkerId {
-    pub(crate) const fn here(k: u32) -> Self {
-        WorkerId(k, HERE)
-    }
-}
-
-impl From<(HostId, u32)> for WorkerId {
-    /// Worker `k` of host `h`; this host's own `h` names this host's worker.
-    fn from((h, k): (HostId, u32)) -> Self {
-        if h == crate::host() { WorkerId::here(k) } else { WorkerId(k, h.0) }
-    }
-}
+// The backends' own blocks import from here (`crate::topology::WorkerId` in their tests), so the
+// vocabulary comes in as a re-export as well as this module's own use.
+pub(crate) use crate::vocab::{End, WorkerId};
 
 /// This host's leader, as the end of a route: `t.route::<M>(Leader, w.id(), 16)`. The leader is not
 /// a worker. It is the process outside the workers that built the topology and holds the `Run`: with
 /// workers in other processes a process of its own, on a device the host program. It has no steps, no state and no index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Leader;
-
-/// An end of a route: a worker or this host's leader. Made from `WorkerId`, `(HostId, k)` and
-/// `Leader`; programs pass those, not an `End`.
-#[doc(hidden)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub enum End {
-    Worker(WorkerId),
-    Leader,
-}
-
-impl core::fmt::Debug for End {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            End::Worker(w) => w.fmt(f),
-            End::Leader => f.write_str("Leader"),
-        }
-    }
-}
-
-impl From<WorkerId> for End {
-    fn from(w: WorkerId) -> End {
-        End::Worker(w)
-    }
-}
-
-impl From<(HostId, u32)> for End {
-    fn from(hk: (HostId, u32)) -> End {
-        End::Worker(hk.into())
-    }
-}
-
-impl From<Leader> for End {
-    fn from(_: Leader) -> End {
-        End::Leader
-    }
-}
 
 /// A declared worker of state type `S`: its identity, and the handle the leader edits and takes the
 /// state through. Made by `Topology::worker`.
@@ -186,7 +117,11 @@ impl Topology {
         );
         // A route to the leader carries the sender's clock with each message (io.rs, `Wire`).
         let (ty, wire, size) = if to == End::Leader {
-            (TypeId::of::<crate::io::Wire<M>>(), crate::io::tag::<crate::io::Wire<M>>(), size_of::<crate::io::Wire<M>>())
+            (
+                TypeId::of::<crate::io::Wire<M>>(),
+                crate::io::tag::<crate::io::Wire<M>>(),
+                size_of::<crate::io::Wire<M>>(),
+            )
         } else {
             (TypeId::of::<M>(), crate::io::tag::<M>(), size_of::<M>())
         };
@@ -255,9 +190,8 @@ pub(crate) mod sealed {
                 "trame: Topology::set of a worker declared by another topology; set it on the topology whose `worker` made it"
             );
             let core = self.core.clone();
-            plan.builders[k] = Some(alloc::boxed::Box::new(move || {
-                core.fill(crate::domain::in_domain(build(), "state of a worker"))
-            }));
+            plan.builders[k] =
+                Some(alloc::boxed::Box::new(move || core.fill(crate::domain::in_domain(build(), "state of a worker"))));
         }
         fn target(&self, run: &Run) -> Target {
             // A worker shares `joined` with its topology, and the run took that topology's (launch).
@@ -283,7 +217,8 @@ pub(crate) mod sealed {
                 "trame: Topology::set of a pool declared by another topology; set it on the topology whose `pool` made it"
             );
             let core = self.core.clone();
-            plan.pool_builder = Some(alloc::boxed::Box::new(move || core.fill(crate::domain::in_domain(build(), "pool"))));
+            plan.pool_builder =
+                Some(alloc::boxed::Box::new(move || core.fill(crate::domain::in_domain(build(), "pool"))));
         }
         fn target(&self, run: &Run) -> Target {
             let ours = run.pool().is_some_and(|p| core::ptr::addr_eq(p, Arc::as_ptr(&self.core)));

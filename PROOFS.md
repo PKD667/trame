@@ -171,8 +171,11 @@ size, and no claim is judged on it.
 
 ## Unsafe code
 
-Each `unsafe` block in trame states in a `SAFETY` comment why it is sound, and names the clause
-it relies on. Miri runs a backend's tests under Tree Borrows (`check/proofs/miri.sh BACKEND`), for a backend whose tests cargo runs. It found a data race
+Each `unsafe` block must state in a `SAFETY` comment why it is sound and name the clause it relies on.
+`check/proofs/unsafe-registry.sh` reads the sources and counts the sites that do not: 369 sites, 40 naming a defined
+clause, 329 not, at the time of writing. The registry is a ratchet, not a wall: the count is recorded in
+`check/proofs/unsafe-baseline.txt`, the check `unsafe-registry` fails when it grows, and the backlog is the
+difference between the count and zero. A site added without a comment that names a clause fails the build. Miri runs a backend's tests under Tree Borrows (`check/proofs/miri.sh BACKEND`), for a backend whose tests cargo runs. It found a data race
 in the pool edit, fixed in commit f7fc1a5. It does not run a backend that needs a launcher. The boundaries and the how-to are in
 `check/proofs/README.md`, section Unsafe code and Miri.
 

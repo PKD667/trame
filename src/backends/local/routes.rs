@@ -7,7 +7,7 @@ extern crate std;
 use crate::io::Full;
 use crate::launch::Refused;
 use crate::launch::Route as Planned;
-use crate::topology::End;
+use crate::vocab::End;
 use std::any::TypeId;
 use std::vec;
 use std::vec::Vec;

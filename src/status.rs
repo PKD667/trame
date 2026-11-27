@@ -87,10 +87,10 @@ impl Status {
 
     /// Add the condition: the route from this worker to `to`, carrying `M`, has room for a send. Aborts
     /// when this worker has no such route, since the condition could never change.
-    pub fn room<M: Message>(self, to: impl Into<crate::topology::End>) -> Status {
+    pub fn room<M: Message>(self, to: impl Into<crate::vocab::End>) -> Status {
         let to = to.into();
         self.with_condition(".room()", |w| {
-            let ty = if to == crate::topology::End::Leader {
+            let ty = if to == crate::vocab::End::Leader {
                 TypeId::of::<crate::io::Wire<M>>()
             } else {
                 TypeId::of::<M>()

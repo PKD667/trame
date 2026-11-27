@@ -55,9 +55,9 @@ pub struct Stamped<M> {
 /// Send `msg` from this worker to `to`, on the route of type `M`. Answers `Full` only when that
 /// route is not lossy and at capacity. Panics when the topology has no such route. A message to the leader
 /// is stamped with this worker's clock (INTERFACE.md 5.2).
-pub fn send<M: Message>(to: impl Into<crate::topology::End>, msg: M) -> Result<(), Full> {
+pub fn send<M: Message>(to: impl Into<crate::vocab::End>, msg: M) -> Result<(), Full> {
     let to = to.into();
-    if to == crate::topology::End::Leader {
+    if to == crate::vocab::End::Leader {
         let (clock, nanos) = Selected::worker_stamp();
         // The bytes of a `Wire<M>`, written in place: a large message is not copied onto the stack a second time.
         let body = crate::__bytemuck::bytes_of(&msg);
@@ -95,8 +95,8 @@ pub(crate) fn read<M: Message>(take: impl FnOnce(&mut [u8]) -> bool) -> Option<M
 }
 
 /// This host (`HostId`), on its leader and in its workers.
-pub fn host() -> crate::topology::HostId {
-    crate::topology::HostId(Selected::host())
+pub fn host() -> crate::vocab::HostId {
+    crate::vocab::HostId(Selected::host())
 }
 
 /// The number of hosts of the deployment. Hosts are numbered from 0, so `HostId(h)` names a peer for
@@ -109,7 +109,7 @@ pub fn hosts() -> u32 {
 /// not know it. A launcher may supply the counts before the hosts have discovered each other; once they have
 /// (`launch` has returned, or the first `host()` or `hosts()` on a backend that discovers there), every host's count is
 /// known. `None` also for a number that is no host.
-pub fn workers(h: crate::topology::HostId) -> Option<u32> {
+pub fn workers(h: crate::vocab::HostId) -> Option<u32> {
     Selected::workers(h.0)
 }
 
@@ -136,6 +136,6 @@ pub(crate) fn tag<M: Message>() -> u64 {
 }
 
 /// This worker. Panics outside a worker.
-pub fn me() -> crate::topology::WorkerId {
+pub fn me() -> crate::vocab::WorkerId {
     Selected::worker_me()
 }

@@ -14,8 +14,8 @@ use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque};
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::marker::PhantomData;
 use core::cmp::Reverse;
+use core::marker::PhantomData;
 use core::num::{Saturating, Wrapping};
 
 /// A type whose values a trame state or pool may hold (see the module comment).
@@ -89,10 +89,10 @@ plain!(
     core::time::Duration,
     crate::time::Reading,
     crate::time::ClockId,
-    crate::topology::WorkerId,
-    crate::topology::HostId,
+    crate::vocab::WorkerId,
+    crate::vocab::HostId,
     crate::topology::Leader,
-    crate::topology::End
+    crate::vocab::End
 );
 
 /// What the `blocks` a macro writes calls on each field (crates/macros/state.rs). A field whose type is not `Plain` is

@@ -67,7 +67,7 @@ pub(crate) fn build_or_adopt(plan: &mut Plan, t: &Transport) -> Result<(), Refus
     let over = segment::over_slot().load(Acquire);
     if let Some(share) = share.filter(|_| over != 0) {
         // Every rank of this node answers the same refusal; the launch ends here, before any step.
-        return Err(Refused::Share { worker: crate::topology::WorkerId::here(0), want: over, share });
+        return Err(Refused::Share { worker: crate::vocab::WorkerId::here(0), want: over, share });
     }
     if !builder {
         for &w in &mine {
