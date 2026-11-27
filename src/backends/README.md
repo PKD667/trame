@@ -121,8 +121,16 @@ measurements of the lanes.
 
 Several hosts on one machine come from `TRAME_MPI_NODE_RANKS=k`, which cuts a node into hosts of k ranks, or
 `=k0,k1,...`, which gives host 0 k0 ranks, host 1 k1, and so on (the sizes add up to the launch's ranks). It is
-for testing and never a default. `TRAME_PROBE=ranks` makes a program print `trame-ranks N` and stop, and the
-launch uses it to ask for the rank count of each host, as host `TRAME_PROBE_HOST` of `TRAME_PROBE_HOSTS`.
+for testing and never a default. `TRAME_PROBE=ranks` makes a program answer a rank count and stop, and the launch
+uses it to ask for the rank count of each host, as host `TRAME_PROBE_HOST` of `TRAME_PROBE_HOSTS`.
+
+The probe's contract, from the program's side (a program does not write this: it calls `launch`, which answers):
+the count is that host's declared workers plus one for its leader; it is printed as `trame-ranks N` and the
+process exits 0. When `TRAME_PROBE_OUT` names a file, the same line is written there instead of to standard
+output, because a harness that captures stdout (a test binary) would otherwise lose it.
+
+Every host of a deployment declares at least one worker: one that declares none is refused at launch
+(`Refused::UnknownWorker`), because a host without a worker has nothing to run.
 `TRAME_WORKERS=n0,n1,...` is what `trame::workers(h)` answers for each host until the hosts hold their own count (INTERFACE.md 6): the launch
 decides it and passes it to every rank (`src/backends/supply.rs`).
 
@@ -330,7 +338,10 @@ clause of `CONTRACT.md` — what checks it, where, what it does not — or the v
 `launch` runs a program to its end and collects what each host printed: it is for experiments. A service is a program
 that stays up and talks over its stdin and stdout, and `serve` is its launcher: `serve -- PROGRAM [ARGS...]`, in
 `src/backends/<b>/serve`. It runs in the foreground with the program's stdio, and ends with the program. On `seq` it is
-`exec`. On `mpi` it asks the program for its rank count (`TRAME_PROBE=ranks`), takes the machines from
+`exec`. The launcher is a built package: `nix build .#launch-<name>` gives `bin/launch` to execute from any
+directory. The `launch` script in a backend's directory is the same program and runs in that backend's development
+shell, which is where its interpreter and its deployment module come from; from a bare shell it fails on a missing
+module. On `mpi` it asks the program for its rank count (`TRAME_PROBE=ranks`), takes the machines from
 `NIX_DEPLOY_HOSTFILE` and the remote agent from `NIX_DEPLOY_AGENT` (nixsci's `mpi.command`), and replaces itself with
 `mpirun --stdin <leader of host 0>`: mpirun's default is rank 0, which is a worker. Each host gets the ranks its own
 topology declares, as `launch` places them (`placement.py`); `serve` reads the counts of `trame::workers` from

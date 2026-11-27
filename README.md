@@ -169,11 +169,16 @@ and 5.4).
 
 ## Build and run: `trame`
 
-    nix run .#trame -- build [BACKEND] [--check] [cargo args]     # e.g. --example ping_pong
-    nix run .#trame -- run   [BACKEND] [-n RANKS] [--node-ranks K] PROGRAM [-- args]
+    nix run .#trame -- backends
+    nix run .#trame -- build [--backend NAME] [--check] [cargo args]     # e.g. --example ping_pong
+    nix run .#trame -- run   [--backend NAME] [--split S] [--bind B] [--timeout T] [--out DIR] PROGRAM [-- args]
 
-`BACKEND` is the flag of a backend, empty for the reference one; `src/backends/README.md` (Build and run) lists
-the flags. The backend is chosen at build time, so the flag goes to both. `--check` builds with the compile-time
+`NAME` is a backend's directory under `src/backends/`; `trame backends` lists them, and `TRAME_BACKEND` names the
+default. The backend is chosen at build time, so `build` and `run` take the same `--backend`.
+
+A program outside this repository selects the backend through its own `Cargo.toml`: declare a feature that forwards
+the dependency's, such as `seq = ["trame/seq"]`, and the documented `--features seq` works; or pass
+`--features trame/<name>` to cargo directly. `--check` builds with the compile-time
 checker (`cargo trame`, on the driver's own pinned rustc). A backend that places ranks asks the program how many
 it needs, and the details are in `src/backends/README.md` (Build and run and Launch).
 

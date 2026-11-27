@@ -906,7 +906,7 @@ root, except the functions of `trame::math`.
 | `Leader` | type, unit | this host's leader as an end of a route; not a worker: no index, state or steps |
 | `End` | type, hidden | an end of a route, made from `WorkerId`, `(HostId, k)` or `Leader`; programs pass those, never an `End` |
 | `Refused` | enum: `UnknownWorker`, `Duplicate`, `ZeroCapacity`, `TwoOwners`, `PoolType`, `Alloc`, `Share`, `PoolUnset`, `Unset`, `CpuFeature`, `Backend`; `Display` | a refusal at launch (4; `Share`: 6, Definition (Memory of a host)) |
-| `Run` | type: `send`, `recv` (answers `Option<Stamped<M>>`), `wait`, `edit`, `stop`, `join`, `leader_send`, `leader_recv` | the leader's side of a run (5.2, 5.5, 6, Definition (Join)) |
+| `Run` | type: `send`, `recv` (answers `Option<Stamped<M>>`), `wait`, `edit`, `stop`, `join`, `leader_send` (answers `Result<(), Full>`), `leader_recv` (answers `Option<(HostId, T)>`) | the leader's side of a run (5.2, 5.5, 6, Definition (Join)) |
 | `Outcome` | enum: `Returned`, `Stopped`, `Failed`, `Deadlock` | a worker's result (5.3, Definition (Result)) |
 | `math::f32::exp` | fn | the portable f32 exponential. Its accuracy is claimed for inputs in $[-30, 0]$: relative error below 2e-6 against `f64::exp`, tested in `src/math/f32/tests.rs`. Outside that range, no accuracy claim |
 | `math::f64::{exp, ln, exp_m1, powf}` | fn | ports of fdlibm (`e_exp.c`, `e_log.c`, `s_expm1.c`, `e_pow.c`) in plain IEEE arithmetic. The tests assert at most 2 ulp from glibc on 200,000 samples each; the largest measured was 1 ulp (`src/math/f64/tests/sweep.rs`). A sample, not a proof. `powf(1, NaN)` and `powf(-1, ±inf)` are NaN, as in fdlibm |
