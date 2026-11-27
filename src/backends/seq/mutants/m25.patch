@@ -2,9 +2,9 @@
 # expect: killed: wait returns before the leader's abort check, so a leader looping on wait spins after a worker panics instead of panicking (INTERFACE.md, Definition Abort: every leader call on an aborted run panics). Killed by abort.
 --- a/run.rs
 +++ b/run.rs
-@@ -25,6 +25,9 @@
-     /// leader that checks `recv` and then waits does not poll. Pass it the result of a recv that found
-     /// nothing, and check again after it returns.
+@@ -41,6 +41,9 @@
+     /// leader that calls `recv` and then this does not poll; it calls `recv` again after this returns (INTERFACE.md
+     /// 5, Definition (Deadlock), and 6, Definition (Peer channel), for a peer message).
      pub fn wait(&self) {
 +        if self.seen.get() != u64::MAX {
 +            return;

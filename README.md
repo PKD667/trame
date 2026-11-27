@@ -177,8 +177,8 @@ and 5.4).
 default. The backend is chosen at build time, so `build` and `run` take the same `--backend`.
 
 A program outside this repository selects the backend through its own `Cargo.toml`: declare a feature that forwards
-the dependency's, such as `seq = ["trame/seq"]`, and the documented `--features seq` works; or pass
-`--features trame/<name>` to cargo directly. `--check` builds with the compile-time
+the dependency's, such as `x = ["trame/x"]` for a backend named `x`, and the documented `--features x` works;
+or pass `--features trame/<name>` to cargo directly. `--check` builds with the compile-time
 checker (`cargo trame`, on the driver's own pinned rustc). A backend that places ranks asks the program how many
 it needs, and the details are in `src/backends/README.md` (Build and run and Launch).
 

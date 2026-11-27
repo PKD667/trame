@@ -36,10 +36,10 @@ impl Run {
         Run { inner, seen: Cell::new(0), pool, workers, joined }
     }
 
-    /// Block until something changed for the leader since its last `wait`: a frame arrived for the
-    /// leader, or a worker got a result, or the run aborted. Each call is caused by such a change, so a
-    /// leader that checks `recv` and then waits does not poll. Pass it the result of a recv that found
-    /// nothing, and check again after it returns.
+    /// Blocks until something changed for the leader since its last call: a frame arrived for the leader, or a
+    /// worker has a result, or the run aborted. Takes no argument and returns when such a change happened, so a
+    /// leader that calls `recv` and then this does not poll; it calls `recv` again after this returns (INTERFACE.md
+    /// 5, Definition (Deadlock), and 6, Definition (Peer channel), for a peer message).
     pub fn wait(&self) {
         self.seen.set(Selected::leader_wait(&self.inner, self.seen.get()));
     }

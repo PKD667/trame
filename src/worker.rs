@@ -129,7 +129,7 @@ impl<S: State> Core<S> {
     }
 
     /// Put the built state in its block. Once, before any step; the caller is in arena mode
-    /// (alloc.rs), so the block lands in the domain with everything the state owns.
+    /// (`domain.rs`, arena mode), so the block lands in the domain with everything the state owns.
     pub(crate) fn fill(&self, s: S) {
         let b = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Block {
             state: ManuallyDrop::new(s),

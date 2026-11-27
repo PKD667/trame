@@ -36,9 +36,10 @@ impl Status {
     pub const Done: Status = Status { kind: Kind::Done, weight: None };
 }
 
-/// The conditions Ω of a wait. Users never name this type: they build it with `Status::wait()`, then
-/// `.frame()` and `.room::<M>(to)`. Any one holding wakes the process, and so does
-/// a step that shares one of its cells ending. With no condition, only that wakes it.
+/// The conditions $\Omega$ of a wait. A program never names this type: it builds one with `Status::wait()`,
+/// `.frame()` and `.room::<M>(to)`. Any condition holding wakes the step, and so does the end of a step that
+/// writes one of its fields (`D(p)`, INTERFACE.md 5.3, Definition (Enabled and wanting)); with no condition,
+/// only that wakes it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Waits {
     /// A frame of a type this process owns is available to this worker.

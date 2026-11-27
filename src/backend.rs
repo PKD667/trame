@@ -58,7 +58,7 @@ pub(crate) trait Backend {
     }
 
     /// M1: `layout.size()` bytes of the domain of this process's launch, for a builder or an edit
-    /// (alloc.rs, arena mode). `None`: this process's heap is the domain (or no launch
+    /// (`domain.rs`, arena mode). `None`: this process's heap is the domain (or no launch
     /// yet). A full domain answers a null pointer, which the allocation reports (M6).
     fn domain_alloc(_layout: core::alloc::Layout) -> Option<*mut u8> {
         None

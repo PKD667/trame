@@ -5,12 +5,12 @@
 #   stuck run hangs with or without this patch. Not run here; the seq argument (seq/m26.patch) is the same.
 --- a/backends/mpi/roles/worker.rs
 +++ b/backends/mpi/roles/worker.rs
-@@ -241,7 +241,7 @@
+@@ -250,7 +250,7 @@
      let x = xport();
      let t = parts().0;
      if !t.has_lanes() {
 -        t.sleep(epoch as u32);
 +        let _ = epoch;
+         let after = u64::from(fast().0.load(SeqCst));
+         crate::debug::rec(crate::debug::op::WAKE, epoch, after);
          return;
-     }
-     drop(x);
