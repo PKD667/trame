@@ -1,8 +1,7 @@
-# The closed vocabularies of the guarantee rows and the certificate. Sections, by first column:
-#   clause  every clause id of CONTRACT.md, in its order, extracted by check/guarantees.py (`clauses`), never retyped;
-#   method  how a row is checked: the canonical token; check/guarantees.py maps the rows' phrases onto these (its alias table);
+# The closed vocabularies of the guarantee rows and the certificate: sections, by first column.
+#   clause  every clause id of CONTRACT.md, in its order, read from that file and never retyped;
+#   method  the tokens a guarantee row's `checked by` cell may hold; check/guarantees.py refuses any other;
 #   status  what a row's strongest method establishes; check/certify.py derives it (`status_of`).
-# check/guarantees.py refuses a checked_by token outside the method tokens and the aliases; check/certify.py refuses a clause or status outside this file.
 clause	R1
 clause	R2
 clause	L1

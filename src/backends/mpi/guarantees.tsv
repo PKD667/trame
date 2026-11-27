@@ -1,36 +1,36 @@
-R1	replay, programs, transport tests	src/sched.rs tests/conformance.rs check/programs src/backends/mpi/tests	finite traces only
-R2	programs, model checking	check/programs src/backends/mpi/proofs	models at bounds, not the code
-L1	collective refusal, programs	src/backends/mpi/setup/open.rs check/programs/refuse.rs check/programs/refuse_dup.rs	written cases only
-L2	agreement at open	src/backends/mpi/setup/open.rs	no differing-plan test
-L3	plan built once	src/backends/mpi/setup/adopt.rs tests/no_alloc.rs	judged by program output
-S1	model, replay, witness	src/sched.rs tests/conformance.rs	runs taken, not every schedule
+R1	replay, programs, tests	src/sched.rs tests/conformance.rs check/programs src/backends/mpi/tests	finite traces only
+R2	programs, model-checking	check/programs src/backends/mpi/proofs	models at bounds, not the code
+L1	programs, by-construction	src/backends/mpi/setup/open.rs check/programs/refuse.rs check/programs/refuse_dup.rs	written cases only
+L2	by-construction	src/backends/mpi/setup/open.rs	no differing-plan test
+L3	by-construction	src/backends/mpi/setup/adopt.rs tests/no_alloc.rs	judged by program output
+S1	replay, model, witness	src/sched.rs tests/conformance.rs	runs taken, not every schedule
 S2	replay	src/sched.rs tests/conformance.rs	choice not held exact
-S3	replay, outcome check, model checking	src/sched.rs tests/conformance.rs src/backends/mpi/proofs/Epoch.tla	model at bounds
-S4	model, replay, model checking	src/sched.rs src/backends/mpi/proofs/Edit.tla	larger configs unfinished
+S3	replay, model-checking, outcome-check	src/sched.rs tests/conformance.rs src/backends/mpi/proofs/Epoch.tla	model at bounds
+S4	replay, model, model-checking	src/sched.rs src/backends/mpi/proofs/Edit.tla	larger configs unfinished
 S5	model	src/sched.rs	small cases only
-S6	model, replay	src/sched.rs tests/conformance.rs	one shape tested
+S6	replay, model	src/sched.rs tests/conformance.rs	one shape tested
 S7	model, measurement	src/sched.rs tests/conformance.rs examples/weights_time.rs	no tolerance set
-S8	model, programs	src/sched.rs check/programs/err.rs check/programs/err_done.rs	step failure only
+S8	programs, model	src/sched.rs check/programs/err.rs check/programs/err_done.rs	step failure only
 S9	replay	src/sched.rs tests/conformance.rs	completeness unchecked
-T1	programs, transport tests	check/programs src/backends/mpi/tests	written cases only
-T2	programs, transport tests	check/programs src/backends/mpi/tests	written cases only
-T3	programs, transport tests	check/programs src/backends/mpi/tests	written cases only
+T1	programs, tests	check/programs src/backends/mpi/tests	written cases only
+T2	programs, tests	check/programs src/backends/mpi/tests	written cases only
+T3	programs, tests	check/programs src/backends/mpi/tests	written cases only
 P1	driver	crates/driver/src/check/mod.rs	unsafe code outside steps unseen
-P2	model, program	src/sched.rs check/programs/pool_edit.rs	handshake bounds, as S4
-M1	by construction	src/backends/mpi/memory/segment.rs	no byte-level walk
+P2	programs, model	src/sched.rs check/programs/pool_edit.rs	handshake bounds, as S4
+M1	by-construction	src/backends/mpi/memory/segment.rs	no byte-level walk
 M2	driver, rejections	crates/driver/src/check/mod.rs check/rejections/cases/plain	type-level, unsafe impls unseen
 M3	driver, rejections	crates/driver/src/check/mod.rs check/rejections/cases/plain	type-level, unsafe impls unseen
-M4	allocation test, driver, rejections	tests/alloc.rs crates/driver/src/check/mod.rs check/rejections/cases/allocation	trame's own allocations unseen
-M5	as S3, as S4	src/sched.rs src/backends/mpi/proofs/Epoch.tla	model at bounds
-M6	by construction	src/backends/mpi/memory/segment.rs	never filled
-M7	by construction, replay	src/backends/mpi/roles/leader.rs check/programs/fanin_fifo.rs	drop without join untested
-M8	supply reading, programs, unit test	check/programs/share.rs check/programs/left.rs check/programs/share_big.rs check/programs/share_refused.rs src/system.rs src/backends/supply.rs src/backends/mpi/setup/adopt.rs	one rank's number by the node's builder; an edit is not held
-F1	by construction, program	src/backends/mpi/transport/hosts.rs check/programs/peers.rs	two hosts exercised
-F3	program, connection check	src/backends/mpi/transport/cross/connect.rs check/programs/refuse_ports.rs check/programs/route_one_side.rs	two cases only
-F4	by construction	src/io.rs	one compilation only
-F5	program, model checking	check/programs/xhost_ring.rs src/backends/mpi/proofs/Lane.tla	lossy lanes, end unmodelled
+M4	driver, rejections, tests	tests/alloc.rs crates/driver/src/check/mod.rs check/rejections/cases/allocation	trame's own allocations unseen
+M5	replay, model, model-checking, outcome-check	src/sched.rs src/backends/mpi/proofs/Epoch.tla	model at bounds
+M6	by-construction	src/backends/mpi/memory/segment.rs	never filled
+M7	replay, by-construction	src/backends/mpi/roles/leader.rs check/programs/fanin_fifo.rs	drop without join untested
+M8	programs, tests, by-construction	check/programs/share.rs check/programs/left.rs check/programs/share_big.rs check/programs/share_refused.rs src/system.rs src/backends/supply.rs src/backends/mpi/setup/adopt.rs	one rank's number by the node's builder; an edit is not held
+F1	programs, by-construction	src/backends/mpi/transport/hosts.rs check/programs/peers.rs	two hosts exercised
+F3	programs, by-construction	src/backends/mpi/transport/cross/connect.rs check/programs/refuse_ports.rs check/programs/route_one_side.rs	two cases only
+F4	by-construction	src/io.rs	one compilation only
+F5	programs, model-checking	check/programs/xhost_ring.rs src/backends/mpi/proofs/Lane.tla	lossy lanes, end unmodelled
 F6	programs	check/programs/peers.rs check/programs/relay.rs check/programs/agree.rs check/programs/peer_idle.rs check/programs/run_idle.h2.expected	decode trusted, not authenticated
 E1	programs	check/programs/abort.rs check/programs/abort_join.rs check/programs/leader_panics.rs check/programs/xhost_abort.rs	these cases only
-E2	model checking, programs	src/backends/mpi/proofs/Detect.tla check/programs/xhost_deadlock.rs check/programs/leader_stuck.rs	model at bounds, verdicts tested
+E2	programs, model-checking	src/backends/mpi/proofs/Detect.tla check/programs/xhost_deadlock.rs check/programs/leader_stuck.rs	model at bounds, verdicts tested
 Q1	measurement	lab/latency/README.md lab/latency/q.nix	measured, no bound set
 Q2	measurement	lab/latency/README.md lab/latency/q.nix	measured, no bound set

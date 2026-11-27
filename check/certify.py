@@ -25,7 +25,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import guarantees  # the same vocabulary, the same alias table, the same rows: one source, not two
+import guarantees  # the same vocabulary, the same rows: one source, not two
 
 COLS = ("backend", "clause", "claim", "method", "evidence", "bound", "status", "source")
 AUTHORED_COLS = ("clause", "status", "claim", "evidence", "bound")
@@ -112,33 +112,21 @@ def status_of(methods, covered):
     return best, notes
 
 
-def resolve_methods(backend, row, by_clause, vocab, errors, seen=()):
-    """The canonical method tokens of a row's `checked by`: aliases applied (guarantees.ALIASES), `as S3`
-    expanded to that clause's methods of the same backend, once; a reference loop is an error."""
+def resolve_methods(backend, row, vocab, errors):
+    """The method tokens of a row's `checked by`: a `, `-separated list of canonical tokens of the
+    vocabulary, the same cells check/guarantees.py validates; an empty cell, an empty token or a token
+    outside the vocabulary is refused, so a row the check refuses cannot certify either."""
     out = []
+    if not row["checked_by"].strip():
+        errors.append(f"{backend} {row['clause']}: `checked by` is empty")
+        return out
     for token in (t.strip() for t in row["checked_by"].split(",")):
         if not token:
-            continue
-        m = guarantees.AS_CLAUSE.match(token)
-        if m:
-            ref = m.group(1)
-            if ref in seen:
-                errors.append(f"{backend} {row['clause']}: 'as {ref}' is a reference loop")
-                continue
-            other = by_clause.get(ref)
-            if not other:
-                errors.append(f"{backend} {row['clause']}: 'as {ref}' names no row of this backend")
-                continue
-            for t in resolve_methods(backend, other, by_clause, vocab, errors, seen + (ref,)):
-                if t not in out:
-                    out.append(t)
-            continue
-        canon = guarantees.ALIASES.get(token, token)
-        if canon not in vocab["method"]:
+            errors.append(f"{backend} {row['clause']}: `checked by` has an empty token")
+        elif token not in vocab["method"]:
             errors.append(f"{backend} {row['clause']}: '{token}' is not a method token of the vocabulary")
-            continue
-        if canon not in out:
-            out.append(canon)
+        elif token not in out:
+            out.append(token)
     return out
 
 
@@ -344,7 +332,7 @@ def generate(root, backend, vocab, clause_list, errors):
             errors.append(f"{backend}: no guarantee row for {cid}: the certificate generates nothing")
             continue
         cov = cid in covered
-        methods = resolve_methods(backend, r, by_clause, vocab, errors)
+        methods = resolve_methods(backend, r, vocab, errors)
         if cov and "model-checking" not in methods:
             methods.append("model-checking")
         if cid in MEMORY and miri:

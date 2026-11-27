@@ -1,36 +1,36 @@
 R1	replay, programs	src/sched.rs tests/conformance.rs check/programs	finite traces only
 R2	programs	check/programs	these programs only
-L1	launch tests, programs	src/backends/seq/tests_launch.rs check/programs/refuse.rs check/programs/refuse_dup.rs	written cases only
-L2	by construction	src/launch.rs	nothing to check
-L3	by construction, no-alloc test	src/launch.rs src/backends/seq/tests_launch.rs tests/no_alloc.rs	judged by program output
-S1	model, replay, witness	src/sched.rs tests/conformance.rs	runs taken, not every schedule
-S2	replay, exact	src/sched.rs tests/conformance.rs	runs taken
-S3	replay, outcome check	src/sched.rs tests/conformance.rs	one process, no protocol
-S4	model, replay	src/sched.rs tests/conformance.rs	small cases, runs taken
+L1	programs, tests	src/backends/seq/tests_launch.rs check/programs/refuse.rs check/programs/refuse_dup.rs	written cases only
+L2	by-construction	src/launch.rs	nothing to check
+L3	tests, by-construction	src/launch.rs src/backends/seq/tests_launch.rs tests/no_alloc.rs	judged by program output
+S1	replay, model, witness	src/sched.rs tests/conformance.rs	runs taken, not every schedule
+S2	replay	src/sched.rs tests/conformance.rs	runs taken
+S3	replay, outcome-check	src/sched.rs tests/conformance.rs	one process, no protocol
+S4	replay, model	src/sched.rs tests/conformance.rs	small cases, runs taken
 S5	model	src/sched.rs	small cases only
-S6	model, replay	src/sched.rs tests/conformance.rs	one shape tested
+S6	replay, model	src/sched.rs tests/conformance.rs	one shape tested
 S7	model, measurement	src/sched.rs tests/conformance.rs examples/weights_time.rs	no tolerance set
-S8	model, programs	src/sched.rs check/programs/err.rs check/programs/err_done.rs	step failure only
+S8	programs, model	src/sched.rs check/programs/err.rs check/programs/err_done.rs	step failure only
 S9	replay	src/sched.rs tests/conformance.rs	completeness unchecked
 T1	programs	check/programs/ping_pong.rs check/programs/pipeline_chain.rs	no transport test of its own
 T2	programs	check/programs/full.rs check/programs/room_spin.rs check/programs/wait_room.rs	programs only
 T3	programs	check/programs/frame_other.rs check/programs/take_rotate.rs	programs only
 P1	driver	crates/driver/src/check/mod.rs	unsafe code outside steps unseen
-P2	model, program	src/sched.rs check/programs/pool_edit.rs	as S4
-M1	by construction	src/domain.rs	no byte-level walk
+P2	programs, model	src/sched.rs check/programs/pool_edit.rs	as S4
+M1	by-construction	src/domain.rs	no byte-level walk
 M2	driver, rejections	crates/driver/src/check/mod.rs check/rejections/cases/plain	type-level, unsafe impls unseen
 M3	driver, rejections	crates/driver/src/check/mod.rs check/rejections/cases/plain	type-level, unsafe impls unseen
-M4	allocation test, driver, rejections	tests/alloc.rs crates/driver/src/check/mod.rs check/rejections/cases/allocation	trame's own allocations unseen
-M5	as S4	src/sched.rs tests/conformance.rs	one process
-M6	by construction	src/domain.rs	never filled
-M7	by construction, replay	src/backends/seq/ops.rs check/programs/fanin_fifo.rs	construction only
-M8	supply reading, programs, unit test	check/programs/share.rs check/programs/left.rs check/programs/share_big.rs check/programs/share_refused.rs src/system.rs src/backends/supply.rs	the reading is untested against the machine; an edit is not held
-F1	by construction, program	check/programs/peers.rs	single host
-F3	program	check/programs/route_one_side.rs	two-host refusal unexercised
-F4	by construction	src/io.rs	one compilation only
-F5	vacuous, program	check/programs/xhost_ring.rs	no lanes on one host
-F6	program	check/programs/peers.rs	no peers exist
+M4	driver, rejections, tests	tests/alloc.rs crates/driver/src/check/mod.rs check/rejections/cases/allocation	trame's own allocations unseen
+M5	replay, model	src/sched.rs tests/conformance.rs	one process
+M6	by-construction	src/domain.rs	never filled
+M7	replay, by-construction	src/backends/seq/ops.rs check/programs/fanin_fifo.rs	construction only
+M8	programs, tests, by-construction	check/programs/share.rs check/programs/left.rs check/programs/share_big.rs check/programs/share_refused.rs src/system.rs src/backends/supply.rs	the reading is untested against the machine; an edit is not held
+F1	programs, by-construction	check/programs/peers.rs	single host
+F3	programs	check/programs/route_one_side.rs	two-host refusal unexercised
+F4	by-construction	src/io.rs	one compilation only
+F5	programs, by-construction	check/programs/xhost_ring.rs	no lanes on one host
+F6	programs	check/programs/peers.rs	no peers exist
 E1	programs	check/programs/abort.rs check/programs/abort_join.rs check/programs/leader_panics.rs	these cases only
-E2	stuck handling, programs	src/backends/seq/stuck.rs check/programs/leader_stuck.rs	no cross-host detector
+E2	programs, by-construction	src/backends/seq/stuck.rs check/programs/leader_stuck.rs	no cross-host detector
 Q1	measurement	lab/latency/README.md lab/latency/q.nix	measured, no bound set
 Q2	measurement	lab/latency/README.md lab/latency/q.nix	measured, no bound set

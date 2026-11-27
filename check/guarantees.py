@@ -13,10 +13,10 @@ generated is committed.
 A row is prose. The check cannot tell an honest "not checked" from a dishonest one; it keeps the inventory
 from rotting, and drift between the tree and the words.
 
-The `checked by` cell is a comma-separated list over a closed vocabulary: `check/vocabulary.tsv` holds the
-canonical method tokens, and every token of a row is refused that is neither one nor an alias below nor a
-same-backend reference (`as S3`). The certificate (`check/certify.py`) reads the same vocabulary and resolves
-the same cells, so no row can mean one thing to the check and another to the certificate.
+The `checked by` cell is a `, `-separated list over a closed vocabulary: `check/vocabulary.tsv` holds the
+canonical method tokens, and a token outside it is refused, as is an empty cell or an empty token. The
+certificate (`check/certify.py`) reads the same vocabulary and the same cells, so no row can mean one thing
+to the check and another to the certificate.
 
 Usage:
   check/guarantees.py check --root DIR   verify; exit 1 and print why on any failure
@@ -32,33 +32,6 @@ MARK_START = "<!-- guarantees:start -->"
 MARK_END = "<!-- guarantees:end -->"
 COLS = ("clause", "checked_by", "where", "not_checked")
 VOCAB = "check/vocabulary.tsv"  # read from the tree --root points at, so the check and the tree agree
-AS_CLAUSE = re.compile(r"^as ([A-Z]\d+)$")
-
-# The phrases the rows write for a canonical method token. An alias maps a phrase to the token that names
-# the same method, each grounded in the file the row cites; a phrase absent here is an error, not a guess:
-# add the alias with its ground, or write the canonical token in the row.
-ALIASES = {
-    # the rows spell these three with spaces or the singular:
-    "by construction": "by-construction",
-    "model checking": "model-checking",
-    "outcome check": "outcome-check",
-    "program": "programs",
-    # a suite the row names by what it tests is the token `tests`:
-    "transport tests": "tests",     # the transport's own test binary, cited by the row that has one
-    "launch tests": "tests",         # src/backends/<backend>/tests_launch.rs, the launch cases
-    "unit test": "tests",            # M8's unit test of the share reading
-    "no-alloc test": "tests",        # tests/no_alloc.rs (L3)
-    "allocation test": "tests",      # tests/alloc.rs (M4)
-    # phrases that name the construction the claim rests on (each names the code the row cites):
-    "collective refusal": "by-construction",  # L1: open.rs, every collective reached on every rank
-    "agreement at open": "by-construction",    # L2: open.rs, one plan over the world communicator
-    "plan built once": "by-construction",       # L3: adopt.rs builds once, every rank adopts
-    "connection check": "by-construction",     # F3: connect.rs compares the hosts' port declarations
-    "stuck handling": "by-construction",        # E2: stuck.rs decides stuckness in construction
-    "exact": "replay",                           # S2: conformance replays choices where the backend is exact
-    "vacuous": "by-construction",               # F5 on one host: no lanes exist to keep the clause of
-    "supply reading": "by-construction",         # M8: system.rs computes the share; programs test the arithmetic
-}
 
 
 def vocabulary(root):
@@ -79,25 +52,20 @@ def vocabulary(root):
     return out
 
 
-def canonical_methods(cell, clause_ids, errors, where):
-    """The canonical method tokens of one `checked by` cell; every token must resolve or the row fails.
-    `as S3` resolves to nothing here (it is valid when S3 is a clause); check/certify.py expands it."""
+def canonical_methods(cell, errors, where):
+    """The method tokens of one `checked by` cell: a `, `-separated list of canonical tokens of the
+    vocabulary; an empty cell, an empty token or a token outside the vocabulary is refused."""
     out = []
+    if not cell.strip():
+        errors.append(f"{where}: `checked by` is empty")
+        return out
     for token in (t.strip() for t in cell.split(",")):
         if not token:
-            continue
-        m = AS_CLAUSE.match(token)
-        if m:
-            if m.group(1) not in clause_ids:
-                errors.append(f"{where}: 'as {m.group(1)}' names no clause of CONTRACT.md")
-            continue
-        canon = ALIASES.get(token, token if token in VOCAB_CACHE["method"] else None)
-        if canon is None:
-            errors.append(
-                f"{where}: '{token}' is not a canonical method token of {VOCAB} nor one of its aliases"
-            )
-        elif canon not in out:
-            out.append(canon)
+            errors.append(f"{where}: `checked by` has an empty token")
+        elif token not in VOCAB_CACHE["method"]:
+            errors.append(f"{where}: '{token}' is not a canonical method token of {VOCAB}")
+        elif token not in out:
+            out.append(token)
     return out
 
 VOCAB_CACHE = {"method": []}  # set by main once; canonical_methods reads it
@@ -191,7 +159,7 @@ def main():
         data[name] = rows(args.root, name, errors)
         check_rows(args.root, name, data[name], clause_ids, errors)
         for r in data[name]:
-            canonical_methods(r["checked_by"], clause_ids, errors, f"{name} {r['clause']}")
+            canonical_methods(r["checked_by"], errors, f"{name} {r['clause']}")
 
     for e in errors:
         print(e)
