@@ -75,6 +75,7 @@ in
       ../PROOFS.md
       ../src/backends/README.md
       ../check/guarantees.py
+      ../check/vocabulary.tsv
       ../src
       ../tests
       ../check/programs

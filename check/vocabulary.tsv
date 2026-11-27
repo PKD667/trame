@@ -1,0 +1,58 @@
+# The closed vocabularies of the guarantee rows and the certificate. Sections, by first column:
+#   clause  every clause id of CONTRACT.md, in its order, extracted by check/guarantees.py (`clauses`), never retyped;
+#   method  how a row is checked: the canonical token; check/guarantees.py maps the rows' phrases onto these (its alias table);
+#   status  what a row's strongest method establishes; check/certify.py derives it (`status_of`).
+# check/guarantees.py refuses a checked_by token outside the method tokens and the aliases; check/certify.py refuses a clause or status outside this file.
+clause	R1
+clause	R2
+clause	L1
+clause	L2
+clause	L3
+clause	S1
+clause	S2
+clause	S3
+clause	S4
+clause	S5
+clause	S6
+clause	S7
+clause	S8
+clause	S9
+clause	T1
+clause	T2
+clause	T3
+clause	P1
+clause	P2
+clause	M1
+clause	M2
+clause	M3
+clause	M4
+clause	M5
+clause	M6
+clause	M7
+clause	M8
+clause	F1
+clause	F3
+clause	F4
+clause	F5
+clause	F6
+clause	E1
+clause	E2
+clause	Q1
+clause	Q2
+method	replay
+method	programs
+method	model
+method	model-checking
+method	measurement
+method	driver
+method	rejections
+method	tests
+method	miri
+method	by-construction
+method	witness
+method	outcome-check
+status	proven-under-model
+status	checked
+status	tested-only
+status	measured
+status	unproven

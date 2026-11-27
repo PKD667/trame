@@ -1,0 +1,2 @@
+clause	status	claim	evidence	bound
+S7	unproven	the tolerance S7 demands is stated nowhere: sched.rs states shares in proportion and conformance measures them, and neither defines service nor says within what the shares are kept	src/sched.rs:21 tests/conformance.rs:313	no tolerance is set, so no row can claim the clause; the shares measured are per run and per machine
