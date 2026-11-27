@@ -97,7 +97,7 @@ pub fn expand_state(attr: TokenStream2, item: TokenStream2) -> syn::Result<Token
     Ok(quote! {
         #s
         #[cfg(not(trame_checked))]
-        compile_error!("build with cargo trame");
+        compile_error!("this build needs a cfg: use `cargo trame` (the checker), or set RUSTFLAGS=\"--cfg trame_checked\" to build without it (INTERFACE.md, Checked builds; src/backends/README.md, Build and run)");
         // SAFETY: every field's type is plain, by the check below (CONTRACT.md M2, M3).
         unsafe impl ::trame::Plain for #name {
             fn blocks(&self, at: &mut dyn FnMut(*const u8) -> bool) -> bool {

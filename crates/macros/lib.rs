@@ -187,7 +187,7 @@ fn expand_parallel(input: TokenStream2) -> syn::Result<TokenStream2> {
     Ok(quote! {
         {
             #[cfg(not(trame_checked))]
-            compile_error!("build with cargo trame");
+            compile_error!("this build needs a cfg: use `cargo trame` (the checker), or set RUSTFLAGS=\"--cfg trame_checked\" to build without it (INTERFACE.md, Checked builds; src/backends/README.md, Build and run)");
             #[cfg(trame_checked)]
             ::trame::__check::item(&#f);
             ::trame::__rt::parallel(#key_path, #f, #cx, #items, #slots)
