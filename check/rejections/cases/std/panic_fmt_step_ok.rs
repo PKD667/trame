@@ -1,6 +1,6 @@
 //@check-pass
 // spec: Definition (Abort): a panic aborts the launch; it is not an effect and not std. A step panics with a formatted
-// message and a runtime argument (a constant one is folded by MIR inlining and proves nothing). nerve, point 4: the
+// message and a runtime argument (a constant one is folded by MIR inlining and proves nothing). the
 // format_args! expansion calls core's unsafe Arguments::new, which is not an unsafe act of the program: accepted.
 #[trame::message]
 struct Job {

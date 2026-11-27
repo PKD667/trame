@@ -130,8 +130,10 @@ impl Run {
                 Ok(end) => end,
                 Err(v) => return (out, Err((w, alloc::format!("{v:?}")))),
             };
-            // The outcome must be the model's: a result it reached, or a deadlock in which no step
-            // could start (else a wake-up was lost, backend.rs S3).
+            // The outcome must be the model's: a result it reached, or a deadlock in which no step could start
+            // under an empty `Now`. That covers the write wake-ups (D) and the bare waits; a step waiting for a frame
+            // or for room is not startable under an empty `Now` either, so a backend that lost such a wake-up would
+            // still pass this check. PROOFS.md, S3 says what it does and does not reach.
             let agrees = match out[w] {
                 Outcome::Returned => end.answer() == Some(crate::sched::Answer::Returned),
                 Outcome::Stopped => end.answer() == Some(crate::sched::Answer::Stopped),

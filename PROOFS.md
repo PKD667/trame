@@ -63,8 +63,10 @@ model's assertion in `Sched::edited`.
 
 **S2 Start.** Replay, exact on a backend whose choice is `Sched::choose`, and safety only elsewhere.
 
-**S3 Wake.** Replay, and the outcome check: a run that ends in `Deadlock` must be one where nothing
-could start. A backend with a multi-process wake-up protocol has a TLA+ model of it
+**S3 Wake.** Replay, and the outcome check: a run that ends in `Deadlock` must be one where no step could start
+under an empty `Now` — which covers the write wake-ups and the bare waits, and does not cover a lost frame or room
+wake-up, since such a step is not startable under an empty `Now` in any case (`src/run.rs`, the outcome check's
+comment). A backend with a multi-process wake-up protocol has a TLA+ model of it
 (`src/backends/README.md`).
 
 **S4 Edit.** Model; replay of runs with racing edits (`edits_follow_the_model`), in which every step

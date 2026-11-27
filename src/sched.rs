@@ -341,10 +341,13 @@ impl Sched {
         p.running = false;
         p.st = e.st;
         p.d = false;
+        // The service was given under the running weight, so the pass is charged at it, and the step's new weight
+        // applies from the next start (INTERFACE.md 5.3, End: the two updates are simultaneous there, and the pass
+        // grows only when the running weight is above zero).
+        p.pass = p.pass.saturating_add(e.service.saturating_mul(p.weight.stride()));
         if let Some(w) = e.weight {
             p.weight = w;
         }
-        p.pass = p.pass.saturating_add(e.service.saturating_mul(p.weight.stride()));
     }
 
     /// A leader edit wrote every field: every step is woken (it is End of a step that writes all).

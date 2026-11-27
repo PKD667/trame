@@ -308,14 +308,16 @@ fn s0(hot: &mut u64, n0: &mut u64) -> Status {
 #[test]
 #[cfg_attr(
     miri,
-    ignore = "a statistic over 200 ms of steps: Miri's clock is not the steps' speed, so the count of steps is not comparable"
+    ignore = "a statistic over a 2 s sample of steps: Miri's clock is not the steps' speed, so the count of steps is not comparable"
 )]
 fn shares_follow_weights() {
     let mut t = Topology::new();
     let w = t.worker();
     t.set(&w, move || Contended { hot: 0, n1: 0, n2: 0, n4: 0, n0: 0 });
     let run = t.launch().expect("launch");
-    std::thread::sleep(Duration::from_millis(200));
+    // A sample window, not a threshold: a loaded machine runs fewer steps per second, so the window is wide enough
+    // that the count stays well above the assertion's floor on a loaded host (an observed run gave 799 in 200 ms).
+    std::thread::sleep(Duration::from_millis(2000));
     run.stop();
     assert_eq!(run.join(), [Outcome::Stopped]);
     let c = w.take();

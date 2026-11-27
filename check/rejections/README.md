@@ -94,7 +94,7 @@ Each finding is a disagreement between the checks and the spec, with the verbati
   (`std/println_worker`, `std/println_item`, `std/println_step`). It was once also refused under `[unsafe]`, because the
   `format_args!` expansion calls core's `unsafe fn fmt::Arguments::new` and the `fmt::rt` argument constructors. Those are
   hidden and emitted only by the expansion, so the driver no longer judges them (`fn_use`, scan.rs). The visible effect:
-  `panic!("{}", x)` with a runtime `x` is accepted in a step, as `panic!("full")` was (`std/panic_fmt_*_step_ok`; nerve,
+  `panic!("{}", x)` with a runtime `x` is accepted in a step, as `panic!("full")` was (`std/panic_fmt_*_step_ok`;
   at trame 8c8a53d). A constant argument is folded by MIR inlining and never reached the rule.
 - **E1, the macro before the driver.** A step declared `unsafe fn` is refused by `#[trame::step]` itself (`state/unsafe_fn_step`).
   The driver's `unsafe` rule for the body is covered by `unsafe/block_step`.  What a state holds is not the driver's rule but the type

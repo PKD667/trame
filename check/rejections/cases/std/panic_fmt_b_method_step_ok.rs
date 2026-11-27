@@ -1,5 +1,5 @@
 //@check-pass
-// spec: Definition (Abort): a panic is not an effect and not std. nerve point 4, bisected: a &mut self method, not generic, u32 arg.
+// spec: Definition (Abort): a panic is not an effect and not std. bisected: a &mut self method, not generic, u32 arg.
 #[trame::message]
 struct Msg {
     n: u32,

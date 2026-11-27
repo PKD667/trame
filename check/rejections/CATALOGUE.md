@@ -106,7 +106,7 @@ Accepted: `read_step_ok`, `read_worker_ok`.
 
 Refused: `abort_item` [std], `drop_glue_item` [std], `foreach_step` [std], `foreach_worker` [std], `println_item` [std], `println_step` [std], `println_worker` [std], `thread_spawn_item` [allocation,std], `thread_spawn_step` [std], `thread_spawn_worker` [std].
 
-Accepted: `foreach_worker_ok`, `option_expect_step_ok`, `panic_const_step_ok`, `panic_fmt_a_generic_fn_step_ok`, `panic_fmt_b_method_step_ok`, `panic_fmt_c_u64_after_send_step_ok`, `panic_fmt_d_nerve_shape_step_ok`, `panic_fmt_step_ok`.
+Accepted: `foreach_worker_ok`, `option_expect_step_ok`, `panic_const_step_ok`, `panic_fmt_a_generic_fn_step_ok`, `panic_fmt_b_method_step_ok`, `panic_fmt_c_u64_after_send_step_ok`, `panic_fmt_d_method_u64_step_ok`, `panic_fmt_step_ok`.
 
 ## trusted (4)
 

@@ -1,7 +1,7 @@
 //@check-pass
 // spec: Requirement (All levels): drop glue counts as a call. A step that takes a Plain value owning buffers out of its
 // state, lends it to a method that also takes &mut self, and puts it back frees nothing; `trame::lend` is the taking and
-// the putting back, which asserts the slot is empty so no old value is dropped (nerve, point (a)). The pair of take_assign_step.rs.
+// the putting back, which asserts the slot is empty so no old value is dropped The pair of take_assign_step.rs.
 #[derive(trame::Plain)]
 struct W {
     v: Vec<u32>,

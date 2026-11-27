@@ -1,5 +1,5 @@
 //@check-pass
-// spec: Definition (Abort): a panic is not an effect and not std. nerve point 4, bisected: a generic free fn (M: Message, impl Into<End>).
+// spec: Definition (Abort): a panic is not an effect and not std. bisected: a generic free fn (M: Message, impl Into<End>).
 #[trame::message]
 struct Msg {
     n: u32,

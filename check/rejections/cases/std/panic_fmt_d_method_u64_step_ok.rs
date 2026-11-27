@@ -1,5 +1,5 @@
 //@check-pass
-// spec: Definition (Abort): a panic is not an effect and not std. nerve point 4, bisected: the whole shape: generic method, track_caller, u64 field.
+// spec: Definition (Abort): a panic is not an effect and not std. bisected: the whole shape: generic method, track_caller, u64 field.
 #[trame::message]
 struct Msg {
     n: u32,

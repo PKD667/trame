@@ -1,5 +1,5 @@
 //@check-pass
-// spec: Definition (Abort): a panic is not an effect and not std. nerve point 4, bisected: a free fn, send then panic with a u64.
+// spec: Definition (Abort): a panic is not an effect and not std. bisected: a free fn, send then panic with a u64.
 #[trame::message]
 struct Msg {
     n: u32,

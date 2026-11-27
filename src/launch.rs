@@ -167,6 +167,10 @@ pub(crate) fn check(plan: &Plan) -> Result<(), Refused> {
                 return Err(Refused::UnknownWorker(w));
             }
         }
+        // A route between a leader and a worker of another host is refused at launch (F5), and the refusal is the
+        // backend's: the ends are declared per host, and a backend whose hosts are several processes refuses it where
+        // it builds its plan (`src/backends/README.md`, Checks by backend). This check covers the ends that name no
+        // host of the deployment, above, and a route with two remote worker ends.
         let remote = |e: End| matches!(e, End::Worker(w) if w.1 != crate::vocab::HERE);
         if let (true, true, End::Worker(w)) = (remote(r.from), remote(r.to), r.from) {
             return Err(Refused::UnknownWorker(w));
