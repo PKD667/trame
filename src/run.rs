@@ -83,14 +83,16 @@ impl Run {
     pub fn edit<H: Handle>(&self, h: &H, f: impl FnOnce(&mut H::Value)) -> bool {
         let target = h.target(self);
         let mut f = Some(f);
-        Selected::leader_edit(&self.inner, target, &mut || {
+        let done = Selected::leader_edit(&self.inner, target, &mut || {
             let mut f = f.take();
             // SAFETY: the backend runs this holding target's fields (CONTRACT.md, S4, P2).
             // Arena mode: what the edit allocates lands in the domain (CONTRACT.md, M1).
             crate::domain::arena(|| unsafe {
                 h.edit_with(&mut |v| (f.take().expect("trame: an edit runs its function once"))(v))
             })
-        })
+        });
+        crate::debug::edit(&target);
+        done
     }
 
     /// Its topology's join flag, which that topology's handles share (topology.rs, `target`).
@@ -106,7 +108,8 @@ impl Run {
     /// alone until it is done. Returns at once; keep receiving until `join`, since a stop step may
     /// send.
     pub fn stop(&self) {
-        Selected::leader_stop(&self.inner)
+        Selected::leader_stop(&self.inner);
+        crate::debug::rec(crate::debug::op::STOP, 0, 0);
     }
 
     /// Join, then replay every worker's trace against the model (sched.rs `check`); `exact` also
@@ -117,6 +120,8 @@ impl Run {
         let workers = self.workers;
         let (out, traces) = Selected::leader_join_traced(self.inner, workers);
         self.joined.store(true, Ordering::Release);
+        crate::debug::rec(crate::debug::op::JOIN, workers as u64, 0);
+        crate::debug::dump();
         let mut events = 0;
         for (w, t) in traces.into_iter().enumerate() {
             let (model, trace) = t.expect("trame: the launch did not ask for traces");
@@ -150,6 +155,8 @@ impl Run {
     pub fn join(self) -> Vec<Outcome> {
         let out = Selected::leader_join(self.inner);
         self.joined.store(true, Ordering::Release);
+        crate::debug::rec(crate::debug::op::JOIN, self.workers as u64, 0);
+        crate::debug::dump();
         out
     }
 }

@@ -30,7 +30,7 @@ fn report(bytes: &u64) -> Status {
 }
 
 fn main() {
-    // SAFETY: nothing else in this process reads the environment before the launch reads this.
+    // SAFETY: nothing else in this process reads the environment before the launch reads this (CONTRACT.md L3).
     unsafe { std::env::set_var("TRAME_AVAILABLE", DECLARED.to_string()) };
     let leader = trame::is_leader();
     // Two workers whatever the machine has: the output is the same everywhere.

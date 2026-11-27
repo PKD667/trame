@@ -96,7 +96,7 @@ path = "check/programs/stamped.rs"
 
 # `trame_checked` is set by the driver (INTERFACE.md, Checked builds); it is not a feature.
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trame_checked)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trame_checked)', 'cfg(debug_dump)'] }
 
 # The spec aborts on overflow in every build, and the backends were measured with it on.
 [profile.release]

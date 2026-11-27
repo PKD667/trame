@@ -70,6 +70,9 @@ def main(argv: list[str]) -> int:
     except Usage as e:
         usage(str(e))
     hosts, ranks, env = pl.hosts, pl.ranks, pl.env
+    # The debug dump (docs/debug.md): TRAME_DUMP_DIR defaults to the run's --out directory, so a
+    # rank<rank>.dump lands beside its host's outputs when the program was built with --cfg debug_dump.
+    env.setdefault("TRAME_DUMP_DIR", str(out.resolve()))
     cmd = pl.cmd + ["--output", "tag", "sh", "-c", WRAP, "sh", *program]
     home = Path(os.environ.get("HOME", "/nonexistent"))
     config = [f"# {p}\n{p.read_text() if p.is_file() else ''}" for p in (home / ".openmpi/mca-params.conf", home / ".prte/mca-params.conf")]

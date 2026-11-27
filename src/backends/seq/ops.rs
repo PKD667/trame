@@ -84,6 +84,9 @@ fn leader_check(st: MutexGuard<'_, State>) -> MutexGuard<'_, State> {
     if let Some((w, msg)) = &st.panic {
         let text = std::format!("trame: worker {w} panicked: {msg}");
         drop(st);
+        // A worker panicked; the leader is about to abort the program, so write the debug dump now
+        // (docs/debug.md; empty without --cfg debug_dump).
+        crate::debug::dump();
         panic!("{text}");
     }
     st
@@ -92,6 +95,7 @@ fn leader_check(st: MutexGuard<'_, State>) -> MutexGuard<'_, State> {
 /// The body of a worker's thread: its one agent. A worker with a result hands the baton on. A panic
 /// aborts the run.
 fn worker_main(shared: Arc<Shared>, me: usize, slot: Arc<Slot>) {
+    crate::debug::spawn_id();
     CURRENT.with(|c| *c.borrow_mut() = Some((shared.clone(), me)));
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         drop(wait_turn(&shared, shared.lock(), me));
@@ -159,6 +163,7 @@ impl Backend for Selected {
     }
 
     fn launch(mut plan: Plan) -> Result<Run, Refused> {
+        crate::debug::boot(0, 0);
         build_all(&mut plan)?;
         let n = plan.workers.len();
         DECLARED.store(n as u32, core::sync::atomic::Ordering::SeqCst);
@@ -221,6 +226,13 @@ impl Backend for Selected {
         let st = shared.lock();
         let from = End::Worker(WorkerId::here(me as u32));
         st.routes.all.iter().filter(|r| r.from == from).position(|r| r.to == to && r.ty == ty)
+    }
+
+    fn worker_incoming(ty: core::any::TypeId) -> Option<usize> {
+        let (shared, me) = current();
+        let st = shared.lock();
+        let me = End::Worker(WorkerId::here(me as u32));
+        st.routes.all.iter().filter(|r| r.to == me).position(|r| r.ty == ty)
     }
 
     fn worker_room(route: usize) -> bool {
@@ -338,6 +350,7 @@ impl Backend for Selected {
         // Every act bumps `acts` and wakes the leader (turn_effect, the leader's ops, a result).
         let mut st = leader_check(run.shared.lock());
         while st.acts == seen {
+            crate::debug::check_requested();
             // Stuck: this call can never return (INTERFACE.md 5, Deadlock). The guard is released first.
             if st.leader_stuck() {
                 drop(st);

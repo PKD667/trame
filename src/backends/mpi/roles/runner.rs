@@ -47,8 +47,13 @@ pub(crate) fn run_worker(obj: Arc<dyn Erased>, agents: usize, pool: Option<PoolR
         }
         r.ok()
     };
+    // A spawned agent takes a dense debug-dump id; the main thread keeps 0 (src/debug.rs).
+    let one_spawned = || {
+        crate::debug::spawn_id();
+        one()
+    };
     let answers: Vec<Option<Answer>> = std::thread::scope(|s| {
-        let others: Vec<_> = (1..agents).map(|_| s.spawn(one)).collect();
+        let others: Vec<_> = (1..agents).map(|_| s.spawn(one_spawned)).collect();
         let mut out = std::vec![one()];
         out.extend(others.into_iter().map(|h| h.join().unwrap_or(None)));
         out
@@ -71,6 +76,8 @@ pub(crate) fn run_worker(obj: Arc<dyn Erased>, agents: usize, pool: Option<PoolR
         segment::trace_slot(with_endpoint(|t| t.me())).store(at as u64, std::sync::atomic::Ordering::Release);
     }
     with_endpoint(|t| t.finish(word));
+    // A worker rank never joins: its dump trigger is its exit (docs/debug.md). Empty without the cfg.
+    crate::debug::dump();
     finalize();
     process::exit(0)
 }

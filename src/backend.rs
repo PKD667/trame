@@ -165,6 +165,13 @@ pub(crate) trait Backend {
     /// routes in plan order, or None. A `Status` names rooms by this index (status.rs).
     fn worker_route(to: End, ty: TypeId) -> Option<usize>;
 
+    /// The incoming counterpart of `worker_route`: the index of this worker's first incoming route of
+    /// type `ty`, among its incoming routes in plan order, or None. The debug dump names a received
+    /// frame's route by this index (src/debug.rs); no other code uses it, and a build without the
+    /// debug cfg can see that from nowhere, so the method carries its own allowance.
+    #[allow(dead_code)]
+    fn worker_incoming(ty: TypeId) -> Option<usize>;
+
     /// Whether the outgoing route at `route` (see `worker_route`) has room for a send: fewer frames
     /// than its capacity, or a lossy route. Panics when this worker has no such route.
     fn worker_room(route: usize) -> bool;

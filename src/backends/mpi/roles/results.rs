@@ -125,6 +125,9 @@ impl Transport {
             Err(e) => format!("<the panic message could not be read: {e}>"),
         };
         self.end_run();
+        // A worker panicked; this leader is about to abort the program, so write the debug dump now
+        // (docs/debug.md; empty without --cfg debug_dump). The worker's own ranks dump at their exit.
+        crate::debug::dump();
         finalize();
         panic!("trame: worker {w} panicked: {message}");
     }

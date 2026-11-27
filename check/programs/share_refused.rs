@@ -17,7 +17,7 @@ fn idle(big: &trame::Bounded<u64>) -> Status {
 }
 
 fn main() {
-    // SAFETY: nothing else in this process reads the environment before the launch reads this.
+    // SAFETY: nothing else in this process reads the environment before the launch reads this (CONTRACT.md L3).
     unsafe { std::env::set_var("TRAME_AVAILABLE", "16777216") };
     let mut t = Topology::new();
     let w = t.worker::<Held>();

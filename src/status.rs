@@ -82,14 +82,16 @@ impl Status {
 
     /// Add the condition: a frame of a type this process owns is available to this worker.
     pub fn frame(self) -> Status {
-        self.with_condition(".frame()", |w| Waits { frame: true, ..w })
+        let s = self.with_condition(".frame()", |w| Waits { frame: true, ..w });
+        crate::debug::wait_frame();
+        s
     }
 
     /// Add the condition: the route from this worker to `to`, carrying `M`, has room for a send. Aborts
     /// when this worker has no such route, since the condition could never change.
     pub fn room<M: Message>(self, to: impl Into<crate::vocab::End>) -> Status {
         let to = to.into();
-        self.with_condition(".room()", |w| {
+        let s = self.with_condition(".room()", |w| {
             let ty = if to == crate::vocab::End::Leader {
                 TypeId::of::<crate::io::Wire<M>>()
             } else {
@@ -100,7 +102,9 @@ impl Status {
             });
             assert!(route < 64, "trame: .room waits on route {route}, but a worker can wait on at most 64 routes");
             Waits { rooms: w.rooms | 1 << route, ..w }
-        })
+        });
+        crate::debug::wait_room::<M>();
+        s
     }
 
     /// Apply a condition to a wait. Only `Status::wait()` and its methods carry conditions, so any other

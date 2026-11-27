@@ -113,6 +113,15 @@ pub(crate) fn route_index(to: End, ty: TypeId) -> Option<usize> {
     plan::outgoing(entries, t.me()).position(|e| e.to == to && e.ty == ty)
 }
 
+/// The index of this worker's first incoming route of type `ty`, among its incoming routes in plan
+/// order (Backend::worker_incoming). A pure lookup on the rank's route table: no lock, no abort check.
+/// The debug dump names a received frame's route by this index (src/debug.rs).
+pub(crate) fn incoming(ty: TypeId) -> Option<usize> {
+    let l = local();
+    let me = l.endpoint.as_ref()?.me();
+    l.entries.iter().filter(|e| e.to == plan::here(me)).position(|e| e.ty == ty)
+}
+
 /// Whether the outgoing route at index `route` has room, as `route_index` numbers it.
 pub(crate) fn room(route: usize) -> bool {
     let _x = xport();
@@ -242,6 +251,8 @@ pub(crate) fn idle(epoch: u64) {
     let t = parts().0;
     if !t.has_lanes() {
         t.sleep(epoch as u32);
+        let after = u64::from(fast().0.load(SeqCst));
+        crate::debug::rec(crate::debug::op::WAKE, epoch, after);
         return;
     }
     drop(x);
@@ -251,7 +262,9 @@ pub(crate) fn idle(epoch: u64) {
         let t = parts().0;
         t.poll_lanes();
         drop(x);
-        if e.load(SeqCst) != epoch as u32 {
+        let after = u64::from(e.load(SeqCst));
+        if after != epoch {
+            crate::debug::rec(crate::debug::op::WAKE, epoch, after);
             return;
         }
         std::hint::spin_loop();

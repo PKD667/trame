@@ -5,6 +5,7 @@
 extern crate std;
 
 use core::any::TypeId;
+use mpi::traits::Communicator as _;
 use std::vec::Vec;
 
 use crate::backend::{Backend, Target};
@@ -23,7 +24,7 @@ use crate::backends::mpi::roles::worker;
 use crate::backends::mpi::setup::adopt::build_or_adopt;
 use crate::backends::mpi::setup::open::{agree, open};
 use crate::backends::mpi::setup::plan::{encode_plan, entries, inbox, topology};
-use crate::backends::mpi::setup::state::{local, refused};
+use crate::backends::mpi::setup::state::{local, refused, world};
 use crate::backends::mpi::types::Role;
 
 impl Backend for Selected {
@@ -60,6 +61,12 @@ impl Backend for Selected {
 
     fn launch(mut plan: Plan) -> Result<Leader, Refused> {
         local().launched = true;
+        // The debug dump (docs/debug.md): the arena boots on every rank, worker and leader, named
+        // by the rank's world rank and its host. Empty when the cfg is off.
+        crate::debug::boot(
+            u32::try_from(world().rank()).unwrap_or(0),
+            crate::backends::mpi::transport::hosts::host().id,
+        );
         let topo = topology(&plan)?;
         let role = open(&crate::backends::mpi::transport::hosts::host().comm, &topo).map_err(refused)?;
         let t = match &role {
@@ -100,6 +107,10 @@ impl Backend for Selected {
 
     fn worker_route(to: End, ty: TypeId) -> Option<usize> {
         worker::route_index(to, ty)
+    }
+
+    fn worker_incoming(ty: TypeId) -> Option<usize> {
+        worker::incoming(ty)
     }
 
     fn worker_room(route: usize) -> bool {

@@ -525,6 +525,18 @@ fn conditions(obj: &dyn Erased, s: &Sched, waits: &[Waits]) -> Now {
     out
 }
 
+/// A step's end for the debug dump (docs/debug.md): 0 progress, 1 wait, 2 done, 3 error. Fresh is
+/// the state of a step that never started, which a step's end is not; the match needs it anyway.
+fn end_code(st: St) -> u64 {
+    match st {
+        St::Progress => 0,
+        St::Wait { .. } => 1,
+        St::Done => 2,
+        St::Err => 3,
+        St::Fresh => 4,
+    }
+}
+
 /// The status a step returned, as the model's End takes it. `service` is the backend's measure.
 fn ended(r: Result<Status, ()>, service: u64) -> (Ended, Waits) {
     let (st, waits, weight) = match r {
@@ -547,6 +559,8 @@ fn ended(r: Result<Status, ()>, service: u64) -> (Ended, Waits) {
 pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn Any + Send + Sync)>) -> Answer {
     let obj = &*slot.obj;
     loop {
+        // A SIGUSR1 asked for a debug dump (docs/debug.md); a plain load when not.
+        crate::debug::check_requested();
         // Read before the conditions: a change after this read ends the idle below.
         let epoch = Selected::worker_epoch();
         let (snapshot, waits) = {
@@ -575,6 +589,7 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn A
                 Selected::worker_mark_start();
                 Slot::record(&mut g, Event::Start { i, now });
                 drop(g);
+                crate::debug::rec(crate::debug::op::STEP_START, i as u64, 0);
                 let start = service();
                 let _unwinding = Unwinding(slot);
                 let r = {
@@ -584,6 +599,9 @@ pub(crate) fn agent(slot: &Slot, service: &dyn Fn() -> u64, pool: Option<&(dyn A
                 };
                 core::mem::forget(_unwinding);
                 let (e, w) = ended(r, service().saturating_sub(start).max(1));
+                let code = end_code(e.st);
+                crate::debug::waited(code == 1, w.frame_wanted(), w.room_mask());
+                crate::debug::rec(crate::debug::op::STEP_END, i as u64, code);
                 let mut g = slot.lock();
                 g.s.end(i, e);
                 Selected::worker_mark_end();

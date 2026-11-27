@@ -57,7 +57,8 @@ pub struct Stamped<M> {
 /// is stamped with this worker's clock (INTERFACE.md 5.2).
 pub fn send<M: Message>(to: impl Into<crate::vocab::End>, msg: M) -> Result<(), Full> {
     let to = to.into();
-    if to == crate::vocab::End::Leader {
+    let ty = if to == crate::vocab::End::Leader { TypeId::of::<Wire<M>>() } else { TypeId::of::<M>() };
+    let answer = if to == crate::vocab::End::Leader {
         let (clock, nanos) = Selected::worker_stamp();
         // The bytes of a `Wire<M>`, written in place: a large message is not copied onto the stack a second time.
         let body = crate::__bytemuck::bytes_of(&msg);
@@ -72,9 +73,12 @@ pub fn send<M: Message>(to: impl Into<crate::vocab::End>, msg: M) -> Result<(), 
         frame[..8].copy_from_slice(&clock.raw().to_le_bytes());
         frame[8..16].copy_from_slice(&nanos.to_le_bytes());
         frame[16..].copy_from_slice(body);
-        return Selected::worker_send(to, TypeId::of::<Wire<M>>(), type_name::<M>(), frame);
-    }
-    Selected::worker_send(to, TypeId::of::<M>(), type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
+        Selected::worker_send(to, ty, type_name::<M>(), frame)
+    } else {
+        Selected::worker_send(to, ty, type_name::<M>(), crate::__bytemuck::bytes_of(&msg))
+    };
+    crate::debug::sent::<M>(&to, ty, &answer);
+    answer
 }
 
 /// The next message of type `M` addressed to this worker, or `None` when none is available. A type
@@ -83,7 +87,9 @@ pub fn recv<M: Message>() -> Option<M> {
     if !crate::cells::owns(TypeId::of::<M>()) {
         return None;
     }
-    read(|out| Selected::worker_recv(TypeId::of::<M>(), out))
+    let m = read(|out| Selected::worker_recv(TypeId::of::<M>(), out));
+    crate::debug::got::<M>(m.is_some());
+    m
 }
 
 /// One message of type `M`, read by `take` into a value of `M` that starts zeroed. `take` answers
@@ -138,4 +144,12 @@ pub(crate) fn tag<M: Message>() -> u64 {
 /// This worker. Panics outside a worker.
 pub fn me() -> crate::vocab::WorkerId {
     Selected::worker_me()
+}
+
+/// Record marker `n` in the debug dump (docs/debug.md): no record when the build is without
+/// `--cfg debug_dump`, since the name itself is then not part of the surface. One atomic and a
+/// 32-byte write (src/debug.rs), so a step may call it.
+#[cfg(debug_dump)]
+pub fn mark(n: u64) {
+    crate::debug::rec(crate::debug::op::MARK, n, 0);
 }

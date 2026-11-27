@@ -70,6 +70,7 @@ mod bounded;
 
 // The modules are private: the surface is the root re-exports below (INTERFACE.md 7). Their definition
 // paths (`trame::io::send`, `trame::time::now`, ...) are what the driver's effects.txt names.
+mod debug;
 mod domain;
 mod flow;
 mod io;
@@ -90,6 +91,10 @@ pub use domain::Alloc;
 /// The surface of INTERFACE.md 7: every public name of the crate, at the root and nowhere else, but for two
 /// namespaces that gather a family of names: `math` (the numeric library) and `system` (what the launch is on).
 pub use flow::{Drained, Spent, drain, fuel, lend};
+/// A user marker in the debug dump (src/io.rs `mark`): this name is part of the surface only in a
+/// `--cfg debug_dump` build (docs/debug.md), so a build without the cfg has the same surface as before.
+#[cfg(debug_dump)]
+pub use io::mark;
 pub use io::{Full, Message, Stamped, host, hosts, is_leader, me, peer_wait, recv, send, workers};
 pub use object::{Malformed, Object, peer_recv, peer_send, share};
 #[doc(hidden)]

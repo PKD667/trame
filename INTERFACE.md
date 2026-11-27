@@ -889,6 +889,7 @@ root, except the functions of `trame::math`.
 | `Stamped<M>` | type: fields `at: Reading`, `value: M` | what the leader's `recv` answers: a message and the sender's reading at its send (5.2, Definition (Stamp)) |
 | `Status` | type: `Progress`, `Done`, `wait()` with `.frame()`, `.room::<M>(to)` and `.weight(w)` | $\mathit{Status}$ (5.3) |
 | `Full` | type | the answer $\mathsf{full}$ (5.2); also the answer of a full `Bounded` |
+| `mark(u64)` | fn, a `--cfg debug_dump` build only | a marker in the debug dump (`docs/debug.md`); absent from a build without the cfg, so the surface of a normal build is unchanged |
 | `drain::<M, N>(body) -> Drained` | fn | a bounded $\mathsf{recv}$ loop (3.1, Definition (Bound in the call)) |
 | `Drained` | type: `{ taken, capped }`, `status()` | what `drain` answers (3.1) |
 | `fuel::<N>(body) -> Result<usize, Spent>`, `Spent` | fn, type | a `while` with its bound written down (3.1) |

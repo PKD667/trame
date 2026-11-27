@@ -169,6 +169,7 @@ pub(crate) fn wait(run: &Leader, seen: u64) -> u64 {
     let e = if crate::backends::mpi::transport::hosts::host().count > 1 {
         // The seen word is the epoch in the low half and the count of peer arrivals in the high half.
         loop {
+            crate::debug::check_requested();
             crate::backends::mpi::transport::hosts::drain();
             let e = run.get().leader_epoch()
                 | (crate::backends::mpi::transport::hosts::host().arrivals & 0xffff_ffff) << 32;
@@ -180,6 +181,7 @@ pub(crate) fn wait(run: &Leader, seen: u64) -> u64 {
         }
     } else {
         loop {
+            crate::debug::check_requested();
             let e = run.get().leader_epoch();
             if e != seen {
                 break e;

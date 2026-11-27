@@ -117,6 +117,7 @@ let
     root = ../.;
     fileset = lib.fileset.unions [
       (lib.fileset.fileFilter (f: f.hasExt "py") ../lab)
+      (lib.fileset.fileFilter (f: f.hasExt "py") ../check)
       (lib.fileset.fileFilter (f: f.hasExt "py") backendDir)
     ];
   }; } ''

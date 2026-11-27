@@ -13,6 +13,8 @@ use crate::backends::mpi::types::Answer;
 
 /// The sending end of a lane.
 pub(crate) struct Out {
+    /// The route's index in the topology (`RouteId`): what the debug dump names a lane by.
+    rid: u32,
     comm: ffi::MPI_Comm,
     peer: i32,
     lane: i32,
@@ -37,12 +39,13 @@ pub(crate) struct Out {
 
 impl Out {
     /// The end of route `r` that sends, with its credit receive posted.
-    pub(super) fn open(r: &RouteLayout, x: Remote, comm: ffi::MPI_Comm, sent: Count, got: Count) -> Out {
+    pub(super) fn open(rid: usize, r: &RouteLayout, x: Remote, comm: ffi::MPI_Comm, sent: Count, got: Count) -> Out {
         let n = r.size;
         let cap = r.cap as usize;
         let bufs = std::vec![0u8; n * cap].into_boxed_slice();
         let reqs = std::vec![null(); cap].into_boxed_slice();
         let mut o = Out {
+            rid: rid as u32,
             comm,
             peer: x.world,
             lane: x.lane,
@@ -98,6 +101,7 @@ impl Out {
         isend(at.as_ptr(), self.size, self.peer, 2 * self.lane, self.comm, &mut self.reqs[s]);
         self.sent.add();
         self.p += 1;
+        crate::debug::rec(crate::debug::op::RELAY_OUT, u64::from(self.rid), self.size as u64);
     }
 
     /// Frames sent, and the largest credit received.

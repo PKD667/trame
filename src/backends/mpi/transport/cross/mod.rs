@@ -71,16 +71,20 @@ pub(crate) enum Lane {
 /// receives. Posts the receives. Allocates: called at launch, before any step.
 pub(crate) fn lanes(lay: &Layout, me: u32, win: &Window) -> Vec<Option<Lane>> {
     let mut out = Vec::with_capacity(lay.routes.len());
-    for r in &lay.routes {
-        out.push(r.remote.filter(|_| r.sent_by(me) || r.received_by(me)).map(|x| lane(r, x, win)));
+    for (rid, r) in lay.routes.iter().enumerate() {
+        out.push(r.remote.filter(|_| r.sent_by(me) || r.received_by(me)).map(|x| lane(rid, r, x, win)));
     }
     out
 }
 
-fn lane(r: &RouteLayout, x: Remote, win: &Window) -> Lane {
+fn lane(rid: usize, r: &RouteLayout, x: Remote, win: &Window) -> Lane {
     let (sent, got) = (Count::at(win, r.base), Count::at(win, r.base + LINE));
     let comm = host().cross.as_raw();
-    if x.outgoing { Lane::Out(Out::open(r, x, comm, sent, got)) } else { Lane::In(In::open(r, x, comm, sent, got)) }
+    if x.outgoing {
+        Lane::Out(Out::open(rid, r, x, comm, sent, got))
+    } else {
+        Lane::In(In::open(rid, r, x, comm, sent, got))
+    }
 }
 
 impl Lane {

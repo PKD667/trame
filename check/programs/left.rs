@@ -29,7 +29,7 @@ fn report(filled: &u64) -> Status {
 }
 
 fn main() {
-    // SAFETY: nothing else in this process reads the environment before the launch reads this.
+    // SAFETY: nothing else in this process reads the environment before the launch reads this (CONTRACT.md L3).
     unsafe { std::env::set_var("TRAME_AVAILABLE", "33554432") };
     let leader = trame::is_leader();
     let mut t = Topology::new();

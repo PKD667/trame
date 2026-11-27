@@ -46,7 +46,8 @@ impl Transport {
     }
 
     fn bump_word(&self, e: usize, s: usize) {
-        self.win().word32(e).fetch_add(1, SeqCst);
+        let was = self.win().word32(e).fetch_add(1, SeqCst);
+        crate::debug::rec(crate::debug::op::EPOCH_BUMP, e as u64, u64::from(was.wrapping_add(1)));
         if self.win().word(s).load(SeqCst) != 0 {
             self.win().wake(e);
         }

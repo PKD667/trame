@@ -12,6 +12,8 @@ use crate::backends::mpi::transport::cross::count::Count;
 
 /// The receiving end of a lane.
 pub(crate) struct In {
+    /// The route's index in the topology (`RouteId`): what the debug dump names a lane by.
+    rid: u32,
     comm: ffi::MPI_Comm,
     peer: i32,
     lane: i32,
@@ -34,12 +36,13 @@ pub(crate) struct In {
 
 impl In {
     /// The end of route `r` that receives, with the receive of every slot posted.
-    pub(super) fn open(r: &RouteLayout, x: Remote, comm: ffi::MPI_Comm, sent: Count, got: Count) -> In {
+    pub(super) fn open(rid: usize, r: &RouteLayout, x: Remote, comm: ffi::MPI_Comm, sent: Count, got: Count) -> In {
         let n = r.size;
         let cap = r.cap as usize;
         let bufs = std::vec![0u8; n * cap].into_boxed_slice();
         let reqs = std::vec![null(); cap].into_boxed_slice();
         let mut i = In {
+            rid: rid as u32,
             comm,
             peer: x.world,
             lane: x.lane,
@@ -122,6 +125,7 @@ impl In {
         if !here {
             return (None, now);
         }
+        crate::debug::rec(crate::debug::op::RELAY_IN, u64::from(self.rid), self.size as u64);
         let s = (self.c % self.cap) as usize;
         out[..self.size].copy_from_slice(&self.bufs[s * self.size..(s + 1) * self.size]);
         self.arrived[s] = false;

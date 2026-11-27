@@ -127,6 +127,7 @@ pub(crate) fn send(to: u32, tag: u64, bytes: &[u8]) {
     assert_eq!(rc, ffi::MPI_SUCCESS as i32, "trame: MPI_Isend of a peer message failed");
     h.outbox.push((request, msg));
     h.sent += 1;
+    crate::debug::rec(crate::debug::op::PEER_SEND, u64::from(to), tag);
 }
 
 /// Forget the posted messages MPI has completed. Answers whether any is still posted.
@@ -156,9 +157,14 @@ pub(crate) fn drain() -> bool {
     settle(h);
     let Some(peers) = h.peers.as_ref() else { return false };
     let mut any = false;
+    let was = h.pending.len();
     while let Some((msg, status)) = peers.any_process().immediate_matched_probe_with_tag(PEER_TAG) {
         keep(&mut h.pending, &mut h.arrivals, msg, status);
         any = true;
+    }
+    let moved = h.pending.len() - was;
+    if moved > 0 {
+        crate::debug::rec(crate::debug::op::PEER_DRAIN, moved as u64, h.arrivals);
     }
     any
 }
@@ -180,6 +186,7 @@ pub(crate) fn wait() {
     if !h.pending.is_empty() {
         return;
     }
+    crate::debug::rec(crate::debug::op::PEER_WAIT, 0, 0);
     let peers = h.peers.as_ref().expect("trame: only a leader has peers");
     loop {
         while let Some((msg, status)) = peers.any_process().immediate_matched_probe_with_tag(PEER_TAG) {
@@ -227,6 +234,7 @@ pub(crate) fn recv(tag: u64, out: &mut [u8]) -> Option<u32> {
 pub(crate) fn share(bytes: &[u8]) -> Vec<u8> {
     use mpi::collective::Root;
     let h = host();
+    crate::debug::rec(crate::debug::op::SHARE, bytes.len() as u64, 0);
     h.shares = h.shares.wrapping_add(1);
     let n = h.shares;
     let leader = h.comm.rank() == h.comm.size() - 1;
